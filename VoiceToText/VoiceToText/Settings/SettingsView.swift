@@ -6,7 +6,7 @@ struct SettingsView: View {
     @State private var selection: Section = .models
 
     enum Section: String, CaseIterable, Identifiable {
-        case models, hotkey, transcription, general
+        case models, hotkey, transcription, general, updates
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -14,6 +14,7 @@ struct SettingsView: View {
             case .hotkey: return "Shortcut"
             case .transcription: return "Transcription"
             case .general: return "General"
+            case .updates: return "Updates"
             }
         }
         var icon: String {
@@ -22,6 +23,7 @@ struct SettingsView: View {
             case .hotkey: return "command"
             case .transcription: return "text.bubble"
             case .general: return "slider.horizontal.3"
+            case .updates: return "arrow.down.circle"
             }
         }
     }
@@ -49,6 +51,7 @@ struct SettingsView: View {
         case .hotkey: HotkeyPane()
         case .transcription: TranscriptionPane()
         case .general: GeneralPane()
+        case .updates: UpdatesPane()
         }
     }
 }

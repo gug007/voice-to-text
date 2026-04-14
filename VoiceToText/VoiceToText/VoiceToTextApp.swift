@@ -11,6 +11,7 @@ struct VoiceToTextApp: App {
     init() {
         DictationController.shared.installHotkey()
         ModelRegistry.shared.bootstrapActiveModelIfNeeded()
+        Task { await AppUpdater.shared.autoCheckLoop() }
     }
 
     var body: some Scene {

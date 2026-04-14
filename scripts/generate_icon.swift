@@ -44,10 +44,10 @@ func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     NSColor.white.setFill()
 
     // Mic body (pill)
-    let bodyWidth: CGFloat = s * 0.28
-    let bodyHeight: CGFloat = s * 0.44
+    let bodyWidth: CGFloat = s * 0.22
+    let bodyHeight: CGFloat = s * 0.34
     let bodyX = (s - bodyWidth) / 2
-    let bodyY = s * 0.34
+    let bodyY = s * 0.39
     let bodyRect = CGRect(x: bodyX, y: bodyY, width: bodyWidth, height: bodyHeight)
     let bodyPath = NSBezierPath(
         roundedRect: bodyRect,
@@ -57,10 +57,10 @@ func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     bodyPath.fill()
 
     // Mic stand (arc under the body)
-    let arcRadius: CGFloat = s * 0.22
+    let arcRadius: CGFloat = s * 0.20
     let arcCenter = CGPoint(x: s / 2, y: bodyY + bodyHeight * 0.25)
     let arcPath = NSBezierPath()
-    arcPath.lineWidth = s * 0.04
+    arcPath.lineWidth = s * 0.038
     NSColor.white.setStroke()
     arcPath.appendArc(
         withCenter: arcCenter,
@@ -72,8 +72,8 @@ func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     arcPath.stroke()
 
     // Mic stem
-    let stemWidth: CGFloat = s * 0.04
-    let stemHeight: CGFloat = s * 0.08
+    let stemWidth: CGFloat = s * 0.038
+    let stemHeight: CGFloat = s * 0.06
     let stemRect = CGRect(
         x: (s - stemWidth) / 2,
         y: arcCenter.y - arcRadius - stemHeight,
@@ -83,8 +83,8 @@ func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     NSBezierPath(rect: stemRect).fill()
 
     // Mic base (horizontal pill)
-    let baseWidth: CGFloat = s * 0.26
-    let baseHeight: CGFloat = s * 0.035
+    let baseWidth: CGFloat = s * 0.24
+    let baseHeight: CGFloat = s * 0.033
     let baseRect = CGRect(
         x: (s - baseWidth) / 2,
         y: stemRect.minY - baseHeight,

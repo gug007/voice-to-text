@@ -83,9 +83,9 @@ actor WhisperKitEngine: TranscriptionEngine {
             language: opts.language,
             temperatureFallbackCount: opts.temperatureFallbackCount,
             withoutTimestamps: opts.withoutTimestamps,
-            supressTokens: opts.suppressTokens.isEmpty ? nil : opts.suppressTokens,
             promptTokens: promptTokens,
             suppressBlank: opts.suppressBlank,
+            supressTokens: opts.suppressTokens.isEmpty ? nil : opts.suppressTokens,
             compressionRatioThreshold: opts.compressionRatioThreshold,
             logProbThreshold: opts.logProbThreshold,
             noSpeechThreshold: opts.noSpeechThreshold

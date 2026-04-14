@@ -70,6 +70,9 @@ final class DictationController {
         }
 
         do {
+            recorder.onConfigurationChange = { [weak self] in
+                self?.handleAudioConfigurationChange()
+            }
             try recorder.start()
             state = .recording
             recordStart = Date()
@@ -84,6 +87,14 @@ final class DictationController {
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             state = .error("Could not start recording: \(error.localizedDescription)")
         }
+    }
+
+    private func handleAudioConfigurationChange() {
+        guard state == .recording else { return }
+        AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
+        liveLoop.stop()
+        LiveHUDPanel.shared.hide()
+        state = .error("Audio input device changed. Try again.")
     }
 
     private func preparationErrorMessage(for descriptor: ModelDescriptor) -> String {
@@ -153,19 +164,20 @@ final class DictationController {
     }
 
     private func handleFinalTranscription(_ text: String) throws {
-        if text.isEmpty {
+        let processed = TranscriptPostProcessor.process(text)
+        if processed.isEmpty {
             state = .error("Transcription returned empty text. Try speaking closer to the mic.")
             return
         }
 
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
-            AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
+            AppLog.dictation.warning("Missing Accessibility permission, could not type: \(processed)")
             state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
             return
         }
 
-        KeystrokeOutput.type(text)
+        KeystrokeOutput.type(processed)
         state = .idle
     }
 }

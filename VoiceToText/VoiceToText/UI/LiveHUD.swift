@@ -116,15 +116,15 @@ final class LiveHUDPanel {
 
 struct LiveHUDView: View {
     @Bindable var state: LiveHUDState
-    @State private var pulse = false
 
     var body: some View {
         HStack(alignment: .center, spacing: 14) {
-            PulseDot(active: state.isRecording)
+            WaveformIndicator(active: state.isRecording)
 
-            Text(state.text.isEmpty ? "Listening…" : state.text)
-                .font(.system(size: 14, weight: .regular))
-                .foregroundStyle(state.text.isEmpty ? .white.opacity(0.55) : .white)
+            Text(state.text.isEmpty ? "Listening" : state.text)
+                .font(.system(size: 13.5, weight: .medium))
+                .kerning(-0.1)
+                .foregroundStyle(state.text.isEmpty ? Color.white.opacity(0.48) : Color.white.opacity(0.95))
                 .lineLimit(nil)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
@@ -133,32 +133,29 @@ struct LiveHUDView: View {
 
             HStack(spacing: 10) {
                 Text(timeString)
-                    .font(.system(size: 12, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.45))
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
-                Rectangle()
-                    .fill(.white.opacity(0.12))
-                    .frame(width: 1, height: 14)
-
-                Text("⌥Space")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.55))
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                Text("⌥ Space")
+                    .font(.system(size: 10.5, weight: .semibold))
+                    .tracking(0.2)
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
                     .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(.white.opacity(0.08))
+                        Capsule()
+                            .fill(.white.opacity(0.09))
                     )
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
         .background(
             Capsule()
-                .fill(Color(white: 0.08).opacity(0.95))
+                .fill(Color(white: 0.06).opacity(0.96))
         )
-        .shadow(color: .black.opacity(0.28), radius: 22, x: 0, y: 6)
+        .shadow(color: .black.opacity(0.35), radius: 24, x: 0, y: 8)
         .padding(28)
     }
 
@@ -170,33 +167,32 @@ struct LiveHUDView: View {
     }
 }
 
-private struct PulseDot: View {
+private struct WaveformIndicator: View {
     let active: Bool
-    @State private var scale: CGFloat = 1.0
-    @State private var opacity: Double = 0.55
+    @State private var animating = false
+
+    private let barCount = 4
+    private let barWidth: CGFloat = 2.5
+    private let barSpacing: CGFloat = 2.5
+    private let maxHeight: CGFloat = 16
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.red.opacity(opacity))
-                .frame(width: 18, height: 18)
-                .scaleEffect(scale)
-                .blur(radius: 2)
-            Circle()
-                .fill(Color.red)
-                .frame(width: 8, height: 8)
+        HStack(spacing: barSpacing) {
+            ForEach(0..<barCount, id: \.self) { i in
+                Capsule(style: .continuous)
+                    .fill(Color(red: 1.0, green: 0.32, blue: 0.32))
+                    .frame(width: barWidth, height: maxHeight)
+                    .scaleEffect(y: animating ? 1.0 : 0.3, anchor: .center)
+                    .animation(
+                        .easeInOut(duration: 0.55)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(i) * 0.11),
+                        value: animating
+                    )
+            }
         }
-        .frame(width: 20, height: 20)
-        .onAppear { if active { startPulse() } }
-        .onChange(of: active) { _, newValue in
-            if newValue { startPulse() }
-        }
-    }
-
-    private func startPulse() {
-        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-            scale = 1.35
-            opacity = 0.15
-        }
+        .frame(width: CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing, height: maxHeight)
+        .onAppear { if active { animating = true } }
+        .onChange(of: active) { _, v in animating = v }
     }
 }

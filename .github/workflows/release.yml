@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release:
+    runs-on: macos-14
+    env:
+      DEVELOPMENT_TEAM: N7S7ZCZ5P7
+      SIGN_IDENTITY: "Developer ID Application: Gurgen Abagyan (N7S7ZCZ5P7)"
+      BUNDLE_ID: voice-to-text-ai.VoiceToText
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Resolve version from tag
+        id: version
+        run: |
+          REF_NAME="${GITHUB_REF_NAME:-${{ github.event.inputs.version || 'v0.0.0' }}}"
+          VERSION="${REF_NAME#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$REF_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Import signing certificate
+        env:
+          APPLE_CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -e
+          KEYCHAIN=build.keychain
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 32)
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+
+          echo "$APPLE_CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN"
+
+          rm -f "$CERT_PATH"
+
+      - name: Build Release
+        working-directory: VoiceToText
+        run: |
+          xcodebuild \
+            -project VoiceToText.xcodeproj \
+            -scheme VoiceToText \
+            -configuration Release \
+            -derivedDataPath build \
+            clean build \
+            CODE_SIGN_IDENTITY="$SIGN_IDENTITY" \
+            CODE_SIGNING_REQUIRED=YES \
+            CODE_SIGN_STYLE=Manual \
+            DEVELOPMENT_TEAM=$DEVELOPMENT_TEAM \
+            ENABLE_HARDENED_RUNTIME=YES \
+            CODE_SIGN_ENTITLEMENTS=VoiceToText/VoiceToText.entitlements \
+            MARKETING_VERSION=${{ steps.version.outputs.version }} \
+            CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            | tail -20
+
+      - name: Notarize
+        working-directory: VoiceToText
+        env:
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER_ID: ${{ secrets.APPLE_API_ISSUER_ID }}
+        run: |
+          set -e
+          APP_PATH="build/Build/Products/Release/VoiceToText.app"
+          ZIP_PATH="$RUNNER_TEMP/VoiceToText.zip"
+          KEY_DIR="$HOME/.private_keys"
+          KEY_PATH="$KEY_DIR/AuthKey_${APPLE_API_KEY_ID}.p8"
+
+          mkdir -p "$KEY_DIR"
+          echo "$APPLE_API_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+
+          ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
+
+          xcrun notarytool submit "$ZIP_PATH" \
+            --key "$KEY_PATH" \
+            --key-id "$APPLE_API_KEY_ID" \
+            --issuer "$APPLE_API_ISSUER_ID" \
+            --wait \
+            --timeout 30m
+
+          xcrun stapler staple "$APP_PATH"
+
+          rm -f "$KEY_PATH" "$ZIP_PATH"
+
+      - name: Create DMG
+        working-directory: VoiceToText
+        run: |
+          ../scripts/create-dmg.sh \
+            build/Build/Products/Release/VoiceToText.app \
+            "VoiceToText-${{ steps.version.outputs.version }}.dmg"
+
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: VoiceToText/VoiceToText-*.dmg
+          generate_release_notes: true
+          name: VoiceToText ${{ steps.version.outputs.tag }}
+          tag_name: ${{ steps.version.outputs.tag }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

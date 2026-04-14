@@ -18,8 +18,8 @@ final class LiveHUDPanel {
     private var panel: NSPanel?
     private let state = LiveHUDState.shared
 
-    private let fixedWidth: CGFloat = 720
-    private let minHeight: CGFloat = 96
+    private let fixedWidth: CGFloat = 560
+    private let minHeight: CGFloat = 64
 
     private init() {}
 
@@ -109,50 +109,66 @@ final class LiveHUDPanel {
 
 struct LiveHUDView: View {
     @Bindable var state: LiveHUDState
+    @State private var pulse = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            Image(systemName: "waveform")
-                .font(.system(size: 22, weight: .semibold))
-                .foregroundStyle(.red)
-                .symbolEffect(.variableColor.iterative, options: .repeating)
-                .padding(.top, 2)
+        HStack(alignment: .center, spacing: 14) {
+            PulseDot(active: state.isRecording)
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text("Listening")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.7))
-                        .textCase(.uppercase)
-                    Text(timeString)
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.5))
-                }
-                Text(state.text.isEmpty ? "Start speaking…" : state.text)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(nil)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            Text(state.text.isEmpty ? "Listening…" : state.text)
+                .font(.system(size: 14, weight: .regular))
+                .foregroundStyle(state.text.isEmpty ? .white.opacity(0.55) : .white)
+                .lineLimit(nil)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .animation(.easeOut(duration: 0.15), value: state.text)
+
+            HStack(spacing: 10) {
+                Text(timeString)
+                    .font(.system(size: 12, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.45))
+                    .monospacedDigit()
+
+                Rectangle()
+                    .fill(.white.opacity(0.12))
+                    .frame(width: 1, height: 14)
+
+                Text("⌥Space")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5)
+                            .fill(.white.opacity(0.08))
+                    )
             }
-
-            Text("⌥Space to stop")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.white.opacity(0.4))
-                .padding(.top, 2)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 14)
         .background(
-            RoundedRectangle(cornerRadius: 18)
-                .fill(Color.black.opacity(0.85))
+            Capsule()
+                .fill(Color(white: 0.10).opacity(0.75))
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                        .environment(\.colorScheme, .dark)
+                )
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .strokeBorder(Color.white.opacity(0.15))
+            Capsule()
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.22), .white.opacity(0.06)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
+                )
         )
-        .padding(4)
+        .shadow(color: .black.opacity(0.28), radius: 22, x: 0, y: 6)
+        .padding(6)
     }
 
     private var timeString: String {
@@ -160,5 +176,36 @@ struct LiveHUDView: View {
         let minutes = total / 60
         let seconds = total % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+}
+
+private struct PulseDot: View {
+    let active: Bool
+    @State private var scale: CGFloat = 1.0
+    @State private var opacity: Double = 0.55
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.red.opacity(opacity))
+                .frame(width: 18, height: 18)
+                .scaleEffect(scale)
+                .blur(radius: 2)
+            Circle()
+                .fill(Color.red)
+                .frame(width: 8, height: 8)
+        }
+        .frame(width: 20, height: 20)
+        .onAppear { if active { startPulse() } }
+        .onChange(of: active) { _, newValue in
+            if newValue { startPulse() }
+        }
+    }
+
+    private func startPulse() {
+        withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+            scale = 1.35
+            opacity = 0.15
+        }
     }
 }

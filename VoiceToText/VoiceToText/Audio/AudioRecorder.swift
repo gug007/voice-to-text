@@ -11,6 +11,12 @@ final class AudioRecorder: @unchecked Sendable {
     private let queue = DispatchQueue(label: "AudioRecorder.queue")
     private(set) var isRecording = false
     private var preprocessor = AudioPreprocessor()
+    private var configChangeObserver: NSObjectProtocol?
+
+    /// Called on the main actor if the audio engine's input configuration changes
+    /// mid-recording (e.g. USB mic unplugged). Recording has already been stopped
+    /// by the time this fires; the callback should surface an error and clean up UI.
+    var onConfigurationChange: (@MainActor @Sendable () -> Void)?
 
     private var preprocessingEnabled: Bool {
         if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
@@ -28,9 +34,26 @@ final class AudioRecorder: @unchecked Sendable {
         self.converter = nil
 
         let input = engine.inputNode
+
+        // Best-effort: enable Apple's hardware voice processing (AEC + NS + AGC).
+        // Fails silently on devices where the audio unit doesn't support it.
+        do {
+            try input.setVoiceProcessingEnabled(true)
+        } catch {
+            // Non-fatal; continue with raw input.
+        }
+
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: tapBufferSize, format: nil) { [weak self] pcmBuffer, _ in
             self?.handle(inputBuffer: pcmBuffer)
+        }
+
+        configChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: .main
+        ) { [weak self] _ in
+            self?.handleConfigurationChange()
         }
 
         engine.prepare()
@@ -44,6 +67,10 @@ final class AudioRecorder: @unchecked Sendable {
 
     func stop() -> [Float] {
         guard isRecording else { return [] }
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRecording = false
@@ -53,6 +80,12 @@ final class AudioRecorder: @unchecked Sendable {
             buffer.removeAll(keepingCapacity: false)
             return result
         }
+    }
+
+    private func handleConfigurationChange() {
+        _ = stop()
+        let cb = onConfigurationChange
+        Task { @MainActor in cb?() }
     }
 
     // MARK: - Private

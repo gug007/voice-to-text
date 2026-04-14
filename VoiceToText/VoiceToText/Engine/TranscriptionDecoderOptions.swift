@@ -1,13 +1,15 @@
 import Foundation
 
 // UserDefaults keys exposed to settings-ui:
-//   decoder.language           – String? (e.g. "en"; nil = auto-detect)
-//   decoder.initialPrompt      – String? (freeform context hint)
-//   decoder.temperatureFallbackCount – Int (default 5)
+//   decoder.language                  – String? (e.g. "en"; nil = auto-detect)
+//   decoder.initialPrompt             – String? (freeform context hint)
+//   decoder.temperatureFallbackCount  – Int (default 5)
 //   decoder.compressionRatioThreshold – Float? (default 2.4)
-//   decoder.logProbThreshold   – Float? (default -1.0)
-//   decoder.suppressBlank      – Bool (default true)
-//   decoder.withoutTimestamps  – Bool (default true)
+//   decoder.logProbThreshold          – Float? (default -1.0)
+//   decoder.suppressBlank             – Bool (default true)
+//   decoder.withoutTimestamps         – Bool (default true)
+//   decoder.suppressTokens            – String (comma-separated Whisper token IDs, default "")
+//   decoder.noSpeechThreshold         – Float? (default 0.6)
 
 struct TranscriptionDecoderOptions {
     var language: String?
@@ -17,6 +19,8 @@ struct TranscriptionDecoderOptions {
     var logProbThreshold: Float?
     var suppressBlank: Bool
     var withoutTimestamps: Bool
+    var suppressTokens: [Int]
+    var noSpeechThreshold: Float?
 
     static var current: TranscriptionDecoderOptions {
         let ud = UserDefaults.standard
@@ -58,6 +62,22 @@ struct TranscriptionDecoderOptions {
             withoutTimestamps = true
         }
 
+        let suppressTokens: [Int]
+        if let raw = ud.string(forKey: "decoder.suppressTokens"), !raw.isEmpty {
+            suppressTokens = raw
+                .split(separator: ",")
+                .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        } else {
+            suppressTokens = []
+        }
+
+        let noSpeechThreshold: Float?
+        if let raw = ud.object(forKey: "decoder.noSpeechThreshold") as? Double {
+            noSpeechThreshold = Float(raw)
+        } else {
+            noSpeechThreshold = 0.6
+        }
+
         return TranscriptionDecoderOptions(
             language: language?.isEmpty == false ? language : nil,
             initialPrompt: initialPrompt?.isEmpty == false ? initialPrompt : nil,
@@ -65,7 +85,9 @@ struct TranscriptionDecoderOptions {
             compressionRatioThreshold: compressionRatio,
             logProbThreshold: logProb,
             suppressBlank: suppressBlank,
-            withoutTimestamps: withoutTimestamps
+            withoutTimestamps: withoutTimestamps,
+            suppressTokens: suppressTokens,
+            noSpeechThreshold: noSpeechThreshold
         )
     }
 }

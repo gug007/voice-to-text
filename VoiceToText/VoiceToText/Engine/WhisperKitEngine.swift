@@ -42,7 +42,9 @@ actor WhisperKitEngine: TranscriptionEngine {
                 downloadBase: ModelStorage.whisperKitBaseURL,
                 modelFolder: modelFolder.path,
                 verbose: false,
-                download: false
+                prewarm: true,
+                download: false,
+                useBackgroundDownloadSession: true
             )
             pipe = try await WhisperKit(config)
 
@@ -81,10 +83,12 @@ actor WhisperKitEngine: TranscriptionEngine {
             language: opts.language,
             temperatureFallbackCount: opts.temperatureFallbackCount,
             withoutTimestamps: opts.withoutTimestamps,
+            supressTokens: opts.suppressTokens.isEmpty ? nil : opts.suppressTokens,
             promptTokens: promptTokens,
             suppressBlank: opts.suppressBlank,
             compressionRatioThreshold: opts.compressionRatioThreshold,
-            logProbThreshold: opts.logProbThreshold
+            logProbThreshold: opts.logProbThreshold,
+            noSpeechThreshold: opts.noSpeechThreshold
         )
     }
 }

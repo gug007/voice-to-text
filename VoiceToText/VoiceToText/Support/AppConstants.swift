@@ -11,14 +11,15 @@ enum AudioConfig {
 }
 
 enum DictationConfig {
-    static let liveTranscriptionInterval: Duration = .milliseconds(800)
+    static let liveTranscriptionInterval: Duration = .milliseconds(500)
     static let minLiveSamples = 8_000
     static let enableAudioPreprocessing: Bool = true
 
     // Chunked streaming
-    static let chunkSamples = 80_000        // ~5 s at 16 kHz
-    static let overlapSamples = 16_000      // ~1 s overlap between chunks
-    static let overlapWords = 12            // word-level dedup window
+    static let firstChunkSamples = 16_000   // ~1 s — fast first feedback
+    static let chunkSamples = 40_000        // ~2.5 s at 16 kHz — steady state
+    static let overlapSamples = 8_000       // ~0.5 s overlap between chunks
+    static let overlapWords = 10            // word-level dedup window
 
     // Energy VAD
     static let vadFrameMs = 30             // RMS frame length in ms

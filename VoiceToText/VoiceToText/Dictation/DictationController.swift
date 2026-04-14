@@ -23,7 +23,13 @@ final class DictationController {
     private let liveLoop = LiveTranscriptionLoop()
     private var recordStart: Date?
 
-    private init() {}
+    private init() {
+        // Kick off the Silero VAD model download in the background so the
+        // first dictation tick doesn't stall behind it.
+        Task.detached(priority: .utility) {
+            await VoiceActivityGate.shared.prewarm()
+        }
+    }
 
     func installHotkey() {
         let (keyCode, modifiers) = HotkeyDefaults.optionSpace
@@ -130,10 +136,13 @@ final class DictationController {
 
         // Only call engine on the remaining tail (avoid re-transcribing whole buffer).
         let finalText: String
-        let vad = EnergyVAD()
-        let sampleRate = Int(AudioConfig.targetSampleRate)
-        if tailSamples.count >= DictationConfig.minLiveSamples,
-           vad.isVoiced(tailSamples[...], sampleRate: sampleRate),
+        let tailIsVoiced: Bool
+        if tailSamples.count >= DictationConfig.minLiveSamples {
+            tailIsVoiced = await VoiceActivityGate.shared.isVoiced(tailSamples)
+        } else {
+            tailIsVoiced = false
+        }
+        if tailIsVoiced,
            let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
             do {
                 AppLog.dictation.info("Stop-time tail: transcribing \(tailSamples.count) samples")

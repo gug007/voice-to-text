@@ -34,15 +34,6 @@ final class AudioRecorder: @unchecked Sendable {
         self.converter = nil
 
         let input = engine.inputNode
-
-        // Best-effort: enable Apple's hardware voice processing (AEC + NS + AGC).
-        // Fails silently on devices where the audio unit doesn't support it.
-        do {
-            try input.setVoiceProcessingEnabled(true)
-        } catch {
-            // Non-fatal; continue with raw input.
-        }
-
         input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: tapBufferSize, format: nil) { [weak self] pcmBuffer, _ in
             self?.handle(inputBuffer: pcmBuffer)

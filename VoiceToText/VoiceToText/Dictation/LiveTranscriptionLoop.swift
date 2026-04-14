@@ -13,8 +13,6 @@ final class LiveTranscriptionLoop {
     /// Merged transcript built up from all committed chunks.
     private(set) var committedTranscript: String = ""
 
-    private let vad = EnergyVAD()
-
     func start(
         modelId: String,
         recordStart: Date,
@@ -28,6 +26,7 @@ final class LiveTranscriptionLoop {
         task = Task { @MainActor in
             var iteration = 0
             let chunkSize = DictationConfig.chunkSamples
+            let firstChunk = DictationConfig.firstChunkSamples
             let overlap = DictationConfig.overlapSamples
 
             while !Task.isCancelled {
@@ -38,16 +37,18 @@ final class LiveTranscriptionLoop {
                 LiveHUDPanel.shared.setElapsed(Date().timeIntervalSince(recordStart))
 
                 let allSamples = sampleProvider()
-                // Need at least one full chunk beyond the already-committed window.
-                guard allSamples.count >= committedSampleIndex + chunkSize else { continue }
+                // First tick uses a small chunk for fast feedback; steady state uses the full chunkSize.
+                let samplesNeeded = committedSampleIndex == 0
+                    ? firstChunk
+                    : committedSampleIndex + chunkSize
+                guard allSamples.count >= samplesNeeded else { continue }
 
                 // Window = overlap tail already committed + new chunk.
                 let windowStart = max(0, committedSampleIndex - overlap)
                 let windowEnd   = min(allSamples.count, committedSampleIndex + chunkSize)
                 let window = Array(allSamples[windowStart..<windowEnd])
 
-                let sampleRate = Int(AudioConfig.targetSampleRate)
-                guard vad.isVoiced(window[...], sampleRate: sampleRate) else {
+                if await !VoiceActivityGate.shared.isVoiced(window) {
                     AppLog.dictation.info("Live iter \(iteration): VAD silent, skipping chunk (committedIdx=\(self.committedSampleIndex))")
                     // Advance commit index so we don't stall forever on silence.
                     committedSampleIndex = windowEnd - overlap

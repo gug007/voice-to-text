@@ -119,6 +119,21 @@ final class ModelRegistry {
         refreshInstalledState()
     }
 
+    /// Kick off a background download of the active model if it isn't already
+    /// installed or being prepared. Safe to call multiple times — no-ops when
+    /// the model is already present or a download is in flight.
+    func bootstrapActiveModelIfNeeded() {
+        let id = activeModelId
+        switch readiness(for: id) {
+        case .installed, .preparing:
+            return
+        case .notInstalled, .failed:
+            Task { [weak self] in
+                await self?.prepareModel(id: id)
+            }
+        }
+    }
+
     func refreshInstalledState() {
         for model in ModelCatalog.all {
             if ModelStorage.isInstalled(model) {

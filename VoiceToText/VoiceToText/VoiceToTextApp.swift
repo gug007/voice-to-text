@@ -10,6 +10,7 @@ struct VoiceToTextApp: App {
 
     init() {
         DictationController.shared.installHotkey()
+        ModelRegistry.shared.bootstrapActiveModelIfNeeded()
     }
 
     var body: some Scene {

@@ -54,12 +54,12 @@ actor WhisperKitEngine: TranscriptionEngine {
         }
     }
 
-    func transcribe(samples: [Float]) async throws -> String {
+    func transcribe(samples: [Float], contextPrompt: String?) async throws -> String {
         guard let pipe else {
             throw TranscriptionEngineError.notReady
         }
         do {
-            let decodeOptions = buildDecodingOptions(pipe: pipe)
+            let decodeOptions = buildDecodingOptions(pipe: pipe, contextPrompt: contextPrompt)
             let results = try await pipe.transcribe(audioArray: samples, decodeOptions: decodeOptions)
             return results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -68,12 +68,26 @@ actor WhisperKitEngine: TranscriptionEngine {
         }
     }
 
-    private func buildDecodingOptions(pipe: WhisperKit) -> DecodingOptions {
+    private func buildDecodingOptions(pipe: WhisperKit, contextPrompt: String?) -> DecodingOptions {
         let opts = TranscriptionDecoderOptions.current
 
-        // Tokenize initialPrompt string into promptTokens if both tokenizer and prompt are available.
+        // Combine user-supplied vocabulary hint with rolling context tail.
+        // User prompt first so proper-noun spellings stay authoritative, then
+        // the committed-tail context so Whisper keeps punctuation / casing.
+        let combinedPrompt: String?
+        switch (opts.initialPrompt, contextPrompt) {
+        case let (user?, ctx?):
+            combinedPrompt = user + " " + ctx
+        case let (user?, nil):
+            combinedPrompt = user
+        case let (nil, ctx?):
+            combinedPrompt = ctx
+        case (nil, nil):
+            combinedPrompt = nil
+        }
+
         let promptTokens: [Int]?
-        if let text = opts.initialPrompt, let tokenizer = pipe.tokenizer {
+        if let text = combinedPrompt, let tokenizer = pipe.tokenizer {
             promptTokens = tokenizer.encode(text: text)
         } else {
             promptTokens = nil

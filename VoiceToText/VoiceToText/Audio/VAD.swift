@@ -5,9 +5,10 @@ import Foundation
 struct EnergyVAD {
     /// Returns true when enough energy frames exceed the dBFS threshold.
     func isVoiced(_ samples: ArraySlice<Float>, sampleRate: Int) -> Bool {
+        let tuning = VadTuning.current
         let frameLength = max(1, sampleRate * DictationConfig.vadFrameMs / 1_000)
-        let threshold = DictationConfig.vadThresholdDBFS
-        let requiredRatio = DictationConfig.vadVoicedRatio
+        let threshold = tuning.energyThresholdDBFS
+        let requiredRatio = tuning.energyVoicedRatio
 
         var totalFrames = 0
         var voicedFrames = 0

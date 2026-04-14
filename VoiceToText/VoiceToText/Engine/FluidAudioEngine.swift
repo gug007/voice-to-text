@@ -40,7 +40,7 @@ actor FluidAudioEngine: TranscriptionEngine {
         }
     }
 
-    func transcribe(samples: [Float]) async throws -> String {
+    func transcribe(samples: [Float], contextPrompt _: String?) async throws -> String {
         guard let manager else {
             throw TranscriptionEngineError.notReady
         }

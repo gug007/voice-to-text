@@ -59,7 +59,8 @@ final class LiveTranscriptionLoop {
 
                 let start = Date()
                 do {
-                    let chunkText = try await engine.transcribe(samples: window)
+                    let context = Self.rollingContext(from: committedTranscript)
+                    let chunkText = try await engine.transcribe(samples: window, contextPrompt: context)
                     let elapsed = Date().timeIntervalSince(start)
                     AppLog.dictation.info("Live iter \(iteration): \(window.count) samples → \"\(chunkText.prefix(60))\" in \(elapsed, format: .fixed(precision: 2))s")
 
@@ -81,5 +82,22 @@ final class LiveTranscriptionLoop {
     func stop() {
         task?.cancel()
         task = nil
+    }
+
+    /// Tail of the committed transcript, used as rolling context for the next chunk.
+    /// Whisper caps prompt tokens around 224, so keep this short — roughly the last
+    /// sentence or two is plenty for punctuation / proper-noun continuity.
+    static func rollingContext(from transcript: String) -> String? {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        let maxChars = 240
+        if trimmed.count <= maxChars { return trimmed }
+        let startIdx = trimmed.index(trimmed.endIndex, offsetBy: -maxChars)
+        let slice = trimmed[startIdx...]
+        // Start at the first word boundary so we don't feed a token mid-word.
+        if let space = slice.firstIndex(of: " ") {
+            return String(slice[slice.index(after: space)...])
+        }
+        return String(slice)
     }
 }

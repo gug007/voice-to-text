@@ -146,7 +146,8 @@ final class DictationController {
            let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
             do {
                 AppLog.dictation.info("Stop-time tail: transcribing \(tailSamples.count) samples")
-                let tailText = try await engine.transcribe(samples: tailSamples)
+                let context = LiveTranscriptionLoop.rollingContext(from: committedText)
+                let tailText = try await engine.transcribe(samples: tailSamples, contextPrompt: context)
                 finalText = TranscriptMerge.merge(
                     existing: committedText,
                     newChunk: tailText,

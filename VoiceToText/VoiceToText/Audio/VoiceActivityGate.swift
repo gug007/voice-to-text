@@ -11,10 +11,6 @@ actor VoiceActivityGate {
     private var loadFailed = false
     private let fallback = EnergyVAD()
 
-    /// Minimum fraction of 256 ms Silero chunks that must be voiced for
-    /// the window to be considered speech.
-    private let voicedRatioThreshold: Float = 0.25
-
     private init() {}
 
     /// Best-effort: call at app startup to warm the model download/load.
@@ -23,13 +19,14 @@ actor VoiceActivityGate {
     }
 
     func isVoiced(_ samples: [Float]) async -> Bool {
+        let tuning = VadTuning.current
         if let manager = await ensureManager() {
             do {
                 let results = try await manager.process(samples)
                 guard !results.isEmpty else { return false }
                 let voicedCount = results.reduce(0) { $0 + ($1.isVoiceActive ? 1 : 0) }
                 let ratio = Float(voicedCount) / Float(results.count)
-                return ratio >= voicedRatioThreshold
+                return ratio >= tuning.sileroVoicedRatio
             } catch {
                 // Fall through to energy VAD on any runtime failure.
             }

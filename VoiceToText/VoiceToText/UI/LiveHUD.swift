@@ -74,7 +74,7 @@ final class LiveHUDPanel {
         p.level = .statusBar
         p.backgroundColor = .clear
         p.isOpaque = false
-        p.hasShadow = true
+        p.hasShadow = false
         p.hidesOnDeactivate = false
         p.becomesKeyOnlyIfNeeded = true
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
@@ -156,26 +156,10 @@ struct LiveHUDView: View {
         .padding(.vertical, 14)
         .background(
             Capsule()
-                .fill(Color(white: 0.10).opacity(0.75))
-                .background(
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                )
-        )
-        .overlay(
-            Capsule()
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.22), .white.opacity(0.06)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    ),
-                    lineWidth: 0.5
-                )
+                .fill(Color(white: 0.08).opacity(0.95))
         )
         .shadow(color: .black.opacity(0.28), radius: 22, x: 0, y: 6)
-        .padding(6)
+        .padding(28)
     }
 
     private var timeString: String {

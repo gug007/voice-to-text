@@ -57,11 +57,34 @@ actor WhisperKitEngine: TranscriptionEngine {
             throw TranscriptionEngineError.notReady
         }
         do {
-            let results = try await pipe.transcribe(audioArray: samples)
+            let decodeOptions = buildDecodingOptions(pipe: pipe)
+            let results = try await pipe.transcribe(audioArray: samples, decodeOptions: decodeOptions)
             return results.map(\.text).joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
             throw TranscriptionEngineError.transcriptionFailed(error.localizedDescription)
         }
+    }
+
+    private func buildDecodingOptions(pipe: WhisperKit) -> DecodingOptions {
+        let opts = TranscriptionDecoderOptions.current
+
+        // Tokenize initialPrompt string into promptTokens if both tokenizer and prompt are available.
+        let promptTokens: [Int]?
+        if let text = opts.initialPrompt, let tokenizer = pipe.tokenizer {
+            promptTokens = tokenizer.encode(text: text)
+        } else {
+            promptTokens = nil
+        }
+
+        return DecodingOptions(
+            language: opts.language,
+            temperatureFallbackCount: opts.temperatureFallbackCount,
+            withoutTimestamps: opts.withoutTimestamps,
+            promptTokens: promptTokens,
+            suppressBlank: opts.suppressBlank,
+            compressionRatioThreshold: opts.compressionRatioThreshold,
+            logProbThreshold: opts.logProbThreshold
+        )
     }
 }

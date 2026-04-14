@@ -5,8 +5,8 @@ import CoreGraphics
 import Foundation
 
 // Gradient background colors — iOS-style rounded-square icon
-let gradientTop = NSColor(red: 0.38, green: 0.58, blue: 1.00, alpha: 1.0)
-let gradientBottom = NSColor(red: 0.52, green: 0.31, blue: 0.97, alpha: 1.0)
+let gradientTop = NSColor(red: 0.08, green: 0.09, blue: 0.12, alpha: 1.0)
+let gradientBottom = NSColor(red: 0.02, green: 0.02, blue: 0.03, alpha: 1.0)
 
 func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     let rect = CGRect(x: 0, y: 0, width: pixelSize, height: pixelSize)

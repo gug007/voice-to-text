@@ -96,25 +96,57 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
+        // Capture committed state before cancelling the loop.
+        let committedIndex = liveLoop.committedSampleIndex
+        let committedText  = liveLoop.committedTranscript
         liveLoop.stop()
+
         let samples = recorder.stop()
-        AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
+        AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s), committedIdx=\(committedIndex)")
+
+        // If no new tail beyond what was already committed, use the live transcript directly.
+        let tailStart = max(0, committedIndex - DictationConfig.overlapSamples)
+        let tailSamples = tailStart < samples.count ? Array(samples[tailStart...]) : []
 
         guard !samples.isEmpty,
-              let descriptor = ModelRegistry.shared.activeModel,
-              let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
+              let descriptor = ModelRegistry.shared.activeModel else {
             LiveHUDPanel.shared.hide()
             state = .idle
             return
         }
 
         state = .transcribing
+
+        // Only call engine on the remaining tail (avoid re-transcribing whole buffer).
+        let finalText: String
+        let vad = EnergyVAD()
+        let sampleRate = Int(AudioConfig.targetSampleRate)
+        if tailSamples.count >= DictationConfig.minLiveSamples,
+           vad.isVoiced(tailSamples[...], sampleRate: sampleRate),
+           let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
+            do {
+                AppLog.dictation.info("Stop-time tail: transcribing \(tailSamples.count) samples")
+                let tailText = try await engine.transcribe(samples: tailSamples)
+                finalText = TranscriptMerge.merge(
+                    existing: committedText,
+                    newChunk: tailText,
+                    overlapWords: DictationConfig.overlapWords
+                )
+            } catch {
+                LiveHUDPanel.shared.hide()
+                AppLog.dictation.error("Tail transcription failed: \(error.localizedDescription)")
+                state = .error("Transcription failed: \(error.localizedDescription)")
+                return
+            }
+        } else {
+            AppLog.dictation.info("Stop-time tail: VAD silent or too short, using committed transcript")
+            finalText = committedText
+        }
+
+        LiveHUDPanel.shared.hide()
         do {
-            let text = try await engine.transcribe(samples: samples)
-            LiveHUDPanel.shared.hide()
-            try handleFinalTranscription(text)
+            try handleFinalTranscription(finalText)
         } catch {
-            LiveHUDPanel.shared.hide()
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
             state = .error("Transcription failed: \(error.localizedDescription)")
         }

@@ -10,8 +10,17 @@ final class AudioRecorder: @unchecked Sendable {
     private var buffer: [Float] = []
     private let queue = DispatchQueue(label: "AudioRecorder.queue")
     private(set) var isRecording = false
+    private var preprocessor = AudioPreprocessor()
+
+    private var preprocessingEnabled: Bool {
+        if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
+            return val
+        }
+        return DictationConfig.enableAudioPreprocessing
+    }
 
     func start() throws {
+        preprocessor.reset()
         queue.sync { buffer.removeAll(keepingCapacity: true) }
 
         let targetFormat = try makeTargetFormat()
@@ -91,7 +100,11 @@ final class AudioRecorder: @unchecked Sendable {
 
         guard status != .error, let channelData = outputBuffer.floatChannelData?[0] else { return }
         let frameCount = Int(outputBuffer.frameLength)
-        let samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
+        var samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
+
+        if preprocessingEnabled {
+            preprocessor.process(&samples)
+        }
 
         queue.sync { buffer.append(contentsOf: samples) }
     }

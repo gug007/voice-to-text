@@ -6,12 +6,13 @@ struct SettingsView: View {
     @State private var selection: Section = .models
 
     enum Section: String, CaseIterable, Identifiable {
-        case models, hotkey, general
+        case models, hotkey, transcription, general
         var id: String { rawValue }
         var title: String {
             switch self {
             case .models: return "Models"
             case .hotkey: return "Shortcut"
+            case .transcription: return "Transcription"
             case .general: return "General"
             }
         }
@@ -19,6 +20,7 @@ struct SettingsView: View {
             switch self {
             case .models: return "waveform"
             case .hotkey: return "command"
+            case .transcription: return "text.bubble"
             case .general: return "slider.horizontal.3"
             }
         }
@@ -45,12 +47,13 @@ struct SettingsView: View {
         switch selection {
         case .models: ModelsPane(registry: registry)
         case .hotkey: HotkeyPane()
+        case .transcription: TranscriptionPane()
         case .general: GeneralPane()
         }
     }
 }
 
-private struct PaneHeader: View {
+struct PaneHeader: View {
     let title: String
     let subtitle: String
 
@@ -554,7 +557,7 @@ struct GeneralPane: View {
     }
 }
 
-private struct RowCard<Content: View>: View {
+struct RowCard<Content: View>: View {
     @ViewBuilder let content: Content
     var body: some View {
         content

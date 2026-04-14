@@ -3,6 +3,13 @@ import Observation
 import OSLog
 import SwiftUI
 
+/// NSPanel subclass that refuses key/main status so macOS Tahoe doesn't draw
+/// a focus halo around our borderless floating HUD.
+private final class NonKeyPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+}
+
 @Observable
 @MainActor
 final class LiveHUDState {
@@ -56,7 +63,7 @@ final class LiveHUDPanel {
 
         let initialRect = NSRect(x: 0, y: 0, width: fixedWidth, height: minHeight)
 
-        let p = NSPanel(
+        let p = NonKeyPanel(
             contentRect: initialRect,
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,

@@ -98,16 +98,38 @@ jobs:
 
           ditto -c -k --keepParent "$APP_PATH" "$ZIP_PATH"
 
-          xcrun notarytool submit "$ZIP_PATH" \
+          set +e
+          SUBMIT_OUTPUT=$(xcrun notarytool submit "$ZIP_PATH" \
             --key "$KEY_PATH" \
             --key-id "$APPLE_API_KEY_ID" \
             --issuer "$APPLE_API_ISSUER_ID" \
             --wait \
-            --timeout 30m
+            --timeout 30m \
+            --output-format json)
+          SUBMIT_EXIT=$?
+          set -e
 
-          xcrun stapler staple "$APP_PATH"
+          echo "$SUBMIT_OUTPUT"
+
+          SUBMISSION_ID=$(echo "$SUBMIT_OUTPUT" | /usr/bin/plutil -extract id raw -o - -- - 2>/dev/null || echo "")
+
+          if [ -n "$SUBMISSION_ID" ]; then
+            echo "::group::Notarization log for $SUBMISSION_ID"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$KEY_PATH" \
+              --key-id "$APPLE_API_KEY_ID" \
+              --issuer "$APPLE_API_ISSUER_ID" || true
+            echo "::endgroup::"
+          fi
 
           rm -f "$KEY_PATH" "$ZIP_PATH"
+
+          if [ "$SUBMIT_EXIT" -ne 0 ]; then
+            echo "✗ notarization failed — see log above"
+            exit "$SUBMIT_EXIT"
+          fi
+
+          xcrun stapler staple "$APP_PATH"
 
       - name: Create DMG
         working-directory: VoiceToText

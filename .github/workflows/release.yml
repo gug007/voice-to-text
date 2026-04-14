@@ -138,11 +138,14 @@ jobs:
           ../scripts/create-dmg.sh \
             build/Build/Products/Release/VoiceToText.app \
             "VoiceToText-${{ steps.version.outputs.version }}.dmg"
+          cp "VoiceToText-${{ steps.version.outputs.version }}.dmg" "VoiceToText.dmg"
 
       - name: Upload to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: VoiceToText/VoiceToText-*.dmg
+          files: |
+            VoiceToText/VoiceToText-*.dmg
+            VoiceToText/VoiceToText.dmg
           generate_release_notes: true
           name: VoiceToText ${{ steps.version.outputs.tag }}
           tag_name: ${{ steps.version.outputs.tag }}

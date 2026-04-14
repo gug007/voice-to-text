@@ -4,9 +4,8 @@ A native macOS dictation app. Hold a global hotkey, speak, release, and the tran
 
 ## Download
 
-[**Download VoiceToText-0.0.2.dmg**](https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText-0.0.2.dmg)
+[**Download VoiceToText App**](https://github.com/gug007/voice-to-text/releases/latest) — grab the `.dmg` from the assets list.
 
-See all releases on the [releases page](https://github.com/gug007/voice-to-text/releases).
 
 ## Install
 

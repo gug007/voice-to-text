@@ -25,8 +25,10 @@ final class LiveHUDPanel {
     private var panel: NSPanel?
     private let state = LiveHUDState.shared
 
-    private let fixedWidth: CGFloat = 560
-    private let minHeight: CGFloat = 64
+    private let fixedWidth: CGFloat = 860
+    private let minHeight: CGFloat = 104
+    private let maxHeight: CGFloat = 300
+    private var lockedHeight: CGFloat = 104
 
     private init() {}
 
@@ -34,10 +36,10 @@ final class LiveHUDPanel {
         state.text = ""
         state.isRecording = true
         state.elapsedSeconds = 0
+        lockedHeight = minHeight
 
         let p = ensurePanel()
-        resizeToFit(p)
-        positionAtBottomCenter(p)
+        resizeAndPosition(p)
         p.orderFrontRegardless()
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
     }
@@ -45,8 +47,7 @@ final class LiveHUDPanel {
     func update(text: String) {
         state.text = text
         guard let panel else { return }
-        resizeToFit(panel)
-        positionAtBottomCenter(panel)
+        resizeAndPosition(panel)
     }
 
     func setElapsed(_ seconds: Double) {
@@ -88,29 +89,22 @@ final class LiveHUDPanel {
         return p
     }
 
-    private func resizeToFit(_ panel: NSPanel) {
+    private func resizeAndPosition(_ panel: NSPanel) {
         guard let hosting = panel.contentView else { return }
         hosting.layoutSubtreeIfNeeded()
-        let intrinsic = hosting.intrinsicContentSize.height
         let fitting = hosting.fittingSize.height
-        let target = max(minHeight, max(intrinsic, fitting))
-        let oldFrame = panel.frame
-        let newFrame = NSRect(
-            x: oldFrame.origin.x,
-            y: oldFrame.origin.y,
-            width: fixedWidth,
-            height: target
-        )
-        panel.setFrame(newFrame, display: true, animate: false)
-    }
+        let wanted = max(minHeight, min(maxHeight, fitting))
+        lockedHeight = max(lockedHeight, wanted)
 
-    private func positionAtBottomCenter(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
-        let frame = panel.frame
         let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - frame.width / 2
+        let x = screenFrame.midX - fixedWidth / 2
         let y = screenFrame.minY + 120
-        panel.setFrame(NSRect(x: x, y: y, width: frame.width, height: frame.height), display: true)
+        panel.setFrame(
+            NSRect(x: x, y: y, width: fixedWidth, height: lockedHeight),
+            display: true,
+            animate: false
+        )
     }
 }
 
@@ -118,44 +112,46 @@ struct LiveHUDView: View {
     @Bindable var state: LiveHUDState
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
+        HStack(alignment: .top, spacing: 14) {
             WaveformIndicator(active: state.isRecording)
+                .padding(.top, 2)
 
             Text(state.text.isEmpty ? "Listening" : state.text)
-                .font(.system(size: 13.5, weight: .medium))
+                .font(.system(size: 16, weight: .medium))
                 .kerning(-0.1)
                 .foregroundStyle(state.text.isEmpty ? Color.white.opacity(0.48) : Color.white.opacity(0.95))
-                .lineLimit(nil)
+                .lineLimit(4)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .animation(.easeOut(duration: 0.15), value: state.text)
 
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Text(timeString)
-                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .font(.system(size: 14, weight: .medium, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
                 Text("⌥ Space")
-                    .font(.system(size: 10.5, weight: .semibold))
+                    .font(.system(size: 12, weight: .semibold))
                     .tracking(0.2)
-                    .foregroundStyle(.white.opacity(0.7))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .foregroundStyle(.white.opacity(0.72))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 5)
                     .background(
                         Capsule()
                             .fill(.white.opacity(0.09))
                     )
             }
+            .padding(.top, 1)
         }
         .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .background(
-            Capsule()
-                .fill(Color(white: 0.06).opacity(0.96))
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
         )
-        .shadow(color: .black.opacity(0.35), radius: 24, x: 0, y: 8)
+        .shadow(color: .black.opacity(0.25), radius: 20, x: 0, y: 6)
         .padding(28)
     }
 

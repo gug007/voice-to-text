@@ -36,14 +36,16 @@ final class AppUpdater {
         return
         #else
         while !Task.isCancelled {
-            _ = try? await checkForUpdate()
+            _ = try? await checkForUpdate(silent: true)
             try? await Task.sleep(for: .seconds(Self.checkInterval))
         }
         #endif
     }
 
+    /// - Parameter silent: When true (background checks), failures reset status
+    ///   to `.idle` instead of surfacing `.error` to the Updates pane.
     @discardableResult
-    func checkForUpdate() async throws -> Bool {
+    func checkForUpdate(silent: Bool = false) async throws -> Bool {
         status = .checking
         do {
             let release = try await fetchLatestRelease()
@@ -56,7 +58,7 @@ final class AppUpdater {
             guard let asset = release.assets.first(where: { asset in
                 asset.name.hasPrefix("VoiceToText-") && asset.name.hasSuffix(".dmg")
             }) else {
-                status = .error("Release v\(latest) has no DMG asset")
+                status = silent ? .idle : .error("Release v\(latest) has no DMG asset")
                 return false
             }
             status = .available(
@@ -66,7 +68,7 @@ final class AppUpdater {
             )
             return true
         } catch {
-            status = .error(error.localizedDescription)
+            status = silent ? .idle : .error(error.localizedDescription)
             throw error
         }
     }
@@ -153,6 +155,15 @@ final class AppUpdater {
         let appPath = Bundle.main.bundlePath
         let fm = FileManager.default
 
+        // If Gatekeeper is running the app from a randomized read-only translocation
+        // location (first-launch-from-DMG path), we can't overwrite the bundle in place.
+        // Fail fast with a message the user can actually act on.
+        if appPath.contains("/AppTranslocation/") {
+            throw UpdaterError.install(
+                "VoiceToText is running from a read-only location. Move it to /Applications and relaunch, then try updating again."
+            )
+        }
+
         let mountPoint = fm.temporaryDirectory
             .appendingPathComponent("vtt-mount-\(UUID().uuidString)")
         try fm.createDirectory(at: mountPoint, withIntermediateDirectories: true)
@@ -187,11 +198,15 @@ final class AppUpdater {
         }
         try Self.run("/usr/bin/ditto", [srcApp.path, stagingApp])
 
-        // Remove old, move staging into place
+        // Atomic swap: replaceItemAt renames staging over the old bundle in one step,
+        // so a crash mid-swap can't leave us without a working app.
+        let stagingURL = URL(fileURLWithPath: stagingApp)
+        let dstURL = URL(fileURLWithPath: dstApp)
         if fm.fileExists(atPath: dstApp) {
-            try fm.removeItem(atPath: dstApp)
+            _ = try fm.replaceItemAt(dstURL, withItemAt: stagingURL)
+        } else {
+            try fm.moveItem(at: stagingURL, to: dstURL)
         }
-        try fm.moveItem(atPath: stagingApp, toPath: dstApp)
 
         // Eagerly detach before we exit (defer runs after relaunch script spawns,
         // but the script sleeps waiting for our PID to exit so it won't race).

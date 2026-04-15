@@ -26,20 +26,86 @@ final class AppUpdater {
 
     private static let repo = "gug007/voice-to-text"
     private static let checkInterval: TimeInterval = 24 * 60 * 60  // 24h
+    private static let skippedVersionKey = "updater.skippedVersion"
 
     private init() {}
 
-    /// Background auto-check loop. Runs once on start then every 24h.
+    /// Background auto-check loop. Runs once on start (and prompts the user
+    /// if an update is available) then checks again every 24h.
     /// No-op in Debug builds so local runs don't thrash the GitHub API.
     func autoCheckLoop() async {
         #if DEBUG
         return
         #else
+        var isFirstCheck = true
         while !Task.isCancelled {
             _ = try? await checkForUpdate(silent: true)
+            if isFirstCheck {
+                isFirstCheck = false
+                await promptForAvailableUpdateIfNeeded()
+            }
             try? await Task.sleep(for: .seconds(Self.checkInterval))
         }
         #endif
+    }
+
+    // MARK: - Launch prompt
+
+    private func promptForAvailableUpdateIfNeeded() async {
+        guard case .available(let latest, _, let notes) = status,
+              !isVersionSkipped(latest) else {
+            return
+        }
+
+        switch presentUpdateAlert(latestVersion: latest, notes: notes) {
+        case .install:
+            await installUpdate()
+        case .skip:
+            skipVersion(latest)
+        case .later:
+            break
+        }
+    }
+
+    private enum PromptResponse { case install, later, skip }
+
+    private func presentUpdateAlert(latestVersion: String, notes: String) -> PromptResponse {
+        let alert = NSAlert()
+        alert.messageText = "VoiceToText \(latestVersion) is available"
+        alert.informativeText = Self.promptBody(currentVersion: currentVersion, notes: notes)
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Install Update")
+        alert.addButton(withTitle: "Later")
+        alert.addButton(withTitle: "Skip This Version")
+
+        NSApp.activate(ignoringOtherApps: true)
+        switch alert.runModal() {
+        case .alertFirstButtonReturn: return .install
+        case .alertThirdButtonReturn: return .skip
+        default: return .later
+        }
+    }
+
+    private func isVersionSkipped(_ version: String) -> Bool {
+        UserDefaults.standard.string(forKey: Self.skippedVersionKey) == version
+    }
+
+    private func skipVersion(_ version: String) {
+        UserDefaults.standard.set(version, forKey: Self.skippedVersionKey)
+    }
+
+    /// NSAlert's informativeText wraps but isn't scrollable, so long release
+    /// notes get truncated visually. Preview-cap here and let the Updates
+    /// pane show the full text.
+    private static func promptBody(currentVersion: String, notes: String) -> String {
+        let header = "You're running \(currentVersion)."
+        let trimmed = notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return header }
+        let previewLimit = 400
+        let preview = trimmed.count > previewLimit
+            ? trimmed.prefix(previewLimit).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
+            : trimmed
+        return "\(header)\n\n\(preview)"
     }
 
     /// - Parameter silent: When true (background checks), failures reset status

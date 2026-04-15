@@ -2,7 +2,7 @@ import AVFoundation
 import Foundation
 
 final class AudioRecorder: @unchecked Sendable {
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let targetSampleRate = AudioConfig.targetSampleRate
     private let tapBufferSize = AudioConfig.tapBufferSize
     private var converter: AVAudioConverter?
@@ -37,8 +37,15 @@ final class AudioRecorder: @unchecked Sendable {
         self.targetFormat = targetFormat
         self.converter = nil
 
+        // AVAudioEngine caches the input node's format at construction. After
+        // sleep/wake or an audio device switch that cache goes stale and the
+        // next start() throws "formats don't match". A fresh engine per start
+        // stays in sync with the current hardware.
+        removeConfigChangeObserver()
+        let engine = AVAudioEngine()
+        self.engine = engine
+
         let input = engine.inputNode
-        input.removeTap(onBus: 0)
         input.installTap(onBus: 0, bufferSize: tapBufferSize, format: nil) { [weak self] pcmBuffer, _ in
             self?.handle(inputBuffer: pcmBuffer)
         }
@@ -52,7 +59,13 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            input.removeTap(onBus: 0)
+            removeConfigChangeObserver()
+            throw error
+        }
         isRecording = true
     }
 
@@ -62,10 +75,7 @@ final class AudioRecorder: @unchecked Sendable {
 
     func stop() -> [Float] {
         guard isRecording else { return [] }
-        if let observer = configChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            configChangeObserver = nil
-        }
+        removeConfigChangeObserver()
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRecording = false
@@ -82,6 +92,13 @@ final class AudioRecorder: @unchecked Sendable {
         _ = stop()
         let cb = onConfigurationChange
         Task { @MainActor in cb?() }
+    }
+
+    private func removeConfigChangeObserver() {
+        if let observer = configChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+            configChangeObserver = nil
+        }
     }
 
     // MARK: - Private

@@ -20,12 +20,10 @@ final class DictationController {
     private(set) var state: State = .idle
 
     private let recorder = AudioRecorder()
-    private let liveLoop = LiveTranscriptionLoop()
     private var recordStart: Date?
+    private var elapsedTask: Task<Void, Never>?
 
     private init() {
-        // Kick off the Silero VAD model download in the background so the
-        // first dictation tick doesn't stall behind it.
         Task.detached(priority: .utility) {
             await VoiceActivityGate.shared.prewarm()
         }
@@ -79,15 +77,15 @@ final class DictationController {
             recorder.onConfigurationChange = { [weak self] in
                 self?.handleAudioConfigurationChange()
             }
+            recorder.onLevel = { level in
+                LiveHUDPanel.shared.setLevel(level)
+            }
             try recorder.start()
             state = .recording
-            recordStart = Date()
+            let start = Date()
+            recordStart = start
             LiveHUDPanel.shared.show()
-            liveLoop.start(modelId: descriptor.id, recordStart: Date()) { [weak self] in
-                self?.recorder.currentSamples() ?? []
-            } isActive: { [weak self] in
-                self?.state == .recording
-            }
+            startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
@@ -95,10 +93,26 @@ final class DictationController {
         }
     }
 
+    private func startElapsedTicker(from start: Date) {
+        elapsedTask?.cancel()
+        elapsedTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.state == .recording else { return }
+                LiveHUDPanel.shared.setElapsed(Date().timeIntervalSince(start))
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+        }
+    }
+
+    private func stopElapsedTicker() {
+        elapsedTask?.cancel()
+        elapsedTask = nil
+    }
+
     private func handleAudioConfigurationChange() {
         guard state == .recording else { return }
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
-        liveLoop.stop()
+        stopElapsedTicker()
         LiveHUDPanel.shared.hide()
         state = .error("Audio input device changed. Try again.")
     }
@@ -113,19 +127,12 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
-        // Capture committed state before cancelling the loop.
-        let committedIndex = liveLoop.committedSampleIndex
-        let committedText  = liveLoop.committedTranscript
-        liveLoop.stop()
-
+        stopElapsedTicker()
         let samples = recorder.stop()
-        AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s), committedIdx=\(committedIndex)")
-
-        // If no new tail beyond what was already committed, use the live transcript directly.
-        let tailStart = max(0, committedIndex - DictationConfig.overlapSamples)
-        let tailSamples = tailStart < samples.count ? Array(samples[tailStart...]) : []
+        AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
 
         guard !samples.isEmpty,
+              samples.count >= DictationConfig.minTranscribeSamples,
               let descriptor = ModelRegistry.shared.activeModel else {
             LiveHUDPanel.shared.hide()
             state = .idle
@@ -134,34 +141,29 @@ final class DictationController {
 
         state = .transcribing
 
-        // Only call engine on the remaining tail (avoid re-transcribing whole buffer).
-        let finalText: String
-        let tailIsVoiced: Bool
-        if tailSamples.count >= DictationConfig.minLiveSamples {
-            tailIsVoiced = await VoiceActivityGate.shared.isVoiced(tailSamples)
-        } else {
-            tailIsVoiced = false
+        let voiced = await VoiceActivityGate.shared.isVoiced(samples)
+        guard voiced else {
+            AppLog.dictation.info("Full buffer VAD silent; dropping")
+            LiveHUDPanel.shared.hide()
+            state = .idle
+            return
         }
-        if tailIsVoiced,
-           let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
-            do {
-                AppLog.dictation.info("Stop-time tail: transcribing \(tailSamples.count) samples")
-                let context = LiveTranscriptionLoop.rollingContext(from: committedText)
-                let tailText = try await engine.transcribe(samples: tailSamples, contextPrompt: context)
-                finalText = TranscriptMerge.merge(
-                    existing: committedText,
-                    newChunk: tailText,
-                    overlapWords: DictationConfig.overlapWords
-                )
-            } catch {
-                LiveHUDPanel.shared.hide()
-                AppLog.dictation.error("Tail transcription failed: \(error.localizedDescription)")
-                state = .error("Transcription failed: \(error.localizedDescription)")
-                return
-            }
-        } else {
-            AppLog.dictation.info("Stop-time tail: VAD silent or too short, using committed transcript")
-            finalText = committedText
+
+        guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
+            LiveHUDPanel.shared.hide()
+            state = .error("Failed to prepare model for transcription.")
+            return
+        }
+
+        let finalText: String
+        do {
+            AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
+            finalText = try await engine.transcribe(samples: samples, contextPrompt: nil)
+        } catch {
+            LiveHUDPanel.shared.hide()
+            AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
+            state = .error("Transcription failed: \(error.localizedDescription)")
+            return
         }
 
         LiveHUDPanel.shared.hide()

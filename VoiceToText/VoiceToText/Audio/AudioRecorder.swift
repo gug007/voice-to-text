@@ -18,6 +18,10 @@ final class AudioRecorder: @unchecked Sendable {
     /// by the time this fires; the callback should surface an error and clean up UI.
     var onConfigurationChange: (@MainActor @Sendable () -> Void)?
 
+    /// Called on the main actor with a perceptual mic level (0...1) for each
+    /// processed tap buffer. Used to drive the live voice indicator in the HUD.
+    var onLevel: (@MainActor @Sendable (Double) -> Void)?
+
     private var preprocessingEnabled: Bool {
         if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
             return val
@@ -132,6 +136,24 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         queue.sync { buffer.append(contentsOf: samples) }
+
+        if let onLevel {
+            let level = Self.perceptualLevel(samples)
+            Task { @MainActor in onLevel(level) }
+        }
+    }
+
+    /// RMS of a sample window mapped to a perceptual 0...1 scale.
+    /// -60 dBFS → 0, -10 dBFS → 1, with a square-root shape in between so
+    /// normal speech lands in the middle of the range instead of hugging zero.
+    private static func perceptualLevel(_ samples: [Float]) -> Double {
+        guard !samples.isEmpty else { return 0 }
+        var sumSquares: Float = 0
+        for s in samples { sumSquares += s * s }
+        let rms = sqrt(sumSquares / Float(samples.count))
+        let db = 20 * log10(max(rms, 1e-7))
+        let norm = (Double(db) + 60) / 50
+        return max(0, min(1, sqrt(max(0, norm))))
     }
 }
 

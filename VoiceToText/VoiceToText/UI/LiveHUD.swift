@@ -14,9 +14,10 @@ private final class NonKeyPanel: NSPanel {
 @MainActor
 final class LiveHUDState {
     static let shared = LiveHUDState()
-    var text: String = ""
     var isRecording: Bool = false
     var elapsedSeconds: Double = 0
+    /// Smoothed mic level, 0...1.
+    var level: Double = 0
 }
 
 @MainActor
@@ -25,44 +26,41 @@ final class LiveHUDPanel {
     private var panel: NSPanel?
     private let state = LiveHUDState.shared
 
-    private let fixedWidth: CGFloat = 860
-    private let minHeight: CGFloat = 104
-    private let maxHeight: CGFloat = 300
-    private var lockedHeight: CGFloat = 104
+    private let fixedWidth: CGFloat = 320
+    private let fixedHeight: CGFloat = 160
 
     private init() {}
 
     func show() {
-        state.text = ""
         state.isRecording = true
         state.elapsedSeconds = 0
-        lockedHeight = minHeight
+        state.level = 0
 
         let p = ensurePanel()
-        resizeAndPosition(p)
+        position(p)
         p.orderFrontRegardless()
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
-    }
-
-    func update(text: String) {
-        state.text = text
-        guard let panel else { return }
-        resizeAndPosition(panel)
     }
 
     func setElapsed(_ seconds: Double) {
         state.elapsedSeconds = seconds
     }
 
+    func setLevel(_ level: Double) {
+        // Exponential smoothing so the orb doesn't jitter on every tap buffer.
+        state.level = state.level * 0.6 + level * 0.4
+    }
+
     func hide() {
         state.isRecording = false
+        state.level = 0
         panel?.orderOut(nil)
     }
 
     private func ensurePanel() -> NSPanel {
         if let panel { return panel }
 
-        let initialRect = NSRect(x: 0, y: 0, width: fixedWidth, height: minHeight)
+        let initialRect = NSRect(x: 0, y: 0, width: fixedWidth, height: fixedHeight)
 
         let p = NonKeyPanel(
             contentRect: initialRect,
@@ -89,19 +87,13 @@ final class LiveHUDPanel {
         return p
     }
 
-    private func resizeAndPosition(_ panel: NSPanel) {
-        guard let hosting = panel.contentView else { return }
-        hosting.layoutSubtreeIfNeeded()
-        let fitting = hosting.fittingSize.height
-        let wanted = max(minHeight, min(maxHeight, fitting))
-        lockedHeight = max(lockedHeight, wanted)
-
+    private func position(_ panel: NSPanel) {
         guard let screen = NSScreen.main else { return }
         let screenFrame = screen.visibleFrame
         let x = screenFrame.midX - fixedWidth / 2
         let y = screenFrame.minY + 120
         panel.setFrame(
-            NSRect(x: x, y: y, width: fixedWidth, height: lockedHeight),
+            NSRect(x: x, y: y, width: fixedWidth, height: fixedHeight),
             display: true,
             animate: false
         )
@@ -112,40 +104,30 @@ struct LiveHUDView: View {
     @Bindable var state: LiveHUDState
 
     var body: some View {
-        HStack(alignment: .top, spacing: 18) {
-            WaveformIndicator(active: state.isRecording)
-                .padding(.top, 4)
+        VStack(spacing: 14) {
+            VoiceOrb(level: state.level, active: state.isRecording)
+                .frame(width: 72, height: 72)
 
-            Text(state.text.isEmpty ? "Listening" : state.text)
-                .font(.system(size: 16, weight: .regular))
-                .foregroundStyle(state.text.isEmpty ? Color.white.opacity(0.38) : Color.white.opacity(0.92))
-                .lineLimit(4)
-                .multilineTextAlignment(.leading)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.18), value: state.text)
-
-            HStack(spacing: 16) {
+            HStack(spacing: 14) {
                 Text(timeString)
-                    .font(.system(size: 14, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.42))
+                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
                 Text("⌥Space")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 12, weight: .medium))
                     .tracking(0.1)
-                    .foregroundStyle(.white.opacity(0.38))
+                    .foregroundStyle(.white.opacity(0.42))
             }
-            .padding(.top, 2)
         }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(20)
         .background(
             RoundedRectangle(cornerRadius: 26, style: .continuous)
                 .fill(Color(white: 0.12))
         )
         .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 4)
-        .padding(28)
+        .padding(20)
     }
 
     private var timeString: String {
@@ -156,32 +138,43 @@ struct LiveHUDView: View {
     }
 }
 
-private struct WaveformIndicator: View {
+/// Single pulsing orb whose scale tracks mic level while recording,
+/// and breathes gently when idle.
+private struct VoiceOrb: View {
+    let level: Double
     let active: Bool
-    @State private var animating = false
 
-    private let barCount = 3
-    private let barWidth: CGFloat = 2
-    private let barSpacing: CGFloat = 3
-    private let maxHeight: CGFloat = 16
+    @State private var idlePulse = false
+
+    private let baseColor = Color(red: 0.95, green: 0.36, blue: 0.36)
 
     var body: some View {
-        HStack(spacing: barSpacing) {
-            ForEach(0..<barCount, id: \.self) { i in
-                Capsule(style: .continuous)
-                    .fill(Color(red: 0.95, green: 0.36, blue: 0.36))
-                    .frame(width: barWidth, height: maxHeight)
-                    .scaleEffect(y: animating ? 1.0 : 0.28, anchor: .center)
-                    .animation(
-                        .easeInOut(duration: 0.6)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.13),
-                        value: animating
+        let scale = active
+            ? 0.55 + min(max(level, 0), 1) * 0.55
+            : (idlePulse ? 0.62 : 0.5)
+
+        ZStack {
+            Circle()
+                .fill(baseColor.opacity(0.18))
+                .scaleEffect(scale + 0.35)
+                .blur(radius: 10)
+
+            Circle()
+                .fill(
+                    RadialGradient(
+                        colors: [baseColor, baseColor.opacity(0.6)],
+                        center: .center,
+                        startRadius: 2,
+                        endRadius: 36
                     )
-            }
+                )
+                .scaleEffect(scale)
         }
-        .frame(width: CGFloat(barCount) * barWidth + CGFloat(barCount - 1) * barSpacing, height: maxHeight)
-        .onAppear { if active { animating = true } }
-        .onChange(of: active) { _, v in animating = v }
+        .animation(.easeOut(duration: 0.12), value: level)
+        .animation(
+            .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
+            value: idlePulse
+        )
+        .onAppear { idlePulse = true }
     }
 }

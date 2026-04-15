@@ -540,6 +540,7 @@ struct GeneralPane: View {
         case .preparing(let name): return "Loading \(name)…"
         case .recording: return "Recording…"
         case .transcribing: return "Transcribing…"
+        case .reviewing: return "Review transcript"
         }
     }
 
@@ -549,6 +550,7 @@ struct GeneralPane: View {
         case .preparing: return "Downloading or loading the active model."
         case .recording: return "Click Stop, or press ⌥Space, when you're done speaking."
         case .transcribing: return "Waiting for transcription…"
+        case .reviewing: return "Press ⌥Space to paste, or Esc to cancel."
         case .error(let message): return message
         }
     }

@@ -12,6 +12,7 @@ final class DictationController {
         case preparing(modelDisplayName: String)
         case recording
         case transcribing
+        case reviewing(text: String)
         case error(String)
     }
 
@@ -22,6 +23,11 @@ final class DictationController {
     private let recorder = AudioRecorder()
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
+    private var escMonitor: Any?
+
+    private var reviewBeforePaste: Bool {
+        UserDefaults.standard.bool(forKey: "review.beforePaste")
+    }
 
     private init() {
         Task.detached(priority: .utility) {
@@ -43,6 +49,8 @@ final class DictationController {
             Task { await startRecording() }
         case .recording:
             Task { await stopAndTranscribe() }
+        case .reviewing:
+            confirmPaste()
         case .preparing, .transcribing:
             break
         }
@@ -155,10 +163,10 @@ final class DictationController {
             return
         }
 
-        let finalText: String
+        let rawText: String
         do {
             AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
-            finalText = try await engine.transcribe(samples: samples, contextPrompt: nil)
+            rawText = try await engine.transcribe(samples: samples, contextPrompt: nil)
         } catch {
             LiveHUDPanel.shared.hide()
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
@@ -166,30 +174,87 @@ final class DictationController {
             return
         }
 
-        LiveHUDPanel.shared.hide()
-        do {
-            try handleFinalTranscription(finalText)
-        } catch {
-            AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
-            state = .error("Transcription failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func handleFinalTranscription(_ text: String) throws {
-        let processed = TranscriptPostProcessor.process(text)
+        let processed = TranscriptPostProcessor.process(rawText)
         if processed.isEmpty {
+            LiveHUDPanel.shared.hide()
             state = .error("Transcription returned empty text. Try speaking closer to the mic.")
             return
         }
 
+        if reviewBeforePaste {
+            enterReview(text: processed)
+        } else {
+            LiveHUDPanel.shared.hide()
+            deliver(text: processed)
+        }
+    }
+
+    // MARK: - Review flow
+
+    private func enterReview(text: String) {
+        state = .reviewing(text: text)
+        LiveHUDPanel.shared.showReview(
+            text: text,
+            onPaste: { [weak self] in self?.confirmPaste() },
+            onCancel: { [weak self] in self?.cancelReview() }
+        )
+        installEscMonitor()
+    }
+
+    private func confirmPaste() {
+        guard case .reviewing = state else { return }
+        let edited = LiveHUDPanel.shared.currentReviewText
+        removeEscMonitor()
+        LiveHUDPanel.shared.hide()
+        LiveHUDPanel.shared.reactivatePreviousApp()
+
+        // Focus transfer is async — give the previous app a moment to come
+        // forward before we simulate Cmd+V into it.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(120))
+            self?.deliver(text: edited)
+        }
+    }
+
+    private func cancelReview() {
+        guard case .reviewing = state else { return }
+        AppLog.dictation.info("Review cancelled")
+        removeEscMonitor()
+        LiveHUDPanel.shared.hide()
+        LiveHUDPanel.shared.reactivatePreviousApp()
+        state = .idle
+    }
+
+    private func installEscMonitor() {
+        removeEscMonitor()
+        // Local monitor: our review panel is key, so Esc is dispatched into our app.
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 {
+                Task { @MainActor in self?.cancelReview() }
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeEscMonitor() {
+        if let escMonitor {
+            NSEvent.removeMonitor(escMonitor)
+            self.escMonitor = nil
+        }
+    }
+
+    // MARK: - Output
+
+    private func deliver(text: String) {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
-            AppLog.dictation.warning("Missing Accessibility permission, could not type: \(processed)")
+            AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
             state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
             return
         }
 
-        KeystrokeOutput.type(processed)
+        KeystrokeOutput.type(text)
         state = .idle
     }
 }

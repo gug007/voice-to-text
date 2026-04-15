@@ -15,6 +15,9 @@ struct TranscriptionPane: View {
     // Audio preprocessing
     @AppStorage("audio.preprocess.enabled") private var preprocessEnabled: Bool = true
 
+    // Review before paste
+    @AppStorage("review.beforePaste") private var reviewBeforePaste: Bool = false
+
     // Voice activity detection
     @AppStorage("vad.energyThresholdDBFS") private var vadEnergyThreshold: Double = -45.0
     @AppStorage("vad.energyVoicedRatio") private var vadEnergyRatio: Double = 0.30
@@ -199,6 +202,25 @@ struct TranscriptionPane: View {
                             }
                             Spacer()
                             Toggle("", isOn: $preprocessEnabled)
+                                .labelsHidden()
+                        }
+                        .padding(18)
+                    }
+                }
+
+                // MARK: Review before paste
+                RowCard {
+                    VStack(alignment: .leading, spacing: 0) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Review transcript before pasting")
+                                    .font(.system(size: 14, weight: .medium))
+                                Text("Hold after transcription to confirm. ⌥Space to paste, Esc to cancel.")
+                                    .font(.system(size: 12))
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Toggle("", isOn: $reviewBeforePaste)
                                 .labelsHidden()
                         }
                         .padding(18)

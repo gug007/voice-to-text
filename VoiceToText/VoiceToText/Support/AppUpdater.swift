@@ -81,7 +81,8 @@ final class AppUpdater {
                 }
             }
             status = .installing
-            try performInstall(dmgURL: dmgURL)
+            // performInstall blocks on hdiutil/ditto — keep it off the main actor.
+            try await Task.detached { try Self.performInstall(dmgURL: dmgURL) }.value
             // performInstall terminates the process; we never get here on success.
         } catch {
             AppLog.dictation.error("Update install failed: \(error.localizedDescription)")
@@ -140,6 +141,7 @@ final class AppUpdater {
             let config = URLSessionConfiguration.default
             config.timeoutIntervalForResource = 600
             let session = URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
+            delegate.session = session
             let task = session.downloadTask(with: url)
             task.resume()
         }
@@ -147,7 +149,7 @@ final class AppUpdater {
 
     // MARK: - Install
 
-    private nonisolated func performInstall(dmgURL: URL) throws {
+    private nonisolated static func performInstall(dmgURL: URL) throws {
         let appPath = Bundle.main.bundlePath
         let fm = FileManager.default
 
@@ -283,6 +285,9 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unc
     private let completionHandler: @Sendable (Result<URL, Error>) -> Void
     private let lock = NSLock()
     private var finished = false
+    // Strong ref so we can invalidate. URLSession also retains its delegate,
+    // so we must break this cycle via finishTasksAndInvalidate() on completion.
+    var session: URLSession?
 
     init(
         progress: @escaping @Sendable (Double) -> Void,
@@ -294,9 +299,13 @@ private final class DownloadDelegate: NSObject, URLSessionDownloadDelegate, @unc
 
     private func finishOnce(_ result: Result<URL, Error>) {
         lock.lock()
-        defer { lock.unlock() }
-        guard !finished else { return }
+        let alreadyFinished = finished
         finished = true
+        let sess = session
+        session = nil
+        lock.unlock()
+        guard !alreadyFinished else { return }
+        sess?.finishTasksAndInvalidate()
         completionHandler(result)
     }
 

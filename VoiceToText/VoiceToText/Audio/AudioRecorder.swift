@@ -131,6 +131,11 @@ final class AudioRecorder: @unchecked Sendable {
         let frameCount = Int(outputBuffer.frameLength)
         var samples = Array(UnsafeBufferPointer(start: channelData, count: frameCount))
 
+        // Measure loudness on the raw signal — the preprocessor's AGC slams
+        // quiet audio toward full scale, which would make the HUD ribbon read
+        // loud even when the user isn't talking.
+        let rawLevel = onLevel != nil ? Self.perceptualLevel(samples) : 0
+
         if preprocessingEnabled {
             preprocessor.process(&samples)
         }
@@ -138,22 +143,22 @@ final class AudioRecorder: @unchecked Sendable {
         queue.sync { buffer.append(contentsOf: samples) }
 
         if let onLevel {
-            let level = Self.perceptualLevel(samples)
-            Task { @MainActor in onLevel(level) }
+            Task { @MainActor in onLevel(rawLevel) }
         }
     }
 
     /// RMS of a sample window mapped to a perceptual 0...1 scale.
-    /// -60 dBFS → 0, -10 dBFS → 1, with a square-root shape in between so
-    /// normal speech lands in the middle of the range instead of hugging zero.
+    /// Noise-gated under -50 dBFS, linear mapping from -50 (silent room)
+    /// to -15 dBFS (normal speech at arm's length) saturates at 1.0.
     private static func perceptualLevel(_ samples: [Float]) -> Double {
         guard !samples.isEmpty else { return 0 }
         var sumSquares: Float = 0
         for s in samples { sumSquares += s * s }
         let rms = sqrt(sumSquares / Float(samples.count))
         let db = 20 * log10(max(rms, 1e-7))
-        let norm = (Double(db) + 60) / 50
-        return max(0, min(1, sqrt(max(0, norm))))
+        if db < -50 { return 0 }
+        let norm = (Double(db) + 50) / 35
+        return max(0, min(1, norm))
     }
 }
 

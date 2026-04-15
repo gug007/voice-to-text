@@ -206,12 +206,11 @@ final class DictationController {
         let edited = LiveHUDPanel.shared.currentReviewText
         removeEscMonitor()
         LiveHUDPanel.shared.hide()
-        LiveHUDPanel.shared.reactivatePreviousApp()
 
-        // Focus transfer is async — give the previous app a moment to come
-        // forward before we simulate Cmd+V into it.
+        // Key status is released back to the previous app when our panel is
+        // ordered out; give the system a moment before simulating Cmd+V.
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(80))
             self?.deliver(text: edited)
         }
     }
@@ -221,7 +220,6 @@ final class DictationController {
         AppLog.dictation.info("Review cancelled")
         removeEscMonitor()
         LiveHUDPanel.shared.hide()
-        LiveHUDPanel.shared.reactivatePreviousApp()
         state = .idle
     }
 

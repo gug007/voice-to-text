@@ -10,8 +10,9 @@ private final class NonKeyPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
-/// Review HUD: accepts key status so the user can actually edit the transcript
-/// in a TextEditor before pasting.
+/// Review HUD: nonactivating (doesn't bring our Settings window forward with it)
+/// but still accepts key status so the user can edit the transcript in a TextEditor.
+/// Same pattern as Spotlight/Raycast.
 private final class KeyAcceptingPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
@@ -26,11 +27,15 @@ enum LiveHUDMode {
 @MainActor
 final class LiveHUDState {
     static let shared = LiveHUDState()
+    static let levelHistoryCount = 140
+
     var mode: LiveHUDMode = .recording
     var isRecording: Bool = false
     var elapsedSeconds: Double = 0
     /// Smoothed mic level, 0...1.
     var level: Double = 0
+    /// Rolling buffer of recent levels for the ECG trace (oldest → newest).
+    var levelHistory: [Double] = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
     /// Editable transcript bound to the review TextEditor.
     var reviewText: String = ""
 
@@ -43,10 +48,9 @@ final class LiveHUDPanel {
     static let shared = LiveHUDPanel()
     private var recordingPanel: NSPanel?
     private var reviewPanel: NSPanel?
-    private var previousApp: NSRunningApplication?
     private let state = LiveHUDState.shared
 
-    private let recordingSize = NSSize(width: 320, height: 160)
+    private let recordingSize = NSSize(width: 480, height: 150)
     private let reviewSize = NSSize(width: 600, height: 320)
 
     private init() {}
@@ -56,6 +60,7 @@ final class LiveHUDPanel {
         state.isRecording = true
         state.elapsedSeconds = 0
         state.level = 0
+        state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
         state.reviewText = ""
         state.onPaste = nil
         state.onCancel = nil
@@ -80,11 +85,11 @@ final class LiveHUDPanel {
         state.onPaste = onPaste
         state.onCancel = onCancel
 
-        previousApp = NSWorkspace.shared.frontmostApplication
-
         let p = ensureReviewPanel()
         position(p, size: reviewSize)
-        NSApp.activate()
+        // Nonactivating panel: becomes key for keyboard input without activating
+        // our app, so the Settings window stays wherever the user left it.
+        p.orderFrontRegardless()
         p.makeKeyAndOrderFront(nil)
         AppLog.hud.info("HUD review shown at \(String(describing: p.frame))")
     }
@@ -94,8 +99,14 @@ final class LiveHUDPanel {
     }
 
     func setLevel(_ level: Double) {
-        // Exponential smoothing so the orb doesn't jitter on every tap buffer.
-        state.level = state.level * 0.6 + level * 0.4
+        // Exponential smoothing so the trace doesn't jitter on every tap buffer.
+        let smoothed = state.level * 0.6 + level * 0.4
+        state.level = smoothed
+
+        var history = state.levelHistory
+        history.removeFirst()
+        history.append(smoothed)
+        state.levelHistory = history
     }
 
     func hide() {
@@ -105,13 +116,6 @@ final class LiveHUDPanel {
         state.onCancel = nil
         recordingPanel?.orderOut(nil)
         reviewPanel?.orderOut(nil)
-    }
-
-    /// Re-activate whatever app was frontmost before the review panel stole focus,
-    /// so the simulated Cmd+V lands in the right place.
-    func reactivatePreviousApp() {
-        previousApp?.activate()
-        previousApp = nil
     }
 
     /// Current edited review text (read at paste time).
@@ -139,7 +143,7 @@ final class LiveHUDPanel {
         let initialRect = NSRect(origin: .zero, size: reviewSize)
         let p = KeyAcceptingPanel(
             contentRect: initialRect,
-            styleMask: [.borderless],
+            styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
         )
@@ -208,9 +212,10 @@ private struct RecordingView: View {
     @Bindable var state: LiveHUDState
 
     var body: some View {
-        VStack(spacing: 14) {
-            VoiceOrb(level: state.level, active: state.isRecording)
-                .frame(width: 72, height: 72)
+        VStack(spacing: 10) {
+            ECGTrace(samples: state.levelHistory)
+                .frame(maxWidth: .infinity)
+                .frame(height: 72)
 
             HStack(spacing: 14) {
                 Text(timeString)
@@ -305,43 +310,54 @@ private struct ReviewView: View {
     }
 }
 
-/// Single pulsing orb whose scale tracks mic level while recording,
-/// and breathes gently when idle.
-private struct VoiceOrb: View {
-    let level: Double
-    let active: Bool
-
-    @State private var idlePulse = false
-
-    private let baseColor = Color(red: 0.95, green: 0.36, blue: 0.36)
+/// Minimal scrolling envelope ribbon: the mic level mirrored above and below a
+/// center line, filled as a single shape. A tiny floor keeps a thin ribbon
+/// visible when silent. Left edge fades out, right edge is the write head.
+private struct ECGTrace: View {
+    let samples: [Double]
 
     var body: some View {
-        let scale = active
-            ? 0.55 + min(max(level, 0), 1) * 0.55
-            : (idlePulse ? 0.62 : 0.5)
+        Canvas { ctx, size in
+            guard samples.count > 1 else { return }
 
-        ZStack {
-            Circle()
-                .fill(baseColor.opacity(0.18))
-                .scaleEffect(scale + 0.35)
-                .blur(radius: 10)
+            let midY = size.height / 2
+            let amp = size.height * 0.42
+            let floor: CGFloat = 1.2
+            let stepX = size.width / CGFloat(samples.count - 1)
 
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [baseColor, baseColor.opacity(0.6)],
-                        center: .center,
-                        startRadius: 2,
-                        endRadius: 36
-                    )
-                )
-                .scaleEffect(scale)
+            func offset(_ s: Double) -> CGFloat {
+                let clamped = min(max(s, 0), 1)
+                return max(floor, CGFloat(clamped) * amp)
+            }
+
+            var path = Path()
+            // Upper edge, left → right.
+            for i in 0..<samples.count {
+                let x = CGFloat(i) * stepX
+                let y = midY - offset(samples[i])
+                if i == 0 {
+                    path.move(to: CGPoint(x: x, y: y))
+                } else {
+                    path.addLine(to: CGPoint(x: x, y: y))
+                }
+            }
+            // Lower edge, right → left, closing the ribbon.
+            for i in stride(from: samples.count - 1, through: 0, by: -1) {
+                let x = CGFloat(i) * stepX
+                let y = midY + offset(samples[i])
+                path.addLine(to: CGPoint(x: x, y: y))
+            }
+            path.closeSubpath()
+
+            ctx.fill(path, with: .color(.white.opacity(0.85)))
         }
-        .animation(.easeOut(duration: 0.12), value: level)
-        .animation(
-            .easeInOut(duration: 1.1).repeatForever(autoreverses: true),
-            value: idlePulse
+        .mask(
+            LinearGradient(
+                colors: [.clear, .white],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
         )
-        .onAppear { idlePulse = true }
+        .animation(.linear(duration: 0.08), value: samples)
     }
 }

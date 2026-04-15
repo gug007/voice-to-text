@@ -1,6 +1,6 @@
 # VoiceToText
 
-A native macOS dictation app. Hold a global hotkey, speak, release, and the transcribed text is typed into whatever app is focused. Local-first, runs offline on the Apple Neural Engine.
+A free, native macOS dictation app. Hold a global hotkey, speak, release, and the transcribed text is typed into whatever app is focused. Local-first, runs offline on the Apple Neural Engine.
 
 ## Download
 

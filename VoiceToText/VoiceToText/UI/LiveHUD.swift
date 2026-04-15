@@ -112,46 +112,39 @@ struct LiveHUDView: View {
     @Bindable var state: LiveHUDState
 
     var body: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 18) {
             WaveformIndicator(active: state.isRecording)
-                .padding(.top, 2)
+                .padding(.top, 4)
 
             Text(state.text.isEmpty ? "Listening" : state.text)
-                .font(.system(size: 16, weight: .medium))
-                .kerning(-0.1)
-                .foregroundStyle(state.text.isEmpty ? Color.white.opacity(0.48) : Color.white.opacity(0.95))
+                .font(.system(size: 16, weight: .regular))
+                .foregroundStyle(state.text.isEmpty ? Color.white.opacity(0.38) : Color.white.opacity(0.92))
                 .lineLimit(4)
                 .multilineTextAlignment(.leading)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .animation(.easeOut(duration: 0.15), value: state.text)
+                .animation(.easeOut(duration: 0.18), value: state.text)
 
-            HStack(spacing: 12) {
+            HStack(spacing: 16) {
                 Text(timeString)
-                    .font(.system(size: 14, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .font(.system(size: 14, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.42))
                     .monospacedDigit()
 
-                Text("⌥ Space")
-                    .font(.system(size: 12, weight: .semibold))
-                    .tracking(0.2)
-                    .foregroundStyle(.white.opacity(0.72))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 5)
-                    .background(
-                        Capsule()
-                            .fill(.white.opacity(0.09))
-                    )
+                Text("⌥Space")
+                    .font(.system(size: 13, weight: .medium))
+                    .tracking(0.1)
+                    .foregroundStyle(.white.opacity(0.38))
             }
-            .padding(.top, 1)
+            .padding(.top, 2)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 26)
+        .padding(.vertical, 18)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color(red: 0.11, green: 0.11, blue: 0.12))
+            RoundedRectangle(cornerRadius: 26, style: .continuous)
+                .fill(Color(white: 0.12))
         )
-        .shadow(color: .black.opacity(0.25), radius: 20, x: 0, y: 6)
+        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 4)
         .padding(28)
     }
 
@@ -167,22 +160,22 @@ private struct WaveformIndicator: View {
     let active: Bool
     @State private var animating = false
 
-    private let barCount = 4
-    private let barWidth: CGFloat = 2.5
-    private let barSpacing: CGFloat = 2.5
+    private let barCount = 3
+    private let barWidth: CGFloat = 2
+    private let barSpacing: CGFloat = 3
     private let maxHeight: CGFloat = 16
 
     var body: some View {
         HStack(spacing: barSpacing) {
             ForEach(0..<barCount, id: \.self) { i in
                 Capsule(style: .continuous)
-                    .fill(Color(red: 1.0, green: 0.32, blue: 0.32))
+                    .fill(Color(red: 0.95, green: 0.36, blue: 0.36))
                     .frame(width: barWidth, height: maxHeight)
-                    .scaleEffect(y: animating ? 1.0 : 0.3, anchor: .center)
+                    .scaleEffect(y: animating ? 1.0 : 0.28, anchor: .center)
                     .animation(
-                        .easeInOut(duration: 0.55)
+                        .easeInOut(duration: 0.6)
                             .repeatForever(autoreverses: true)
-                            .delay(Double(i) * 0.11),
+                            .delay(Double(i) * 0.13),
                         value: animating
                     )
             }

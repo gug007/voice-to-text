@@ -3,7 +3,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @Bindable var registry: ModelRegistry
-    @State private var selection: Section = .models
+    @State private var selection: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
         case models, hotkey, transcription, general, updates

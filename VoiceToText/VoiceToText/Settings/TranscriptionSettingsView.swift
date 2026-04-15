@@ -101,7 +101,9 @@ struct TranscriptionPane: View {
                 // MARK: Decoder options (Whisper only)
                 RowCard {
                     VStack(alignment: .leading, spacing: 0) {
-                        DisclosureGroup(isExpanded: $decoderExpanded) {
+                        disclosureHeader(title: "Decoder options (Whisper only)", isExpanded: $decoderExpanded)
+
+                        if decoderExpanded {
                             VStack(alignment: .leading, spacing: 0) {
                                 Divider().opacity(0.5)
 
@@ -181,10 +183,6 @@ struct TranscriptionPane: View {
                                     .padding(.horizontal, 18)
                                     .padding(.vertical, 10)
                             }
-                        } label: {
-                            Text("Decoder options (Whisper only)")
-                                .font(.system(size: 14, weight: .medium))
-                                .padding(18)
                         }
                     }
                 }
@@ -230,7 +228,9 @@ struct TranscriptionPane: View {
                 // MARK: Voice activity detection
                 RowCard {
                     VStack(alignment: .leading, spacing: 0) {
-                        DisclosureGroup(isExpanded: $vadExpanded) {
+                        disclosureHeader(title: "Voice activity detection", isExpanded: $vadExpanded)
+
+                        if vadExpanded {
                             VStack(alignment: .leading, spacing: 0) {
                                 Divider().opacity(0.5)
 
@@ -298,15 +298,33 @@ struct TranscriptionPane: View {
                                 .padding(.horizontal, 18)
                                 .padding(.vertical, 14)
                             }
-                        } label: {
-                            Text("Voice activity detection")
-                                .font(.system(size: 14, weight: .medium))
-                                .padding(18)
                         }
                     }
                 }
             }
             .padding(32)
         }
+    }
+
+    @ViewBuilder
+    private func disclosureHeader(title: String, isExpanded: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                isExpanded.wrappedValue.toggle()
+            }
+        } label: {
+            HStack {
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isExpanded.wrappedValue ? 90 : 0))
+            }
+            .padding(18)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }

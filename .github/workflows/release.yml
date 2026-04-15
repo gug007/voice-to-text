@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: macos-14
+    runs-on: macos-latest
     env:
       DEVELOPMENT_TEAM: N7S7ZCZ5P7
       SIGN_IDENTITY: "Developer ID Application: Gurgen Abagyan (N7S7ZCZ5P7)"

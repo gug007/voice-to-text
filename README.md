@@ -4,6 +4,8 @@
 
 A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
+![VoiceToText demo](docs/demo.gif)
+
 ## Features
 
 - **Free and open source** — no paywall, no account, no telemetry

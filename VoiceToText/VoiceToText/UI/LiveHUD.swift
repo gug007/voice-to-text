@@ -51,7 +51,7 @@ final class LiveHUDPanel {
     private let state = LiveHUDState.shared
 
     private let recordingSize = NSSize(width: 480, height: 150)
-    private let reviewSize = NSSize(width: 600, height: 320)
+    private let reviewSize = NSSize(width: 560, height: 260)
 
     private init() {}
 
@@ -244,69 +244,64 @@ private struct ReviewView: View {
     @FocusState private var editorFocused: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Review transcript")
-                .font(.system(size: 11, weight: .semibold))
-                .tracking(0.3)
-                .foregroundStyle(.white.opacity(0.5))
-                .textCase(.uppercase)
-
+        VStack(alignment: .leading, spacing: 16) {
             TextEditor(text: $state.reviewText)
                 .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.94))
+                .foregroundStyle(.white.opacity(0.92))
                 .scrollContentBackground(.hidden)
-                .padding(10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.08))
-                )
-                .frame(maxHeight: 160)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .focused($editorFocused)
                 .onAppear { editorFocused = true }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Spacer()
 
-                Button {
-                    state.onCancel?()
-                } label: {
-                    Text("Cancel")
-                        .font(.system(size: 13, weight: .medium))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.white.opacity(0.1))
-                )
-                .foregroundStyle(.white.opacity(0.82))
+                ReviewKeyButton(
+                    title: "Cancel",
+                    hint: "esc",
+                    emphasis: .secondary
+                ) { state.onCancel?() }
 
-                Button {
-                    state.onPaste?()
-                } label: {
-                    HStack(spacing: 8) {
-                        Text("Paste")
-                        Text("⌥Space")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                    .font(.system(size: 13, weight: .semibold))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                }
-                .buttonStyle(.plain)
-                .background(
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color(red: 0.95, green: 0.36, blue: 0.36))
-                )
-                .foregroundStyle(.white)
+                ReviewKeyButton(
+                    title: "Paste",
+                    hint: "⌥Space",
+                    emphasis: .primary
+                ) { state.onPaste?() }
             }
         }
+    }
+}
+
+private struct ReviewKeyButton: View {
+    enum Emphasis { case primary, secondary }
+
+    let title: String
+    let hint: String
+    let emphasis: Emphasis
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+                Text(hint)
+                    .font(.system(size: 11, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(emphasis == .primary ? 0.55 : 0.4))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 7)
+            .foregroundStyle(.white.opacity(emphasis == .primary ? 0.96 : 0.72))
+            .background(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(emphasis == .primary ? 0.12 : 0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(Color.white.opacity(emphasis == .primary ? 0.18 : 0.08))
+            )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -321,7 +316,7 @@ private struct ECGTrace: View {
             guard samples.count > 1 else { return }
 
             let midY = size.height / 2
-            let amp = size.height * 0.42
+            let amp = size.height * 0.48
             let floor: CGFloat = 1.2
             let stepX = size.width / CGFloat(samples.count - 1)
 

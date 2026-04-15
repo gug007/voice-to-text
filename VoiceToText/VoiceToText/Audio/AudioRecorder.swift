@@ -148,8 +148,9 @@ final class AudioRecorder: @unchecked Sendable {
     }
 
     /// RMS of a sample window mapped to a perceptual 0...1 scale.
-    /// Noise-gated under -50 dBFS, linear mapping from -50 (silent room)
-    /// to -15 dBFS (normal speech at arm's length) saturates at 1.0.
+    /// Noise-gated under -50 dBFS, mapped from -50 (silent) to -22 dBFS
+    /// (normal speech) with a gamma curve that pushes mid-range values up so
+    /// the HUD ribbon swings more dramatically for typical dictation volume.
     private static func perceptualLevel(_ samples: [Float]) -> Double {
         guard !samples.isEmpty else { return 0 }
         var sumSquares: Float = 0
@@ -157,8 +158,9 @@ final class AudioRecorder: @unchecked Sendable {
         let rms = sqrt(sumSquares / Float(samples.count))
         let db = 20 * log10(max(rms, 1e-7))
         if db < -50 { return 0 }
-        let norm = (Double(db) + 50) / 35
-        return max(0, min(1, norm))
+        let norm = (Double(db) + 50) / 28
+        let clamped = max(0, min(1, norm))
+        return pow(clamped, 0.7)
     }
 }
 

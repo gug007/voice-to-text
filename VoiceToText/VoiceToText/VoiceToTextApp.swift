@@ -9,6 +9,7 @@ struct VoiceToTextApp: App {
     @State private var registry = ModelRegistry.shared
 
     init() {
+        UserDefaults.standard.register(defaults: ["review.beforePaste": true])
         DictationController.shared.installHotkey()
         ModelRegistry.shared.bootstrapActiveModelIfNeeded()
         Task { await AppUpdater.shared.autoCheckLoop() }

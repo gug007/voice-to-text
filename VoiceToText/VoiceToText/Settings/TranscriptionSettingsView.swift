@@ -16,7 +16,7 @@ struct TranscriptionPane: View {
     @AppStorage("audio.preprocess.enabled") private var preprocessEnabled: Bool = true
 
     // Review before paste
-    @AppStorage("review.beforePaste") private var reviewBeforePaste: Bool = false
+    @AppStorage("review.beforePaste") private var reviewBeforePaste: Bool = true
 
     // Voice activity detection
     @AppStorage("vad.energyThresholdDBFS") private var vadEnergyThreshold: Double = -45.0

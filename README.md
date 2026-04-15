@@ -10,7 +10,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
 - **Free and open source** — no paywall, no account, no telemetry
 - **Offline and private** — audio is transcribed on-device, nothing is uploaded
-- **Push-to-talk** — hold a customizable global hotkey to dictate into any focused app
+- **Push-to-talk** — hold `⌥ Space` (customizable) to dictate into any focused app
 - **Apple Silicon native** — accelerated by the Neural Engine on M1/M2/M3/M4/M5 Macs
 - **Multiple models** — WhisperKit (OpenAI Whisper) and FluidAudio (Parakeet) engines, with quality/speed tradeoffs
 - **Built for AI agents** — dictate prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools at natural speaking speed
@@ -26,7 +26,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 1. Open the DMG and drag **VoiceToText** to `/Applications`.
 2. Launch it.
 3. Grant Microphone and Accessibility permissions when prompted.
-4. Hold the hotkey, speak, release.
+4. Hold `⌥ Space`, speak, release — your words are typed into the focused app.
 
 ## Requirements
 

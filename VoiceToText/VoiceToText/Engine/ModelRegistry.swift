@@ -13,8 +13,10 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     let backendModelId: String
     let approxSizeMB: Int
     let languages: String
-    let recommended: Bool
     let notes: String
+    /// 1...10 subjective rating surfaced in the Models list.
+    let quality: Int
+    let speed: Int
 }
 
 enum ModelCatalog {
@@ -26,8 +28,9 @@ enum ModelCatalog {
             backendModelId: "parakeet-tdt-v3",
             approxSizeMB: 470,
             languages: "25 European + JA",
-            recommended: true,
-            notes: "Fastest. Runs on the Apple Neural Engine."
+            notes: "Fastest. Runs on the Apple Neural Engine.",
+            quality: 8,
+            speed: 10
         ),
         ModelDescriptor(
             id: "whisper-large-v3-turbo",
@@ -36,8 +39,9 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-large-v3-v20240930_turbo",
             approxSizeMB: 632,
             languages: "99",
-            recommended: true,
-            notes: "Best multilingual. 6× faster than Large v3 with near-equal accuracy."
+            notes: "Best multilingual. 6× faster than Large v3 with near-equal accuracy.",
+            quality: 9,
+            speed: 7
         ),
         ModelDescriptor(
             id: "whisper-large-v3",
@@ -46,8 +50,9 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-large-v3-v20240930",
             approxSizeMB: 626,
             languages: "99",
-            recommended: false,
-            notes: "Highest accuracy. Slower than Turbo."
+            notes: "Highest accuracy. Slower than Turbo.",
+            quality: 10,
+            speed: 3
         ),
         ModelDescriptor(
             id: "whisper-small",
@@ -56,8 +61,9 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-small",
             approxSizeMB: 244,
             languages: "99",
-            recommended: false,
-            notes: "Lightweight multilingual option."
+            notes: "Lightweight multilingual option.",
+            quality: 5,
+            speed: 8
         ),
         ModelDescriptor(
             id: "whisper-base",
@@ -66,8 +72,9 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-base",
             approxSizeMB: 77,
             languages: "99",
-            recommended: false,
-            notes: "Very small. Limited accuracy."
+            notes: "Very small. Limited accuracy.",
+            quality: 3,
+            speed: 9
         ),
         ModelDescriptor(
             id: "whisper-tiny",
@@ -76,8 +83,9 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-tiny",
             approxSizeMB: 39,
             languages: "99",
-            recommended: false,
-            notes: "Smallest. Lowest accuracy."
+            notes: "Smallest. Lowest accuracy.",
+            quality: 2,
+            speed: 10
         ),
     ]
 

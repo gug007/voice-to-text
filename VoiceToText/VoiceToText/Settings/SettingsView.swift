@@ -122,6 +122,33 @@ struct ModelsPane: View {
     }
 }
 
+private struct StatBar: View {
+    let label: String
+    let value: Int
+
+    private static let segmentCount = 10
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 2) {
+                ForEach(0..<Self.segmentCount, id: \.self) { i in
+                    RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+                        .fill(i < value
+                              ? Color.primary.opacity(0.72)
+                              : Color.primary.opacity(0.12))
+                        .frame(width: 7, height: 4)
+                }
+            }
+        }
+        .fixedSize()
+    }
+}
+
 private struct ModelRow: View {
     let model: ModelDescriptor
     @Bindable var registry: ModelRegistry
@@ -134,44 +161,32 @@ private struct ModelRow: View {
                 .font(.system(size: 18))
                 .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
 
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 8) {
-                    Text(model.displayName)
-                        .font(.system(size: 14, weight: .medium))
-                    if model.recommended {
-                        Text("Recommended")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(Color.accentColor)
-                            .padding(.horizontal, 7).padding(.vertical, 2)
-                            .background(
-                                Capsule().fill(Color.accentColor.opacity(0.12))
-                            )
-                    }
-                }
+            VStack(alignment: .leading, spacing: 6) {
+                Text(model.displayName)
+                    .font(.system(size: 14, weight: .medium))
                 Text(model.notes)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 10) {
-                    metaLabel(displaySize)
-                    Text("·").foregroundStyle(.tertiary)
-                    metaLabel(model.languages)
-                    Text("·").foregroundStyle(.tertiary)
-                    metaLabel(model.backend == .fluidAudio ? "FluidAudio" : "WhisperKit")
+                HStack(spacing: 18) {
+                    StatBar(label: "Quality", value: model.quality)
+                    StatBar(label: "Speed", value: model.speed)
                 }
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
             }
 
             Spacer()
 
-            readinessControl
+            VStack(alignment: .trailing, spacing: 6) {
+                readinessControl
+                Text(displaySize)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
-    }
-
-    private func metaLabel(_ text: String) -> some View {
-        Text(text)
     }
 
     private var displaySize: String {

@@ -178,14 +178,8 @@ private struct ModelRow: View {
         if case .installed(let bytes) = registry.readiness(for: model.id) {
             return bytes.formattedDiskSize
         }
-        return "~\(formattedSize(model.approxSizeMB))"
-    }
-
-    private func formattedSize(_ mb: Int) -> String {
-        if mb >= 1000 {
-            return String(format: "%.1f GB", Double(mb) / 1000.0)
-        }
-        return "\(mb) MB"
+        let approx = Int64(model.approxSizeMB) * 1_000_000
+        return "~\(approx.formattedDiskSize)"
     }
 
     @ViewBuilder

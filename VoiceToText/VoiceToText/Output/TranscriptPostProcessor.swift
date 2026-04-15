@@ -10,9 +10,17 @@ enum TranscriptPostProcessor {
         return cased.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private static let whitespaceRun = try! NSRegularExpression(pattern: "\\s+")
-    private static let spaceBeforePunct = try! NSRegularExpression(pattern: "\\s+([,.!?;:])")
-    private static let missingSpaceAfterPunct = try! NSRegularExpression(pattern: "([,.!?;:])([A-Za-z])")
+    private static let whitespaceRun = compileRegex("\\s+")
+    private static let spaceBeforePunct = compileRegex("\\s+([,.!?;:])")
+    private static let missingSpaceAfterPunct = compileRegex("([,.!?;:])([A-Za-z])")
+
+    private static func compileRegex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            preconditionFailure("Invalid regex pattern \"\(pattern)\": \(error)")
+        }
+    }
 
     private static func collapseWhitespace(_ s: String) -> String {
         let range = NSRange(s.startIndex..., in: s)

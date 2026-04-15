@@ -65,6 +65,7 @@ final class AudioRecorder: @unchecked Sendable {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRecording = false
+        onConfigurationChange = nil
 
         return queue.sync {
             let result = buffer

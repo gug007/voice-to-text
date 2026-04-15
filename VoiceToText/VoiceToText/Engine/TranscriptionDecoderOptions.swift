@@ -24,71 +24,46 @@ struct TranscriptionDecoderOptions {
 
     static var current: TranscriptionDecoderOptions {
         let ud = UserDefaults.standard
-        let language = ud.string(forKey: "decoder.language")
-        let initialPrompt = ud.string(forKey: "decoder.initialPrompt")
-
-        let fallbackCount: Int
-        if ud.object(forKey: "decoder.temperatureFallbackCount") != nil {
-            fallbackCount = ud.integer(forKey: "decoder.temperatureFallbackCount")
-        } else {
-            fallbackCount = 5
-        }
-
-        let compressionRatio: Float?
-        if let raw = ud.object(forKey: "decoder.compressionRatioThreshold") as? Double {
-            compressionRatio = Float(raw)
-        } else {
-            compressionRatio = 2.4
-        }
-
-        let logProb: Float?
-        if let raw = ud.object(forKey: "decoder.logProbThreshold") as? Double {
-            logProb = Float(raw)
-        } else {
-            logProb = -1.0
-        }
-
-        let suppressBlank: Bool
-        if ud.object(forKey: "decoder.suppressBlank") != nil {
-            suppressBlank = ud.bool(forKey: "decoder.suppressBlank")
-        } else {
-            suppressBlank = true
-        }
-
-        let withoutTimestamps: Bool
-        if ud.object(forKey: "decoder.withoutTimestamps") != nil {
-            withoutTimestamps = ud.bool(forKey: "decoder.withoutTimestamps")
-        } else {
-            withoutTimestamps = true
-        }
-
-        let suppressTokens: [Int]
-        if let raw = ud.string(forKey: "decoder.suppressTokens"), !raw.isEmpty {
-            suppressTokens = raw
-                .split(separator: ",")
-                .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
-        } else {
-            suppressTokens = []
-        }
-
-        let noSpeechThreshold: Float?
-        if let raw = ud.object(forKey: "decoder.noSpeechThreshold") as? Double {
-            noSpeechThreshold = Float(raw)
-        } else {
-            noSpeechThreshold = 0.6
-        }
-
         return TranscriptionDecoderOptions(
-            language: language?.isEmpty == false ? language : nil,
-            initialPrompt: initialPrompt?.isEmpty == false ? initialPrompt : nil,
-            temperatureFallbackCount: fallbackCount,
-            compressionRatioThreshold: compressionRatio,
-            logProbThreshold: logProb,
-            suppressBlank: suppressBlank,
-            withoutTimestamps: withoutTimestamps,
-            suppressTokens: suppressTokens,
-            noSpeechThreshold: noSpeechThreshold
+            language: ud.nonEmptyString(forKey: "decoder.language"),
+            initialPrompt: ud.nonEmptyString(forKey: "decoder.initialPrompt"),
+            temperatureFallbackCount: ud.int(forKey: "decoder.temperatureFallbackCount", default: 5),
+            compressionRatioThreshold: ud.float(forKey: "decoder.compressionRatioThreshold", default: 2.4),
+            logProbThreshold: ud.float(forKey: "decoder.logProbThreshold", default: -1.0),
+            suppressBlank: ud.bool(forKey: "decoder.suppressBlank", default: true),
+            withoutTimestamps: ud.bool(forKey: "decoder.withoutTimestamps", default: true),
+            suppressTokens: ud.intListCSV(forKey: "decoder.suppressTokens"),
+            noSpeechThreshold: ud.float(forKey: "decoder.noSpeechThreshold", default: 0.6)
         )
+    }
+}
+
+private extension UserDefaults {
+    func nonEmptyString(forKey key: String) -> String? {
+        guard let value = string(forKey: key), !value.isEmpty else { return nil }
+        return value
+    }
+
+    func int(forKey key: String, default fallback: Int) -> Int {
+        object(forKey: key) != nil ? integer(forKey: key) : fallback
+    }
+
+    func bool(forKey key: String, default fallback: Bool) -> Bool {
+        object(forKey: key) != nil ? bool(forKey: key) : fallback
+    }
+
+    func float(forKey key: String, default fallback: Float) -> Float {
+        if let raw = object(forKey: key) as? Double {
+            return Float(raw)
+        }
+        return fallback
+    }
+
+    func intListCSV(forKey key: String) -> [Int] {
+        guard let raw = string(forKey: key), !raw.isEmpty else { return [] }
+        return raw
+            .split(separator: ",")
+            .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
     }
 }
 

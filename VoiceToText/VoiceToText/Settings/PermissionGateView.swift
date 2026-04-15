@@ -46,10 +46,12 @@ struct PermissionGateView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
 
+                #if DEBUG
                 Text("status=\(statusName) raw=\(micStatus.rawValue)")
                     .font(.system(size: 9, design: .monospaced))
                     .foregroundStyle(.tertiary)
                     .padding(.top, 4)
+                #endif
             }
 
             Spacer()

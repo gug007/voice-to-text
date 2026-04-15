@@ -23,7 +23,7 @@ final class LiveTranscriptionLoop {
         committedSampleIndex = 0
         committedTranscript = ""
 
-        task = Task { @MainActor in
+        task = Task { @MainActor [weak self] in
             var iteration = 0
             let chunkSize = DictationConfig.chunkSamples
             let firstChunk = DictationConfig.firstChunkSamples
@@ -31,6 +31,7 @@ final class LiveTranscriptionLoop {
 
             while !Task.isCancelled {
                 try? await Task.sleep(for: DictationConfig.liveTranscriptionInterval)
+                guard let self else { return }
                 guard isActive() else { return }
 
                 iteration += 1
@@ -38,20 +39,20 @@ final class LiveTranscriptionLoop {
 
                 let allSamples = sampleProvider()
                 // First tick uses a small chunk for fast feedback; steady state uses the full chunkSize.
-                let samplesNeeded = committedSampleIndex == 0
+                let samplesNeeded = self.committedSampleIndex == 0
                     ? firstChunk
-                    : committedSampleIndex + chunkSize
+                    : self.committedSampleIndex + chunkSize
                 guard allSamples.count >= samplesNeeded else { continue }
 
                 // Window = overlap tail already committed + new chunk.
-                let windowStart = max(0, committedSampleIndex - overlap)
-                let windowEnd   = min(allSamples.count, committedSampleIndex + chunkSize)
+                let windowStart = max(0, self.committedSampleIndex - overlap)
+                let windowEnd   = min(allSamples.count, self.committedSampleIndex + chunkSize)
                 let window = Array(allSamples[windowStart..<windowEnd])
 
                 if await !VoiceActivityGate.shared.isVoiced(window) {
                     AppLog.dictation.info("Live iter \(iteration): VAD silent, skipping chunk (committedIdx=\(self.committedSampleIndex))")
                     // Advance commit index so we don't stall forever on silence.
-                    committedSampleIndex = windowEnd - overlap
+                    self.committedSampleIndex = windowEnd - overlap
                     continue
                 }
 
@@ -59,19 +60,19 @@ final class LiveTranscriptionLoop {
 
                 let start = Date()
                 do {
-                    let context = Self.rollingContext(from: committedTranscript)
+                    let context = Self.rollingContext(from: self.committedTranscript)
                     let chunkText = try await engine.transcribe(samples: window, contextPrompt: context)
                     let elapsed = Date().timeIntervalSince(start)
                     AppLog.dictation.info("Live iter \(iteration): \(window.count) samples → \"\(chunkText.prefix(60))\" in \(elapsed, format: .fixed(precision: 2))s")
 
                     guard isActive() else { return }
-                    committedTranscript = TranscriptMerge.merge(
-                        existing: committedTranscript,
+                    self.committedTranscript = TranscriptMerge.merge(
+                        existing: self.committedTranscript,
                         newChunk: chunkText,
                         overlapWords: DictationConfig.overlapWords
                     )
-                    committedSampleIndex = windowEnd - overlap
-                    LiveHUDPanel.shared.update(text: committedTranscript)
+                    self.committedSampleIndex = windowEnd - overlap
+                    LiveHUDPanel.shared.update(text: self.committedTranscript)
                 } catch {
                     AppLog.dictation.error("Live transcribe error: \(error.localizedDescription)")
                 }

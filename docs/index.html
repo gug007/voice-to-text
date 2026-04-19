@@ -1,0 +1,1002 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0A0A0B" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
+
+  <title>VoiceToText — Free Offline Dictation App for Mac</title>
+  <meta name="description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. 100% offline, on the Apple Neural Engine.">
+  <meta name="author" content="Gurgen Abagyan">
+  <meta name="robots" content="index,follow">
+  <meta name="format-detection" content="telephone=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+
+  <!-- Update canonical + og:url when custom domain is configured -->
+  <link rel="canonical" href="https://gug007.github.io/voice-to-text/">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="VoiceToText">
+  <meta property="og:url" content="https://gug007.github.io/voice-to-text/">
+  <meta property="og:title" content="VoiceToText — Free Offline Dictation App for Mac">
+  <meta property="og:description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. 100% offline, on the Apple Neural Engine.">
+  <meta property="og:image" content="https://gug007.github.io/voice-to-text/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="VoiceToText menu-bar app transcribing speech into a code editor on macOS">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="VoiceToText — Free Mac Dictation (Offline, Open-Source)">
+  <meta name="twitter:description" content="Push-to-talk dictation into any Mac app. Offline, on the Apple Neural Engine. A free open-source alternative to Wispr Flow & Superwhisper.">
+  <meta name="twitter:image" content="https://gug007.github.io/voice-to-text/og-image.png">
+  <meta name="twitter:image:alt" content="VoiceToText demo: hold hotkey, speak, words typed into Claude Code">
+
+  <!-- Icons — uses the shipped macOS AppIcon for brand continuity. -->
+  <link rel="icon" type="image/png" sizes="64x64" href="icon-64.png">
+  <link rel="icon" type="image/png" sizes="512x512" href="app-icon.png">
+  <link rel="apple-touch-icon" sizes="512x512" href="app-icon.png">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+
+  <!-- T10: Chose the system font stack (no self-hosted Geist, no Google Fonts).
+       Rationale: (1) zero network + zero FOUT/FOIT, (2) privacy-aligned — no
+       third-party font requests, (3) Geist metrics approximate SF / Inter well
+       enough that the visual delta isn't worth the byte+latency cost on a
+       landing page whose whole pitch is privacy and locality. If fonts are
+       ever added back, restore the preload hints and @font-face block. -->
+
+  <!-- T10: github.com is hit by every outbound link (download, view source,
+       releases, license). dns-prefetch saves ~50-200ms on slow networks. -->
+  <link rel="dns-prefetch" href="https://github.com">
+
+  <!-- T10: Critical CSS — minimal slice for above-the-fold nav + hero +
+       CTAs. Inlined to paint fast on first byte. Full stylesheet async.
+       T13 minimalism pass: flat indigo accent #5E6AD2, no gradient/glow. -->
+  <style>
+  :root{
+    --color-bg:#0A0A0B;--color-surface:#111113;--color-surface-elevated:#17171A;
+    --color-border:#1F1F24;--color-border-strong:#2A2A31;
+    --color-text-primary:#F4F4F5;--color-text-secondary:#A1A1AA;--color-text-muted:#8A8A94;
+    --color-accent:#F4F4F5;--color-accent-solid:#FFFFFF;--color-accent-hover:#E4E4E7;
+    --color-accent-muted:rgba(255,255,255,.08);--color-accent-ring:rgba(255,255,255,.45);
+    --color-accent-ink:#09090B;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Inter","Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --font-mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --fs-display-1:clamp(52px,8.6vw,104px);--fs-display-4:clamp(24px,2.6vw,36px);
+    --fs-body-lg:19px;--fs-body-md:17px;--fs-body-sm:15px;--fs-caption:13px;--fs-code:14px;
+    --lh-display:1.03;--lh-heading:1.15;--lh-body:1.6;--lh-tight:1.3;
+    --ls-display:-.028em;--ls-heading:-.015em;--ls-label:.06em;
+    --fw-medium:500;--fw-semibold:600;
+    --space-2:8px;--space-3:12px;--space-4:16px;--space-5:20px;--space-6:24px;--space-8:32px;--space-10:40px;--space-12:48px;
+    --page-gutter:20px;--container-xl:1120px;
+    --radius-sm:6px;--radius-md:8px;--radius-lg:12px;--radius-full:9999px;
+    --duration-fast:120ms;--duration-base:200ms;
+    --ease-standard:cubic-bezier(.4,0,.2,1);
+    --z-nav:300;--z-toast:600;
+    --control-height-md:38px;--control-height-lg:46px;
+    --focus-ring:0 0 0 2px var(--color-bg),0 0 0 4px var(--color-accent-ring);
+  }
+  @media (min-width:641px){:root{--page-gutter:28px}}
+  @media (min-width:1025px){:root{--page-gutter:40px}}
+  @media (prefers-color-scheme:light){:root{
+    --color-bg:#FFFFFF;--color-surface:#FFFFFF;--color-surface-elevated:#FAFAFA;
+    --color-border:#EAEAEC;--color-border-strong:#D4D4D8;
+    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#71717A;
+    --color-accent:#09090B;--color-accent-solid:#09090B;--color-accent-hover:#27272A;
+    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.30);
+    --color-accent-ink:#FFFFFF;
+  }}
+  /* Reset */
+  *,*::before,*::after{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+  body{font-family:var(--font-sans);font-size:var(--fs-body-md);line-height:var(--lh-body);color:var(--color-text-primary);background:var(--color-bg);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility;overflow-x:hidden}
+  h1,h2,h3{margin:0;font-weight:var(--fw-semibold);letter-spacing:var(--ls-heading);color:var(--color-text-primary)}
+  p{margin:0}img,svg{display:block;max-width:100%}img{height:auto}
+  a{color:var(--color-text-primary);text-decoration:none;transition:color var(--duration-fast) var(--ease-standard),text-decoration-color var(--duration-fast) var(--ease-standard)}
+  a:hover{color:var(--color-text-primary)}
+  .link{text-decoration:underline;text-decoration-color:var(--color-border-strong);text-underline-offset:3px}
+  .link:hover{text-decoration-color:var(--color-text-primary)}
+  kbd{font-family:var(--font-mono)}
+  :focus-visible{outline:2px solid var(--color-accent-solid);outline-offset:2px;border-radius:var(--radius-sm)}
+  .btn:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+  /* A11y utilities (T11) */
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+  .kbd-combo{display:inline-flex;align-items:baseline;gap:2px;white-space:nowrap}
+  .skip-link{position:absolute;top:-9999px;left:var(--space-4);background:var(--color-accent-solid);color:var(--color-accent-ink);padding:var(--space-2) var(--space-4);border-radius:var(--radius-sm);font-weight:var(--fw-semibold);font-size:var(--fs-body-sm);z-index:var(--z-toast)}
+  .skip-link:focus{top:var(--space-4);color:var(--color-accent-ink);outline:2px solid var(--color-accent-ink);outline-offset:2px}
+  .container{max-width:var(--container-xl);margin-inline:auto;padding-inline:var(--page-gutter);width:100%}
+  .t-label{font-size:var(--fs-caption);font-weight:var(--fw-medium);line-height:var(--lh-tight);letter-spacing:var(--ls-label);text-transform:uppercase;color:var(--color-text-muted)}
+  .t-mono{font-family:var(--font-mono);font-size:var(--fs-code);font-weight:var(--fw-medium)}
+  .t-caption{font-size:var(--fs-caption);line-height:1.45;color:var(--color-text-muted)}
+  /* Icons */
+  .icon{width:16px;height:16px;display:inline-block;vertical-align:middle;flex-shrink:0}
+  /* Keycap inline (used in hero subcopy) */
+  .keycap{display:inline-flex;align-items:center;justify-content:center;min-width:1.8em;height:1.7em;padding:0 6px;font-family:var(--font-mono);font-size:.88em;font-weight:var(--fw-medium);color:var(--color-text-primary);background:var(--color-surface-elevated);border:1px solid var(--color-border-strong);border-radius:5px}
+  .keycap--inline{font-size:.82em;height:1.5em;min-width:1.5em;margin:0 1px;vertical-align:baseline}
+  /* Buttons */
+  .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--space-2);height:var(--control-height-lg);padding-inline:var(--space-5);border-radius:var(--radius-md);font:var(--fw-semibold) var(--fs-body-sm)/1 var(--font-sans);letter-spacing:-.005em;text-decoration:none;cursor:pointer;border:1px solid transparent;white-space:nowrap;transition:background var(--duration-fast) var(--ease-standard),color var(--duration-fast) var(--ease-standard),border-color var(--duration-fast) var(--ease-standard);user-select:none}
+  .btn:active{transform:translateY(1px)}
+  .btn--sm{height:var(--control-height-md);padding-inline:var(--space-4);font-size:var(--fs-body-sm)}
+  .btn--primary{background:var(--color-accent-solid);color:var(--color-accent-ink);border-color:var(--color-accent-solid)}
+  .btn--primary:hover{background:var(--color-accent-hover);border-color:var(--color-accent-hover);color:var(--color-accent-ink)}
+  .btn--secondary{background:transparent;color:var(--color-text-primary);border-color:var(--color-border-strong)}
+  .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary)}
+  /* Nav */
+  .nav{position:fixed;top:0;left:0;right:0;z-index:var(--z-nav);padding:var(--space-3) var(--page-gutter);background:transparent;border-bottom:1px solid transparent;transition:background var(--duration-base) var(--ease-standard),border-color var(--duration-base) var(--ease-standard)}
+  .nav[data-scrolled="true"]{background:var(--color-bg);border-bottom-color:var(--color-border)}
+  .nav__inner{max-width:var(--container-xl);margin-inline:auto;display:flex;align-items:center;gap:var(--space-6)}
+  .nav__brand{display:inline-flex;align-items:center;gap:var(--space-2);font-weight:var(--fw-semibold);color:var(--color-text-primary);font-size:var(--fs-body-md);letter-spacing:-.01em}
+  .nav__brand:hover{color:var(--color-text-primary)}
+  .brand-mark{border-radius:6px;flex-shrink:0;display:block}
+  .theme-toggle{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;border-radius:var(--radius-full);background:transparent;border:1px solid var(--color-border-strong);color:var(--color-text-secondary);cursor:pointer;padding:0;transition:color var(--duration-fast) var(--ease-standard),border-color var(--duration-fast) var(--ease-standard),background var(--duration-fast) var(--ease-standard)}
+  .theme-toggle:hover{color:var(--color-text-primary);border-color:var(--color-text-secondary);background:var(--color-surface-elevated)}
+  .theme-toggle svg{width:16px;height:16px}
+  .theme-toggle .theme-toggle__sun,:root[data-theme="dark"] .theme-toggle .theme-toggle__sun{display:block}
+  .theme-toggle .theme-toggle__moon,:root[data-theme="dark"] .theme-toggle .theme-toggle__moon{display:none}
+  @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .theme-toggle .theme-toggle__sun{display:none}:root:not([data-theme="dark"]) .theme-toggle .theme-toggle__moon{display:block}}
+  :root[data-theme="light"] .theme-toggle .theme-toggle__sun{display:none}
+  :root[data-theme="light"] .theme-toggle .theme-toggle__moon{display:block}
+  .nav__links{display:flex;gap:var(--space-6);margin-left:auto}
+  .nav__links a{font-size:var(--fs-body-sm);color:var(--color-text-secondary)}
+  .nav__links a:hover{color:var(--color-text-primary)}
+  @media (max-width:720px){.nav__links{display:none}}
+  @media (max-width:480px){.nav__brand span{display:none}}
+  /* Hero */
+  .hero{position:relative;padding-top:clamp(120px,15vh,180px);padding-bottom:clamp(72px,10vh,120px);text-align:center}
+  .hero__inner{position:relative;z-index:10;display:flex;flex-direction:column;align-items:center}
+  .hero__eyebrow{margin:0 0 var(--space-6);color:var(--color-text-muted);display:inline-flex;align-items:center;gap:var(--space-2);padding:4px var(--space-3);border:1px solid var(--color-border);border-radius:var(--radius-full);font-size:var(--fs-caption);font-weight:var(--fw-medium);letter-spacing:var(--ls-label);text-transform:uppercase}
+  .hero__title{font-size:var(--fs-display-1);font-weight:var(--fw-semibold);line-height:var(--lh-display);letter-spacing:var(--ls-display);max-width:14ch;margin:0 0 var(--space-6)}
+  .hero__lead{font-size:var(--fs-display-4);font-weight:var(--fw-medium);line-height:var(--lh-heading);letter-spacing:var(--ls-heading);color:var(--color-text-secondary);max-width:28ch;margin:0 0 var(--space-10)}
+  .hero__subcopy{font-size:var(--fs-body-lg);line-height:var(--lh-body);color:var(--color-text-secondary);max-width:580px;margin:0 auto var(--space-10)}
+  .hero__ctas{display:flex;gap:var(--space-3);flex-wrap:wrap;justify-content:center;margin-bottom:var(--space-6)}
+  .hero__meta{color:var(--color-text-muted);margin:0;font-size:var(--fs-caption);letter-spacing:var(--ls-label);text-transform:uppercase;font-weight:var(--fw-medium)}
+  .hero__meta-sub{color:var(--color-text-muted);margin:var(--space-2) 0 0;font-size:var(--fs-caption)}
+  @media (max-width:640px){
+    .hero{padding-top:112px;padding-bottom:64px}
+    .hero__title{font-size:clamp(40px,11vw,60px)}
+    .hero__lead{font-size:clamp(20px,5.2vw,26px)}
+    .hero__ctas{width:100%;flex-direction:column}
+    .hero__ctas .btn{width:100%}
+  }
+  /* Below-the-fold placeholder to prevent layout shift before full CSS lands. */
+  .reveal{opacity:0}
+  </style>
+
+  <!-- T10: async-load the full stylesheet. Preload + onload swap = no render
+       block. Browsers that don't run JS get the <noscript> fallback. -->
+  <link rel="preload" href="styles.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+  <noscript><link rel="stylesheet" href="styles.css"></noscript>
+
+  <!-- Structured data: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "VoiceToText",
+    "description": "Free, open-source macOS dictation app. Push-to-talk speech-to-text that runs 100% offline on the Apple Neural Engine and types into any app.",
+    "url": "https://gug007.github.io/voice-to-text/",
+    "downloadUrl": "https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg",
+    "applicationCategory": "UtilitiesApplication",
+    "applicationSubCategory": "Dictation",
+    "operatingSystem": "macOS 14.0",
+    "processorRequirements": "Apple Silicon (M1 or newer)",
+    "offers": {
+      "@type": "Offer",
+      "price": "0",
+      "priceCurrency": "USD",
+      "availability": "https://schema.org/InStock"
+    },
+    "license": "https://github.com/gug007/voice-to-text/blob/main/LICENSE",
+    "isAccessibleForFree": true,
+    "author": {
+      "@type": "Person",
+      "name": "Gurgen Abagyan",
+      "url": "https://github.com/gug007"
+    },
+    "image": "https://gug007.github.io/voice-to-text/og-image.png",
+    "screenshot": "https://gug007.github.io/voice-to-text/demo.gif",
+    "featureList": [
+      "Push-to-talk global hotkey (Option+Space, customizable)",
+      "100% offline on-device transcription",
+      "Apple Neural Engine acceleration",
+      "WhisperKit and FluidAudio (Parakeet) engines",
+      "Types into any focused macOS app",
+      "Menu bar app, native SwiftUI"
+    ]
+  }
+  </script>
+
+  <!-- Structured data: FAQPage (mirrors visible FAQ in #faq word-for-word) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "Is VoiceToText really free?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. VoiceToText is 100% free and open source, released under an OSI-approved license. There are no paid tiers, no accounts, no telemetry, and no in-app purchases."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Does VoiceToText work offline?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. All speech recognition runs on-device on the Apple Neural Engine. Your audio never leaves your Mac, and no internet connection is required after installation."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How accurate is it?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Accuracy comes from the models: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) — the same state-of-the-art models behind popular paid apps. Pick the engine that fits your accuracy-versus-speed preference."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Which speech recognition models does VoiceToText use?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "VoiceToText ships with two engines: WhisperKit (OpenAI's Whisper) for maximum accuracy, and FluidAudio (NVIDIA's Parakeet) for maximum speed. Both run locally on the Apple Neural Engine."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use VoiceToText to dictate prompts into Claude Code, Cursor, or other AI coding tools?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes. VoiceToText types into whatever app has focus, including Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, and any terminal or code editor. It is purpose-built for voice prompting AI coding agents at natural speaking speed."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What Macs does VoiceToText support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "VoiceToText requires macOS 14 (Sonoma) or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because there is no Apple Neural Engine."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How is VoiceToText different from Apple Dictation or Wispr Flow?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, and 100% on-device."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do you collect any data?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "No. No accounts, no telemetry, no network calls. The repo is public — inspect the source or watch the network with Little Snitch to verify."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+
+  <!-- Icon sprite (per design system §6.3) -->
+  <svg aria-hidden="true" width="0" height="0" style="position:absolute" focusable="false">
+    <defs>
+      <symbol id="i-download" viewBox="0 0 16 16">
+        <path d="M8 1v9m0 0l-3-3m3 3l3-3M2 13h12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="i-github" viewBox="0 0 16 16">
+        <path fill="currentColor" d="M8 .2a8 8 0 00-2.53 15.59c.4.07.55-.17.55-.38v-1.34c-2.22.48-2.7-1.07-2.7-1.07-.36-.92-.89-1.17-.89-1.17-.73-.5.06-.49.06-.49.8.06 1.23.83 1.23.83.72 1.23 1.88.87 2.34.67.07-.52.28-.88.51-1.08-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.58.82-2.14-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82a7.65 7.65 0 014 0c1.53-1.03 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.14 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48v2.2c0 .21.15.46.55.38A8 8 0 008 .2"/>
+      </symbol>
+      <symbol id="i-chevron-down" viewBox="0 0 16 16">
+        <path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 20 20">
+        <rect x="4" y="9" width="12" height="9" rx="2" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <path d="M7 9V6a3 3 0 016 0v3" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-bolt" viewBox="0 0 20 20">
+        <path d="M11 2L4 11h5l-1 7 7-9h-5l1-7z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="i-box" viewBox="0 0 20 20">
+        <path d="M10 2L3 6v8l7 4 7-4V6l-7-4zM3 6l7 4 7-4M10 10v8" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 20 20">
+        <rect x="7" y="2" width="6" height="11" rx="3" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <path d="M4 10a6 6 0 0012 0M10 16v3" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-keyboard" viewBox="0 0 20 20">
+        <rect x="2" y="5" width="16" height="10" rx="2" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <path d="M5 9h.01M8 9h.01M11 9h.01M14 9h.01M6 12h8" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-sparkle" viewBox="0 0 20 20">
+        <path d="M10 2v5M10 13v5M2 10h5M13 10h5M5 5l3 3M12 12l3 3M15 5l-3 3M8 12l-3 3" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-agent" viewBox="0 0 20 20">
+        <rect x="3" y="4" width="14" height="10" rx="2" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <path d="M7 8h.01M13 8h.01M7 11h6M10 14v3M7 17h6" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"/>
+      </symbol>
+      <symbol id="i-apps" viewBox="0 0 20 20">
+        <rect x="2" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <rect x="12" y="2" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <rect x="2" y="12" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.75" fill="none"/>
+        <rect x="12" y="12" width="6" height="6" rx="1.5" stroke="currentColor" stroke-width="1.75" fill="none"/>
+      </symbol>
+      <symbol id="i-arrow-right" viewBox="0 0 16 16">
+        <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
+      <symbol id="i-copy" viewBox="0 0 16 16">
+        <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+        <path d="M10 4V3a1 1 0 00-1-1H4a1 1 0 00-1 1v6a1 1 0 001 1h1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+      </symbol>
+    </defs>
+  </svg>
+
+  <a class="skip-link" href="#main">Skip to main content</a>
+
+  <header class="nav" data-scrolled="false">
+    <div class="nav__inner">
+      <a class="nav__brand" href="#top" aria-label="VoiceToText home">
+        <img class="brand-mark" src="app-icon.png" width="26" height="26" alt="" decoding="async">
+        <span>VoiceToText</span>
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#compare">Compare</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <a class="btn btn--secondary btn--sm" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">
+        <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+        <span>View on GitHub</span>
+      </a>
+    </div>
+  </header>
+
+  <main id="main">
+
+    <!-- 1. HERO -->
+    <section class="hero" id="top">
+      <div class="container hero__inner">
+        <p class="hero__eyebrow">Free · Open source · macOS</p>
+
+        <h1 class="hero__title">
+          Free Offline Dictation for Mac.
+        </h1>
+
+        <p class="hero__lead">
+          Push-to-talk dictation for Mac. 100% local. Free forever.
+        </p>
+
+        <p class="hero__subcopy">
+          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; words are typed into Claude Code, Cursor, Slack, or any focused app. On the Apple Neural Engine. Offline.
+        </p>
+
+        <div class="hero__ctas">
+          <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>Download for Mac</span>
+          </a>
+          <a class="btn btn--secondary" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">
+            <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+            <span>View on GitHub</span>
+          </a>
+        </div>
+
+        <p class="hero__meta">Free · macOS 14+ · Apple Silicon</p>
+        <p class="hero__meta-sub t-caption">No account. No subscription. No cloud.</p>
+      </div>
+    </section>
+
+    <!-- 2. SOCIAL PROOF STRIP -->
+    <section class="proof reveal" id="proof" aria-labelledby="proof-title">
+      <div class="container proof__inner">
+        <h2 id="proof-title" class="sr-only">Open source on GitHub</h2>
+        <ul class="proof__pills" role="list">
+          <li class="chip chip--accent">
+            <span class="chip__dot" aria-hidden="true"></span>
+            100% open source
+          </li>
+          <li class="chip">
+            <a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener" class="chip__link">Live on GitHub</a>
+          </li>
+          <li class="chip">Built in public</li>
+        </ul>
+        <p class="proof__provenance">
+          Powered by OpenAI Whisper (via WhisperKit) and Parakeet (via FluidAudio), on the Apple Neural Engine.
+          <a class="proof__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the code <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+        </p>
+      </div>
+    </section>
+
+    <!-- 3. DEMO SHOWCASE -->
+    <section class="section demo reveal" id="demo" aria-labelledby="demo-title">
+      <div class="container">
+        <p class="section__eyebrow">See it work</p>
+        <h2 id="demo-title" class="section__title">See VoiceToText dictate into any Mac app.</h2>
+        <p class="section__deck">
+          Hold the hotkey. Speak a full sentence. Release. Your words appear at the cursor &mdash; in a code editor, a terminal, a Slack thread, a note.
+        </p>
+
+        <figure class="macos-window">
+          <div class="macos-window__chrome" aria-hidden="true">
+            <span class="macos-window__dot" style="--c:#FF5F57"></span>
+            <span class="macos-window__dot" style="--c:#FEBC2E"></span>
+            <span class="macos-window__dot" style="--c:#28C840"></span>
+            <span class="macos-window__title">VoiceToText &mdash; Demo</span>
+          </div>
+          <div class="macos-window__body">
+            <img
+              src="demo.gif"
+              alt="VoiceToText demo: user holds Option plus Space and speaks a prompt; transcribed text is typed into Claude Code in real time on macOS. Menu-bar icon shows recording state."
+              loading="lazy"
+              decoding="async"
+              width="1280"
+              height="800">
+          </div>
+          <figcaption class="macos-window__caption">
+            Dictating a prompt into Claude Code. Nothing leaves the Mac.
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- 4. HOW IT WORKS -->
+    <section class="section how reveal" id="how-it-works" aria-labelledby="how-title">
+      <div class="container">
+        <h2 id="how-title" class="section__title">How push-to-talk dictation works on Mac.</h2>
+        <p class="section__deck">Three keys. One loop. No menus, no windows, no copy-paste.</p>
+
+        <ol class="how__steps">
+          <li class="how__step">
+            <div class="how__index">1</div>
+            <div class="how__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-keyboard"/></svg>
+            </div>
+            <h3 class="how__title">Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></h3>
+            <p class="how__body">Press and hold the global hotkey from any app. A waveform appears in the menu bar.</p>
+          </li>
+          <li class="how__step">
+            <div class="how__index">2</div>
+            <div class="how__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-mic"/></svg>
+            </div>
+            <h3 class="how__title">Speak naturally</h3>
+            <p class="how__body">Say a word, a sentence, or a full paragraph. Transcription runs on-device on the Apple Neural Engine.</p>
+          </li>
+          <li class="how__step">
+            <div class="how__index">3</div>
+            <div class="how__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-sparkle"/></svg>
+            </div>
+            <h3 class="how__title">Release &mdash; words are typed</h3>
+            <p class="how__body">Let go of the keys. Your text is typed straight into the focused app at the cursor.</p>
+          </li>
+        </ol>
+
+        <p class="how__footer t-caption">Rebind the hotkey in Settings. Works in any text field.</p>
+      </div>
+    </section>
+
+    <!-- 5. FEATURES -->
+    <section class="section features reveal" id="features" aria-labelledby="features-title">
+      <div class="container">
+        <h2 id="features-title" class="section__title">Why VoiceToText?</h2>
+        <p class="section__deck">
+          A native Mac app that keeps your voice on your Mac. Free, open, fast, and designed to live at your cursor.
+        </p>
+
+        <ul class="features__grid" role="list">
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-lock"/></svg>
+            </div>
+            <h3 class="feature-card__title">Offline and private</h3>
+            <p class="feature-card__body">Audio is transcribed locally on the Apple Neural Engine. No cloud, no telemetry, no network calls.</p>
+            <a class="feature-card__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-keyboard"/></svg>
+            </div>
+            <h3 class="feature-card__title">True push-to-talk</h3>
+            <p class="feature-card__body">Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> to dictate. Release to stop. No toggles, no cutoffs mid-sentence, no rebound.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-bolt"/></svg>
+            </div>
+            <h3 class="feature-card__title">Apple Silicon native</h3>
+            <p class="feature-card__body">A SwiftUI menu-bar app that rides the Neural Engine. No Electron, low battery drain, fast cold start.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-agent"/></svg>
+            </div>
+            <h3 class="feature-card__title">Built for AI agents</h3>
+            <p class="feature-card__body">Dictate prompts into Claude Code, Cursor, Codex, Copilot Chat, or ChatGPT at thinking speed.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-box"/></svg>
+            </div>
+            <h3 class="feature-card__title">Two engines, your pick</h3>
+            <p class="feature-card__body">WhisperKit (OpenAI Whisper) for accuracy. FluidAudio (Parakeet) for speed. Switch in Settings anytime.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-apps"/></svg>
+            </div>
+            <h3 class="feature-card__title">Types into any app</h3>
+            <p class="feature-card__body">Slack, Mail, Notes, browsers, terminals, code editors &mdash; anywhere macOS shows a text cursor, words land there.</p>
+          </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 6. AI-AGENT USE CASE -->
+    <section class="section ai reveal" id="ai-agents" aria-labelledby="ai-title">
+      <div class="container">
+        <p class="section__eyebrow">Voice prompting</p>
+        <h2 id="ai-title" class="section__title">Voice dictation for Claude Code, Cursor, and AI coding agents.</h2>
+        <p class="section__deck">
+          Think in paragraphs. Speak them into the editor. Prompts stay on your Mac &mdash; no cloud STT sitting between you and the agent.
+        </p>
+
+        <div class="ai__grid">
+          <div class="ai__body">
+            <p class="ai__para">
+              Dictate the whole prompt: the file you want changed, the error, the constraint, the style you're aiming for. VoiceToText types it at the cursor in Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, Warp, or a plain terminal. Proprietary code never leaves the Mac.
+            </p>
+
+            <ul class="ai__apps" role="list" aria-label="Supported AI coding apps">
+              <li class="ai__app">Claude Code</li>
+              <li class="ai__app">Cursor</li>
+              <li class="ai__app">Codex CLI</li>
+              <li class="ai__app">Copilot Chat</li>
+              <li class="ai__app">ChatGPT</li>
+              <li class="ai__app">Warp</li>
+              <li class="ai__app">Terminal</li>
+              <li class="ai__app">VS Code</li>
+            </ul>
+          </div>
+
+          <figure class="ai__transcript" aria-label="Example of a voice-dictated prompt">
+            <div class="ai__transcript-chrome" aria-hidden="true">
+              <span class="macos-window__dot" style="--c:#FF5F57"></span>
+              <span class="macos-window__dot" style="--c:#FEBC2E"></span>
+              <span class="macos-window__dot" style="--c:#28C840"></span>
+              <span class="ai__transcript-title">Claude Code</span>
+              <span class="ai__transcript-hotkey" aria-hidden="true">
+                <kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd>
+              </span>
+            </div>
+            <pre class="ai__transcript-body"><code>&#9612; refactor this function so it streams
+&#9612; tokens instead of buffering, keep the
+&#9612; type signature, add a test with fakes</code></pre>
+            <figcaption class="ai__transcript-caption">
+              <strong>Spoken into Claude Code in one push.</strong> No copy-paste, no separate window.
+            </figcaption>
+          </figure>
+        </div>
+
+        <div class="ai__cta">
+          <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>Download for Mac</span>
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <!-- 7. COMPARISON TABLE -->
+    <section class="section compare reveal" id="compare" aria-labelledby="compare-title">
+      <div class="container">
+        <h2 id="compare-title" class="section__title">A free, open-source alternative to Wispr Flow, Superwhisper, and MacWhisper.</h2>
+        <p class="section__deck">
+          Same core idea &mdash; dictate into any app. Different terms: no subscription, no account, no cloud, and source you can audit.
+        </p>
+
+        <!-- Desktop grid -->
+        <div class="compare__frame" role="region" aria-label="Feature comparison between VoiceToText and competitors">
+          <div class="compare__grid">
+            <div class="compare__head compare__head--row">Feature</div>
+            <div class="compare__head compare__head--ours">VoiceToText</div>
+            <div class="compare__head">Wispr Flow</div>
+            <div class="compare__head">Superwhisper</div>
+            <div class="compare__head">MacWhisper</div>
+            <div class="compare__head">Apple Dictation</div>
+
+            <div class="compare__row-label">Price</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Free forever</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-a" aria-describedby="compare-footnotes-title">2</a></sup></div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-a" aria-describedby="compare-footnotes-title">3</a></sup></div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</div>
+
+            <div class="compare__row-label">Open source</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; on GitHub</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+
+            <div class="compare__row-label">Runs 100% offline</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cloud only</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</div>
+
+            <div class="compare__row-label">No account required</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>None required</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>No account</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>None required</div>
+
+            <div class="compare__row-label">Push-to-talk (hold key)</div>
+            <div class="compare__cell compare__cell--ours" role="cell"><span class="sr-only">Yes. </span><span class="status status--ok" aria-hidden="true"></span>Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro (Global mode)</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Toggle only</div>
+
+            <div class="compare__row-label">Works in any text field</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro only</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
+
+            <div class="compare__row-label">Apple Neural Engine acceleration</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Native</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-a" aria-describedby="compare-footnotes-title">1</a></sup></div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
+
+            <div class="compare__row-label">Native macOS app (no Electron)</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
+
+            <div class="compare__row-label">Multiple speech engines</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>WhisperKit + Parakeet</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Proprietary only</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Whisper variants</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple only</div>
+
+            <div class="compare__row-label">Tuned for AI coding agents</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; headline use case</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</div>
+            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Messaged</div>
+            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</div>
+            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+          </div>
+        </div>
+
+        <!-- Mobile stacked cards -->
+        <div class="compare__mobile" aria-hidden="false">
+          <article class="compare__card compare__card--ours">
+            <header class="compare__card-head">
+              <h3>VoiceToText</h3>
+              <span class="chip chip--accent"><span class="chip__dot" aria-hidden="true"></span>Open source</span>
+            </header>
+            <dl>
+              <dt>Price</dt><dd><span class="status status--ok" aria-hidden="true"></span>Free forever</dd>
+              <dt>Open source</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; on GitHub</dd>
+              <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
+              <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>None required</dd>
+              <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span><span class="sr-only">Yes. </span>Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></dd>
+              <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
+              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>WhisperKit + Parakeet</dd>
+              <dt>AI coding agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Headline use case</dd>
+            </dl>
+          </article>
+
+          <article class="compare__card">
+            <header class="compare__card-head"><h3>Wispr Flow</h3></header>
+            <dl>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</dd>
+              <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+              <dt>Runs offline</dt><dd><span class="status status--no" aria-hidden="true"></span>Cloud only</dd>
+              <dt>No account</dt><dd><span class="status status--no" aria-hidden="true"></span>Account required</dd>
+              <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span>Customizable hold</dd>
+              <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-b" aria-describedby="compare-footnotes-title">1</a></sup></dd>
+              <dt>No Electron</dt><dd><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</dd>
+              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Proprietary only</dd>
+              <dt>AI coding agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Works in apps</dd>
+            </dl>
+          </article>
+
+          <article class="compare__card">
+            <header class="compare__card-head"><h3>Superwhisper</h3></header>
+            <dl>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-b" aria-describedby="compare-footnotes-title">2</a></sup></dd>
+              <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+              <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
+              <dt>No account</dt><dd><span class="status status--no" aria-hidden="true"></span>Account required</dd>
+              <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span>Customizable hold</dd>
+              <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
+              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper variants</dd>
+              <dt>AI coding agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Messaged</dd>
+            </dl>
+          </article>
+
+          <article class="compare__card">
+            <header class="compare__card-head"><h3>MacWhisper</h3></header>
+            <dl>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-b" aria-describedby="compare-footnotes-title">3</a></sup></dd>
+              <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+              <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
+              <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>No account</dd>
+              <dt>Push-to-talk</dt><dd><span class="status status--partial" aria-hidden="true"></span>Pro (Global mode)</dd>
+              <dt>Any text field</dt><dd><span class="status status--partial" aria-hidden="true"></span>Pro only</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
+              <dt>Engines</dt><dd><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</dd>
+              <dt>AI coding agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Works in apps</dd>
+            </dl>
+          </article>
+
+          <article class="compare__card">
+            <header class="compare__card-head"><h3>Apple Dictation</h3></header>
+            <dl>
+              <dt>Price</dt><dd><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</dd>
+              <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+              <dt>Runs offline</dt><dd><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</dd>
+              <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>None required</dd>
+              <dt>Push-to-talk</dt><dd><span class="status status--no" aria-hidden="true"></span>Toggle only</dd>
+              <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
+              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Apple only</dd>
+              <dt>AI coding agents</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+            </dl>
+          </article>
+        </div>
+
+        <h3 id="compare-footnotes-title" class="sr-only">Comparison table footnotes</h3>
+        <ol class="compare__footnotes t-caption">
+          <li id="fn-1"><sup>1</sup> Wispr Flow does not advertise Apple Neural Engine acceleration; treat as unverified.</li>
+          <li id="fn-2"><sup>2</sup> Superwhisper lifetime pricing was in flux at research &mdash; verify on the vendor site.</li>
+          <li id="fn-3"><sup>3</sup> MacWhisper Pro price varies across sources ($69, $79.99, &euro;59) &mdash; verify on the Gumroad product page.</li>
+        </ol>
+
+        <p class="compare__links t-caption">
+          <a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+          <span class="compare__sep">&middot;</span>
+          <a href="https://github.com/gug007/voice-to-text/blob/main/LICENSE" target="_blank" rel="noopener">See the license <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+        </p>
+      </div>
+    </section>
+
+    <!-- 8. FAQ -->
+    <section class="section faq reveal" id="faq" aria-labelledby="faq-title">
+      <div class="container">
+        <h2 id="faq-title" class="section__title">Frequently asked questions.</h2>
+        <p class="section__deck">
+          Answers to what developers, writers, and privacy-conscious users ask before installing.
+        </p>
+
+        <div class="faq__list">
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Is VoiceToText really free?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Yes. VoiceToText is 100% free and open source, released under an OSI-approved license. There are no paid tiers, no accounts, no telemetry, and no in-app purchases.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Does VoiceToText work offline?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Yes. All speech recognition runs on-device on the Apple Neural Engine. Your audio never leaves your Mac, and no internet connection is required after installation.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>How accurate is it?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Accuracy comes from the models: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) &mdash; the same state-of-the-art models behind popular paid apps. Pick the engine that fits your accuracy-versus-speed preference.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Which speech recognition models does VoiceToText use?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              VoiceToText ships with two engines: WhisperKit (OpenAI's Whisper) for maximum accuracy, and FluidAudio (NVIDIA's Parakeet) for maximum speed. Both run locally on the Apple Neural Engine.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Can I use VoiceToText to dictate prompts into Claude Code, Cursor, or other AI coding tools?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Yes. VoiceToText types into whatever app has focus, including Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, and any terminal or code editor. It is purpose-built for voice prompting AI coding agents at natural speaking speed.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>What Macs does VoiceToText support?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              VoiceToText requires macOS 14 (Sonoma) or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because there is no Apple Neural Engine.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>How is VoiceToText different from Apple Dictation or Wispr Flow?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, and 100% on-device.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Do you collect any data?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              No. No accounts, no telemetry, no network calls. The repo is public &mdash; inspect the source or watch the network with Little Snitch to verify.
+            </div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9. DOWNLOAD / INSTALL -->
+    <section class="section download reveal" id="download" aria-labelledby="download-title">
+      <div class="container download__inner">
+        <p class="section__eyebrow">Ready to dictate</p>
+        <h2 id="download-title" class="section__title">Download VoiceToText for macOS.</h2>
+        <p class="section__deck">
+          One DMG. Drag to Applications. Grant Microphone and Accessibility. Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> and speak.
+        </p>
+
+        <div class="download__ctas">
+          <a class="btn btn--primary btn--lg" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
+            <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+            <span>Download for Mac</span>
+          </a>
+          <a class="btn btn--secondary btn--lg" href="https://github.com/gug007/voice-to-text/releases" target="_blank" rel="noopener">
+            <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
+            <span>Browse Releases</span>
+          </a>
+        </div>
+
+        <p class="download__meta t-mono">Free &middot; Open source &middot; macOS 14+ &middot; Apple Silicon</p>
+
+        <!-- Follow-up: add copy-to-clipboard install one-liner (brew/curl) when available; data-copy handler already wired in script.js -->
+        <ol class="download__steps">
+          <li class="download__step">
+            <span class="download__step-num">1</span>
+            <div>
+              <h3 class="download__step-title">Open the DMG</h3>
+              <p class="download__step-body">and drag <strong>VoiceToText</strong> to <code class="code-inline">/Applications</code>.</p>
+            </div>
+          </li>
+          <li class="download__step">
+            <span class="download__step-num">2</span>
+            <div>
+              <h3 class="download__step-title">Launch the app</h3>
+              <p class="download__step-body">It lives in the menu bar.</p>
+            </div>
+          </li>
+          <li class="download__step">
+            <span class="download__step-num">3</span>
+            <div>
+              <h3 class="download__step-title">Grant Microphone and Accessibility</h3>
+              <p class="download__step-body">when prompted &mdash; mic captures audio, accessibility types into the focused app.</p>
+            </div>
+          </li>
+          <li class="download__step">
+            <span class="download__step-num">4</span>
+            <div>
+              <h3 class="download__step-title">Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release.</h3>
+              <p class="download__step-body">Your words are typed at the cursor.</p>
+            </div>
+          </li>
+        </ol>
+
+        <p class="download__perms t-caption">
+          <strong>Why two permissions?</strong> Microphone lets the app hear you. Accessibility lets it type into whatever app you're in. Both stay on-device. Revoke anytime in System Settings.
+        </p>
+
+        <p class="download__reqs t-caption">
+          <strong>Requirements:</strong> macOS 14 Sonoma or later &middot; Apple Silicon (M1 or newer).
+        </p>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- 10. FOOTER -->
+  <footer class="footer" id="footer" aria-labelledby="footer-title">
+    <div class="container footer__inner">
+      <h2 id="footer-title" class="sr-only">Site footer</h2>
+
+      <div class="footer__brand-block">
+        <a class="footer__brand" href="#top" aria-label="VoiceToText home">
+          <img class="brand-mark" src="app-icon.png" width="28" height="28" alt="" decoding="async">
+          <span>VoiceToText</span>
+        </a>
+        <p class="footer__tagline">Free, offline dictation for Mac. Open source on GitHub.</p>
+        <p class="footer__attribution t-caption">
+          Built in public by <a href="https://github.com/gug007" target="_blank" rel="noopener">@gug007</a>.
+        </p>
+        <p class="footer__privacy t-caption">No telemetry. No account. No network calls.</p>
+      </div>
+
+      <nav class="footer__columns" aria-label="Footer">
+        <div class="footer__col">
+          <h3 class="footer__col-title t-label">Product</h3>
+          <ul role="list">
+            <li><a href="#features">Features</a></li>
+            <li><a href="#compare">Compare</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#download">Download</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h3 class="footer__col-title t-label">Project</h3>
+          <ul role="list">
+            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/releases" target="_blank" rel="noopener">Releases</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/issues" target="_blank" rel="noopener">Issues</a></li>
+          </ul>
+        </div>
+        <div class="footer__col">
+          <h3 class="footer__col-title t-label">Trust</h3>
+          <ul role="list">
+            <li><a href="#faq">Privacy</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source</a></li>
+          </ul>
+        </div>
+      </nav>
+
+      <p class="footer__copyright t-caption">
+        &copy; 2026 VoiceToText contributors. Open source on GitHub.
+      </p>
+    </div>
+  </footer>
+
+  <script src="script.js" defer></script>
+</body>
+</html>

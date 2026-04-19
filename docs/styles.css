@@ -271,34 +271,44 @@ button { font-family: inherit; }
 @media (max-width: 720px) { .nav__links { display: none; } .theme-toggle { margin-left: auto; } }
 @media (max-width: 480px) { .nav__brand span { display: none; } }
 
-/* Dictation waveform — ambient full-width hero background. 64 bars sweep
-   left-to-right via staggered negative delays so the wave is already in motion
-   on first paint. Radial mask fades edges softly in all directions so the
-   visual integrates with the surrounding sections. */
+/* Dictation waveform — premium ambient full-width hero background.
+   64 bars with:
+   - vertical-gradient fill that dissolves at top/bottom (no hard edges)
+   - sine-wave peak envelope across bars (organic "voice frequency" shape)
+   - raised baseline so bars hold visual presence even at rest
+   - staggered negative delays so motion is already flowing on first paint
+   - radial mask softens the extremities into the hero bg */
 .hero { overflow: hidden; }
-.dictation-wave { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: .22; }
-.dictation-wave .bars { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 60%; padding: 0 var(--page-gutter);
-  -webkit-mask-image: radial-gradient(ellipse 85% 75% at center, #000 35%, transparent 95%);
-          mask-image: radial-gradient(ellipse 85% 75% at center, #000 35%, transparent 95%); }
-.dictation-wave .bars i { --peak: 1; display: block; width: 4px; height: 100%; background: var(--color-text-primary); border-radius: 3px; transform: scaleY(.05); transform-origin: center; animation: wave-bar 1.6s cubic-bezier(.4,0,.2,1) infinite; animation-delay: calc(var(--i) * -48ms); flex-shrink: 0; }
-.dictation-wave .bars i:nth-child(7n)   { --peak: .92; }
-.dictation-wave .bars i:nth-child(7n+1) { --peak: .32; }
-.dictation-wave .bars i:nth-child(7n+2) { --peak: .78; }
-.dictation-wave .bars i:nth-child(7n+3) { --peak: .48; }
-.dictation-wave .bars i:nth-child(7n+4) { --peak: .88; }
-.dictation-wave .bars i:nth-child(7n+5) { --peak: .38; }
-.dictation-wave .bars i:nth-child(7n+6) { --peak: .62; }
-@keyframes wave-bar { 0%, 100% { transform: scaleY(.05); } 50% { transform: scaleY(var(--peak)); } }
-/* Light mode: bars are dark on white, so dial opacity down to keep them ambient */
-@media (prefers-color-scheme: light) {
-  :root:not([data-theme="dark"]) .dictation-wave { opacity: .12; }
+.dictation-wave { position: absolute; inset: 0; z-index: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; opacity: .3; }
+.dictation-wave .bars { display: flex; align-items: center; justify-content: space-between; width: 100%; height: 62%; padding: 0;
+  -webkit-mask-image: radial-gradient(ellipse 88% 80% at center, #000 38%, transparent 96%);
+          mask-image: radial-gradient(ellipse 88% 80% at center, #000 38%, transparent 96%); }
+.dictation-wave .bars i {
+  /* Fallback peak for browsers without CSS sin(); overridden below. */
+  --peak: .72;
+  --peak: calc(0.60 + 0.32 * sin(calc(var(--i) * 0.22rad)));
+  display: block; width: 4px; height: 100%;
+  background: linear-gradient(180deg, transparent 0%, var(--color-text-primary) 14%, var(--color-text-primary) 86%, transparent 100%);
+  border-radius: 3px;
+  transform: scaleY(.2); transform-origin: center;
+  animation: wave-bar 1.8s cubic-bezier(.45,0,.2,1) infinite;
+  animation-delay: calc(var(--i) * -45ms);
+  flex-shrink: 0;
 }
-:root[data-theme="light"] .dictation-wave { opacity: .12; }
+@keyframes wave-bar {
+  0%, 100% { transform: scaleY(.2); }
+  50%      { transform: scaleY(var(--peak)); }
+}
+/* Light mode: darker bars on white, dial opacity for ambient feel */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) .dictation-wave { opacity: .18; }
+}
+:root[data-theme="light"] .dictation-wave { opacity: .18; }
 @media (prefers-reduced-motion: reduce) {
-  .dictation-wave .bars i { animation: none; transform: scaleY(.5); }
+  .dictation-wave .bars i { animation: none; transform: scaleY(var(--peak, .6)); }
 }
 @media (max-width: 640px) {
-  .dictation-wave .bars { height: 55%; }
+  .dictation-wave .bars { height: 56%; }
   .dictation-wave .bars i { width: 3px; }
 }
 @media (max-width: 380px) {

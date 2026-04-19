@@ -171,23 +171,16 @@
   .nav__links a:hover{color:var(--color-text-primary)}
   @media (max-width:720px){.nav__links{display:none}.theme-toggle{margin-left:auto}}
   @media (max-width:480px){.nav__brand span{display:none}}
-  /* Dictation waveform — ambient full-width hero background. 64 bars. */
+  /* Dictation waveform — premium ambient full-width hero background. */
   .hero{overflow:hidden}
-  .dictation-wave{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.22}
-  .dictation-wave .bars{display:flex;align-items:center;justify-content:space-between;width:100%;height:60%;padding:0 var(--page-gutter);-webkit-mask-image:radial-gradient(ellipse 85% 75% at center,#000 35%,transparent 95%);mask-image:radial-gradient(ellipse 85% 75% at center,#000 35%,transparent 95%)}
-  .dictation-wave .bars i{--peak:1;display:block;width:4px;height:100%;background:var(--color-text-primary);border-radius:3px;transform:scaleY(.05);transform-origin:center;animation:wave-bar 1.6s cubic-bezier(.4,0,.2,1) infinite;animation-delay:calc(var(--i) * -48ms);flex-shrink:0}
-  .dictation-wave .bars i:nth-child(7n){--peak:.92}
-  .dictation-wave .bars i:nth-child(7n+1){--peak:.32}
-  .dictation-wave .bars i:nth-child(7n+2){--peak:.78}
-  .dictation-wave .bars i:nth-child(7n+3){--peak:.48}
-  .dictation-wave .bars i:nth-child(7n+4){--peak:.88}
-  .dictation-wave .bars i:nth-child(7n+5){--peak:.38}
-  .dictation-wave .bars i:nth-child(7n+6){--peak:.62}
-  @keyframes wave-bar{0%,100%{transform:scaleY(.05)}50%{transform:scaleY(var(--peak))}}
-  @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .dictation-wave{opacity:.12}}
-  :root[data-theme="light"] .dictation-wave{opacity:.12}
-  @media (prefers-reduced-motion:reduce){.dictation-wave .bars i{animation:none;transform:scaleY(.5)}}
-  @media (max-width:640px){.dictation-wave .bars{height:55%}.dictation-wave .bars i{width:3px}}
+  .dictation-wave{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.3}
+  .dictation-wave .bars{display:flex;align-items:center;justify-content:space-between;width:100%;height:62%;padding:0;-webkit-mask-image:radial-gradient(ellipse 88% 80% at center,#000 38%,transparent 96%);mask-image:radial-gradient(ellipse 88% 80% at center,#000 38%,transparent 96%)}
+  .dictation-wave .bars i{--peak:.72;--peak:calc(0.60 + 0.32 * sin(calc(var(--i) * 0.22rad)));display:block;width:4px;height:100%;background:linear-gradient(180deg,transparent 0%,var(--color-text-primary) 14%,var(--color-text-primary) 86%,transparent 100%);border-radius:3px;transform:scaleY(.2);transform-origin:center;animation:wave-bar 1.8s cubic-bezier(.45,0,.2,1) infinite;animation-delay:calc(var(--i) * -45ms);flex-shrink:0}
+  @keyframes wave-bar{0%,100%{transform:scaleY(.2)}50%{transform:scaleY(var(--peak))}}
+  @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .dictation-wave{opacity:.18}}
+  :root[data-theme="light"] .dictation-wave{opacity:.18}
+  @media (prefers-reduced-motion:reduce){.dictation-wave .bars i{animation:none;transform:scaleY(var(--peak,.6))}}
+  @media (max-width:640px){.dictation-wave .bars{height:56%}.dictation-wave .bars i{width:3px}}
   @media (max-width:380px){.dictation-wave .bars i{width:2px;border-radius:2px}}
   /* Hero — premium ambient halo + faint dot grid */
   .hero{position:relative;padding-top:clamp(120px,15vh,180px);padding-bottom:clamp(72px,10vh,120px);text-align:center;background-image:radial-gradient(ellipse 55% 45% at center 42%,rgba(255,255,255,.045),transparent 72%),radial-gradient(circle at 1px 1px,rgba(255,255,255,.028) 1px,transparent 0);background-size:auto,26px 26px}

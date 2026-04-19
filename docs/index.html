@@ -167,6 +167,22 @@
   .nav__links a:hover{color:var(--color-text-primary)}
   @media (max-width:720px){.nav__links{display:none}.theme-toggle{margin-left:auto}}
   @media (max-width:480px){.nav__brand span{display:none}}
+  /* Dictation waveform — hero centerpiece, 48 bars, mask-faded edges */
+  .dictation-wave{width:100%;max-width:560px;margin:0 auto var(--space-10);display:flex;flex-direction:column;align-items:center;gap:var(--space-5)}
+  .dictation-wave .bars{display:flex;align-items:center;justify-content:space-between;height:104px;width:100%;-webkit-mask-image:linear-gradient(90deg,transparent 0%,#000 10%,#000 90%,transparent 100%);mask-image:linear-gradient(90deg,transparent 0%,#000 10%,#000 90%,transparent 100%)}
+  .dictation-wave .bars i{--peak:1;display:block;width:4px;height:100%;background:var(--color-text-primary);border-radius:3px;transform:scaleY(.06);transform-origin:center;animation:wave-bar 1.4s cubic-bezier(.4,0,.2,1) infinite;animation-delay:calc(var(--i) * -55ms);flex-shrink:0}
+  .dictation-wave .bars i:nth-child(7n){--peak:.92}
+  .dictation-wave .bars i:nth-child(7n+1){--peak:.32}
+  .dictation-wave .bars i:nth-child(7n+2){--peak:.78}
+  .dictation-wave .bars i:nth-child(7n+3){--peak:.48}
+  .dictation-wave .bars i:nth-child(7n+4){--peak:.88}
+  .dictation-wave .bars i:nth-child(7n+5){--peak:.38}
+  .dictation-wave .bars i:nth-child(7n+6){--peak:.62}
+  .dictation-wave .label{margin:0;font-size:var(--fs-caption);color:var(--color-text-muted);letter-spacing:var(--ls-label);text-transform:uppercase;font-weight:var(--fw-medium)}
+  @keyframes wave-bar{0%,100%{transform:scaleY(.06)}50%{transform:scaleY(var(--peak))}}
+  @media (prefers-reduced-motion:reduce){.dictation-wave .bars i{animation:none;transform:scaleY(.5)}}
+  @media (max-width:640px){.dictation-wave{max-width:100%}.dictation-wave .bars{height:72px}.dictation-wave .bars i{width:3px}}
+  @media (max-width:380px){.dictation-wave .bars{height:60px}.dictation-wave .bars i{width:2px;border-radius:2px}}
   /* Hero */
   .hero{position:relative;padding-top:clamp(120px,15vh,180px);padding-bottom:clamp(72px,10vh,120px);text-align:center}
   .hero__inner{position:relative;z-index:10;display:flex;flex-direction:column;align-items:center}
@@ -395,18 +411,22 @@
     <!-- 1. HERO -->
     <section class="hero" id="top">
       <div class="container hero__inner">
-        <p class="hero__eyebrow">Free · Open source · macOS</p>
-
-        <div class="dictation-wave" role="img" aria-label="Animated dictation waveform">
-          <span class="dot" aria-hidden="true"></span>
+        <div class="dictation-wave" role="img" aria-label="Dictation listening visualisation. Free, open source, for macOS.">
           <span class="bars" aria-hidden="true">
             <i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i>
             <i style="--i:4"></i><i style="--i:5"></i><i style="--i:6"></i><i style="--i:7"></i>
             <i style="--i:8"></i><i style="--i:9"></i><i style="--i:10"></i><i style="--i:11"></i>
             <i style="--i:12"></i><i style="--i:13"></i><i style="--i:14"></i><i style="--i:15"></i>
             <i style="--i:16"></i><i style="--i:17"></i><i style="--i:18"></i><i style="--i:19"></i>
+            <i style="--i:20"></i><i style="--i:21"></i><i style="--i:22"></i><i style="--i:23"></i>
+            <i style="--i:24"></i><i style="--i:25"></i><i style="--i:26"></i><i style="--i:27"></i>
+            <i style="--i:28"></i><i style="--i:29"></i><i style="--i:30"></i><i style="--i:31"></i>
+            <i style="--i:32"></i><i style="--i:33"></i><i style="--i:34"></i><i style="--i:35"></i>
+            <i style="--i:36"></i><i style="--i:37"></i><i style="--i:38"></i><i style="--i:39"></i>
+            <i style="--i:40"></i><i style="--i:41"></i><i style="--i:42"></i><i style="--i:43"></i>
+            <i style="--i:44"></i><i style="--i:45"></i><i style="--i:46"></i><i style="--i:47"></i>
           </span>
-          <span class="label">Listening</span>
+          <p class="label">Free · Open source · macOS</p>
         </div>
 
         <h1 class="hero__title">

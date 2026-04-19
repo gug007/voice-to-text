@@ -40,7 +40,6 @@
   <link rel="icon" type="image/png" sizes="64x64" href="icon-64.png">
   <link rel="icon" type="image/png" sizes="512x512" href="app-icon.png">
   <link rel="apple-touch-icon" sizes="512x512" href="app-icon.png">
-  <link rel="icon" type="image/svg+xml" href="favicon.svg">
 
   <!-- T10: Chose the system font stack (no self-hosted Geist, no Google Fonts).
        Rationale: (1) zero network + zero FOUT/FOIT, (2) privacy-aligned — no
@@ -52,6 +51,19 @@
   <!-- T10: github.com is hit by every outbound link (download, view source,
        releases, license). dns-prefetch saves ~50-200ms on slow networks. -->
   <link rel="dns-prefetch" href="https://github.com">
+
+  <!-- Theme init — runs synchronously before first paint to avoid FOUC when
+       a user has previously chosen a theme. No localStorage → OS preference wins. -->
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem('vtt-theme');
+        if (t === 'light' || t === 'dark') {
+          document.documentElement.setAttribute('data-theme', t);
+        }
+      } catch (e) {}
+    })();
+  </script>
 
   <!-- T10: Critical CSS — minimal slice for above-the-fold nav + hero +
        CTAs. Inlined to paint fast on first byte. Full stylesheet async.
@@ -82,7 +94,7 @@
   }
   @media (min-width:641px){:root{--page-gutter:28px}}
   @media (min-width:1025px){:root{--page-gutter:40px}}
-  @media (prefers-color-scheme:light){:root{
+  @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
     --color-bg:#FFFFFF;--color-surface:#FFFFFF;--color-surface-elevated:#FAFAFA;
     --color-border:#EAEAEC;--color-border-strong:#D4D4D8;
     --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#71717A;
@@ -90,6 +102,14 @@
     --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.30);
     --color-accent-ink:#FFFFFF;
   }}
+  :root[data-theme="light"]{
+    --color-bg:#FFFFFF;--color-surface:#FFFFFF;--color-surface-elevated:#FAFAFA;
+    --color-border:#EAEAEC;--color-border-strong:#D4D4D8;
+    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#71717A;
+    --color-accent:#09090B;--color-accent-solid:#09090B;--color-accent-hover:#27272A;
+    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.30);
+    --color-accent-ink:#FFFFFF;
+  }
   /* Reset */
   *,*::before,*::after{box-sizing:border-box}
   html,body{margin:0;padding:0}
@@ -145,7 +165,7 @@
   .nav__links{display:flex;gap:var(--space-6);margin-left:auto}
   .nav__links a{font-size:var(--fs-body-sm);color:var(--color-text-secondary)}
   .nav__links a:hover{color:var(--color-text-primary)}
-  @media (max-width:720px){.nav__links{display:none}}
+  @media (max-width:720px){.nav__links{display:none}.theme-toggle{margin-left:auto}}
   @media (max-width:480px){.nav__brand span{display:none}}
   /* Hero */
   .hero{position:relative;padding-top:clamp(120px,15vh,180px);padding-bottom:clamp(72px,10vh,120px);text-align:center}
@@ -354,6 +374,15 @@
         <a href="#compare">Compare</a>
         <a href="#faq">FAQ</a>
       </nav>
+      <button class="theme-toggle" type="button" aria-label="Switch colour theme" data-theme-toggle>
+        <svg class="theme-toggle__sun" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10" cy="10" r="3.4"/>
+          <path d="M10 2.2v1.6M10 16.2v1.6M2.2 10h1.6M16.2 10h1.6M4.5 4.5l1.1 1.1M14.4 14.4l1.1 1.1M4.5 15.5l1.1-1.1M14.4 5.6l1.1-1.1"/>
+        </svg>
+        <svg class="theme-toggle__moon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M16.5 12.2a7 7 0 0 1-8.7-8.7 7 7 0 1 0 8.7 8.7z"/>
+        </svg>
+      </button>
       <a class="btn btn--secondary btn--sm" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">
         <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
         <span>View on GitHub</span>

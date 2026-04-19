@@ -44,7 +44,23 @@
     }
   }
 
-  // --- 3. Copy-to-clipboard for any [data-copy] element ------------------
+  // --- 3. Theme toggle ---------------------------------------------------
+  const themeToggle = document.querySelector('[data-theme-toggle]');
+  if (themeToggle) {
+    const prefersLight = window.matchMedia('(prefers-color-scheme: light)');
+    const currentTheme = () => {
+      const explicit = document.documentElement.getAttribute('data-theme');
+      if (explicit === 'light' || explicit === 'dark') return explicit;
+      return prefersLight.matches ? 'light' : 'dark';
+    };
+    themeToggle.addEventListener('click', () => {
+      const next = currentTheme() === 'dark' ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', next);
+      try { localStorage.setItem('vtt-theme', next); } catch (e) {}
+    });
+  }
+
+  // --- 4. Copy-to-clipboard for any [data-copy] element ------------------
   // Usage: <button data-copy="text or selector">Copy</button>
   // If data-copy starts with '#', it is treated as a selector and the
   // element's textContent is copied; otherwise the attribute value is used.

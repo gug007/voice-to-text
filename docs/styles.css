@@ -110,8 +110,10 @@
 @media (min-width: 1025px) { :root { --page-gutter: 40px; } }
 @media (min-width: 1440px) { :root { --page-gutter: 48px; } }
 
+/* Light tokens — applied when (a) OS prefers light AND user hasn't chosen,
+   or (b) user explicitly picked light via [data-theme="light"]. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme="dark"]) {
     --color-bg: #FFFFFF;
     --color-surface: #FFFFFF;
     --color-surface-elevated: #FAFAFA;
@@ -121,8 +123,8 @@
     --color-text-primary: #09090B;
     --color-text-secondary: #52525B;
     --color-text-muted: #71717A;
-    --color-accent: #09090B;             /* T14: monochrome — primary text colour */
-    --color-accent-solid: #09090B;       /* CTA bg = inverse of page bg */
+    --color-accent: #09090B;
+    --color-accent-solid: #09090B;
     --color-accent-hover: #27272A;
     --color-accent-muted: rgba(9,9,11,.06);
     --color-accent-ring: rgba(9,9,11,.30);
@@ -130,6 +132,25 @@
     --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.05);
     --shadow-macos: 0 20px 50px -20px rgba(0,0,0,.14), 0 6px 18px -10px rgba(0,0,0,.08);
   }
+}
+:root[data-theme="light"] {
+  --color-bg: #FFFFFF;
+  --color-surface: #FFFFFF;
+  --color-surface-elevated: #FAFAFA;
+  --color-surface-sunken: #F4F4F5;
+  --color-border: #EAEAEC;
+  --color-border-strong: #D4D4D8;
+  --color-text-primary: #09090B;
+  --color-text-secondary: #52525B;
+  --color-text-muted: #71717A;
+  --color-accent: #09090B;
+  --color-accent-solid: #09090B;
+  --color-accent-hover: #27272A;
+  --color-accent-muted: rgba(9,9,11,.06);
+  --color-accent-ring: rgba(9,9,11,.30);
+  --color-accent-ink: #FFFFFF;
+  --shadow-sm: 0 1px 2px 0 rgba(0,0,0,.05);
+  --shadow-macos: 0 20px 50px -20px rgba(0,0,0,.14), 0 6px 18px -10px rgba(0,0,0,.08);
 }
 
 /* Reset + base */
@@ -241,7 +262,7 @@ button { font-family: inherit; }
 .nav__links { display: flex; gap: var(--space-6); margin-left: auto; }
 .nav__links a { font-size: var(--fs-body-sm); color: var(--color-text-secondary); }
 .nav__links a:hover { color: var(--color-text-primary); }
-@media (max-width: 720px) { .nav__links { display: none; } }
+@media (max-width: 720px) { .nav__links { display: none; } .theme-toggle { margin-left: auto; } }
 @media (max-width: 480px) { .nav__brand span { display: none; } }
 
 /* Hero — T13: type carries it. No glow, no animation, no giant keycap. */

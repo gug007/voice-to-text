@@ -1,4 +1,5 @@
 import AVFoundation
+import Carbon.HIToolbox
 import SwiftUI
 
 struct SettingsView: View {
@@ -254,6 +255,11 @@ private struct ModelRow: View {
 }
 
 struct HotkeyPane: View {
+    @Bindable private var store = HotkeyStore.shared
+    @State private var isRecording = false
+    @State private var monitor: Any?
+    @State private var errorMessage: String?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
@@ -263,26 +269,101 @@ struct HotkeyPane: View {
                 )
 
                 RowCard {
-                    HStack {
+                    HStack(alignment: .center, spacing: 16) {
                         VStack(alignment: .leading, spacing: 3) {
                             Text("Toggle recording")
                                 .font(.system(size: 14, weight: .medium))
-                            Text("Press once to start, press again to stop.")
+                            Text(subtitle)
                                 .font(.system(size: 12))
                                 .foregroundStyle(.secondary)
                         }
                         Spacer()
-                        KeyCap(keys: ["⌥", "Space"])
+                        if isRecording {
+                            Text("Press a shortcut…")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 6)
+                                        .strokeBorder(Color.accentColor, lineWidth: 1.5)
+                                )
+                        } else {
+                            KeyCap(keys: store.binding.displayKeys)
+                        }
+                        Button(isRecording ? "Cancel" : "Change") {
+                            if isRecording { stopRecording(cancelled: true) } else { startRecording() }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .keyboardShortcut(isRecording ? .cancelAction : .defaultAction)
                     }
                     .padding(18)
                 }
 
-                Text("Rebinding will be available in a future update.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                if let errorMessage {
+                    Text(errorMessage)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                }
+
+                HStack(spacing: 12) {
+                    if store.binding != .defaultBinding {
+                        Button("Reset to ⌥Space") { store.resetToDefault() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), or a function key.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(32)
         }
+        .onDisappear { stopRecording(cancelled: true) }
+    }
+
+    private var subtitle: String {
+        if isRecording { return "Press a key combination, or Esc to cancel." }
+        return "Press once to start, press again to stop."
+    }
+
+    private func startRecording() {
+        errorMessage = nil
+        isRecording = true
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handle(event: event)
+            return nil
+        }
+    }
+
+    private func handle(event: NSEvent) {
+        // Esc without modifiers cancels
+        let pureModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        if event.keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty {
+            stopRecording(cancelled: true)
+            return
+        }
+
+        let candidate = HotkeyBinding.fromEvent(event)
+
+        // Allow: any combo with at least one modifier, or bare F1–F20.
+        guard candidate.modifiers != 0 || candidate.isFunctionKey else {
+            errorMessage = "Add at least one modifier (⌘ ⌥ ⌃ ⇧), or pick a function key."
+            return
+        }
+
+        store.update(to: candidate)
+        stopRecording(cancelled: false)
+    }
+
+    private func stopRecording(cancelled: Bool) {
+        isRecording = false
+        if let m = monitor {
+            NSEvent.removeMonitor(m)
+            monitor = nil
+        }
+        if cancelled { errorMessage = nil }
     }
 }
 
@@ -448,7 +529,7 @@ struct GeneralPane: View {
                             .font(.system(size: 14, weight: .medium))
                     }
                     Text(isRegistered
-                         ? "⌥Space is registered and will work from any app."
+                         ? "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
                          : "Hotkey registration failed. See logs for details.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -560,12 +641,13 @@ struct GeneralPane: View {
     }
 
     private var recordingSubtitle: String {
+        let hk = HotkeyStore.shared.binding.displayKeys.joined()
         switch dictation.state {
-        case .idle: return "Click Start, or press ⌥Space from any app."
+        case .idle: return "Click Start, or press \(hk) from any app."
         case .preparing: return "Downloading or loading the active model."
-        case .recording: return "Click Stop, or press ⌥Space, when you're done speaking."
+        case .recording: return "Click Stop, or press \(hk), when you're done speaking."
         case .transcribing: return "Waiting for transcription…"
-        case .reviewing: return "Press ⌥Space to paste, or Esc to cancel."
+        case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
         case .error(let message): return message
         }
     }

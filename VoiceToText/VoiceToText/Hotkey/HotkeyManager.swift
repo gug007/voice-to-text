@@ -78,6 +78,3 @@ final class HotkeyManager {
     }
 }
 
-enum HotkeyDefaults {
-    static let optionSpace = (keyCode: UInt32(kVK_Space), modifiers: UInt32(optionKey))
-}

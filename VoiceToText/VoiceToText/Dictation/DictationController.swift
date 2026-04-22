@@ -36,8 +36,15 @@ final class DictationController {
     }
 
     func installHotkey() {
-        let (keyCode, modifiers) = HotkeyDefaults.optionSpace
-        HotkeyManager.shared.register(keyCode: keyCode, modifiers: modifiers) { [weak self] in
+        registerCurrentBinding()
+        HotkeyStore.shared.onChange = { [weak self] _ in
+            Task { @MainActor in self?.registerCurrentBinding() }
+        }
+    }
+
+    private func registerCurrentBinding() {
+        let binding = HotkeyStore.shared.binding
+        HotkeyManager.shared.register(keyCode: binding.keyCode, modifiers: binding.modifiers) { [weak self] in
             Task { @MainActor in self?.toggle() }
         }
     }

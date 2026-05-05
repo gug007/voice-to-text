@@ -52,7 +52,7 @@ fastlane/test_output
 
 # CocoaPods (if added later)
 Pods/
-*.xcworkspace
+/*.xcworkspace
 
 # Carthage (if added later)
 Carthage/Build/

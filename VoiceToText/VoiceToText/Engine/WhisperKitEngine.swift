@@ -9,8 +9,8 @@ actor WhisperKitEngine: TranscriptionEngine {
         self.modelId = modelId
     }
 
-    nonisolated var isReady: Bool {
-        get async { await pipe != nil }
+    var isReady: Bool {
+        get async { pipe != nil }
     }
 
     func prepare(progress: PrepareProgress?) async throws {

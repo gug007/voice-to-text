@@ -130,7 +130,23 @@ jobs:
             exit "$SUBMIT_EXIT"
           fi
 
-          xcrun stapler staple "$APP_PATH"
+          # Apple's CDN can lag a few seconds behind notarytool's "Accepted"
+          # response, so stapler may not see the ticket on the first try.
+          # Retry with backoff before giving up.
+          STAPLE_OK=0
+          for attempt in 1 2 3 4 5 6; do
+            if xcrun stapler staple "$APP_PATH"; then
+              STAPLE_OK=1
+              break
+            fi
+            sleep_for=$((attempt * 20))
+            echo "stapler attempt $attempt failed; retrying in ${sleep_for}s"
+            sleep "$sleep_for"
+          done
+          if [ "$STAPLE_OK" -ne 1 ]; then
+            echo "✗ stapler failed after retries"
+            exit 1
+          fi
 
       - name: Create DMG
         working-directory: VoiceToText

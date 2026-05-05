@@ -22,7 +22,7 @@ struct TranscriptionDecoderOptions {
     var suppressTokens: [Int]
     var noSpeechThreshold: Float?
 
-    static var current: TranscriptionDecoderOptions {
+    nonisolated static var current: TranscriptionDecoderOptions {
         let ud = UserDefaults.standard
         return TranscriptionDecoderOptions(
             language: ud.nonEmptyString(forKey: "decoder.language"),

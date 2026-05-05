@@ -63,7 +63,10 @@ jobs:
 
       - name: Build Release
         working-directory: VoiceToText
+        shell: bash
         run: |
+          set -o pipefail
+          BUILD_LOG="$RUNNER_TEMP/xcodebuild.log"
           xcodebuild \
             -project VoiceToText.xcodeproj \
             -scheme VoiceToText \
@@ -79,7 +82,14 @@ jobs:
             OTHER_CODE_SIGN_FLAGS="--timestamp" \
             MARKETING_VERSION=${{ steps.version.outputs.version }} \
             CURRENT_PROJECT_VERSION=${{ github.run_number }} \
-            | tail -20
+            2>&1 | tee "$BUILD_LOG" | tail -50
+          xc_status=${PIPESTATUS[0]}
+          if [ "$xc_status" -ne 0 ]; then
+            echo "::group::xcodebuild errors"
+            grep -E "error:|warning:|FAILED" "$BUILD_LOG" | tail -100 || true
+            echo "::endgroup::"
+            exit "$xc_status"
+          fi
 
       - name: Notarize
         working-directory: VoiceToText

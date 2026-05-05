@@ -1,17 +1,17 @@
 import Foundation
 
 enum ModelStorage {
-    static var whisperKitBaseURL: URL {
+    nonisolated static var whisperKitBaseURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("VoiceToText/WhisperKit", isDirectory: true)
     }
 
-    static var fluidAudioBaseURL: URL {
+    nonisolated static var fluidAudioBaseURL: URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         return appSupport.appendingPathComponent("FluidAudio/Models", isDirectory: true)
     }
 
-    static func location(for descriptor: ModelDescriptor) -> URL {
+    nonisolated static func location(for descriptor: ModelDescriptor) -> URL {
         switch descriptor.backend {
         case .fluidAudio:
             return fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)

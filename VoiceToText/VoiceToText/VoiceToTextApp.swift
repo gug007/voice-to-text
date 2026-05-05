@@ -60,6 +60,21 @@ final class WindowOpener {
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static var wasLaunchedAtLogin = false
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        if let isDefault = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool {
+            Self.wasLaunchedAtLogin = !isDefault
+        }
+        guard Self.wasLaunchedAtLogin else { return }
+        DispatchQueue.main.async {
+            for window in NSApp.windows where window.canBecomeKey {
+                window.orderOut(nil)
+            }
+            NSApp.deactivate()
+        }
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }

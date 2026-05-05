@@ -395,6 +395,7 @@ struct GeneralPane: View {
     @State private var micStatus = MicPermission.status
     @State private var permissionAlert: PermissionAlert?
     @Bindable private var dictation = DictationController.shared
+    @Bindable private var loginItem = LoginItemController.shared
 
     enum PermissionAlert: Identifiable {
         case microphone
@@ -418,6 +419,8 @@ struct GeneralPane: View {
 
                 dictationCard
 
+                launchAtLoginCard
+
                 statusCard
 
                 microphoneCard
@@ -428,6 +431,7 @@ struct GeneralPane: View {
         }
         .onAppear {
             refreshPermissions()
+            loginItem.refresh()
         }
         .alert(item: $permissionAlert) { alert in
             switch alert {
@@ -514,6 +518,59 @@ struct GeneralPane: View {
             }
             .padding(18)
         }
+    }
+
+    @ViewBuilder
+    private var launchAtLoginCard: some View {
+        RowCard {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Launch at login")
+                            .font(.system(size: 14, weight: .medium))
+                        Text(launchAtLoginSubtitle)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: launchAtLoginBinding)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+
+                if loginItem.requiresApproval {
+                    HStack(spacing: 8) {
+                        Text("Approval needed in System Settings.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                        Button("Open Login Items…") {
+                            loginItem.openLoginItemsSettings()
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                } else if let err = loginItem.lastError {
+                    Text(err)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                }
+            }
+            .padding(18)
+        }
+    }
+
+    private var launchAtLoginBinding: Binding<Bool> {
+        Binding(
+            get: { loginItem.isEnabled },
+            set: { loginItem.setEnabled($0) }
+        )
+    }
+
+    private var launchAtLoginSubtitle: String {
+        if loginItem.isEnabled {
+            return "VoiceToText will start in the background when you sign in."
+        }
+        return "Start VoiceToText automatically in the background when you sign in."
     }
 
     @ViewBuilder

@@ -135,16 +135,24 @@ jobs:
           # Retry with backoff before giving up.
           STAPLE_OK=0
           for attempt in 1 2 3 4 5 6; do
-            if xcrun stapler staple "$APP_PATH"; then
+            echo "::group::stapler attempt $attempt"
+            if xcrun stapler staple -v "$APP_PATH"; then
               STAPLE_OK=1
+              echo "::endgroup::"
               break
             fi
+            echo "::endgroup::"
             sleep_for=$((attempt * 20))
             echo "stapler attempt $attempt failed; retrying in ${sleep_for}s"
             sleep "$sleep_for"
           done
           if [ "$STAPLE_OK" -ne 1 ]; then
             echo "✗ stapler failed after retries"
+            echo "Last-known notarization log:"
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$KEY_PATH" \
+              --key-id "$APPLE_API_KEY_ID" \
+              --issuer "$APPLE_API_ISSUER_ID" || true
             exit 1
           fi
 

@@ -24,6 +24,8 @@ final class DictationController {
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
     private var escMonitor: Any?
+    private var pendingHoldStart = false
+    private var cancelWhenReadyToRecord = false
 
     private var reviewBeforePaste: Bool {
         UserDefaults.standard.bool(forKey: "review.beforePaste")
@@ -37,29 +39,112 @@ final class DictationController {
 
     func installHotkey() {
         registerCurrentBinding()
-        HotkeyStore.shared.onChange = { [weak self] _ in
+        HotkeyStore.shared.onChange = { [weak self] in
             Task { @MainActor in self?.registerCurrentBinding() }
         }
     }
 
     private func registerCurrentBinding() {
         let binding = HotkeyStore.shared.binding
-        HotkeyManager.shared.register(keyCode: binding.keyCode, modifiers: binding.modifiers) { [weak self] in
-            Task { @MainActor in self?.toggle() }
+        HotkeyManager.shared.register(keyCode: binding.keyCode, modifiers: binding.modifiers) { [weak self] event in
+            Task { @MainActor in self?.handleHotkeyEvent(event) }
         }
     }
 
     func toggle() {
         AppLog.dictation.info("toggle called, current state=\(String(describing: self.state))")
+        performHotkeyAction(
+            DictationHotkeyPolicy.action(
+                mode: .toggle,
+                state: hotkeyState,
+                event: .pressed
+            )
+        )
+    }
+
+    func handleHotkeyEvent(_ event: DictationHotkeyEvent) {
+        AppLog.dictation.info("hotkey event \(String(describing: event)), current state=\(String(describing: self.state))")
+        let mode = HotkeyStore.shared.mode
+        if mode == .hold {
+            if event == .pressed, pendingHoldStart {
+                return
+            }
+            if event == .released, pendingHoldStart {
+                cancelPendingRecording()
+                return
+            }
+        }
+
+        let action = DictationHotkeyPolicy.action(
+            mode: mode,
+            state: hotkeyState,
+            event: event
+        )
+        if mode == .hold, action == .startRecording {
+            pendingHoldStart = true
+        }
+        performHotkeyAction(
+            action
+        )
+    }
+
+    private var hotkeyState: DictationHotkeyState {
         switch state {
-        case .idle, .error:
+        case .idle: return .idle
+        case .preparing: return .preparing
+        case .recording: return .recording
+        case .transcribing: return .transcribing
+        case .reviewing: return .reviewing
+        case .error: return .error
+        }
+    }
+
+    private func performHotkeyAction(_ action: DictationHotkeyAction) {
+        switch action {
+        case .startRecording:
+            cancelWhenReadyToRecord = false
             Task { await startRecording() }
-        case .recording:
+        case .stopAndTranscribe:
             Task { await stopAndTranscribe() }
-        case .reviewing:
+        case .confirmPaste:
             confirmPaste()
-        case .preparing, .transcribing:
+        case .cancelPendingRecording:
+            cancelPendingRecording()
+        case .none:
             break
+        }
+    }
+
+    private func cancelPendingRecording() {
+        AppLog.dictation.info("Pending recording cancelled")
+        pendingHoldStart = false
+        cancelWhenReadyToRecord = true
+    }
+
+    private func cancelReview() {
+        guard case .reviewing = state else { return }
+        AppLog.dictation.info("Review cancelled")
+        removeEscMonitor()
+        LiveHUDPanel.shared.hide()
+        state = .idle
+    }
+
+    private func installEscMonitor() {
+        removeEscMonitor()
+        // Local monitor: our review panel is key, so Esc is dispatched into our app.
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 53 {
+                Task { @MainActor in self?.cancelReview() }
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeEscMonitor() {
+        if let escMonitor {
+            NSEvent.removeMonitor(escMonitor)
+            self.escMonitor = nil
         }
     }
 
@@ -70,13 +155,25 @@ final class DictationController {
         let granted = await MicPermission.request()
         AppLog.dictation.info("startRecording: mic permission granted=\(granted)")
         guard granted else {
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
             state = .error("Microphone access denied. Grant it in System Settings → Privacy → Microphone.")
             return
         }
 
         guard let descriptor = ModelRegistry.shared.activeModel else {
             AppLog.dictation.error("startRecording: no active model")
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
             state = .error("No active model selected.")
+            return
+        }
+
+        if cancelWhenReadyToRecord {
+            AppLog.dictation.info("startRecording: cancelled before model preparation")
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
+            state = .idle
             return
         }
 
@@ -84,7 +181,17 @@ final class DictationController {
         state = .preparing(modelDisplayName: descriptor.displayName)
         guard await ModelRegistry.shared.prepareModel(id: descriptor.id) != nil else {
             AppLog.dictation.error("startRecording: prepareModel returned nil")
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
             state = .error(preparationErrorMessage(for: descriptor))
+            return
+        }
+
+        if cancelWhenReadyToRecord {
+            AppLog.dictation.info("startRecording: cancelled before recorder start")
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
+            state = .idle
             return
         }
 
@@ -97,12 +204,16 @@ final class DictationController {
             }
             try recorder.start()
             state = .recording
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
             let start = Date()
             recordStart = start
             LiveHUDPanel.shared.show()
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
+            pendingHoldStart = false
+            cancelWhenReadyToRecord = false
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             state = .error("Could not start recording: \(error.localizedDescription)")
         }
@@ -127,6 +238,8 @@ final class DictationController {
     private func handleAudioConfigurationChange() {
         guard state == .recording else { return }
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
+        pendingHoldStart = false
+        cancelWhenReadyToRecord = false
         stopElapsedTicker()
         LiveHUDPanel.shared.hide()
         state = .error("Audio input device changed. Try again.")
@@ -142,6 +255,8 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
+        pendingHoldStart = false
+        cancelWhenReadyToRecord = false
         stopElapsedTicker()
         let samples = recorder.stop()
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
@@ -219,33 +334,6 @@ final class DictationController {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(80))
             self?.deliver(text: edited)
-        }
-    }
-
-    private func cancelReview() {
-        guard case .reviewing = state else { return }
-        AppLog.dictation.info("Review cancelled")
-        removeEscMonitor()
-        LiveHUDPanel.shared.hide()
-        state = .idle
-    }
-
-    private func installEscMonitor() {
-        removeEscMonitor()
-        // Local monitor: our review panel is key, so Esc is dispatched into our app.
-        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
-                Task { @MainActor in self?.cancelReview() }
-                return nil
-            }
-            return event
-        }
-    }
-
-    private func removeEscMonitor() {
-        if let escMonitor {
-            NSEvent.removeMonitor(escMonitor)
-            self.escMonitor = nil
         }
     }
 

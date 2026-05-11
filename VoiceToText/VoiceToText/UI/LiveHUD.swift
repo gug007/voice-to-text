@@ -223,7 +223,7 @@ private struct RecordingView: View {
                     .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
-                Text("⌥Space")
+                Text(HotkeyStore.shared.binding.displayKeys.joined())
                     .font(.system(size: 12, weight: .medium))
                     .tracking(0.1)
                     .foregroundStyle(.white.opacity(0.42))
@@ -264,7 +264,7 @@ private struct ReviewView: View {
 
                 ReviewKeyButton(
                     title: "Paste",
-                    hint: "⌥Space",
+                    hint: HotkeyStore.shared.binding.displayKeys.joined(),
                     emphasis: .primary
                 ) { state.onPaste?() }
             }

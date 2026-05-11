@@ -14,6 +14,16 @@ struct HotkeyBinding: Codable, Equatable {
         keyLabel: "Space"
     )
 
+    static let rightControlBinding = HotkeyBinding(
+        keyCode: UInt32(kVK_RightControl),
+        modifiers: 0,
+        keyLabel: "Right Control"
+    )
+
+    var isStandaloneModifier: Bool {
+        modifiers == 0 && keyCode == UInt32(kVK_RightControl)
+    }
+
     var modifierSymbols: [String] {
         var parts: [String] = []
         if modifiers & UInt32(controlKey) != 0 { parts.append("⌃") }
@@ -47,6 +57,10 @@ struct HotkeyBinding: Codable, Equatable {
         )
     }
 
+    static func fromModifierEvent(_ event: NSEvent) -> HotkeyBinding? {
+        guard event.keyCode == UInt16(kVK_RightControl) else { return nil }
+        return .rightControlBinding
+    }
 }
 
 enum KeyCodeLabel {

@@ -28,6 +28,13 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  Tests/HotkeyBindingHarness.swift \
+  -o /tmp/voice-to-text-hotkey-binding-harness
+/tmp/voice-to-text-hotkey-binding-harness
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyStoreHarness.swift \
   -o "$TMPDIR/hotkey-store-harness"
 "$TMPDIR/hotkey-store-harness"

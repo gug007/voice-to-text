@@ -335,7 +335,7 @@ struct HotkeyPane: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
-                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), or a function key.")
+                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -364,13 +364,18 @@ struct HotkeyPane: View {
     private func startRecording() {
         errorMessage = nil
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             handle(event: event)
             return nil
         }
     }
 
     private func handle(event: NSEvent) {
+        if event.type == .flagsChanged {
+            handleModifierEvent(event)
+            return
+        }
+
         // Esc without modifiers cancels
         let pureModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if event.keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty {
@@ -380,12 +385,19 @@ struct HotkeyPane: View {
 
         let candidate = HotkeyBinding.fromEvent(event)
 
-        // Allow: any combo with at least one modifier, or bare F1-F20.
-        guard candidate.modifiers != 0 || candidate.isFunctionKey else {
-            errorMessage = "Add at least one modifier (⌘ ⌥ ⌃ ⇧), or pick a function key."
+        // Allow: any combo with at least one modifier, bare F1-F20, or Right Control.
+        guard candidate.modifiers != 0 || candidate.isFunctionKey || candidate.isStandaloneModifier else {
+            errorMessage = "Add at least one modifier (⌘ ⌥ ⌃ ⇧), pick a function key, or press Right Control."
             return
         }
 
+        store.update(to: candidate)
+        stopRecording(cancelled: false)
+    }
+
+    private func handleModifierEvent(_ event: NSEvent) {
+        guard event.modifierFlags.rawValue & UInt(NX_DEVICERCTLKEYMASK) != 0,
+              let candidate = HotkeyBinding.fromModifierEvent(event) else { return }
         store.update(to: candidate)
         stopRecording(cancelled: false)
     }

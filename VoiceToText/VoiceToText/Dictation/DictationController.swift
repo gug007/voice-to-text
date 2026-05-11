@@ -71,7 +71,7 @@ final class DictationController {
 
     private func registerCurrentBinding() {
         let binding = HotkeyStore.shared.binding
-        HotkeyManager.shared.register(keyCode: binding.keyCode, modifiers: binding.modifiers) { [weak self] event in
+        HotkeyManager.shared.register(binding: binding) { [weak self] event in
             Task { @MainActor in self?.handleHotkeyEvent(event) }
         }
     }

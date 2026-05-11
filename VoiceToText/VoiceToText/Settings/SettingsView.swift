@@ -271,7 +271,7 @@ struct HotkeyPane: View {
                 RowCard {
                     HStack(alignment: .center, spacing: 16) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Toggle recording")
+                            Text("Recording shortcut")
                                 .font(.system(size: 14, weight: .medium))
                             Text(subtitle)
                                 .font(.system(size: 12))
@@ -301,6 +301,28 @@ struct HotkeyPane: View {
                     .padding(18)
                 }
 
+                RowCard {
+                    HStack(alignment: .center, spacing: 16) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Recording mode")
+                                .font(.system(size: 14, weight: .medium))
+                            Text(modeSubtitle)
+                                .font(.system(size: 12))
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Picker("Recording mode", selection: modeBinding) {
+                            ForEach(RecordingShortcutMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                        .frame(width: 240)
+                    }
+                    .padding(18)
+                }
+
                 if let errorMessage {
                     Text(errorMessage)
                         .font(.system(size: 11))
@@ -325,7 +347,24 @@ struct HotkeyPane: View {
 
     private var subtitle: String {
         if isRecording { return "Press a key combination, or Esc to cancel." }
-        return "Press once to start, press again to stop."
+        switch store.mode {
+        case .hold: return "Hold to start recording, release to stop."
+        case .toggle: return "Press once to start, press again to stop."
+        }
+    }
+
+    private var modeSubtitle: String {
+        switch store.mode {
+        case .hold: return "The shortcut records only while held down."
+        case .toggle: return "The shortcut starts and stops recording on each press."
+        }
+    }
+
+    private var modeBinding: Binding<RecordingShortcutMode> {
+        Binding(
+            get: { store.mode },
+            set: { store.updateMode(to: $0) }
+        )
     }
 
     private func startRecording() {
@@ -347,7 +386,7 @@ struct HotkeyPane: View {
 
         let candidate = HotkeyBinding.fromEvent(event)
 
-        // Allow: any combo with at least one modifier, or bare F1–F20.
+        // Allow: any combo with at least one modifier, or bare F1-F20.
         guard candidate.modifiers != 0 || candidate.isFunctionKey else {
             errorMessage = "Add at least one modifier (⌘ ⌥ ⌃ ⇧), or pick a function key."
             return
@@ -699,10 +738,19 @@ struct GeneralPane: View {
 
     private var recordingSubtitle: String {
         let hk = HotkeyStore.shared.binding.displayKeys.joined()
+        let mode = HotkeyStore.shared.mode
         switch dictation.state {
-        case .idle: return "Click Start, or press \(hk) from any app."
+        case .idle:
+            switch mode {
+            case .hold: return "Click Start, or hold \(hk) from any app."
+            case .toggle: return "Click Start, or press \(hk) from any app."
+            }
         case .preparing: return "Downloading or loading the active model."
-        case .recording: return "Click Stop, or press \(hk), when you're done speaking."
+        case .recording:
+            switch mode {
+            case .hold: return "Release \(hk), press Esc, or click Stop when you're done speaking."
+            case .toggle: return "Click Stop, press Esc, or press \(hk) when you're done speaking."
+            }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
         case .error(let message): return message

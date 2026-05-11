@@ -46,6 +46,7 @@ struct HotkeyBinding: Codable, Equatable {
             keyLabel: KeyCodeLabel.label(for: UInt32(event.keyCode), event: event)
         )
     }
+
 }
 
 enum KeyCodeLabel {
@@ -116,17 +117,26 @@ enum KeyCodeLabel {
 final class HotkeyStore {
     static let shared = HotkeyStore()
 
-    private let storageKey = "hotkey.binding.v1"
+    private let bindingStorageKey = "hotkey.binding.v1"
+    private let modeStorageKey = "hotkey.recordingMode.v1"
     private(set) var binding: HotkeyBinding = .defaultBinding
-    @ObservationIgnored var onChange: ((HotkeyBinding) -> Void)?
+    private(set) var mode: RecordingShortcutMode = .toggle
+    @ObservationIgnored var onChange: (() -> Void)?
 
     private init() { load() }
 
     func update(to new: HotkeyBinding) {
         guard new != binding else { return }
         binding = new
-        save()
-        onChange?(new)
+        saveBinding()
+        onChange?()
+    }
+
+    func updateMode(to new: RecordingShortcutMode) {
+        guard new != mode else { return }
+        mode = new
+        saveMode()
+        onChange?()
     }
 
     func resetToDefault() {
@@ -134,14 +144,24 @@ final class HotkeyStore {
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: storageKey),
-              let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) else { return }
-        binding = decoded
+        if let data = UserDefaults.standard.data(forKey: bindingStorageKey),
+           let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
+            binding = decoded
+        }
+
+        if let rawMode = UserDefaults.standard.string(forKey: modeStorageKey),
+           let decodedMode = RecordingShortcutMode(rawValue: rawMode) {
+            mode = decodedMode
+        }
     }
 
-    private func save() {
+    private func saveBinding() {
         if let data = try? JSONEncoder().encode(binding) {
-            UserDefaults.standard.set(data, forKey: storageKey)
+            UserDefaults.standard.set(data, forKey: bindingStorageKey)
         }
+    }
+
+    private func saveMode() {
+        UserDefaults.standard.set(mode.rawValue, forKey: modeStorageKey)
     }
 }

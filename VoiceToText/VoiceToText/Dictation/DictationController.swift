@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import Carbon.HIToolbox
 import Foundation
 import Observation
 import OSLog
@@ -23,7 +24,9 @@ final class DictationController {
     private let recorder = AudioRecorder()
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
-    private var escMonitor: Any?
+    private var reviewEscMonitor: Any?
+    private var recordingLocalEscMonitor: Any?
+    private var recordingGlobalEscMonitor: Any?
     private var recordingStartGate = RecordingStartGate()
 
     private var reviewBeforePaste: Bool {
@@ -99,17 +102,36 @@ final class DictationController {
     ) {
         switch action {
         case .startRecording:
+            guard AccessibilityPermission.isGranted else {
+                AccessibilityPermission.promptForPermission()
+                AppLog.dictation.warning("Missing Accessibility permission, could not start global hotkey recording")
+                state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
+                return
+            }
             let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
             Task { await startRecording(startID: startID) }
         case .stopAndTranscribe:
             Task { await stopAndTranscribe() }
         case .confirmPaste:
             confirmPaste()
+        case .cancelRecording:
+            cancelRecording()
         case .cancelPendingRecording:
             cancelPendingRecording()
         case .none:
             break
         }
+    }
+
+    private func cancelRecording() {
+        guard state == .recording else { return }
+        AppLog.dictation.info("Recording cancelled")
+        recordingStartGate.reset()
+        stopElapsedTicker()
+        removeRecordingEscMonitors()
+        _ = recorder.stop()
+        LiveHUDPanel.shared.hide()
+        state = .idle
     }
 
     private func cancelPendingRecording() {
@@ -123,16 +145,46 @@ final class DictationController {
     private func cancelReview() {
         guard case .reviewing = state else { return }
         AppLog.dictation.info("Review cancelled")
-        removeEscMonitor()
+        removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
         state = .idle
     }
 
-    private func installEscMonitor() {
-        removeEscMonitor()
+    private func installRecordingEscMonitors() {
+        removeRecordingEscMonitors()
+        recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard RecordingEscapePolicy.shouldCancel(
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags
+            ) else { return event }
+            Task { @MainActor in self?.handleHotkeyEvent(.escape) }
+            return nil
+        }
+        recordingGlobalEscMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard RecordingEscapePolicy.shouldCancel(
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags
+            ) else { return }
+            Task { @MainActor in self?.handleHotkeyEvent(.escape) }
+        }
+    }
+
+    private func removeRecordingEscMonitors() {
+        if let recordingLocalEscMonitor {
+            NSEvent.removeMonitor(recordingLocalEscMonitor)
+            self.recordingLocalEscMonitor = nil
+        }
+        if let recordingGlobalEscMonitor {
+            NSEvent.removeMonitor(recordingGlobalEscMonitor)
+            self.recordingGlobalEscMonitor = nil
+        }
+    }
+
+    private func installReviewEscMonitor() {
+        removeReviewEscMonitor()
         // Local monitor: our review panel is key, so Esc is dispatched into our app.
-        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
+        reviewEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == UInt16(kVK_Escape) {
                 Task { @MainActor in self?.cancelReview() }
                 return nil
             }
@@ -140,10 +192,10 @@ final class DictationController {
         }
     }
 
-    private func removeEscMonitor() {
-        if let escMonitor {
-            NSEvent.removeMonitor(escMonitor)
-            self.escMonitor = nil
+    private func removeReviewEscMonitor() {
+        if let reviewEscMonitor {
+            NSEvent.removeMonitor(reviewEscMonitor)
+            self.reviewEscMonitor = nil
         }
     }
 
@@ -194,6 +246,7 @@ final class DictationController {
             let start = Date()
             recordStart = start
             LiveHUDPanel.shared.show()
+            installRecordingEscMonitors()
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
@@ -224,6 +277,7 @@ final class DictationController {
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
         recordingStartGate.reset()
         stopElapsedTicker()
+        removeRecordingEscMonitors()
         LiveHUDPanel.shared.hide()
         state = .error("Audio input device changed. Try again.")
     }
@@ -240,6 +294,7 @@ final class DictationController {
     private func stopAndTranscribe() async {
         recordingStartGate.reset()
         stopElapsedTicker()
+        removeRecordingEscMonitors()
         let samples = recorder.stop()
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
 
@@ -302,13 +357,13 @@ final class DictationController {
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() }
         )
-        installEscMonitor()
+        installReviewEscMonitor()
     }
 
     private func confirmPaste() {
         guard case .reviewing = state else { return }
         let edited = LiveHUDPanel.shared.currentReviewText
-        removeEscMonitor()
+        removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
 
         // Key status is released back to the previous app when our panel is

@@ -739,9 +739,9 @@ struct GeneralPane: View {
         case .recording:
             switch HotkeyStore.shared.mode {
             case .hold:
-                return "Release the shortcut, or click Stop when you're done speaking."
+                return "Release the shortcut, press Esc to cancel, or click Stop."
             case .toggle:
-                return "Press the shortcut again, or click Stop when you're done speaking."
+                return "Press the shortcut again, press Esc to cancel, or click Stop."
             }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."

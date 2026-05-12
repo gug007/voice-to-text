@@ -15,6 +15,12 @@ private func expect(
     }
 }
 
+private func expect(_ condition: Bool, _ message: String) throws {
+    if !condition {
+        throw StandaloneModifierHarnessFailure(description: message)
+    }
+}
+
 @main
 struct StandaloneModifierHotkeyHarness {
     static func main() throws {
@@ -27,9 +33,11 @@ struct StandaloneModifierHotkeyHarness {
         try mouseChordBeforeDelaySuppressesStandaloneHotkey()
         try mouseChordAfterDelayedPressCancelsStandaloneHotkey()
         try existingModifierSuppressesStandaloneHotkey()
+        try existingKeyInputSuppressesStandaloneHotkey()
         try releaseUsesRightControlTransitionNotAggregateControlFlags()
         try missedReleaseDoesNotMakeNextReleaseLookLikePress()
         try missedPressDoesNotMakeNextPressLookLikeRelease()
+        try activeInputTrackerTracksHeldKeysAndButtons()
         print("Standalone modifier hotkey harness passed")
     }
 
@@ -226,6 +234,30 @@ struct StandaloneModifierHotkeyHarness {
         )
     }
 
+    private static func existingKeyInputSuppressesStandaloneHotkey() throws {
+        var tracker = StandaloneActiveInputTracker()
+        tracker.keyDown(UInt16(kVK_ANSI_M), excluding: UInt16(kVK_RightControl))
+
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: true,
+                hasOtherModifierDown: tracker.hasActiveInput
+            ),
+            [],
+            "right Control down while another key is held does not schedule standalone press"
+        )
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after existing key emits nothing"
+        )
+    }
+
     private static func releaseUsesRightControlTransitionNotAggregateControlFlags() throws {
         var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
         _ = state.handleFlagsChanged(
@@ -285,5 +317,22 @@ struct StandaloneModifierHotkeyHarness {
             [.schedulePress(1)],
             "next actual right Control down starts a fresh press"
         )
+    }
+
+    private static func activeInputTrackerTracksHeldKeysAndButtons() throws {
+        var tracker = StandaloneActiveInputTracker()
+        try expect(!tracker.hasActiveInput, "starts with no active input")
+
+        tracker.keyDown(UInt16(kVK_ANSI_M), excluding: UInt16(kVK_RightControl))
+        try expect(tracker.hasActiveInput, "tracks held non-modifier key before right Control")
+        tracker.keyDown(UInt16(kVK_RightControl), excluding: UInt16(kVK_RightControl))
+        try expect(tracker.hasActiveInput, "ignores right Control itself")
+        tracker.keyUp(UInt16(kVK_ANSI_M))
+        try expect(!tracker.hasActiveInput, "clears held key on key-up")
+
+        tracker.mouseDown(button: 0)
+        try expect(tracker.hasActiveInput, "tracks held mouse button before right Control")
+        tracker.mouseUp(button: 0)
+        try expect(!tracker.hasActiveInput, "clears held mouse button on mouse-up")
     }
 }

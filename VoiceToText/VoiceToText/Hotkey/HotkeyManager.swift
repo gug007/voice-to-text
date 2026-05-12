@@ -29,6 +29,7 @@ final class HotkeyManager {
     private var standaloneModifierState = StandaloneModifierHotkeyState(
         modifierKeyCode: UInt16(kVK_RightControl)
     )
+    private var standaloneActiveInputTracker = StandaloneActiveInputTracker()
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
     private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
@@ -123,13 +124,18 @@ final class HotkeyManager {
         let context = StandaloneModifierEventTapContext(manager: self, generation: generation)
         modifierEventTapContext = context
         let contextPtr = Unmanaged.passUnretained(context).toOpaque()
-        let mask = CGEventMask(
-            (1 << CGEventType.flagsChanged.rawValue)
-            | (1 << CGEventType.keyDown.rawValue)
-            | (1 << CGEventType.leftMouseDown.rawValue)
-            | (1 << CGEventType.rightMouseDown.rawValue)
-            | (1 << CGEventType.otherMouseDown.rawValue)
-        )
+        let keyboardMask =
+            eventMask(for: .flagsChanged)
+            | eventMask(for: .keyDown)
+            | eventMask(for: .keyUp)
+        let mouseMask =
+            eventMask(for: .leftMouseDown)
+            | eventMask(for: .leftMouseUp)
+            | eventMask(for: .rightMouseDown)
+            | eventMask(for: .rightMouseUp)
+            | eventMask(for: .otherMouseDown)
+            | eventMask(for: .otherMouseUp)
+        let mask = keyboardMask | mouseMask
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .tailAppendEventTap,
@@ -140,12 +146,14 @@ final class HotkeyManager {
                 let context = Unmanaged<StandaloneModifierEventTapContext>.fromOpaque(userData).takeUnretainedValue()
                 guard let manager = context.manager else { return Unmanaged.passUnretained(event) }
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                let rawMouseButtonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
                 let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
                 let hasOtherModifierDown = event.flags.rawValue & manager.nonControlModifierDeviceMask != 0
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(
                         type: type,
                         keyCode: keyCode,
+                        rawMouseButtonNumber: rawMouseButtonNumber,
                         rightControlIsDown: rightControlIsDown,
                         hasOtherModifierDown: hasOtherModifierDown,
                         generation: context.generation
@@ -172,6 +180,7 @@ final class HotkeyManager {
     private func handleStandaloneModifierEvent(
         type: CGEventType,
         keyCode: UInt16,
+        rawMouseButtonNumber: Int64,
         rightControlIsDown: Bool,
         hasOtherModifierDown: Bool,
         generation: UInt64
@@ -185,22 +194,52 @@ final class HotkeyManager {
                 keyCode: keyCode,
                 isModifierDown: rightControlIsDown,
                 hasOtherModifierDown: hasOtherModifierDown
+                    || standaloneActiveInputTracker.hasActiveInput
+                    || NSEvent.pressedMouseButtons != 0
             )
         case .keyDown:
+            standaloneActiveInputTracker.keyDown(keyCode, excluding: UInt16(kVK_RightControl))
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
+        case .keyUp:
+            standaloneActiveInputTracker.keyUp(keyCode)
+            effects = []
         case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            standaloneActiveInputTracker.mouseDown(
+                button: normalizedMouseButton(type: type, rawValue: rawMouseButtonNumber)
+            )
             effects = standaloneModifierState.handleChord()
+        case .leftMouseUp, .rightMouseUp, .otherMouseUp:
+            standaloneActiveInputTracker.mouseUp(
+                button: normalizedMouseButton(type: type, rawValue: rawMouseButtonNumber)
+            )
+            effects = []
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             AppLog.app.warning("Standalone modifier event tap was disabled; re-enabling")
             if let modifierEventTap {
                 CGEvent.tapEnable(tap: modifierEventTap, enable: true)
                 isRegistered = true
             }
+            standaloneActiveInputTracker.reset()
             effects = standaloneModifierState.reset()
         default:
             effects = []
         }
         applyStandaloneModifierEffects(effects, generation: generation)
+    }
+
+    private func eventMask(for eventType: CGEventType) -> CGEventMask {
+        CGEventMask(1) << eventType.rawValue
+    }
+
+    private func normalizedMouseButton(type: CGEventType, rawValue: Int64) -> Int64 {
+        switch type {
+        case .leftMouseDown, .leftMouseUp:
+            return Int64(CGMouseButton.left.rawValue)
+        case .rightMouseDown, .rightMouseUp:
+            return Int64(CGMouseButton.right.rawValue)
+        default:
+            return rawValue
+        }
     }
 
     private func applyStandaloneModifierEffects(
@@ -277,6 +316,7 @@ final class HotkeyManager {
             self.modifierEventTap = nil
         }
         modifierEventTapContext = nil
+        standaloneActiveInputTracker.reset()
         applyStandaloneModifierEffects(standaloneModifierState.reset(), generation: generation)
         standaloneModifierPressWorkItem?.cancel()
         standaloneModifierPressWorkItem = nil

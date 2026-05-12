@@ -114,3 +114,34 @@ struct StandaloneModifierHotkeyState {
         return [.cancelScheduledPress]
     }
 }
+
+struct StandaloneActiveInputTracker {
+    private var heldKeyCodes: Set<UInt16> = []
+    private var heldMouseButtons: Set<Int64> = []
+
+    var hasActiveInput: Bool {
+        !heldKeyCodes.isEmpty || !heldMouseButtons.isEmpty
+    }
+
+    mutating func keyDown(_ keyCode: UInt16, excluding ignoredKeyCode: UInt16) {
+        guard keyCode != ignoredKeyCode else { return }
+        heldKeyCodes.insert(keyCode)
+    }
+
+    mutating func keyUp(_ keyCode: UInt16) {
+        heldKeyCodes.remove(keyCode)
+    }
+
+    mutating func mouseDown(button: Int64) {
+        heldMouseButtons.insert(button)
+    }
+
+    mutating func mouseUp(button: Int64) {
+        heldMouseButtons.remove(button)
+    }
+
+    mutating func reset() {
+        heldKeyCodes = []
+        heldMouseButtons = []
+    }
+}

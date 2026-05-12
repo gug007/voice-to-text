@@ -8,8 +8,8 @@ final class HotkeyManager {
 
     private var hotKeyRef: EventHotKeyRef?
     private var eventHandler: EventHandlerRef?
-    private var localModifierMonitor: Any?
-    private var globalModifierMonitor: Any?
+    private var modifierEventTap: CFMachPort?
+    private var modifierRunLoopSource: CFRunLoopSource?
     private let signature: OSType = OSType(0x56544C48)
     private let hotKeyId: UInt32 = 1
     private var handler: Handler?
@@ -89,22 +89,42 @@ final class HotkeyManager {
     private func registerStandaloneModifier(binding: HotkeyBinding) {
         guard binding == .rightControlBinding else { return }
 
-        let monitor: (NSEvent) -> Void = { [weak self] event in
-            self?.handleStandaloneModifierEvent(event)
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .tailAppendEventTap,
+            options: .listenOnly,
+            eventsOfInterest: mask,
+            callback: { _, _, event, userData in
+                guard let userData else { return Unmanaged.passUnretained(event) }
+                let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                let modifierFlags = event.flags
+                DispatchQueue.main.async {
+                    manager.handleStandaloneModifierEvent(keyCode: keyCode, modifierFlags: modifierFlags)
+                }
+                return Unmanaged.passUnretained(event)
+            },
+            userInfo: selfPtr
+        ) else {
+            AppLog.app.error("CGEvent tap creation failed for standalone modifier hotkey")
+            return
         }
-        localModifierMonitor = NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { event in
-            monitor(event)
-            return event
-        }
-        globalModifierMonitor = NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged, handler: monitor)
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        CGEvent.tapEnable(tap: tap, enable: true)
+        modifierEventTap = tap
+        modifierRunLoopSource = source
         isRegistered = true
         AppLog.app.info("Standalone modifier hotkey registered: keyCode=\(binding.keyCode)")
     }
 
-    private func handleStandaloneModifierEvent(_ event: NSEvent) {
-        guard event.keyCode == UInt16(kVK_RightControl) else { return }
+    private func handleStandaloneModifierEvent(keyCode: UInt16, modifierFlags: CGEventFlags) {
+        guard keyCode == UInt16(kVK_RightControl) else { return }
 
-        let isDown = event.modifierFlags.rawValue & UInt(NX_DEVICERCTLKEYMASK) != 0
+        let isDown = modifierFlags.contains(.maskControl)
         guard isDown != standaloneModifierIsDown else { return }
 
         standaloneModifierIsDown = isDown
@@ -140,13 +160,13 @@ final class HotkeyManager {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
-        if let localModifierMonitor {
-            NSEvent.removeMonitor(localModifierMonitor)
-            self.localModifierMonitor = nil
+        if let modifierRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), modifierRunLoopSource, .commonModes)
+            self.modifierRunLoopSource = nil
         }
-        if let globalModifierMonitor {
-            NSEvent.removeMonitor(globalModifierMonitor)
-            self.globalModifierMonitor = nil
+        if let modifierEventTap {
+            CFMachPortInvalidate(modifierEventTap)
+            self.modifierEventTap = nil
         }
         handler = nil
         standaloneModifierIsDown = false

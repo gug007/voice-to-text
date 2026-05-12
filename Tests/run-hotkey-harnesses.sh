@@ -29,8 +29,16 @@ swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyBindingHarness.swift \
-  -o /tmp/voice-to-text-hotkey-binding-harness
-/tmp/voice-to-text-hotkey-binding-harness
+  -o "$TMPDIR/hotkey-binding-harness"
+"$TMPDIR/hotkey-binding-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyCaptureSession.swift \
+  Tests/HotkeyCaptureHarness.swift \
+  -o "$TMPDIR/hotkey-capture-harness"
+"$TMPDIR/hotkey-capture-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
@@ -38,3 +46,9 @@ swiftc -parse-as-library \
   Tests/HotkeyStoreHarness.swift \
   -o "$TMPDIR/hotkey-store-harness"
 "$TMPDIR/hotkey-store-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/LaunchContext.swift \
+  Tests/LaunchContextHarness.swift \
+  -o "$TMPDIR/launch-context-harness"
+"$TMPDIR/launch-context-harness"

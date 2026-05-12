@@ -24,8 +24,7 @@ final class DictationController {
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
     private var escMonitor: Any?
-    private var pendingHoldStart = false
-    private var cancelWhenReadyToRecord = false
+    private var recordingStartGate = RecordingStartGate()
 
     private var reviewBeforePaste: Bool {
         UserDefaults.standard.bool(forKey: "review.beforePaste")
@@ -66,10 +65,10 @@ final class DictationController {
         AppLog.dictation.info("hotkey event \(String(describing: event)), current state=\(String(describing: self.state))")
         let mode = HotkeyStore.shared.mode
         if mode == .hold {
-            if event == .pressed, pendingHoldStart {
+            if event == .pressed, recordingStartGate.hasPendingHoldStart {
                 return
             }
-            if event == .released, pendingHoldStart {
+            if event == .released, recordingStartGate.hasPendingHoldStart {
                 cancelPendingRecording()
                 return
             }
@@ -80,12 +79,7 @@ final class DictationController {
             state: hotkeyState,
             event: event
         )
-        if mode == .hold, action == .startRecording {
-            pendingHoldStart = true
-        }
-        performHotkeyAction(
-            action
-        )
+        performHotkeyAction(action, pendingHoldStart: mode == .hold && action == .startRecording)
     }
 
     private var hotkeyState: DictationHotkeyState {
@@ -99,11 +93,14 @@ final class DictationController {
         }
     }
 
-    private func performHotkeyAction(_ action: DictationHotkeyAction) {
+    private func performHotkeyAction(
+        _ action: DictationHotkeyAction,
+        pendingHoldStart: Bool = false
+    ) {
         switch action {
         case .startRecording:
-            cancelWhenReadyToRecord = false
-            Task { await startRecording() }
+            let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
+            Task { await startRecording(startID: startID) }
         case .stopAndTranscribe:
             Task { await stopAndTranscribe() }
         case .confirmPaste:
@@ -117,8 +114,10 @@ final class DictationController {
 
     private func cancelPendingRecording() {
         AppLog.dictation.info("Pending recording cancelled")
-        pendingHoldStart = false
-        cancelWhenReadyToRecord = true
+        recordingStartGate.cancelPendingHoldStart()
+        if case .preparing = state {
+            state = .idle
+        }
     }
 
     private func cancelReview() {
@@ -150,52 +149,39 @@ final class DictationController {
 
     // MARK: - Start
 
-    private func startRecording() async {
+    private func startRecording(startID: RecordingStartGate.StartID) async {
+        guard recordingStartGate.accepts(startID) else { return }
         AppLog.dictation.info("startRecording: requesting mic permission (current=\(String(describing: MicPermission.status.rawValue)))")
         let granted = await MicPermission.request()
         AppLog.dictation.info("startRecording: mic permission granted=\(granted)")
+        guard recordingStartGate.accepts(startID) else { return }
         guard granted else {
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
+            recordingStartGate.finish(startID)
             state = .error("Microphone access denied. Grant it in System Settings → Privacy → Microphone.")
             return
         }
 
         guard let descriptor = ModelRegistry.shared.activeModel else {
             AppLog.dictation.error("startRecording: no active model")
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
+            recordingStartGate.finish(startID)
             state = .error("No active model selected.")
             return
         }
 
-        if cancelWhenReadyToRecord {
-            AppLog.dictation.info("startRecording: cancelled before model preparation")
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
-            state = .idle
-            return
-        }
-
         AppLog.dictation.info("startRecording: active model=\(descriptor.id)")
+        guard recordingStartGate.accepts(startID) else { return }
         state = .preparing(modelDisplayName: descriptor.displayName)
-        guard await ModelRegistry.shared.prepareModel(id: descriptor.id) != nil else {
+        let preparedModel = await ModelRegistry.shared.prepareModel(id: descriptor.id)
+        guard recordingStartGate.accepts(startID) else { return }
+        guard preparedModel != nil else {
             AppLog.dictation.error("startRecording: prepareModel returned nil")
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
+            recordingStartGate.finish(startID)
             state = .error(preparationErrorMessage(for: descriptor))
             return
         }
 
-        if cancelWhenReadyToRecord {
-            AppLog.dictation.info("startRecording: cancelled before recorder start")
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
-            state = .idle
-            return
-        }
-
         do {
+            guard recordingStartGate.accepts(startID) else { return }
             recorder.onConfigurationChange = { [weak self] in
                 self?.handleAudioConfigurationChange()
             }
@@ -204,16 +190,14 @@ final class DictationController {
             }
             try recorder.start()
             state = .recording
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
+            recordingStartGate.finish(startID)
             let start = Date()
             recordStart = start
             LiveHUDPanel.shared.show()
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
-            pendingHoldStart = false
-            cancelWhenReadyToRecord = false
+            recordingStartGate.finish(startID)
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             state = .error("Could not start recording: \(error.localizedDescription)")
         }
@@ -238,8 +222,7 @@ final class DictationController {
     private func handleAudioConfigurationChange() {
         guard state == .recording else { return }
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
-        pendingHoldStart = false
-        cancelWhenReadyToRecord = false
+        recordingStartGate.reset()
         stopElapsedTicker()
         LiveHUDPanel.shared.hide()
         state = .error("Audio input device changed. Try again.")
@@ -255,8 +238,7 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
-        pendingHoldStart = false
-        cancelWhenReadyToRecord = false
+        recordingStartGate.reset()
         stopElapsedTicker()
         let samples = recorder.stop()
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")

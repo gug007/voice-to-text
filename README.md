@@ -1,6 +1,6 @@
 # VoiceToText — Free Offline Dictation App for macOS
 
-**Free, open-source speech-to-text for Mac.** Hold a global hotkey, speak, release, and your words are typed into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, anywhere. Perfect for prompting AI coding agents by voice. 100% local, runs offline on the Apple Neural Engine. No subscriptions, no cloud, no data ever leaves your Mac.
+**Free, open-source speech-to-text for Mac.** Use a global hotkey to record, then your words are typed into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, anywhere. Perfect for prompting AI coding agents by voice. 100% local, runs offline on the Apple Neural Engine. No subscriptions, no cloud, no data ever leaves your Mac.
 
 A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
@@ -12,7 +12,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
 - **Free and open source** — no paywall, no account, no telemetry
 - **Offline and private** — audio is transcribed on-device, nothing is uploaded
-- **Push-to-talk** — hold `⌥ Space` (customizable) to dictate into any focused app
+- **Configurable recording shortcut** — press `⌥ Space` to toggle dictation, or switch to hold-to-record
 - **Apple Silicon native** — accelerated by the Neural Engine on M1/M2/M3/M4/M5 Macs
 - **Multiple models** — WhisperKit (OpenAI Whisper) and FluidAudio (Parakeet) engines, with quality/speed tradeoffs
 - **Built for AI agents** — dictate prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools at natural speaking speed
@@ -28,7 +28,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 1. Open the DMG and drag **VoiceToText** to `/Applications`.
 2. Launch it.
 3. Grant Microphone and Accessibility permissions when prompted.
-4. Hold `⌥ Space`, speak, release — your words are typed into the focused app.
+4. Press `⌥ Space`, speak, then press it again — your words are typed into the focused app. You can switch the shortcut to hold-to-record in Settings.
 
 ## Requirements
 

@@ -347,17 +347,11 @@ struct HotkeyPane: View {
 
     private var subtitle: String {
         if isRecording { return "Press a key combination, or Esc to cancel." }
-        switch store.mode {
-        case .hold: return "Hold to start recording, release to stop."
-        case .toggle: return "Press once to start, press again to stop."
-        }
+        return "Used for hold-to-record or press-to-toggle dictation."
     }
 
     private var modeSubtitle: String {
-        switch store.mode {
-        case .hold: return "The shortcut records only while held down."
-        case .toggle: return "The shortcut starts and stops recording on each press."
-        }
+        "Hold records while the shortcut is down; toggle starts and stops on each press."
     }
 
     private var modeBinding: Binding<RecordingShortcutMode> {
@@ -738,18 +732,16 @@ struct GeneralPane: View {
 
     private var recordingSubtitle: String {
         let hk = HotkeyStore.shared.binding.displayKeys.joined()
-        let mode = HotkeyStore.shared.mode
         switch dictation.state {
         case .idle:
-            switch mode {
-            case .hold: return "Click Start, or hold \(hk) from any app."
-            case .toggle: return "Click Start, or press \(hk) from any app."
-            }
+            return "Click Start, or use \(hk) from any app."
         case .preparing: return "Downloading or loading the active model."
         case .recording:
-            switch mode {
-            case .hold: return "Release \(hk), press Esc, or click Stop when you're done speaking."
-            case .toggle: return "Click Stop, press Esc, or press \(hk) when you're done speaking."
+            switch HotkeyStore.shared.mode {
+            case .hold:
+                return "Release the shortcut, or click Stop when you're done speaking."
+            case .toggle:
+                return "Press the shortcut again, or click Stop when you're done speaking."
             }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."

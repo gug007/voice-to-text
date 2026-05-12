@@ -4,15 +4,24 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+TMPDIR="$(mktemp -d "${TMPDIR:-/tmp}/voice-to-text-hotkey-harnesses.XXXXXX")"
+trap 'rm -rf "$TMPDIR"' EXIT
+
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   Tests/HotkeyBehaviorHarness.swift \
-  -o /tmp/voice-to-text-hotkey-behavior-harness
-/tmp/voice-to-text-hotkey-behavior-harness
+  -o "$TMPDIR/hotkey-behavior-harness"
+"$TMPDIR/hotkey-behavior-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Dictation/RecordingStartGate.swift \
+  Tests/RecordingStartGateHarness.swift \
+  -o "$TMPDIR/recording-start-gate-harness"
+"$TMPDIR/recording-start-gate-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyStoreHarness.swift \
-  -o /tmp/voice-to-text-hotkey-store-harness
-/tmp/voice-to-text-hotkey-store-harness
+  -o "$TMPDIR/hotkey-store-harness"
+"$TMPDIR/hotkey-store-harness"

@@ -480,7 +480,7 @@ struct GeneralPane: View {
             case .accessibility:
                 return Alert(
                     title: Text("Accessibility Access Required"),
-                    message: Text("VoiceToText needs Accessibility permission to type transcribed text into other apps. Open System Settings → Privacy & Security → Accessibility and enable VoiceToText."),
+                    message: Text("VoiceToText needs Accessibility permission for global shortcuts, Esc cancel, and typing text into other apps. Open System Settings → Privacy & Security → Accessibility and enable VoiceToText."),
                     primaryButton: .default(Text("Open System Settings")) {
                         AccessibilityPermission.promptForPermission()
                         AccessibilityPermission.openSystemSettings()

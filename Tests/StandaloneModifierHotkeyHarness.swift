@@ -24,6 +24,8 @@ struct StandaloneModifierHotkeyHarness {
         try chordAfterDelayedPressCancelsStandaloneHotkey()
         try modifierChordBeforeDelaySuppressesStandaloneHotkey()
         try modifierChordAfterDelayedPressCancelsStandaloneHotkey()
+        try mouseChordBeforeDelaySuppressesStandaloneHotkey()
+        try mouseChordAfterDelayedPressCancelsStandaloneHotkey()
         try existingModifierSuppressesStandaloneHotkey()
         try releaseUsesRightControlTransitionNotAggregateControlFlags()
         try missedReleaseDoesNotMakeNextReleaseLookLikePress()
@@ -156,6 +158,50 @@ struct StandaloneModifierHotkeyHarness {
             ),
             [.cancelScheduledPress],
             "right Control release after cancelled modifier chord emits nothing"
+        )
+    }
+
+    private static func mouseChordBeforeDelaySuppressesStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        _ = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightControl),
+            isModifierDown: true
+        )
+        try expect(
+            state.handleChord(),
+            [.cancelScheduledPress],
+            "mouse action before delay suppresses standalone press"
+        )
+        try expect(state.fireScheduledPress(token: 1), [], "cancelled mouse chord emits nothing")
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after mouse chord emits nothing"
+        )
+    }
+
+    private static func mouseChordAfterDelayedPressCancelsStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        _ = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightControl),
+            isModifierDown: true
+        )
+        _ = state.fireScheduledPress(token: 1)
+        try expect(
+            state.handleChord(),
+            [.emitCancelled],
+            "mouse action after delayed press cancels standalone hotkey"
+        )
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after cancelled mouse chord emits nothing"
         )
     }
 

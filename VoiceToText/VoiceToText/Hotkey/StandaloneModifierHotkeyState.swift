@@ -53,6 +53,11 @@ struct StandaloneModifierHotkeyState {
 
     mutating func handleKeyDown(keyCode: UInt16) -> [StandaloneModifierHotkeyEffect] {
         guard modifierIsDown, keyCode != modifierKeyCode else { return [] }
+        return handleChord()
+    }
+
+    mutating func handleChord() -> [StandaloneModifierHotkeyEffect] {
+        guard modifierIsDown else { return [] }
         return cancelForChord()
     }
 

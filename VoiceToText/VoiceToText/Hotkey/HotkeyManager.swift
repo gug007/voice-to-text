@@ -4,6 +4,16 @@ import Foundation
 import IOKit.hidsystem
 import OSLog
 
+private final class StandaloneModifierEventTapContext {
+    weak var manager: HotkeyManager?
+    let generation: UInt64
+
+    init(manager: HotkeyManager, generation: UInt64) {
+        self.manager = manager
+        self.generation = generation
+    }
+}
+
 final class HotkeyManager {
     typealias Handler = (DictationHotkeyEvent) -> Void
 
@@ -11,9 +21,11 @@ final class HotkeyManager {
     private var eventHandler: EventHandlerRef?
     private var modifierEventTap: CFMachPort?
     private var modifierRunLoopSource: CFRunLoopSource?
+    private var modifierEventTapContext: StandaloneModifierEventTapContext?
     private let signature: OSType = OSType(0x56544C48)
     private let hotKeyId: UInt32 = 1
     private var handler: Handler?
+    private var registrationGeneration: UInt64 = 0
     private var standaloneModifierState = StandaloneModifierHotkeyState(
         modifierKeyCode: UInt16(kVK_RightControl)
     )
@@ -35,10 +47,11 @@ final class HotkeyManager {
 
     func register(binding: HotkeyBinding, handler: @escaping Handler) {
         unregister()
+        registrationGeneration &+= 1
         self.handler = handler
 
         if binding.isStandaloneModifier {
-            registerStandaloneModifier(binding: binding)
+            registerStandaloneModifier(binding: binding, generation: registrationGeneration)
         } else {
             registerCarbonHotkey(
                 keyCode: binding.keyCode,
@@ -99,7 +112,7 @@ final class HotkeyManager {
         }
     }
 
-    private func registerStandaloneModifier(binding: HotkeyBinding) {
+    private func registerStandaloneModifier(binding: HotkeyBinding, generation: UInt64) {
         guard binding == .rightControlBinding else { return }
 
         guard ListenEventPermission.isGranted || ListenEventPermission.request() else {
@@ -107,10 +120,15 @@ final class HotkeyManager {
             return
         }
 
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let context = StandaloneModifierEventTapContext(manager: self, generation: generation)
+        modifierEventTapContext = context
+        let contextPtr = Unmanaged.passUnretained(context).toOpaque()
         let mask = CGEventMask(
             (1 << CGEventType.flagsChanged.rawValue)
             | (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.leftMouseDown.rawValue)
+            | (1 << CGEventType.rightMouseDown.rawValue)
+            | (1 << CGEventType.otherMouseDown.rawValue)
         )
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
@@ -119,7 +137,8 @@ final class HotkeyManager {
             eventsOfInterest: mask,
             callback: { _, type, event, userData in
                 guard let userData else { return Unmanaged.passUnretained(event) }
-                let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                let context = Unmanaged<StandaloneModifierEventTapContext>.fromOpaque(userData).takeUnretainedValue()
+                guard let manager = context.manager else { return Unmanaged.passUnretained(event) }
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
                 let hasOtherModifierDown = event.flags.rawValue & manager.nonControlModifierDeviceMask != 0
@@ -128,13 +147,15 @@ final class HotkeyManager {
                         type: type,
                         keyCode: keyCode,
                         rightControlIsDown: rightControlIsDown,
-                        hasOtherModifierDown: hasOtherModifierDown
+                        hasOtherModifierDown: hasOtherModifierDown,
+                        generation: context.generation
                     )
                 }
                 return Unmanaged.passUnretained(event)
             },
-            userInfo: selfPtr
+            userInfo: contextPtr
         ) else {
+            modifierEventTapContext = nil
             AppLog.app.error("CGEvent tap creation failed for standalone modifier hotkey")
             return
         }
@@ -152,8 +173,11 @@ final class HotkeyManager {
         type: CGEventType,
         keyCode: UInt16,
         rightControlIsDown: Bool,
-        hasOtherModifierDown: Bool
+        hasOtherModifierDown: Bool,
+        generation: UInt64
     ) {
+        guard isCurrentRegistration(generation) else { return }
+
         let effects: [StandaloneModifierHotkeyEffect]
         switch type {
         case .flagsChanged:
@@ -164,6 +188,8 @@ final class HotkeyManager {
             )
         case .keyDown:
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
+        case .leftMouseDown, .rightMouseDown, .otherMouseDown:
+            effects = standaloneModifierState.handleChord()
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
             AppLog.app.warning("Standalone modifier event tap was disabled; re-enabling")
             if let modifierEventTap {
@@ -174,18 +200,23 @@ final class HotkeyManager {
         default:
             effects = []
         }
-        applyStandaloneModifierEffects(effects)
+        applyStandaloneModifierEffects(effects, generation: generation)
     }
 
-    private func applyStandaloneModifierEffects(_ effects: [StandaloneModifierHotkeyEffect]) {
+    private func applyStandaloneModifierEffects(
+        _ effects: [StandaloneModifierHotkeyEffect],
+        generation: UInt64
+    ) {
+        guard isCurrentRegistration(generation) else { return }
+
         for effect in effects {
             switch effect {
             case .schedulePress(let token):
                 standaloneModifierPressWorkItem?.cancel()
                 let workItem = DispatchWorkItem { [weak self] in
-                    guard let self else { return }
+                    guard let self, self.isCurrentRegistration(generation) else { return }
                     let delayedEffects = self.standaloneModifierState.fireScheduledPress(token: token)
-                    self.applyStandaloneModifierEffects(delayedEffects)
+                    self.applyStandaloneModifierEffects(delayedEffects, generation: generation)
                 }
                 standaloneModifierPressWorkItem = workItem
                 DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(120), execute: workItem)
@@ -209,6 +240,10 @@ final class HotkeyManager {
         }
     }
 
+    private func isCurrentRegistration(_ generation: UInt64) -> Bool {
+        isRegistered && registrationGeneration == generation
+    }
+
     private func handleCarbonEvent(_ event: EventRef) {
         let eventKind = GetEventKind(event)
         switch eventKind {
@@ -224,6 +259,7 @@ final class HotkeyManager {
     }
 
     func unregister() {
+        let generation = registrationGeneration
         if let hotKeyRef {
             UnregisterEventHotKey(hotKeyRef)
             self.hotKeyRef = nil
@@ -240,7 +276,11 @@ final class HotkeyManager {
             CFMachPortInvalidate(modifierEventTap)
             self.modifierEventTap = nil
         }
-        applyStandaloneModifierEffects(standaloneModifierState.reset())
+        modifierEventTapContext = nil
+        applyStandaloneModifierEffects(standaloneModifierState.reset(), generation: generation)
+        standaloneModifierPressWorkItem?.cancel()
+        standaloneModifierPressWorkItem = nil
+        registrationGeneration &+= 1
         handler = nil
         isRegistered = false
     }

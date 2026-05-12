@@ -223,7 +223,7 @@ private struct RecordingView: View {
                     .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
-                Text(HotkeyStore.shared.binding.displayKeys.joined())
+                Text(recordingHint)
                     .font(.system(size: 12, weight: .medium))
                     .tracking(0.1)
                     .foregroundStyle(.white.opacity(0.42))
@@ -236,6 +236,13 @@ private struct RecordingView: View {
         let minutes = total / 60
         let seconds = total % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private var recordingHint: String {
+        switch HotkeyStore.shared.mode {
+        case .hold: return "Release when done"
+        case .toggle: return "Press again when done"
+        }
     }
 }
 

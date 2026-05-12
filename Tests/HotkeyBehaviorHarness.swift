@@ -77,6 +77,21 @@ struct HotkeyBehaviorHarness {
             .none,
             "escape outside recording is ignored"
         )
+        try expect(
+            DictationHotkeyPolicy.action(mode: .toggle, state: .preparing, event: .cancel),
+            .cancelPendingRecording,
+            "cancel aborts pending recording preparation"
+        )
+        try expect(
+            DictationHotkeyPolicy.action(mode: .hold, state: .recording, event: .cancel),
+            .cancelRecording,
+            "cancel aborts active recording"
+        )
+        try expect(
+            DictationHotkeyPolicy.action(mode: .hold, state: .idle, event: .cancel),
+            .none,
+            "cancel outside preparation or recording is ignored"
+        )
 
         print("Hotkey behavior harness passed")
     }

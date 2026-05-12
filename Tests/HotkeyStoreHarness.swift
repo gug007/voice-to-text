@@ -47,16 +47,12 @@ struct HotkeyStoreHarness {
             try expect(store.mode == .hold, "mode can switch back to hold")
             try expect(defaults.string(forKey: modeKey) == "hold", "hold mode persists to defaults")
 
-            let controlF1 = HotkeyBinding(
-                keyCode: UInt32(kVK_F1),
-                modifiers: UInt32(controlKey),
-                keyLabel: "F1"
-            )
-            store.update(to: controlF1)
+            let rightControl = HotkeyBinding.rightControlBinding
+            store.update(to: rightControl)
             let saved = defaults.data(forKey: bindingKey)
             try expect(saved != nil, "binding persists to defaults")
             let decoded = try JSONDecoder().decode(HotkeyBinding.self, from: saved ?? Data())
-            try expect(decoded == controlF1, "persisted binding decodes")
+            try expect(decoded == rightControl, "persisted binding decodes as right Control")
         }
 
         print("Hotkey store harness passed")

@@ -111,7 +111,9 @@ struct PermissionGateView: View {
 
     private func relaunch() {
         let bundlePath = Bundle.main.bundlePath
-        Process.launchedProcess(launchPath: "/usr/bin/open", arguments: ["-n", bundlePath])
+        let pid = String(ProcessInfo.processInfo.processIdentifier)
+        let script = #"while kill -0 "$1" 2>/dev/null; do sleep 0.1; done; /usr/bin/open "$2""#
+        Process.launchedProcess(launchPath: "/bin/sh", arguments: ["-c", script, "relaunch", pid, bundlePath])
         NSApp.terminate(nil)
     }
 }

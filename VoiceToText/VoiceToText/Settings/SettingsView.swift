@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
@@ -259,6 +260,7 @@ struct HotkeyPane: View {
     @State private var isRecording = false
     @State private var monitor: Any?
     @State private var errorMessage: String?
+    @State private var captureSession = HotkeyCaptureSession()
 
     var body: some View {
         ScrollView {
@@ -335,7 +337,7 @@ struct HotkeyPane: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
-                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), or a function key.")
+                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -363,35 +365,32 @@ struct HotkeyPane: View {
 
     private func startRecording() {
         errorMessage = nil
+        captureSession.reset()
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             handle(event: event)
             return nil
         }
     }
 
     private func handle(event: NSEvent) {
-        // Esc without modifiers cancels
-        let pureModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
-        if event.keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty {
+        switch captureSession.handle(event: event) {
+        case .ignored, .pendingStandaloneModifier:
+            break
+        case .cancelled:
             stopRecording(cancelled: true)
-            return
+        case .captured(let candidate):
+            errorMessage = nil
+            store.update(to: candidate)
+            stopRecording(cancelled: false)
+        case .rejected(let message):
+            errorMessage = message
         }
-
-        let candidate = HotkeyBinding.fromEvent(event)
-
-        // Allow: any combo with at least one modifier, or bare F1-F20.
-        guard candidate.modifiers != 0 || candidate.isFunctionKey else {
-            errorMessage = "Add at least one modifier (⌘ ⌥ ⌃ ⇧), or pick a function key."
-            return
-        }
-
-        store.update(to: candidate)
-        stopRecording(cancelled: false)
     }
 
     private func stopRecording(cancelled: Bool) {
         isRecording = false
+        captureSession.reset()
         if let m = monitor {
             NSEvent.removeMonitor(m)
             monitor = nil
@@ -425,7 +424,9 @@ private struct KeyCap: View {
 
 struct GeneralPane: View {
     @State private var accessibilityGranted = AccessibilityPermission.isGranted
+    @State private var listenEventGranted = ListenEventPermission.isGranted
     @State private var micStatus = MicPermission.status
+    @State private var hotkeyRegistrationRefreshID = 0
     @State private var permissionAlert: PermissionAlert?
     @Bindable private var dictation = DictationController.shared
     @Bindable private var loginItem = LoginItemController.shared
@@ -466,6 +467,9 @@ struct GeneralPane: View {
             refreshPermissions()
             loginItem.refresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
         .alert(item: $permissionAlert) { alert in
             switch alert {
             case .microphone:
@@ -492,8 +496,24 @@ struct GeneralPane: View {
     }
 
     private func refreshPermissions() {
+        let wasAccessibilityGranted = accessibilityGranted
+        let wasListenEventGranted = listenEventGranted
         accessibilityGranted = AccessibilityPermission.isGranted
+        listenEventGranted = ListenEventPermission.isGranted
         micStatus = MicPermission.status
+        if accessibilityGranted && !wasAccessibilityGranted {
+            retryHotkeyRegistration()
+        }
+        if HotkeyStore.shared.binding == .rightControlBinding,
+           listenEventGranted,
+           !wasListenEventGranted {
+            retryHotkeyRegistration()
+        }
+    }
+
+    private func retryHotkeyRegistration() {
+        DictationController.shared.retryHotkeyRegistrationIfNeeded()
+        hotkeyRegistrationRefreshID += 1
     }
 
     private func handleStartTap() {
@@ -609,6 +629,8 @@ struct GeneralPane: View {
     @ViewBuilder
     private var statusCard: some View {
         let isRegistered = HotkeyManager.shared.isRegistered
+        let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
+        let needsListenEventAccess = usesStandaloneRightControl && !listenEventGranted
         RowCard {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -618,16 +640,51 @@ struct GeneralPane: View {
                         Text("Global hotkey")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    Text(isRegistered
-                         ? "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
-                         : "Hotkey registration failed. See logs for details.")
+                    Text(hotkeyStatusMessage(
+                        isRegistered: isRegistered,
+                        usesStandaloneRightControl: usesStandaloneRightControl,
+                        listenEventGranted: listenEventGranted
+                    ))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if !isRegistered {
+                    Button(needsListenEventAccess ? "Open Settings…" : "Retry") {
+                        if needsListenEventAccess {
+                            _ = ListenEventPermission.request()
+                            refreshPermissions()
+                            if ListenEventPermission.isGranted {
+                                retryHotkeyRegistration()
+                            } else {
+                                ListenEventPermission.openSystemSettings()
+                            }
+                        } else {
+                            retryHotkeyRegistration()
+                            refreshPermissions()
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
             .padding(18)
         }
+        .id(hotkeyRegistrationRefreshID)
+    }
+
+    private func hotkeyStatusMessage(
+        isRegistered: Bool,
+        usesStandaloneRightControl: Bool,
+        listenEventGranted: Bool
+    ) -> String {
+        if isRegistered {
+            return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
+        }
+        if usesStandaloneRightControl && !listenEventGranted {
+            return "Right Control needs Input Monitoring permission. Enable VoiceToText in System Settings, then return here."
+        }
+        return "Hotkey registration failed. Retry, or check Accessibility permission."
     }
 
     @ViewBuilder

@@ -28,6 +28,40 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  Tests/HotkeyBindingHarness.swift \
+  -o "$TMPDIR/hotkey-binding-harness"
+"$TMPDIR/hotkey-binding-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/StandaloneModifierHotkeyState.swift \
+  Tests/StandaloneModifierHotkeyHarness.swift \
+  -o "$TMPDIR/standalone-modifier-hotkey-harness"
+"$TMPDIR/standalone-modifier-hotkey-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/StandaloneModifierEventCoordinator.swift \
+  Tests/StandaloneModifierEventCoordinatorHarness.swift \
+  -o "$TMPDIR/standalone-modifier-event-coordinator-harness"
+"$TMPDIR/standalone-modifier-event-coordinator-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyCaptureSession.swift \
+  Tests/HotkeyCaptureHarness.swift \
+  -o "$TMPDIR/hotkey-capture-harness"
+"$TMPDIR/hotkey-capture-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyStoreHarness.swift \
   -o "$TMPDIR/hotkey-store-harness"
 "$TMPDIR/hotkey-store-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/LaunchContext.swift \
+  Tests/LaunchContextHarness.swift \
+  -o "$TMPDIR/launch-context-harness"
+"$TMPDIR/launch-context-harness"

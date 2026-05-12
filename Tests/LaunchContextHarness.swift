@@ -1,0 +1,94 @@
+import AppKit
+import Carbon.HIToolbox
+import Foundation
+
+struct HarnessFailure: Error, CustomStringConvertible {
+    let description: String
+}
+
+private func expect(
+    _ actual: Bool,
+    _ expected: Bool,
+    _ message: String
+) throws {
+    if actual != expected {
+        throw HarnessFailure(description: "\(message): expected \(expected), got \(actual)")
+    }
+}
+
+private func openApplicationEvent(loginItem: Bool?) -> NSAppleEventDescriptor {
+    let event = NSAppleEventDescriptor(
+        eventClass: AEEventClass(kCoreEventClass),
+        eventID: AEEventID(kAEOpenApplication),
+        targetDescriptor: nil,
+        returnID: AEReturnID(kAutoGenerateReturnID),
+        transactionID: AETransactionID(kAnyTransactionID)
+    )
+    if let loginItem {
+        event.setParam(
+            NSAppleEventDescriptor(boolean: loginItem),
+            forKeyword: keyAELaunchedAsLogInItem
+        )
+    }
+    return event
+}
+
+@main
+struct LaunchContextHarness {
+    static func main() throws {
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: false)
+            ),
+            false,
+            "explicit non-login launches stay interactive"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: nil)
+            ),
+            false,
+            "manual launches stay interactive"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: true)
+            ),
+            true,
+            "login-item launches start hidden"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: nil
+            ),
+            false,
+            "default launches stay visible"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: nil,
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: false]
+            ),
+            true,
+            "notification metadata preserves login-item fallback"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: nil,
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: true]
+            ),
+            false,
+            "default notification launches stay visible"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: false),
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: false]
+            ),
+            false,
+            "explicit apple-event metadata wins over notification fallback"
+        )
+
+        print("Launch context harness passed")
+    }
+}

@@ -11,6 +11,10 @@ struct RecordingStartGate {
         pendingHoldStartID != nil
     }
 
+    var hasActiveStart: Bool {
+        activeStartID != nil
+    }
+
     mutating func beginStart(pendingHold: Bool) -> StartID {
         nextID += 1
         activeStartID = nextID
@@ -23,6 +27,11 @@ struct RecordingStartGate {
         if activeStartID == id {
             activeStartID = nil
         }
+        pendingHoldStartID = nil
+    }
+
+    mutating func cancelActiveStart() {
+        activeStartID = nil
         pendingHoldStartID = nil
     }
 

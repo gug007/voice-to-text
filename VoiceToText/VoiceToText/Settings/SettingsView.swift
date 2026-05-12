@@ -7,7 +7,7 @@ struct SettingsView: View {
     @State private var selection: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, models, hotkey, transcription, updates
+        case general, hotkey, models, transcription, updates
         var id: String { rawValue }
         var title: String {
             switch self {

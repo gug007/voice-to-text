@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Carbon.HIToolbox
 import SwiftUI
@@ -466,6 +467,9 @@ struct GeneralPane: View {
             refreshPermissions()
             loginItem.refresh()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            refreshPermissions()
+        }
         .alert(item: $permissionAlert) { alert in
             switch alert {
             case .microphone:
@@ -493,12 +497,23 @@ struct GeneralPane: View {
 
     private func refreshPermissions() {
         let wasAccessibilityGranted = accessibilityGranted
+        let wasListenEventGranted = listenEventGranted
         accessibilityGranted = AccessibilityPermission.isGranted
         listenEventGranted = ListenEventPermission.isGranted
         micStatus = MicPermission.status
         if accessibilityGranted && !wasAccessibilityGranted {
-            DictationController.shared.retryHotkeyRegistrationIfNeeded()
+            retryHotkeyRegistration()
         }
+        if HotkeyStore.shared.binding == .rightControlBinding,
+           listenEventGranted,
+           !wasListenEventGranted {
+            retryHotkeyRegistration()
+        }
+    }
+
+    private func retryHotkeyRegistration() {
+        DictationController.shared.retryHotkeyRegistrationIfNeeded()
+        hotkeyRegistrationRefreshID += 1
     }
 
     private func handleStartTap() {
@@ -635,9 +650,8 @@ struct GeneralPane: View {
                 Spacer()
                 if !isRegistered {
                     Button("Retry") {
-                        DictationController.shared.retryHotkeyRegistrationIfNeeded()
+                        retryHotkeyRegistration()
                         refreshPermissions()
-                        hotkeyRegistrationRefreshID += 1
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)

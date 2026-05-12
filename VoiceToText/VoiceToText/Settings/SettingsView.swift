@@ -337,7 +337,7 @@ struct HotkeyPane: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
-                    Text("Choose any key, standalone modifier, or key combination.")
+                    Text("Choose any key, standalone ⌘ ⌥ ⌃ ⇧ key, or key combination.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }

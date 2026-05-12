@@ -68,7 +68,6 @@ security import "$TMP/cert.p12" \
     -k "$KEYCHAIN" \
     -f pkcs12 \
     -t agg \
-    -A \
     -T /usr/bin/codesign \
     -T /usr/bin/security \
     -P "$P12_PASS" 2>&1 | tail -3

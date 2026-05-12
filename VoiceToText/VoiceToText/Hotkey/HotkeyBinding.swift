@@ -86,7 +86,8 @@ struct HotkeyBinding: Codable, Equatable {
 
     static func isReleaseOfModifier(_ binding: HotkeyBinding, event: NSEvent) -> Bool {
         guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
-        return descriptor.matches(event: event) && !modifierIsDown(binding, in: event)
+        return descriptor.matches(event: event)
+            && event.modifierFlags.rawValue & descriptor.deviceMask == 0
     }
 
     static func otherModifiersAreDown(than binding: HotkeyBinding, in event: NSEvent) -> Bool {

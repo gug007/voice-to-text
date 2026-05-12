@@ -83,6 +83,27 @@ struct HotkeyBindingHarness {
             keyLabel: "Right Command"
         )
         try expect(rightCommand.isStandaloneModifier, "right Command is marked as standalone modifier")
+        try expect(
+            HotkeyBinding.modifierIsDown(
+                rightCommand,
+                rawModifierFlags: UInt64(NX_DEVICERCMDKEYMASK)
+            ),
+            "right Command raw device flag is recognized as down"
+        )
+        try expect(
+            !HotkeyBinding.modifierIsDown(
+                rightCommand,
+                rawModifierFlags: UInt64(NX_DEVICELCMDKEYMASK)
+            ),
+            "left Command raw device flag does not count as right Command down"
+        )
+        try expect(
+            HotkeyBinding.otherModifiersAreDown(
+                than: rightCommand,
+                rawModifierFlags: UInt64(NX_DEVICERCMDKEYMASK | NX_DEVICELSHIFTKEYMASK)
+            ),
+            "raw flags detect another modifier held with right Command"
+        )
 
         let defaultBinding = HotkeyBinding.defaultBinding
         try expect(!defaultBinding.isStandaloneModifier, "default Option+Space is not standalone modifier")

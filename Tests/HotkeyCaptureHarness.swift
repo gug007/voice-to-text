@@ -55,6 +55,7 @@ struct HotkeyCaptureHarness {
         try existingModifierSuppressesStandaloneRightControlCapture()
         try existingLeftControlSuppressesStandaloneRightControlCapture()
         try capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown()
+        try capturesRightControlReleaseEvenWhenAggregateControlFlagRemains()
         try escapeCancelsCapture()
         print("Hotkey capture harness passed")
     }
@@ -341,6 +342,27 @@ struct HotkeyCaptureHarness {
         try expect(
             session.handle(event: rightControlUpWithLeftControlStillDown) == .captured(.rightControlBinding),
             "right Control release captures standalone even if another Control key remains down"
+        )
+    }
+
+    private static func capturesRightControlReleaseEvenWhenAggregateControlFlagRemains() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: rightControlModifierFlags.union(.control)
+        )
+        _ = session.handle(event: rightControlDown)
+
+        let rightControlUpWithLeftControlStillDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: leftControlModifierFlags.union(.control)
+        )
+        try expect(
+            session.handle(event: rightControlUpWithLeftControlStillDown) == .captured(.rightControlBinding),
+            "right Control release captures standalone even if aggregate Control remains from left Control"
         )
     }
 

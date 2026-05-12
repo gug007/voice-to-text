@@ -65,3 +65,9 @@ swiftc -parse-as-library \
   Tests/LaunchContextHarness.swift \
   -o "$TMPDIR/launch-context-harness"
 "$TMPDIR/launch-context-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/GitHubLatestReleaseLocator.swift \
+  Tests/GitHubLatestReleaseLocatorHarness.swift \
+  -o "$TMPDIR/github-latest-release-locator-harness"
+"$TMPDIR/github-latest-release-locator-harness"

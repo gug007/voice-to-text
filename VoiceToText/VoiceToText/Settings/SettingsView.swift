@@ -379,6 +379,7 @@ struct HotkeyPane: View {
         case .cancelled:
             stopRecording(cancelled: true)
         case .captured(let candidate):
+            errorMessage = nil
             store.update(to: candidate)
             stopRecording(cancelled: false)
         case .rejected(let message):
@@ -489,8 +490,12 @@ struct GeneralPane: View {
     }
 
     private func refreshPermissions() {
+        let wasAccessibilityGranted = accessibilityGranted
         accessibilityGranted = AccessibilityPermission.isGranted
         micStatus = MicPermission.status
+        if accessibilityGranted && !wasAccessibilityGranted {
+            DictationController.shared.retryHotkeyRegistrationIfNeeded()
+        }
     }
 
     private func handleStartTap() {

@@ -69,6 +69,11 @@ final class DictationController {
         }
     }
 
+    func retryHotkeyRegistrationIfNeeded() {
+        guard !HotkeyManager.shared.isRegistered else { return }
+        registerCurrentBinding()
+    }
+
     private func registerCurrentBinding() {
         let binding = HotkeyStore.shared.binding
         HotkeyManager.shared.register(binding: binding) { [weak self] event in

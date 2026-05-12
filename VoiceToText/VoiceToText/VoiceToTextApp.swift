@@ -63,9 +63,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     static var wasLaunchedAtLogin = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        let launchIsDefault = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
-            launchIsDefault: launchIsDefault,
             appleEvent: NSAppleEventManager.shared().currentAppleEvent
         )
         guard Self.wasLaunchedAtLogin else { return }

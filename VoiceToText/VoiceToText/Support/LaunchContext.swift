@@ -4,7 +4,6 @@ import Foundation
 
 enum LaunchContext {
     static func shouldHideMainWindowOnLaunch(
-        launchIsDefault _: Bool?,
         appleEvent: NSAppleEventDescriptor?
     ) -> Bool {
         isLoginItemLaunch(appleEvent: appleEvent)

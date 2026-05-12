@@ -13,7 +13,10 @@ final class HotkeyManager {
     private let signature: OSType = OSType(0x56544C48)
     private let hotKeyId: UInt32 = 1
     private var handler: Handler?
-    private var standaloneModifierIsDown = false
+    private var standaloneModifierState = StandaloneModifierHotkeyState(
+        modifierKeyCode: UInt16(kVK_RightControl)
+    )
+    private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
 
     static let shared = HotkeyManager()
@@ -90,7 +93,10 @@ final class HotkeyManager {
         guard binding == .rightControlBinding else { return }
 
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-        let mask = CGEventMask(1 << CGEventType.flagsChanged.rawValue)
+        let mask = CGEventMask(
+            (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.keyDown.rawValue)
+        )
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .tailAppendEventTap,
@@ -100,9 +106,9 @@ final class HotkeyManager {
                 guard let userData else { return Unmanaged.passUnretained(event) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
-                let modifierFlags = event.flags
+                let type = event.type
                 DispatchQueue.main.async {
-                    manager.handleStandaloneModifierEvent(keyCode: keyCode, modifierFlags: modifierFlags)
+                    manager.handleStandaloneModifierEvent(type: type, keyCode: keyCode)
                 }
                 return Unmanaged.passUnretained(event)
             },
@@ -121,19 +127,44 @@ final class HotkeyManager {
         AppLog.app.info("Standalone modifier hotkey registered: keyCode=\(binding.keyCode)")
     }
 
-    private func handleStandaloneModifierEvent(keyCode: UInt16, modifierFlags: CGEventFlags) {
-        guard keyCode == UInt16(kVK_RightControl) else { return }
+    private func handleStandaloneModifierEvent(type: CGEventType, keyCode: UInt16) {
+        let effects: [StandaloneModifierHotkeyEffect]
+        switch type {
+        case .flagsChanged:
+            effects = standaloneModifierState.handleFlagsChanged(keyCode: keyCode)
+        case .keyDown:
+            effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
+        default:
+            effects = []
+        }
+        applyStandaloneModifierEffects(effects)
+    }
 
-        let isDown = modifierFlags.contains(.maskControl)
-        guard isDown != standaloneModifierIsDown else { return }
+    private func applyStandaloneModifierEffects(_ effects: [StandaloneModifierHotkeyEffect]) {
+        for effect in effects {
+            switch effect {
+            case .schedulePress(let token):
+                standaloneModifierPressWorkItem?.cancel()
+                let workItem = DispatchWorkItem { [weak self] in
+                    guard let self else { return }
+                    let delayedEffects = self.standaloneModifierState.fireScheduledPress(token: token)
+                    self.applyStandaloneModifierEffects(delayedEffects)
+                }
+                standaloneModifierPressWorkItem = workItem
+                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(120), execute: workItem)
 
-        standaloneModifierIsDown = isDown
-        if isDown {
-            AppLog.app.info("Standalone modifier hotkey pressed")
-            handler?(.pressed)
-        } else {
-            AppLog.app.info("Standalone modifier hotkey released")
-            handler?(.released)
+            case .cancelScheduledPress:
+                standaloneModifierPressWorkItem?.cancel()
+                standaloneModifierPressWorkItem = nil
+
+            case .emitPressed:
+                AppLog.app.info("Standalone modifier hotkey pressed")
+                handler?(.pressed)
+
+            case .emitReleased:
+                AppLog.app.info("Standalone modifier hotkey released")
+                handler?(.released)
+            }
         }
     }
 
@@ -168,8 +199,8 @@ final class HotkeyManager {
             CFMachPortInvalidate(modifierEventTap)
             self.modifierEventTap = nil
         }
+        applyStandaloneModifierEffects(standaloneModifierState.reset())
         handler = nil
-        standaloneModifierIsDown = false
         isRegistered = false
     }
 }

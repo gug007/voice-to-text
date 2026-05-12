@@ -38,7 +38,6 @@ struct LaunchContextHarness {
     static func main() throws {
         try expect(
             LaunchContext.shouldHideMainWindowOnLaunch(
-                launchIsDefault: false,
                 appleEvent: openApplicationEvent(loginItem: false)
             ),
             false,
@@ -46,7 +45,6 @@ struct LaunchContextHarness {
         )
         try expect(
             LaunchContext.shouldHideMainWindowOnLaunch(
-                launchIsDefault: nil,
                 appleEvent: openApplicationEvent(loginItem: true)
             ),
             true,
@@ -54,7 +52,6 @@ struct LaunchContextHarness {
         )
         try expect(
             LaunchContext.shouldHideMainWindowOnLaunch(
-                launchIsDefault: true,
                 appleEvent: nil
             ),
             false,

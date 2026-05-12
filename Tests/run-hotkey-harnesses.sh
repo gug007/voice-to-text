@@ -33,6 +33,12 @@ swiftc -parse-as-library \
 "$TMPDIR/hotkey-binding-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/StandaloneModifierHotkeyState.swift \
+  Tests/StandaloneModifierHotkeyHarness.swift \
+  -o /tmp/voice-to-text-standalone-modifier-hotkey-harness
+/tmp/voice-to-text-standalone-modifier-hotkey-harness
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyCaptureSession.swift \

@@ -26,7 +26,8 @@ final class DictationController {
     private var elapsedTask: Task<Void, Never>?
     private var reviewEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
-    private var recordingGlobalEscMonitor: Any?
+    private var recordingEscEventTap: CFMachPort?
+    private var recordingEscRunLoopSource: CFRunLoopSource?
     private var recordingStartGate = RecordingStartGate()
 
     private var reviewBeforePaste: Bool {
@@ -160,13 +161,48 @@ final class DictationController {
             Task { @MainActor in self?.handleHotkeyEvent(.escape) }
             return nil
         }
-        recordingGlobalEscMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard RecordingEscapePolicy.shouldCancel(
-                keyCode: event.keyCode,
-                modifierFlags: event.modifierFlags
-            ) else { return }
-            Task { @MainActor in self?.handleHotkeyEvent(.escape) }
+
+        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
+        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: { _, type, event, userData in
+                guard let userData else { return Unmanaged.passUnretained(event) }
+                let controller = Unmanaged<DictationController>.fromOpaque(userData).takeUnretainedValue()
+
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    DispatchQueue.main.async { controller.enableRecordingEscEventTap() }
+                    return Unmanaged.passUnretained(event)
+                }
+
+                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+                guard RecordingEscapePolicy.shouldCancel(keyCode: keyCode, modifierFlags: flags) else {
+                    return Unmanaged.passUnretained(event)
+                }
+
+                DispatchQueue.main.async { controller.handleHotkeyEvent(.escape) }
+                return nil
+            },
+            userInfo: selfPtr
+        ) else {
+            AppLog.dictation.error("Recording Escape event tap creation failed")
+            return
         }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        recordingEscEventTap = tap
+        recordingEscRunLoopSource = source
+        enableRecordingEscEventTap()
+    }
+
+    private func enableRecordingEscEventTap() {
+        guard let recordingEscEventTap else { return }
+        CGEvent.tapEnable(tap: recordingEscEventTap, enable: true)
     }
 
     private func removeRecordingEscMonitors() {
@@ -174,9 +210,13 @@ final class DictationController {
             NSEvent.removeMonitor(recordingLocalEscMonitor)
             self.recordingLocalEscMonitor = nil
         }
-        if let recordingGlobalEscMonitor {
-            NSEvent.removeMonitor(recordingGlobalEscMonitor)
-            self.recordingGlobalEscMonitor = nil
+        if let recordingEscRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), recordingEscRunLoopSource, .commonModes)
+            self.recordingEscRunLoopSource = nil
+        }
+        if let recordingEscEventTap {
+            CFMachPortInvalidate(recordingEscEventTap)
+            self.recordingEscEventTap = nil
         }
     }
 

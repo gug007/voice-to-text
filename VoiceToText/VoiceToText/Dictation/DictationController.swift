@@ -8,10 +8,16 @@ import OSLog
 private final class RecordingEscapeEventTapContext {
     weak var controller: DictationController?
     let swallowState: RecordingEscapeSwallowState
+    let allowedModifierFlags: NSEvent.ModifierFlags
 
-    init(controller: DictationController, swallowState: RecordingEscapeSwallowState) {
+    init(
+        controller: DictationController,
+        swallowState: RecordingEscapeSwallowState,
+        allowedModifierFlags: NSEvent.ModifierFlags
+    ) {
         self.controller = controller
         self.swallowState = swallowState
+        self.allowedModifierFlags = allowedModifierFlags
     }
 }
 
@@ -179,6 +185,7 @@ final class DictationController {
     private func installRecordingEscMonitors() -> Bool {
         removeRecordingEscMonitors()
         let escapeSwallowState = recordingEscapeSwallowState
+        let allowedModifierFlags = recordingEscapeAllowedModifierFlags
         recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             if event.type == .keyUp,
                RecordingEscapePolicy.isEscape(keyCode: event.keyCode),
@@ -189,7 +196,8 @@ final class DictationController {
 
             guard RecordingEscapePolicy.shouldCancel(
                 keyCode: event.keyCode,
-                modifierFlags: event.modifierFlags
+                modifierFlags: event.modifierFlags,
+                allowedModifierFlags: allowedModifierFlags
             ) else { return event }
             if escapeSwallowState.begin() {
                 Task { @MainActor in self?.cancelRecordingFromEscape() }
@@ -199,7 +207,8 @@ final class DictationController {
 
         let context = RecordingEscapeEventTapContext(
             controller: self,
-            swallowState: recordingEscapeSwallowState
+            swallowState: recordingEscapeSwallowState,
+            allowedModifierFlags: allowedModifierFlags
         )
         recordingEscEventTapContext = context
         let contextPtr = Unmanaged.passUnretained(context).toOpaque()
@@ -231,7 +240,11 @@ final class DictationController {
                 }
 
                 let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-                guard RecordingEscapePolicy.shouldCancel(keyCode: keyCode, modifierFlags: flags) else {
+                guard RecordingEscapePolicy.shouldCancel(
+                    keyCode: keyCode,
+                    modifierFlags: flags,
+                    allowedModifierFlags: context.allowedModifierFlags
+                ) else {
                     return Unmanaged.passUnretained(event)
                 }
 
@@ -253,6 +266,20 @@ final class DictationController {
         recordingEscRunLoopSource = source
         enableRecordingEscEventTap()
         return true
+    }
+
+    private var recordingEscapeAllowedModifierFlags: NSEvent.ModifierFlags {
+        guard HotkeyStore.shared.mode == .hold else { return [] }
+        return Self.eventModifierFlags(forCarbonModifiers: HotkeyStore.shared.binding.modifiers)
+    }
+
+    private static func eventModifierFlags(forCarbonModifiers modifiers: UInt32) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        return flags
     }
 
     private func enableRecordingEscEventTap() {

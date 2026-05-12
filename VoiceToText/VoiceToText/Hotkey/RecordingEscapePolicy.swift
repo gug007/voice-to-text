@@ -2,9 +2,23 @@ import AppKit
 import Carbon.HIToolbox
 
 enum RecordingEscapePolicy {
-    static func shouldCancel(keyCode: UInt16, modifierFlags: NSEvent.ModifierFlags) -> Bool {
-        let pureModifiers = modifierFlags.intersection([.command, .option, .control, .shift])
-        return keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty
+    private static let shortcutModifierFlags: NSEvent.ModifierFlags = [
+        .command,
+        .option,
+        .control,
+        .shift,
+    ]
+
+    static func shouldCancel(
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags,
+        allowedModifierFlags: NSEvent.ModifierFlags = []
+    ) -> Bool {
+        guard keyCode == UInt16(kVK_Escape) else { return false }
+
+        let activeModifiers = modifierFlags.intersection(shortcutModifierFlags)
+        let allowedModifiers = allowedModifierFlags.intersection(shortcutModifierFlags)
+        return activeModifiers.subtracting(allowedModifiers).isEmpty
     }
 
     static func isEscape(keyCode: UInt16) -> Bool {

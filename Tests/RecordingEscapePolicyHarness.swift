@@ -24,6 +24,22 @@ struct RecordingEscapePolicyHarness {
             "modified Escape is left available for configured shortcuts"
         )
         try expect(
+            RecordingEscapePolicy.shouldCancel(
+                keyCode: UInt16(kVK_Escape),
+                modifierFlags: .option,
+                allowedModifierFlags: .option
+            ),
+            "Escape with the held hold-mode hotkey modifier cancels recording"
+        )
+        try expect(
+            !RecordingEscapePolicy.shouldCancel(
+                keyCode: UInt16(kVK_Escape),
+                modifierFlags: [.option, .command],
+                allowedModifierFlags: .option
+            ),
+            "Escape with extra modifiers still passes through"
+        )
+        try expect(
             !RecordingEscapePolicy.shouldCancel(keyCode: UInt16(kVK_ANSI_M), modifierFlags: []),
             "non-Escape keys do not cancel recording"
         )

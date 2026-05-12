@@ -45,8 +45,10 @@ struct RecordingStartGateHarness {
         var gate = RecordingStartGate()
 
         let start = gate.beginStart(pendingHold: false)
+        try expect(gate.hasActiveStart, "toggle preparation creates a hidden active start")
         try expect(!gate.hasPendingHoldStart, "toggle start is not a pending hold")
         gate.cancelActiveStart()
+        try expect(!gate.hasActiveStart, "cancellation clears hidden active start")
         try expect(!gate.accepts(start), "cancelled toggle preparation cannot continue")
     }
 }

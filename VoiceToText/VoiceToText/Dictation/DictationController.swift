@@ -110,6 +110,11 @@ final class DictationController {
         _ event: DictationHotkeyEvent,
         mode: RecordingShortcutMode
     ) {
+        if event == .cancel, recordingStartGate.hasActiveStart {
+            cancelPendingRecording()
+            return
+        }
+
         if mode == .hold {
             if event == .pressed, recordingStartGate.hasPendingHoldStart {
                 return

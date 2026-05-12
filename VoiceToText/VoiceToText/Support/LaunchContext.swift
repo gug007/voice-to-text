@@ -14,6 +14,9 @@ enum LaunchContext {
               appleEvent.eventID == kAEOpenApplication else {
             return false
         }
-        return appleEvent.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
+        guard let descriptor = appleEvent.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) else {
+            return false
+        }
+        return descriptor.descriptorType == typeBoolean ? descriptor.booleanValue : true
     }
 }

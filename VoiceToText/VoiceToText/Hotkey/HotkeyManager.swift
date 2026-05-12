@@ -166,11 +166,11 @@ final class HotkeyManager {
 
             case .emitPressed:
                 AppLog.app.info("Standalone modifier hotkey pressed")
-                handler?(.pressed)
+                handler?(.standalonePressed)
 
             case .emitReleased:
                 AppLog.app.info("Standalone modifier hotkey released")
-                handler?(.released)
+                handler?(.standaloneReleased)
 
             case .emitCancelled:
                 AppLog.app.info("Standalone modifier hotkey cancelled")

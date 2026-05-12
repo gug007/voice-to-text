@@ -51,6 +51,7 @@ final class DictationController {
     @ObservationIgnored
     private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
+    private var standaloneModifierEventCoordinator = StandaloneModifierEventCoordinator()
 
     private var reviewBeforePaste: Bool {
         UserDefaults.standard.bool(forKey: "review.beforePaste")
@@ -95,6 +96,20 @@ final class DictationController {
     func handleHotkeyEvent(_ event: DictationHotkeyEvent) {
         AppLog.dictation.info("hotkey event \(String(describing: event)), current state=\(String(describing: self.state))")
         let mode = HotkeyStore.shared.mode
+        let events = standaloneModifierEventCoordinator.normalize(
+            event: event,
+            mode: mode,
+            state: hotkeyState
+        )
+        for normalizedEvent in events {
+            handleNormalizedHotkeyEvent(normalizedEvent, mode: mode)
+        }
+    }
+
+    private func handleNormalizedHotkeyEvent(
+        _ event: DictationHotkeyEvent,
+        mode: RecordingShortcutMode
+    ) {
         if mode == .hold {
             if event == .pressed, recordingStartGate.hasPendingHoldStart {
                 return
@@ -164,6 +179,7 @@ final class DictationController {
     }
 
     private func stopRecording(cancelledByEscape: Bool) {
+        standaloneModifierEventCoordinator.reset()
         recordingStartGate.reset()
         stopElapsedTicker()
         if !cancelledByEscape {
@@ -176,6 +192,7 @@ final class DictationController {
 
     private func cancelPendingRecording() {
         AppLog.dictation.info("Pending recording cancelled")
+        standaloneModifierEventCoordinator.reset()
         recordingStartGate.cancelPendingHoldStart()
         if case .preparing = state {
             state = .idle
@@ -440,6 +457,7 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
+        standaloneModifierEventCoordinator.reset()
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()

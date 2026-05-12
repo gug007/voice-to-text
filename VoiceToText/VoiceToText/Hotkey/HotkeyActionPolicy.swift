@@ -18,6 +18,8 @@ enum DictationHotkeyEvent {
     case pressed
     case released
     case escape
+    case standalonePressed
+    case standaloneReleased
     case cancel
 }
 

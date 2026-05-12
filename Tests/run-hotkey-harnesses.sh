@@ -35,8 +35,15 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/StandaloneModifierHotkeyState.swift \
   Tests/StandaloneModifierHotkeyHarness.swift \
-  -o /tmp/voice-to-text-standalone-modifier-hotkey-harness
-/tmp/voice-to-text-standalone-modifier-hotkey-harness
+  -o "$TMPDIR/standalone-modifier-hotkey-harness"
+"$TMPDIR/standalone-modifier-hotkey-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
+  VoiceToText/VoiceToText/Hotkey/StandaloneModifierEventCoordinator.swift \
+  Tests/StandaloneModifierEventCoordinatorHarness.swift \
+  -o "$TMPDIR/standalone-modifier-event-coordinator-harness"
+"$TMPDIR/standalone-modifier-event-coordinator-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \

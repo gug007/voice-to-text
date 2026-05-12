@@ -16,7 +16,7 @@ private func expect(
     }
 }
 
-private func openApplicationEvent(loginItem: Bool) -> NSAppleEventDescriptor {
+private func openApplicationEvent(loginItem: Bool?) -> NSAppleEventDescriptor {
     let event = NSAppleEventDescriptor(
         eventClass: AEEventClass(kCoreEventClass),
         eventID: AEEventID(kAEOpenApplication),
@@ -24,9 +24,9 @@ private func openApplicationEvent(loginItem: Bool) -> NSAppleEventDescriptor {
         returnID: AEReturnID(kAutoGenerateReturnID),
         transactionID: AETransactionID(kAnyTransactionID)
     )
-    if loginItem {
+    if let loginItem {
         event.setParam(
-            NSAppleEventDescriptor(boolean: true),
+            NSAppleEventDescriptor(boolean: loginItem),
             forKeyword: keyAELaunchedAsLogInItem
         )
     }
@@ -41,7 +41,14 @@ struct LaunchContextHarness {
                 appleEvent: openApplicationEvent(loginItem: false)
             ),
             false,
-            "manual non-default launches stay interactive"
+            "explicit non-login launches stay interactive"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: nil)
+            ),
+            false,
+            "manual launches stay interactive"
         )
         try expect(
             LaunchContext.shouldHideMainWindowOnLaunch(

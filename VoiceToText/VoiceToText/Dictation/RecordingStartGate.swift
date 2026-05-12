@@ -26,6 +26,11 @@ struct RecordingStartGate {
         pendingHoldStartID = nil
     }
 
+    mutating func cancelActiveStart() {
+        activeStartID = nil
+        pendingHoldStartID = nil
+    }
+
     func accepts(_ id: StartID) -> Bool {
         activeStartID == id
     }

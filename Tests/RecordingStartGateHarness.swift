@@ -15,6 +15,7 @@ struct RecordingStartGateHarness {
     static func main() throws {
         try quickReleaseCancelsOnlyTheFirstStart()
         try releaseDuringPreparationInvalidatesTheActiveStart()
+        try cancellationInvalidatesTogglePreparation()
         print("Recording start gate harness passed")
     }
 
@@ -38,5 +39,14 @@ struct RecordingStartGateHarness {
         gate.cancelPendingHoldStart()
         try expect(!gate.hasPendingHoldStart, "release clears pending hold state")
         try expect(!gate.accepts(start), "cancelled preparation cannot continue")
+    }
+
+    private static func cancellationInvalidatesTogglePreparation() throws {
+        var gate = RecordingStartGate()
+
+        let start = gate.beginStart(pendingHold: false)
+        try expect(!gate.hasPendingHoldStart, "toggle start is not a pending hold")
+        gate.cancelActiveStart()
+        try expect(!gate.accepts(start), "cancelled toggle preparation cannot continue")
     }
 }

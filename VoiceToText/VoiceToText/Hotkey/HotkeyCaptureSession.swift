@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import IOKit.hidsystem
 
 enum HotkeyCaptureOutcome: Equatable {
     case ignored
@@ -61,8 +62,11 @@ struct HotkeyCaptureSession {
         }
 
         let nonControlModifiers = event.modifierFlags.intersection([.command, .option, .shift])
+        let leftControlIsDown = event.modifierFlags.rawValue & UInt(NX_DEVICELCTLKEYMASK) != 0
+        let rightControlIsDown = event.modifierFlags.rawValue & UInt(NX_DEVICERCTLKEYMASK) != 0
         if event.keyCode == UInt16(kVK_RightControl),
-           !nonControlModifiers.isEmpty {
+           rightControlIsDown,
+           (!nonControlModifiers.isEmpty || leftControlIsDown) {
             pendingStandaloneModifier = nil
             suppressStandaloneModifierUntilRelease = true
             return .ignored

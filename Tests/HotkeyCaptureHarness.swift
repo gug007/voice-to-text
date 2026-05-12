@@ -12,6 +12,12 @@ private func expect(_ condition: Bool, _ message: String) throws {
     }
 }
 
+private let leftControlModifierFlags = NSEvent.ModifierFlags(rawValue: UInt(NX_DEVICELCTLKEYMASK))
+private let rightControlModifierFlags = NSEvent.ModifierFlags(rawValue: UInt(NX_DEVICERCTLKEYMASK))
+private let bothControlModifierFlags = NSEvent.ModifierFlags(
+    rawValue: UInt(NX_DEVICELCTLKEYMASK | NX_DEVICERCTLKEYMASK)
+)
+
 private func keyEvent(
     type: NSEvent.EventType,
     keyCode: Int,
@@ -43,6 +49,7 @@ struct HotkeyCaptureHarness {
         try capturesRightControlChordWhenAnotherKeyIsPressed()
         try modifierChordCancelsStandaloneRightControlCapture()
         try existingModifierSuppressesStandaloneRightControlCapture()
+        try existingLeftControlSuppressesStandaloneRightControlCapture()
         try capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown()
         try escapeCancelsCapture()
         print("Hotkey capture harness passed")
@@ -54,7 +61,7 @@ struct HotkeyCaptureHarness {
         let rightControlDown = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: .control
+            modifiers: rightControlModifierFlags
         )
         try expect(
             session.handle(event: rightControlDown) == .pendingStandaloneModifier,
@@ -78,7 +85,7 @@ struct HotkeyCaptureHarness {
         let rightControlDown = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: .control
+            modifiers: rightControlModifierFlags
         )
         _ = session.handle(event: rightControlDown)
 
@@ -115,7 +122,7 @@ struct HotkeyCaptureHarness {
         let rightControlDown = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: .control
+            modifiers: rightControlModifierFlags
         )
         _ = session.handle(event: rightControlDown)
 
@@ -146,7 +153,7 @@ struct HotkeyCaptureHarness {
         let rightControlDownWithOptionHeld = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: [.control, .option]
+            modifiers: rightControlModifierFlags.union(.option)
         )
         try expect(
             session.handle(event: rightControlDownWithOptionHeld) == .ignored,
@@ -164,20 +171,44 @@ struct HotkeyCaptureHarness {
         )
     }
 
+    private static func existingLeftControlSuppressesStandaloneRightControlCapture() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightControlDownWithLeftControlHeld = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: bothControlModifierFlags
+        )
+        try expect(
+            session.handle(event: rightControlDownWithLeftControlHeld) == .ignored,
+            "right Control down while left Control is held is not pending standalone"
+        )
+
+        let rightControlUpWithLeftControlHeld = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: leftControlModifierFlags
+        )
+        try expect(
+            session.handle(event: rightControlUpWithLeftControlHeld) == .ignored,
+            "right Control release after existing left Control does not capture standalone"
+        )
+    }
+
     private static func capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown() throws {
         var session = HotkeyCaptureSession()
 
         let rightControlDown = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: .control
+            modifiers: rightControlModifierFlags
         )
         _ = session.handle(event: rightControlDown)
 
         let rightControlUpWithLeftControlStillDown = try keyEvent(
             type: .flagsChanged,
             keyCode: kVK_RightControl,
-            modifiers: .control
+            modifiers: leftControlModifierFlags
         )
         try expect(
             session.handle(event: rightControlUpWithLeftControlStillDown) == .captured(.rightControlBinding),

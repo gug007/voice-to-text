@@ -33,8 +33,9 @@ final class HotkeyManager {
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
     private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
-    private let nonControlModifierDeviceMask = UInt64(
-        NX_DEVICELSHIFTKEYMASK
+    private let otherModifierDeviceMask = UInt64(
+        NX_DEVICELCTLKEYMASK
+            | NX_DEVICELSHIFTKEYMASK
             | NX_DEVICERSHIFTKEYMASK
             | NX_DEVICELCMDKEYMASK
             | NX_DEVICERCMDKEYMASK
@@ -148,7 +149,7 @@ final class HotkeyManager {
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let rawMouseButtonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
                 let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
-                let hasOtherModifierDown = event.flags.rawValue & manager.nonControlModifierDeviceMask != 0
+                let hasOtherModifierDown = event.flags.rawValue & manager.otherModifierDeviceMask != 0
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(
                         type: type,

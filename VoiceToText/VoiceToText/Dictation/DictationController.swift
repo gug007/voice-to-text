@@ -193,7 +193,7 @@ final class DictationController {
     private func cancelPendingRecording() {
         AppLog.dictation.info("Pending recording cancelled")
         standaloneModifierEventCoordinator.reset()
-        recordingStartGate.cancelPendingHoldStart()
+        recordingStartGate.cancelActiveStart()
         if case .preparing = state {
             state = .idle
         }

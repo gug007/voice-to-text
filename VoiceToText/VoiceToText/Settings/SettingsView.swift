@@ -737,7 +737,7 @@ struct GeneralPane: View {
             return "Click Start, or use \(hk) from any app."
         case .preparing: return "Downloading or loading the active model."
         case .recording:
-            return "Release the shortcut, press it again, press Esc, or click Stop when you're done speaking."
+            return "Release the shortcut, press it again, or click Stop when you're done speaking."
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
         case .error(let message): return message

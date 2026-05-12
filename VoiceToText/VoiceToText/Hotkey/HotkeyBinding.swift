@@ -136,7 +136,6 @@ final class HotkeyStore {
         guard new != mode else { return }
         mode = new
         saveMode()
-        onChange?()
     }
 
     func resetToDefault() {

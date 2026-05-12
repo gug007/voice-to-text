@@ -11,6 +11,12 @@ swiftc -parse-as-library \
 /tmp/voice-to-text-hotkey-behavior-harness
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Dictation/RecordingStartGate.swift \
+  Tests/RecordingStartGateHarness.swift \
+  -o /tmp/voice-to-text-recording-start-gate-harness
+/tmp/voice-to-text-recording-start-gate-harness
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyStoreHarness.swift \

@@ -121,6 +121,9 @@ final class ModelRegistry {
     @ObservationIgnored
     private var engines: [String: TranscriptionEngine] = [:]
 
+    @ObservationIgnored
+    private var preparationTasks: [String: Task<TranscriptionEngine?, Never>] = [:]
+
     private init() {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             ?? "parakeet-tdt-v3"
@@ -183,26 +186,40 @@ final class ModelRegistry {
             return existing
         }
 
+        if let existingTask = preparationTasks[id] {
+            return await existingTask.value
+        }
+
         readiness[id] = .preparing(fraction: 0.0, message: "Starting…")
         let engine = makeEngine(for: descriptor)
-        do {
-            try await engine.prepare { [weak self] fraction, message in
-                Task { @MainActor in
-                    guard let self else { return }
-                    self.readiness[id] = .preparing(fraction: fraction, message: message)
+
+        let task = Task<TranscriptionEngine?, Never> { @MainActor [weak self] in
+            guard let self else { return nil }
+            do {
+                try await engine.prepare { [weak self] fraction, message in
+                    Task { @MainActor in
+                        guard let self else { return }
+                        self.readiness[id] = .preparing(fraction: fraction, message: message)
+                    }
                 }
+                self.engines[id] = engine
+                self.readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
+                return engine
+            } catch {
+                self.readiness[id] = .failed(error.localizedDescription)
+                return nil
             }
-            engines[id] = engine
-            readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
-            return engine
-        } catch {
-            readiness[id] = .failed(error.localizedDescription)
-            return nil
         }
+        preparationTasks[id] = task
+        let prepared = await task.value
+        preparationTasks[id] = nil
+        return prepared
     }
 
     func deleteModel(id: String) {
         guard let descriptor = ModelCatalog.model(for: id) else { return }
+        preparationTasks[id]?.cancel()
+        preparationTasks[id] = nil
         engines[id] = nil
         do {
             try ModelStorage.delete(descriptor)

@@ -630,6 +630,7 @@ struct GeneralPane: View {
     private var statusCard: some View {
         let isRegistered = HotkeyManager.shared.isRegistered
         let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
+        let needsListenEventAccess = usesStandaloneRightControl && !listenEventGranted
         RowCard {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -649,9 +650,19 @@ struct GeneralPane: View {
                 }
                 Spacer()
                 if !isRegistered {
-                    Button("Retry") {
-                        retryHotkeyRegistration()
-                        refreshPermissions()
+                    Button(needsListenEventAccess ? "Open Settings…" : "Retry") {
+                        if needsListenEventAccess {
+                            _ = ListenEventPermission.request()
+                            refreshPermissions()
+                            if ListenEventPermission.isGranted {
+                                retryHotkeyRegistration()
+                            } else {
+                                ListenEventPermission.openSystemSettings()
+                            }
+                        } else {
+                            retryHotkeyRegistration()
+                            refreshPermissions()
+                        }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -671,7 +682,7 @@ struct GeneralPane: View {
             return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
         }
         if usesStandaloneRightControl && !listenEventGranted {
-            return "Right Control needs Input Monitoring permission. Click Retry, then enable VoiceToText if prompted."
+            return "Right Control needs Input Monitoring permission. Enable VoiceToText in System Settings, then return here."
         }
         return "Hotkey registration failed. Retry, or check Accessibility permission."
     }

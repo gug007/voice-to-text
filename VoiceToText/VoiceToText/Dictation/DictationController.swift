@@ -440,6 +440,7 @@ final class DictationController {
     private func handleAudioConfigurationChange() {
         guard state == .recording else { return }
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
+        standaloneModifierEventCoordinator.reset()
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()

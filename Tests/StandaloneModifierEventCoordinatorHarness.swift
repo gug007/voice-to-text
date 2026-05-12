@@ -21,6 +21,7 @@ struct StandaloneModifierEventCoordinatorHarness {
     static func main() throws {
         try toggleRecordingDefersStopUntilCleanRelease()
         try toggleRecordingChordCancelsDeferredStop()
+        try resetClearsDeferredToggleStop()
         try holdModePreservesPressRelease()
         print("Standalone modifier event coordinator harness passed")
     }
@@ -65,6 +66,17 @@ struct StandaloneModifierEventCoordinatorHarness {
             coordinator.normalize(event: .standaloneReleased, mode: .hold, state: .recording),
             [.released],
             "hold mode stops on standalone release"
+        )
+    }
+
+    private static func resetClearsDeferredToggleStop() throws {
+        var coordinator = StandaloneModifierEventCoordinator()
+        _ = coordinator.normalize(event: .standalonePressed, mode: .toggle, state: .recording)
+        coordinator.reset()
+        try expect(
+            coordinator.normalize(event: .standaloneReleased, mode: .toggle, state: .error),
+            [],
+            "reset prevents a stale standalone release from starting after an error"
         )
     }
 }

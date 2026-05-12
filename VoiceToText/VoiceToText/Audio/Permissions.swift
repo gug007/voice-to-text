@@ -60,4 +60,9 @@ enum ListenEventPermission {
     static func request() -> Bool {
         CGRequestListenEventAccess()
     }
+
+    static func openSystemSettings() {
+        let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent")!
+        NSWorkspace.shared.open(url)
+    }
 }

@@ -64,7 +64,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
-            appleEvent: NSAppleEventManager.shared().currentAppleEvent
+            appleEvent: NSAppleEventManager.shared().currentAppleEvent,
+            launchUserInfo: notification.userInfo
         )
         guard Self.wasLaunchedAtLogin else { return }
         DispatchQueue.main.async {

@@ -20,6 +20,14 @@ final class HotkeyManager {
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
     private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
+    private let nonControlModifierDeviceMask = UInt64(
+        NX_DEVICELSHIFTKEYMASK
+            | NX_DEVICERSHIFTKEYMASK
+            | NX_DEVICELCMDKEYMASK
+            | NX_DEVICERCMDKEYMASK
+            | NX_DEVICELALTKEYMASK
+            | NX_DEVICERALTKEYMASK
+    )
 
     static let shared = HotkeyManager()
 
@@ -114,11 +122,13 @@ final class HotkeyManager {
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
+                let hasOtherModifierDown = event.flags.rawValue & manager.nonControlModifierDeviceMask != 0
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(
                         type: type,
                         keyCode: keyCode,
-                        rightControlIsDown: rightControlIsDown
+                        rightControlIsDown: rightControlIsDown,
+                        hasOtherModifierDown: hasOtherModifierDown
                     )
                 }
                 return Unmanaged.passUnretained(event)
@@ -141,14 +151,16 @@ final class HotkeyManager {
     private func handleStandaloneModifierEvent(
         type: CGEventType,
         keyCode: UInt16,
-        rightControlIsDown: Bool
+        rightControlIsDown: Bool,
+        hasOtherModifierDown: Bool
     ) {
         let effects: [StandaloneModifierHotkeyEffect]
         switch type {
         case .flagsChanged:
             effects = standaloneModifierState.handleFlagsChanged(
                 keyCode: keyCode,
-                isModifierDown: rightControlIsDown
+                isModifierDown: rightControlIsDown,
+                hasOtherModifierDown: hasOtherModifierDown
             )
         case .keyDown:
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)

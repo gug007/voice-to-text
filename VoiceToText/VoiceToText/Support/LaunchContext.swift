@@ -4,18 +4,25 @@ import Foundation
 
 enum LaunchContext {
     static func shouldHideMainWindowOnLaunch(
-        appleEvent: NSAppleEventDescriptor?
+        appleEvent: NSAppleEventDescriptor?,
+        launchUserInfo: [AnyHashable: Any]? = nil
     ) -> Bool {
-        isLoginItemLaunch(appleEvent: appleEvent)
+        if let isLoginItemLaunch = loginItemLaunchFlag(appleEvent: appleEvent) {
+            return isLoginItemLaunch
+        }
+        if let isDefaultLaunch = launchUserInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool {
+            return !isDefaultLaunch
+        }
+        return false
     }
 
-    private static func isLoginItemLaunch(appleEvent: NSAppleEventDescriptor?) -> Bool {
+    private static func loginItemLaunchFlag(appleEvent: NSAppleEventDescriptor?) -> Bool? {
         guard let appleEvent,
               appleEvent.eventID == kAEOpenApplication else {
-            return false
+            return nil
         }
         guard let descriptor = appleEvent.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) else {
-            return false
+            return nil
         }
         return descriptor.descriptorType == typeBoolean ? descriptor.booleanValue : true
     }

@@ -11,10 +11,12 @@ enum HotkeyCaptureOutcome: Equatable {
 
 struct HotkeyCaptureSession {
     private var pendingStandaloneModifier: HotkeyBinding?
+    private var suppressStandaloneModifierUntilRelease = false
     private var captureIsComplete = false
 
     mutating func reset() {
         pendingStandaloneModifier = nil
+        suppressStandaloneModifierUntilRelease = false
         captureIsComplete = false
     }
 
@@ -33,6 +35,7 @@ struct HotkeyCaptureSession {
 
     private mutating func handleKeyDown(_ event: NSEvent) -> HotkeyCaptureOutcome {
         pendingStandaloneModifier = nil
+        suppressStandaloneModifierUntilRelease = false
 
         let pureModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if event.keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty {
@@ -50,6 +53,28 @@ struct HotkeyCaptureSession {
     }
 
     private mutating func handleModifierEvent(_ event: NSEvent) -> HotkeyCaptureOutcome {
+        if suppressStandaloneModifierUntilRelease {
+            if event.keyCode == UInt16(kVK_RightControl) {
+                suppressStandaloneModifierUntilRelease = false
+            }
+            return .ignored
+        }
+
+        let nonControlModifiers = event.modifierFlags.intersection([.command, .option, .shift])
+        if event.keyCode == UInt16(kVK_RightControl),
+           !nonControlModifiers.isEmpty {
+            pendingStandaloneModifier = nil
+            suppressStandaloneModifierUntilRelease = true
+            return .ignored
+        }
+
+        if pendingStandaloneModifier != nil,
+           event.keyCode != UInt16(kVK_RightControl) {
+            pendingStandaloneModifier = nil
+            suppressStandaloneModifierUntilRelease = true
+            return .ignored
+        }
+
         guard let candidate = HotkeyBinding.fromModifierEvent(event) else { return .ignored }
 
         if pendingStandaloneModifier == nil {

@@ -64,6 +64,30 @@ struct LaunchContextHarness {
             false,
             "default launches stay visible"
         )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: nil,
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: false]
+            ),
+            true,
+            "notification metadata preserves login-item fallback"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: nil,
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: true]
+            ),
+            false,
+            "default notification launches stay visible"
+        )
+        try expect(
+            LaunchContext.shouldHideMainWindowOnLaunch(
+                appleEvent: openApplicationEvent(loginItem: false),
+                launchUserInfo: [NSApplication.launchIsDefaultUserInfoKey: false]
+            ),
+            false,
+            "explicit apple-event metadata wins over notification fallback"
+        )
 
         print("Launch context harness passed")
     }

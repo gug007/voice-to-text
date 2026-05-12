@@ -22,6 +22,9 @@ struct StandaloneModifierHotkeyHarness {
         try quickTapEmitsPressAndReleaseOnKeyUp()
         try chordBeforeDelaySuppressesStandaloneHotkey()
         try chordAfterDelayedPressCancelsStandaloneHotkey()
+        try modifierChordBeforeDelaySuppressesStandaloneHotkey()
+        try modifierChordAfterDelayedPressCancelsStandaloneHotkey()
+        try existingModifierSuppressesStandaloneHotkey()
         try releaseUsesRightControlTransitionNotAggregateControlFlags()
         try missedReleaseDoesNotMakeNextReleaseLookLikePress()
         try missedPressDoesNotMakeNextPressLookLikeRelease()
@@ -103,6 +106,77 @@ struct StandaloneModifierHotkeyHarness {
             ),
             [.cancelScheduledPress],
             "right Control release after cancelled chord emits nothing"
+        )
+    }
+
+    private static func modifierChordBeforeDelaySuppressesStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        _ = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightControl),
+            isModifierDown: true
+        )
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_Option),
+                isModifierDown: true
+            ),
+            [.cancelScheduledPress],
+            "another modifier before delay suppresses standalone press"
+        )
+        try expect(state.fireScheduledPress(token: 1), [], "cancelled modifier chord emits nothing")
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after modifier chord emits nothing"
+        )
+    }
+
+    private static func modifierChordAfterDelayedPressCancelsStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        _ = state.handleFlagsChanged(
+            keyCode: UInt16(kVK_RightControl),
+            isModifierDown: true
+        )
+        _ = state.fireScheduledPress(token: 1)
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_Option),
+                isModifierDown: true
+            ),
+            [.emitCancelled],
+            "another modifier after delayed press cancels standalone hotkey"
+        )
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after cancelled modifier chord emits nothing"
+        )
+    }
+
+    private static func existingModifierSuppressesStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: true,
+                hasOtherModifierDown: true
+            ),
+            [],
+            "right Control down while another modifier is held does not schedule standalone press"
+        )
+        try expect(
+            state.handleFlagsChanged(
+                keyCode: UInt16(kVK_RightControl),
+                isModifierDown: false
+            ),
+            [.cancelScheduledPress],
+            "right Control release after existing modifier emits nothing"
         )
     }
 

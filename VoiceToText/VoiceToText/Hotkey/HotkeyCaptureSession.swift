@@ -100,8 +100,6 @@ struct HotkeyCaptureSession {
         }
 
         guard pendingStandaloneModifier == candidate else { return .ignored }
-        pendingStandaloneModifier = nil
-        captureIsComplete = true
-        return .captured(candidate)
+        return .pendingStandaloneModifier
     }
 }

@@ -48,6 +48,7 @@ struct HotkeyCaptureHarness {
         try capturesBareKeyOnRelease()
         try capturesModifiedKeyOnRelease()
         try capturesRightControlAsStandaloneOnlyOnRelease()
+        try duplicateStandaloneModifierDownWaitsForRelease()
         try capturesRightControlWhenAppKitReportsGenericControlKeyCode()
         try capturesRightCommandAsStandaloneOnlyOnRelease()
         try capturesRightControlChordWhenAnotherKeyIsPressed()
@@ -144,6 +145,37 @@ struct HotkeyCaptureHarness {
         try expect(
             session.handle(event: rightControlUp) == .captured(.rightControlBinding),
             "right Control release captures standalone right Control"
+        )
+    }
+
+    private static func duplicateStandaloneModifierDownWaitsForRelease() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: rightControlModifierFlags
+        )
+        _ = session.handle(event: rightControlDown)
+
+        let duplicateRightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: rightControlModifierFlags
+        )
+        try expect(
+            session.handle(event: duplicateRightControlDown) == .pendingStandaloneModifier,
+            "duplicate right Control down keeps waiting for release"
+        )
+
+        let rightControlUp = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: []
+        )
+        try expect(
+            session.handle(event: rightControlUp) == .captured(.rightControlBinding),
+            "right Control release after duplicate down captures standalone right Control"
         )
     }
 

@@ -9,6 +9,7 @@ Icon?
 
 # Xcode — build artifacts
 build/
+build-dev/
 DerivedData/
 *.xcuserstate
 *.xcuserdatad/

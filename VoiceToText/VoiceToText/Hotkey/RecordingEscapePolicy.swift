@@ -12,25 +12,31 @@ enum RecordingEscapePolicy {
     static func shouldCancel(
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags,
-        allowedModifierFlags: NSEvent.ModifierFlags = []
+        allowedModifierFlags: NSEvent.ModifierFlags = [],
+        recordingShortcutKeyCode: UInt16? = nil
     ) -> Bool {
         guard keyCode == UInt16(kVK_Escape) else { return false }
 
         let activeModifiers = modifierFlags.intersection(shortcutModifierFlags)
         let allowedModifiers = allowedModifierFlags.intersection(shortcutModifierFlags)
-        return activeModifiers.subtracting(allowedModifiers).isEmpty
+        if activeModifiers.isEmpty { return true }
+
+        guard recordingShortcutKeyCode != UInt16(kVK_Escape) else { return false }
+        return activeModifiers == allowedModifiers
     }
 
     static func shouldStartCancel(
         isKeyDown: Bool,
         keyCode: UInt16,
         modifierFlags: NSEvent.ModifierFlags,
-        allowedModifierFlags: NSEvent.ModifierFlags = []
+        allowedModifierFlags: NSEvent.ModifierFlags = [],
+        recordingShortcutKeyCode: UInt16? = nil
     ) -> Bool {
         isKeyDown && shouldCancel(
             keyCode: keyCode,
             modifierFlags: modifierFlags,
-            allowedModifierFlags: allowedModifierFlags
+            allowedModifierFlags: allowedModifierFlags,
+            recordingShortcutKeyCode: recordingShortcutKeyCode
         )
     }
 

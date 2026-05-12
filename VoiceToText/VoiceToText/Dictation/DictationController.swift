@@ -9,15 +9,18 @@ private final class RecordingEscapeEventTapContext {
     weak var controller: DictationController?
     let swallowState: RecordingEscapeSwallowState
     let allowedModifierFlags: NSEvent.ModifierFlags
+    let recordingShortcutKeyCode: UInt16?
 
     init(
         controller: DictationController,
         swallowState: RecordingEscapeSwallowState,
-        allowedModifierFlags: NSEvent.ModifierFlags
+        allowedModifierFlags: NSEvent.ModifierFlags,
+        recordingShortcutKeyCode: UInt16?
     ) {
         self.controller = controller
         self.swallowState = swallowState
         self.allowedModifierFlags = allowedModifierFlags
+        self.recordingShortcutKeyCode = recordingShortcutKeyCode
     }
 }
 
@@ -186,6 +189,7 @@ final class DictationController {
         removeRecordingEscMonitors()
         let escapeSwallowState = recordingEscapeSwallowState
         let allowedModifierFlags = recordingEscapeAllowedModifierFlags
+        let recordingShortcutKeyCode = recordingEscapeShortcutKeyCode
         recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             if event.type == .keyUp,
                RecordingEscapePolicy.isEscape(keyCode: event.keyCode),
@@ -198,7 +202,8 @@ final class DictationController {
                 isKeyDown: event.type == .keyDown,
                 keyCode: event.keyCode,
                 modifierFlags: event.modifierFlags,
-                allowedModifierFlags: allowedModifierFlags
+                allowedModifierFlags: allowedModifierFlags,
+                recordingShortcutKeyCode: recordingShortcutKeyCode
             ) else { return event }
             if escapeSwallowState.begin() {
                 Task { @MainActor in self?.cancelRecordingFromEscape() }
@@ -209,7 +214,8 @@ final class DictationController {
         let context = RecordingEscapeEventTapContext(
             controller: self,
             swallowState: recordingEscapeSwallowState,
-            allowedModifierFlags: allowedModifierFlags
+            allowedModifierFlags: allowedModifierFlags,
+            recordingShortcutKeyCode: recordingShortcutKeyCode
         )
         recordingEscEventTapContext = context
         let contextPtr = Unmanaged.passUnretained(context).toOpaque()
@@ -245,7 +251,8 @@ final class DictationController {
                     isKeyDown: type == .keyDown,
                     keyCode: keyCode,
                     modifierFlags: flags,
-                    allowedModifierFlags: context.allowedModifierFlags
+                    allowedModifierFlags: context.allowedModifierFlags,
+                    recordingShortcutKeyCode: context.recordingShortcutKeyCode
                 ) else {
                     return Unmanaged.passUnretained(event)
                 }
@@ -273,6 +280,11 @@ final class DictationController {
     private var recordingEscapeAllowedModifierFlags: NSEvent.ModifierFlags {
         guard HotkeyStore.shared.mode == .hold else { return [] }
         return Self.eventModifierFlags(forCarbonModifiers: HotkeyStore.shared.binding.modifiers)
+    }
+
+    private var recordingEscapeShortcutKeyCode: UInt16? {
+        guard HotkeyStore.shared.mode == .hold else { return nil }
+        return UInt16(truncatingIfNeeded: HotkeyStore.shared.binding.keyCode)
     }
 
     private static func eventModifierFlags(forCarbonModifiers modifiers: UInt32) -> NSEvent.ModifierFlags {

@@ -34,6 +34,23 @@ struct RecordingEscapePolicyHarness {
         try expect(
             !RecordingEscapePolicy.shouldCancel(
                 keyCode: UInt16(kVK_Escape),
+                modifierFlags: .option,
+                allowedModifierFlags: [.command, .option]
+            ),
+            "Escape with only part of a held multi-modifier hotkey passes through"
+        )
+        try expect(
+            !RecordingEscapePolicy.shouldCancel(
+                keyCode: UInt16(kVK_Escape),
+                modifierFlags: .option,
+                allowedModifierFlags: .option,
+                recordingShortcutKeyCode: UInt16(kVK_Escape)
+            ),
+            "Escape does not cancel when it is the held recording shortcut key"
+        )
+        try expect(
+            !RecordingEscapePolicy.shouldCancel(
+                keyCode: UInt16(kVK_Escape),
                 modifierFlags: [.option, .command],
                 allowedModifierFlags: .option
             ),
@@ -44,7 +61,8 @@ struct RecordingEscapePolicyHarness {
                 isKeyDown: true,
                 keyCode: UInt16(kVK_Escape),
                 modifierFlags: .option,
-                allowedModifierFlags: .option
+                allowedModifierFlags: .option,
+                recordingShortcutKeyCode: UInt16(kVK_Space)
             ),
             "Escape key-down with held hotkey modifier starts cancellation"
         )
@@ -53,7 +71,8 @@ struct RecordingEscapePolicyHarness {
                 isKeyDown: false,
                 keyCode: UInt16(kVK_Escape),
                 modifierFlags: .option,
-                allowedModifierFlags: .option
+                allowedModifierFlags: .option,
+                recordingShortcutKeyCode: UInt16(kVK_Space)
             ),
             "Escape key-up does not start cancellation"
         )

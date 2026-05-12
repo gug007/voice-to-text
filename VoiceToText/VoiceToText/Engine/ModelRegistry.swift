@@ -124,6 +124,9 @@ final class ModelRegistry {
     @ObservationIgnored
     private var preparationTasks: [String: Task<TranscriptionEngine?, Never>] = [:]
 
+    @ObservationIgnored
+    private var preparationGenerations: [String: UInt64] = [:]
+
     private init() {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             ?? "parakeet-tdt-v3"
@@ -190,6 +193,7 @@ final class ModelRegistry {
             return await existingTask.value
         }
 
+        let generation = nextPreparationGeneration(for: id)
         readiness[id] = .preparing(fraction: 0.0, message: "Starting…")
         let engine = makeEngine(for: descriptor)
 
@@ -197,22 +201,29 @@ final class ModelRegistry {
             guard let self else { return nil }
             do {
                 try await engine.prepare { [weak self] fraction, message in
-                    Task { @MainActor in
-                        guard let self else { return }
+                    Task { @MainActor [weak self] in
+                        guard let self,
+                              self.isCurrentPreparation(id: id, generation: generation) else { return }
                         self.readiness[id] = .preparing(fraction: fraction, message: message)
                     }
                 }
+                guard self.isCurrentPreparation(id: id, generation: generation),
+                      !Task.isCancelled else { return nil }
                 self.engines[id] = engine
                 self.readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
                 return engine
             } catch {
+                guard self.isCurrentPreparation(id: id, generation: generation),
+                      !Task.isCancelled else { return nil }
                 self.readiness[id] = .failed(error.localizedDescription)
                 return nil
             }
         }
         preparationTasks[id] = task
         let prepared = await task.value
-        preparationTasks[id] = nil
+        if isCurrentPreparation(id: id, generation: generation) {
+            preparationTasks[id] = nil
+        }
         return prepared
     }
 
@@ -220,6 +231,7 @@ final class ModelRegistry {
         guard let descriptor = ModelCatalog.model(for: id) else { return }
         preparationTasks[id]?.cancel()
         preparationTasks[id] = nil
+        _ = nextPreparationGeneration(for: id)
         engines[id] = nil
         do {
             try ModelStorage.delete(descriptor)
@@ -236,5 +248,15 @@ final class ModelRegistry {
         case .fluidAudio:
             return FluidAudioEngine(modelId: descriptor.backendModelId)
         }
+    }
+
+    private func nextPreparationGeneration(for id: String) -> UInt64 {
+        let next = (preparationGenerations[id] ?? 0) + 1
+        preparationGenerations[id] = next
+        return next
+    }
+
+    private func isCurrentPreparation(id: String, generation: UInt64) -> Bool {
+        preparationGenerations[id] == generation
     }
 }

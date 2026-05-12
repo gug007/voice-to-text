@@ -737,7 +737,12 @@ struct GeneralPane: View {
             return "Click Start, or use \(hk) from any app."
         case .preparing: return "Downloading or loading the active model."
         case .recording:
-            return "Release it in hold mode, press it again in toggle mode, or click Stop when you're done speaking."
+            switch HotkeyStore.shared.mode {
+            case .hold:
+                return "Release the shortcut, or click Stop when you're done speaking."
+            case .toggle:
+                return "Press the shortcut again, or click Stop when you're done speaking."
+            }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
         case .error(let message): return message

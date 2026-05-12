@@ -27,6 +27,23 @@ struct RecordingEscapePolicyHarness {
             !RecordingEscapePolicy.shouldCancel(keyCode: UInt16(kVK_ANSI_M), modifierFlags: []),
             "non-Escape keys do not cancel recording"
         )
+        try expect(
+            RecordingEscapePolicy.isEscape(keyCode: UInt16(kVK_Escape)),
+            "Escape key-up can finish a swallowed cancel gesture"
+        )
+        try expect(
+            !RecordingEscapePolicy.isEscape(keyCode: UInt16(kVK_ANSI_M)),
+            "non-Escape key-up does not finish a swallowed cancel gesture"
+        )
+
+        let swallowState = RecordingEscapeSwallowState()
+        try expect(swallowState.begin(), "first bare Escape down starts swallowing")
+        try expect(!swallowState.begin(), "repeated Escape down is swallowed without restarting")
+        try expect(swallowState.finishIfNeeded(), "Escape key-up finishes swallowing")
+        try expect(!swallowState.finishIfNeeded(), "extra Escape key-up passes after swallowing ends")
+        try expect(swallowState.begin(), "swallowing can begin again after key-up")
+        swallowState.reset()
+        try expect(!swallowState.finishIfNeeded(), "reset clears pending swallowed Escape")
 
         print("Recording escape policy harness passed")
     }

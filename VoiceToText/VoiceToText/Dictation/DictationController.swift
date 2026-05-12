@@ -5,6 +5,16 @@ import Foundation
 import Observation
 import OSLog
 
+private final class RecordingEscapeEventTapContext {
+    weak var controller: DictationController?
+    let swallowState: RecordingEscapeSwallowState
+
+    init(controller: DictationController, swallowState: RecordingEscapeSwallowState) {
+        self.controller = controller
+        self.swallowState = swallowState
+    }
+}
+
 @Observable
 @MainActor
 final class DictationController {
@@ -28,6 +38,9 @@ final class DictationController {
     private var recordingLocalEscMonitor: Any?
     private var recordingEscEventTap: CFMachPort?
     private var recordingEscRunLoopSource: CFRunLoopSource?
+    private var recordingEscEventTapContext: RecordingEscapeEventTapContext?
+    @ObservationIgnored
+    private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
 
     private var reviewBeforePaste: Bool {
@@ -106,7 +119,7 @@ final class DictationController {
             guard AccessibilityPermission.isGranted else {
                 AccessibilityPermission.promptForPermission()
                 AppLog.dictation.warning("Missing Accessibility permission, could not start global hotkey recording")
-                state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
+                state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
                 return
             }
             let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
@@ -127,9 +140,21 @@ final class DictationController {
     private func cancelRecording() {
         guard state == .recording else { return }
         AppLog.dictation.info("Recording cancelled")
+        stopRecording(cancelledByEscape: false)
+    }
+
+    private func cancelRecordingFromEscape() {
+        guard state == .recording else { return }
+        AppLog.dictation.info("Recording cancelled by Escape")
+        stopRecording(cancelledByEscape: true)
+    }
+
+    private func stopRecording(cancelledByEscape: Bool) {
         recordingStartGate.reset()
         stopElapsedTicker()
-        removeRecordingEscMonitors()
+        if !cancelledByEscape {
+            removeRecordingEscMonitors()
+        }
         _ = recorder.stop()
         LiveHUDPanel.shared.hide()
         state = .idle
@@ -153,17 +178,35 @@ final class DictationController {
 
     private func installRecordingEscMonitors() -> Bool {
         removeRecordingEscMonitors()
-        recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        let escapeSwallowState = recordingEscapeSwallowState
+        recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            if event.type == .keyUp,
+               RecordingEscapePolicy.isEscape(keyCode: event.keyCode),
+               escapeSwallowState.finishIfNeeded() {
+                Task { @MainActor in self?.removeRecordingEscMonitors() }
+                return nil
+            }
+
             guard RecordingEscapePolicy.shouldCancel(
                 keyCode: event.keyCode,
                 modifierFlags: event.modifierFlags
             ) else { return event }
-            Task { @MainActor in self?.handleHotkeyEvent(.escape) }
+            if escapeSwallowState.begin() {
+                Task { @MainActor in self?.cancelRecordingFromEscape() }
+            }
             return nil
         }
 
-        let selfPtr = Unmanaged.passUnretained(self).toOpaque()
-        let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
+        let context = RecordingEscapeEventTapContext(
+            controller: self,
+            swallowState: recordingEscapeSwallowState
+        )
+        recordingEscEventTapContext = context
+        let contextPtr = Unmanaged.passUnretained(context).toOpaque()
+        let mask = CGEventMask(
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+        )
         guard let tap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
@@ -171,7 +214,8 @@ final class DictationController {
             eventsOfInterest: mask,
             callback: { _, type, event, userData in
                 guard let userData else { return Unmanaged.passUnretained(event) }
-                let controller = Unmanaged<DictationController>.fromOpaque(userData).takeUnretainedValue()
+                let context = Unmanaged<RecordingEscapeEventTapContext>.fromOpaque(userData).takeUnretainedValue()
+                guard let controller = context.controller else { return Unmanaged.passUnretained(event) }
 
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     DispatchQueue.main.async { controller.enableRecordingEscEventTap() }
@@ -179,15 +223,24 @@ final class DictationController {
                 }
 
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                if type == .keyUp,
+                   RecordingEscapePolicy.isEscape(keyCode: keyCode),
+                   context.swallowState.finishIfNeeded() {
+                    DispatchQueue.main.async { controller.removeRecordingEscMonitors() }
+                    return nil
+                }
+
                 let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
                 guard RecordingEscapePolicy.shouldCancel(keyCode: keyCode, modifierFlags: flags) else {
                     return Unmanaged.passUnretained(event)
                 }
 
-                DispatchQueue.main.async { controller.handleHotkeyEvent(.escape) }
+                if context.swallowState.begin() {
+                    DispatchQueue.main.async { controller.cancelRecordingFromEscape() }
+                }
                 return nil
             },
-            userInfo: selfPtr
+            userInfo: contextPtr
         ) else {
             AppLog.dictation.error("Recording Escape event tap creation failed")
             removeRecordingEscMonitors()
@@ -208,6 +261,7 @@ final class DictationController {
     }
 
     private func removeRecordingEscMonitors() {
+        recordingEscapeSwallowState.reset()
         if let recordingLocalEscMonitor {
             NSEvent.removeMonitor(recordingLocalEscMonitor)
             self.recordingLocalEscMonitor = nil
@@ -220,6 +274,7 @@ final class DictationController {
             CFMachPortInvalidate(recordingEscEventTap)
             self.recordingEscEventTap = nil
         }
+        recordingEscEventTapContext = nil
     }
 
     private func installReviewEscMonitor() {
@@ -427,7 +482,7 @@ final class DictationController {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
             AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
-            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
+            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
             return
         }
 

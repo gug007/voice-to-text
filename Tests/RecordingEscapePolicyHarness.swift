@@ -40,6 +40,24 @@ struct RecordingEscapePolicyHarness {
             "Escape with extra modifiers still passes through"
         )
         try expect(
+            RecordingEscapePolicy.shouldStartCancel(
+                isKeyDown: true,
+                keyCode: UInt16(kVK_Escape),
+                modifierFlags: .option,
+                allowedModifierFlags: .option
+            ),
+            "Escape key-down with held hotkey modifier starts cancellation"
+        )
+        try expect(
+            !RecordingEscapePolicy.shouldStartCancel(
+                isKeyDown: false,
+                keyCode: UInt16(kVK_Escape),
+                modifierFlags: .option,
+                allowedModifierFlags: .option
+            ),
+            "Escape key-up does not start cancellation"
+        )
+        try expect(
             !RecordingEscapePolicy.shouldCancel(keyCode: UInt16(kVK_ANSI_M), modifierFlags: []),
             "non-Escape keys do not cancel recording"
         )

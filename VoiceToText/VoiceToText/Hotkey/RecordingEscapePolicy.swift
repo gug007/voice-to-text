@@ -21,6 +21,19 @@ enum RecordingEscapePolicy {
         return activeModifiers.subtracting(allowedModifiers).isEmpty
     }
 
+    static func shouldStartCancel(
+        isKeyDown: Bool,
+        keyCode: UInt16,
+        modifierFlags: NSEvent.ModifierFlags,
+        allowedModifierFlags: NSEvent.ModifierFlags = []
+    ) -> Bool {
+        isKeyDown && shouldCancel(
+            keyCode: keyCode,
+            modifierFlags: modifierFlags,
+            allowedModifierFlags: allowedModifierFlags
+        )
+    }
+
     static func isEscape(keyCode: UInt16) -> Bool {
         keyCode == UInt16(kVK_Escape)
     }

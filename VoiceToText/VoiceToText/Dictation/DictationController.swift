@@ -194,7 +194,8 @@ final class DictationController {
                 return nil
             }
 
-            guard RecordingEscapePolicy.shouldCancel(
+            guard RecordingEscapePolicy.shouldStartCancel(
+                isKeyDown: event.type == .keyDown,
                 keyCode: event.keyCode,
                 modifierFlags: event.modifierFlags,
                 allowedModifierFlags: allowedModifierFlags
@@ -240,7 +241,8 @@ final class DictationController {
                 }
 
                 let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
-                guard RecordingEscapePolicy.shouldCancel(
+                guard RecordingEscapePolicy.shouldStartCancel(
+                    isKeyDown: type == .keyDown,
                     keyCode: keyCode,
                     modifierFlags: flags,
                     allowedModifierFlags: context.allowedModifierFlags

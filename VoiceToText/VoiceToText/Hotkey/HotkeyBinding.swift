@@ -21,7 +21,7 @@ struct HotkeyBinding: Codable, Equatable {
     )
 
     var isStandaloneModifier: Bool {
-        modifiers == 0 && keyCode == UInt32(kVK_RightControl)
+        modifiers == 0 && Self.modifierKeyCodes.contains(keyCode)
     }
 
     var modifierSymbols: [String] {
@@ -43,6 +43,8 @@ struct HotkeyBinding: Codable, Equatable {
 
     var isFunctionKey: Bool { Self.functionKeyCodes.contains(Int(keyCode)) }
 
+    static let modifierKeyCodes: Set<UInt32> = Set(modifierKeyDescriptors.map(\.keyCode))
+
     static func fromEvent(_ event: NSEvent) -> HotkeyBinding {
         var mods: UInt32 = 0
         let f = event.modifierFlags
@@ -58,13 +60,157 @@ struct HotkeyBinding: Codable, Equatable {
     }
 
     static func fromModifierEvent(_ event: NSEvent) -> HotkeyBinding? {
-        guard event.keyCode == UInt16(kVK_RightControl) else { return nil }
-        return .rightControlBinding
+        guard let descriptor = modifierDescriptor(for: event) else { return nil }
+        return HotkeyBinding(
+            keyCode: descriptor.keyCode,
+            modifiers: 0,
+            keyLabel: descriptor.label
+        )
     }
+
+    static func modifierIsDown(_ binding: HotkeyBinding, in event: NSEvent) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        return event.modifierFlags.rawValue & descriptor.deviceMask != 0
+            || event.modifierFlags.contains(descriptor.aggregateFlag)
+    }
+
+    static func modifierIsDown(_ binding: HotkeyBinding, rawModifierFlags: UInt64) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        return rawModifierFlags & UInt64(descriptor.deviceMask) != 0
+    }
+
+    static func modifierKeyEventMatches(_ keyCode: UInt16, binding: HotkeyBinding) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        return descriptor.matches(keyCode: keyCode)
+    }
+
+    static func isReleaseOfModifier(_ binding: HotkeyBinding, event: NSEvent) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        return descriptor.matches(event: event) && !modifierIsDown(binding, in: event)
+    }
+
+    static func otherModifiersAreDown(than binding: HotkeyBinding, in event: NSEvent) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        let activeDeviceFlags = event.modifierFlags.rawValue & allModifierDeviceMask
+        let activeAggregateFlags = event.modifierFlags.intersection([.command, .option, .control, .shift])
+        return activeDeviceFlags & ~descriptor.deviceMask != 0
+            || !activeAggregateFlags.subtracting(descriptor.aggregateFlag).isEmpty
+    }
+
+    static func otherModifiersAreDown(than binding: HotkeyBinding, rawModifierFlags: UInt64) -> Bool {
+        guard let descriptor = modifierDescriptor(forKeyCode: binding.keyCode) else { return false }
+        let activeDeviceFlags = UInt(rawModifierFlags) & allModifierDeviceMask
+        return activeDeviceFlags & ~descriptor.deviceMask != 0
+    }
+
+    private static func modifierDescriptor(for event: NSEvent) -> ModifierKeyDescriptor? {
+        let rawFlags = event.modifierFlags.rawValue
+        if let descriptor = modifierKeyDescriptors.first(where: { descriptor in
+            descriptor.matches(event: event)
+                && rawFlags & descriptor.deviceMask != 0
+        }) {
+            return descriptor
+        }
+
+        return modifierKeyDescriptors.first { descriptor in
+            event.keyCode == UInt16(descriptor.keyCode)
+        }
+    }
+
+    private static func modifierDescriptor(forKeyCode keyCode: UInt32) -> ModifierKeyDescriptor? {
+        modifierKeyDescriptors.first { $0.keyCode == keyCode }
+    }
+}
+
+private struct ModifierKeyDescriptor {
+    let keyCode: UInt32
+    let genericKeyCode: UInt16
+    let deviceMask: UInt
+    let aggregateFlag: NSEvent.ModifierFlags
+    let label: String
+
+    func matches(event: NSEvent) -> Bool {
+        matches(keyCode: event.keyCode)
+    }
+
+    func matches(keyCode: UInt16) -> Bool {
+        keyCode == UInt16(self.keyCode) || keyCode == genericKeyCode
+    }
+}
+
+private let modifierKeyDescriptors: [ModifierKeyDescriptor] = [
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_Command),
+        genericKeyCode: UInt16(kVK_Command),
+        deviceMask: UInt(NX_DEVICELCMDKEYMASK),
+        aggregateFlag: .command,
+        label: "Command"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_RightCommand),
+        genericKeyCode: UInt16(kVK_Command),
+        deviceMask: UInt(NX_DEVICERCMDKEYMASK),
+        aggregateFlag: .command,
+        label: "Right Command"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_Shift),
+        genericKeyCode: UInt16(kVK_Shift),
+        deviceMask: UInt(NX_DEVICELSHIFTKEYMASK),
+        aggregateFlag: .shift,
+        label: "Shift"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_RightShift),
+        genericKeyCode: UInt16(kVK_Shift),
+        deviceMask: UInt(NX_DEVICERSHIFTKEYMASK),
+        aggregateFlag: .shift,
+        label: "Right Shift"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_Option),
+        genericKeyCode: UInt16(kVK_Option),
+        deviceMask: UInt(NX_DEVICELALTKEYMASK),
+        aggregateFlag: .option,
+        label: "Option"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_RightOption),
+        genericKeyCode: UInt16(kVK_Option),
+        deviceMask: UInt(NX_DEVICERALTKEYMASK),
+        aggregateFlag: .option,
+        label: "Right Option"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_Control),
+        genericKeyCode: UInt16(kVK_Control),
+        deviceMask: UInt(NX_DEVICELCTLKEYMASK),
+        aggregateFlag: .control,
+        label: "Control"
+    ),
+    ModifierKeyDescriptor(
+        keyCode: UInt32(kVK_RightControl),
+        genericKeyCode: UInt16(kVK_Control),
+        deviceMask: UInt(NX_DEVICERCTLKEYMASK),
+        aggregateFlag: .control,
+        label: "Right Control"
+    ),
+]
+
+private let allModifierDeviceMask = modifierKeyDescriptors.reduce(UInt(0)) { mask, descriptor in
+    mask | descriptor.deviceMask
 }
 
 enum KeyCodeLabel {
     private static let specialKeys: [Int: String] = [
+        kVK_Command: "Command",
+        kVK_RightCommand: "Right Command",
+        kVK_Shift: "Shift",
+        kVK_RightShift: "Right Shift",
+        kVK_Option: "Option",
+        kVK_RightOption: "Right Option",
+        kVK_Control: "Control",
+        kVK_RightControl: "Right Control",
         kVK_Space: "Space",
         kVK_Return: "Return",
         kVK_Tab: "Tab",

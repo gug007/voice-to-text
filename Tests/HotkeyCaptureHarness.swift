@@ -45,7 +45,11 @@ private func keyEvent(
 @main
 struct HotkeyCaptureHarness {
     static func main() throws {
+        try capturesBareKeyOnRelease()
+        try capturesModifiedKeyOnRelease()
         try capturesRightControlAsStandaloneOnlyOnRelease()
+        try capturesRightControlWhenAppKitReportsGenericControlKeyCode()
+        try capturesRightCommandAsStandaloneOnlyOnRelease()
         try capturesRightControlChordWhenAnotherKeyIsPressed()
         try modifierChordCancelsStandaloneRightControlCapture()
         try existingModifierSuppressesStandaloneRightControlCapture()
@@ -53,6 +57,69 @@ struct HotkeyCaptureHarness {
         try capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown()
         try escapeCancelsCapture()
         print("Hotkey capture harness passed")
+    }
+
+    private static func capturesBareKeyOnRelease() throws {
+        var session = HotkeyCaptureSession()
+
+        let jDown = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_ANSI_J,
+            modifiers: [],
+            characters: "j"
+        )
+        try expect(
+            session.handle(event: jDown) == .ignored,
+            "bare J down waits for release before capture"
+        )
+
+        let jUp = try keyEvent(
+            type: .keyUp,
+            keyCode: kVK_ANSI_J,
+            modifiers: [],
+            characters: "j"
+        )
+        try expect(
+            session.handle(event: jUp) == .captured(
+                HotkeyBinding(keyCode: UInt32(kVK_ANSI_J), modifiers: 0, keyLabel: "J")
+            ),
+            "bare J release captures J"
+        )
+    }
+
+    private static func capturesModifiedKeyOnRelease() throws {
+        var session = HotkeyCaptureSession()
+
+        let commandDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_Command,
+            modifiers: .command
+        )
+        _ = session.handle(event: commandDown)
+
+        let jDown = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_ANSI_J,
+            modifiers: .command,
+            characters: "j"
+        )
+        try expect(
+            session.handle(event: jDown) == .ignored,
+            "Command+J down waits for J release before capture"
+        )
+
+        let jUp = try keyEvent(
+            type: .keyUp,
+            keyCode: kVK_ANSI_J,
+            modifiers: .command,
+            characters: "j"
+        )
+        try expect(
+            session.handle(event: jUp) == .captured(
+                HotkeyBinding(keyCode: UInt32(kVK_ANSI_J), modifiers: UInt32(cmdKey), keyLabel: "J")
+            ),
+            "Command+J release captures Command+J"
+        )
     }
 
     private static func capturesRightControlAsStandaloneOnlyOnRelease() throws {
@@ -79,6 +146,56 @@ struct HotkeyCaptureHarness {
         )
     }
 
+    private static func capturesRightControlWhenAppKitReportsGenericControlKeyCode() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_Control,
+            modifiers: rightControlModifierFlags
+        )
+        try expect(
+            session.handle(event: rightControlDown) == .pendingStandaloneModifier,
+            "right Control down with generic Control key code waits for release"
+        )
+
+        let rightControlUp = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_Control,
+            modifiers: []
+        )
+        try expect(
+            session.handle(event: rightControlUp) == .captured(.rightControlBinding),
+            "right Control release with generic Control key code captures standalone right Control"
+        )
+    }
+
+    private static func capturesRightCommandAsStandaloneOnlyOnRelease() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightCommandDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightCommand,
+            modifiers: NSEvent.ModifierFlags(rawValue: UInt(NX_DEVICERCMDKEYMASK))
+        )
+        try expect(
+            session.handle(event: rightCommandDown) == .pendingStandaloneModifier,
+            "right Command down waits for release"
+        )
+
+        let rightCommandUp = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightCommand,
+            modifiers: []
+        )
+        try expect(
+            session.handle(event: rightCommandUp) == .captured(
+                HotkeyBinding(keyCode: UInt32(kVK_RightCommand), modifiers: 0, keyLabel: "Right Command")
+            ),
+            "right Command release captures standalone right Command"
+        )
+    }
+
     private static func capturesRightControlChordWhenAnotherKeyIsPressed() throws {
         var session = HotkeyCaptureSession()
 
@@ -101,8 +218,19 @@ struct HotkeyCaptureHarness {
             keyLabel: "M"
         )
         try expect(
-            session.handle(event: mDown) == .captured(expected),
-            "right Control plus M captures a Control+M chord instead of standalone right Control"
+            session.handle(event: mDown) == .ignored,
+            "right Control plus M waits for M release before capture"
+        )
+
+        let mUp = try keyEvent(
+            type: .keyUp,
+            keyCode: kVK_ANSI_M,
+            modifiers: .control,
+            characters: "m"
+        )
+        try expect(
+            session.handle(event: mUp) == .captured(expected),
+            "right Control plus M release captures a Control+M chord instead of standalone right Control"
         )
 
         let rightControlUp = try keyEvent(

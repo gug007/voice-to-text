@@ -16,6 +16,15 @@ if security find-identity -v -p codesigning | grep -q "$CERT_NAME"; then
     exit 0
 fi
 
+while read -r hash; do
+    [ -n "$hash" ] || continue
+    echo "→ removing invalid existing certificate $hash"
+    security delete-certificate -Z "$hash" "$KEYCHAIN" >/dev/null 2>&1 || true
+done < <(
+    security find-certificate -a -c "$CERT_NAME" -Z "$KEYCHAIN" 2>/dev/null \
+        | awk '/SHA-1 hash:/ { print $3 }'
+)
+
 echo "→ creating self-signed code signing certificate"
 
 TMP=$(mktemp -d)
@@ -57,13 +66,29 @@ openssl pkcs12 -export \
 
 security import "$TMP/cert.p12" \
     -k "$KEYCHAIN" \
+    -f pkcs12 \
+    -t agg \
+    -A \
     -T /usr/bin/codesign \
     -T /usr/bin/security \
     -P "$P12_PASS" 2>&1 | tail -3
+
+echo "→ trusting certificate for code signing"
+security add-trusted-cert \
+    -r trustRoot \
+    -p codeSign \
+    -k "$KEYCHAIN" \
+    "$TMP/cert.pem" 2>&1 | tail -3 || true
 
 echo "→ allowing codesign to use the key without prompting"
 security set-key-partition-list \
     -S apple-tool:,apple:,codesign: \
     -s -k "" "$KEYCHAIN" 2>&1 | tail -3 || true
+
+if ! security find-identity -v -p codesigning | grep -q "$CERT_NAME"; then
+    echo "✗ certificate was created but is not a valid codesigning identity"
+    echo "  Open Keychain Access, trust '$CERT_NAME' for code signing, then rerun this script."
+    exit 1
+fi
 
 echo "✓ certificate created: $CERT_NAME"

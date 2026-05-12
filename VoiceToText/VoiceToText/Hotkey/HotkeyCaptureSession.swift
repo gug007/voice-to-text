@@ -7,16 +7,17 @@ enum HotkeyCaptureOutcome: Equatable {
     case pendingStandaloneModifier
     case captured(HotkeyBinding)
     case cancelled
-    case rejected(String)
 }
 
 struct HotkeyCaptureSession {
     private var pendingStandaloneModifier: HotkeyBinding?
+    private var pendingKeyBinding: HotkeyBinding?
     private var suppressStandaloneModifierUntilRelease = false
     private var captureIsComplete = false
 
     mutating func reset() {
         pendingStandaloneModifier = nil
+        pendingKeyBinding = nil
         suppressStandaloneModifierUntilRelease = false
         captureIsComplete = false
     }
@@ -29,6 +30,8 @@ struct HotkeyCaptureSession {
             return handleModifierEvent(event)
         case .keyDown:
             return handleKeyDown(event)
+        case .keyUp:
+            return handleKeyUp(event)
         default:
             return .ignored
         }
@@ -44,42 +47,52 @@ struct HotkeyCaptureSession {
             return .cancelled
         }
 
-        let candidate = HotkeyBinding.fromEvent(event)
-        guard candidate.modifiers != 0 || candidate.isFunctionKey || candidate.isStandaloneModifier else {
-            return .rejected("Add at least one modifier (⌘ ⌥ ⌃ ⇧), pick a function key, or press Right Control.")
-        }
+        pendingKeyBinding = HotkeyBinding.fromEvent(event)
+        return .ignored
+    }
 
+    private mutating func handleKeyUp(_ event: NSEvent) -> HotkeyCaptureOutcome {
+        guard let candidate = pendingKeyBinding else { return .ignored }
+        guard candidate.keyCode == UInt32(event.keyCode) else { return .ignored }
+
+        pendingKeyBinding = nil
         captureIsComplete = true
         return .captured(candidate)
     }
 
     private mutating func handleModifierEvent(_ event: NSEvent) -> HotkeyCaptureOutcome {
         if suppressStandaloneModifierUntilRelease {
-            if event.keyCode == UInt16(kVK_RightControl) {
+            if let pendingStandaloneModifier,
+               HotkeyBinding.isReleaseOfModifier(pendingStandaloneModifier, event: event) {
                 suppressStandaloneModifierUntilRelease = false
+                self.pendingStandaloneModifier = nil
             }
             return .ignored
         }
 
-        let nonControlModifiers = event.modifierFlags.intersection([.command, .option, .shift])
-        let leftControlIsDown = event.modifierFlags.rawValue & UInt(NX_DEVICELCTLKEYMASK) != 0
-        let rightControlIsDown = event.modifierFlags.rawValue & UInt(NX_DEVICERCTLKEYMASK) != 0
-        if event.keyCode == UInt16(kVK_RightControl),
-           rightControlIsDown,
-           (!nonControlModifiers.isEmpty || leftControlIsDown) {
-            pendingStandaloneModifier = nil
-            suppressStandaloneModifierUntilRelease = true
-            return .ignored
+        if let pendingStandaloneModifier,
+           HotkeyBinding.isReleaseOfModifier(pendingStandaloneModifier, event: event) {
+            self.pendingStandaloneModifier = nil
+            captureIsComplete = true
+            return .captured(pendingStandaloneModifier)
         }
 
-        if pendingStandaloneModifier != nil,
-           event.keyCode != UInt16(kVK_RightControl) {
-            pendingStandaloneModifier = nil
+        if let pendingStandaloneModifier,
+           let candidate = HotkeyBinding.fromModifierEvent(event),
+           candidate != pendingStandaloneModifier,
+           HotkeyBinding.modifierIsDown(candidate, in: event) {
             suppressStandaloneModifierUntilRelease = true
             return .ignored
         }
 
         guard let candidate = HotkeyBinding.fromModifierEvent(event) else { return .ignored }
+        guard HotkeyBinding.modifierIsDown(candidate, in: event) else { return .ignored }
+
+        if HotkeyBinding.otherModifiersAreDown(than: candidate, in: event) {
+            pendingStandaloneModifier = candidate
+            suppressStandaloneModifierUntilRelease = true
+            return .ignored
+        }
 
         if pendingStandaloneModifier == nil {
             pendingStandaloneModifier = candidate

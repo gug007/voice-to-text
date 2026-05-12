@@ -15,7 +15,20 @@ pkill -9 VoiceToText 2>/dev/null || true
 sleep 1
 
 echo "→ building Release"
-SIGN_ID="${VOICE_TO_TEXT_SIGN_ID:-Developer ID Application: Gurgen Abagyan (N7S7ZCZ5P7)}"
+LOCAL_SIGN_ID="VoiceToText Local Signer"
+EXPLICIT_SIGN_ID="${VOICE_TO_TEXT_SIGN_ID:-${SIGN_ID:-}}"
+if [ -n "$EXPLICIT_SIGN_ID" ]; then
+    SIGN_ID="$EXPLICIT_SIGN_ID"
+else
+    "$SCRIPT_DIR/create-signing-cert.sh"
+    SIGN_ID="$LOCAL_SIGN_ID"
+fi
+
+TEAM_ARGS=()
+if [[ "$SIGN_ID" == Developer\ ID\ Application:* || "$SIGN_ID" == Apple\ Development:* ]]; then
+    TEAM_ARGS=(DEVELOPMENT_TEAM=N7S7ZCZ5P7)
+fi
+
 xcodebuild \
     -project VoiceToText.xcodeproj \
     -scheme VoiceToText \
@@ -25,7 +38,7 @@ xcodebuild \
     CODE_SIGN_IDENTITY="$SIGN_ID" \
     CODE_SIGNING_REQUIRED=YES \
     CODE_SIGN_STYLE=Manual \
-    DEVELOPMENT_TEAM=N7S7ZCZ5P7 \
+    "${TEAM_ARGS[@]}" \
     2>&1 | tail -3
 
 if [ ! -d "$BUILD_PRODUCT" ]; then

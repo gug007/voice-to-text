@@ -337,7 +337,7 @@ struct HotkeyPane: View {
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
-                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
+                    Text("Choose any key, standalone modifier, or key combination.")
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                 }
@@ -348,7 +348,7 @@ struct HotkeyPane: View {
     }
 
     private var subtitle: String {
-        if isRecording { return "Press a key combination, or Esc to cancel." }
+        if isRecording { return "Press and release any key or combination, or Esc to cancel." }
         return "Used for hold-to-record or press-to-toggle dictation."
     }
 
@@ -367,7 +367,7 @@ struct HotkeyPane: View {
         errorMessage = nil
         captureSession.reset()
         isRecording = true
-        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
+        monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { event in
             handle(event: event)
             return nil
         }
@@ -383,8 +383,6 @@ struct HotkeyPane: View {
             errorMessage = nil
             store.update(to: candidate)
             stopRecording(cancelled: false)
-        case .rejected(let message):
-            errorMessage = message
         }
     }
 
@@ -504,7 +502,7 @@ struct GeneralPane: View {
         if accessibilityGranted && !wasAccessibilityGranted {
             retryHotkeyRegistration()
         }
-        if HotkeyStore.shared.binding == .rightControlBinding,
+        if HotkeyStore.shared.binding.isStandaloneModifier,
            listenEventGranted,
            !wasListenEventGranted {
             retryHotkeyRegistration()
@@ -629,8 +627,9 @@ struct GeneralPane: View {
     @ViewBuilder
     private var statusCard: some View {
         let isRegistered = HotkeyManager.shared.isRegistered
-        let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
-        let needsListenEventAccess = usesStandaloneRightControl && !listenEventGranted
+        let binding = HotkeyStore.shared.binding
+        let usesStandaloneModifier = binding.isStandaloneModifier
+        let needsListenEventAccess = usesStandaloneModifier && !listenEventGranted
         RowCard {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -641,8 +640,9 @@ struct GeneralPane: View {
                             .font(.system(size: 14, weight: .medium))
                     }
                     Text(hotkeyStatusMessage(
+                        binding: binding,
                         isRegistered: isRegistered,
-                        usesStandaloneRightControl: usesStandaloneRightControl,
+                        usesStandaloneModifier: usesStandaloneModifier,
                         listenEventGranted: listenEventGranted
                     ))
                         .font(.system(size: 12))
@@ -674,15 +674,16 @@ struct GeneralPane: View {
     }
 
     private func hotkeyStatusMessage(
+        binding: HotkeyBinding,
         isRegistered: Bool,
-        usesStandaloneRightControl: Bool,
+        usesStandaloneModifier: Bool,
         listenEventGranted: Bool
     ) -> String {
         if isRegistered {
-            return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
+            return "\(binding.displayKeys.joined()) is registered and will work from any app."
         }
-        if usesStandaloneRightControl && !listenEventGranted {
-            return "Right Control needs Input Monitoring permission. Enable VoiceToText in System Settings, then return here."
+        if usesStandaloneModifier && !listenEventGranted {
+            return "\(binding.displayKeys.joined()) needs Input Monitoring permission. Enable VoiceToText in System Settings, then return here."
         }
         return "Hotkey registration failed. Retry, or check Accessibility permission."
     }

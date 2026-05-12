@@ -39,6 +39,51 @@ struct HotkeyBindingHarness {
             "right Control flagsChanged event maps to standalone binding"
         )
 
+        let genericControlWithRightControlDeviceFlag = NSEvent.keyEvent(
+            with: .flagsChanged,
+            location: .zero,
+            modifierFlags: NSEvent.ModifierFlags(rawValue: UInt(NX_DEVICERCTLKEYMASK)),
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: UInt16(kVK_Control)
+        )
+        try expect(
+            genericControlWithRightControlDeviceFlag.flatMap(HotkeyBinding.fromModifierEvent) == rightControl,
+            "generic Control key code with right Control device flag maps to standalone binding"
+        )
+
+        let genericControlWithoutRightControlDeviceFlag = NSEvent.keyEvent(
+            with: .flagsChanged,
+            location: .zero,
+            modifierFlags: .control,
+            timestamp: 0,
+            windowNumber: 0,
+            context: nil,
+            characters: "",
+            charactersIgnoringModifiers: "",
+            isARepeat: false,
+            keyCode: UInt16(kVK_Control)
+        )
+        try expect(
+            genericControlWithoutRightControlDeviceFlag.flatMap(HotkeyBinding.fromModifierEvent) == HotkeyBinding(
+                keyCode: UInt32(kVK_Control),
+                modifiers: 0,
+                keyLabel: "Control"
+            ),
+            "plain generic Control key code maps to standalone Control"
+        )
+
+        let rightCommand = HotkeyBinding(
+            keyCode: UInt32(kVK_RightCommand),
+            modifiers: 0,
+            keyLabel: "Right Command"
+        )
+        try expect(rightCommand.isStandaloneModifier, "right Command is marked as standalone modifier")
+
         let defaultBinding = HotkeyBinding.defaultBinding
         try expect(!defaultBinding.isStandaloneModifier, "default Option+Space is not standalone modifier")
         try expect(defaultBinding.displayKeys == ["⌥", "Space"], "default display remains Option+Space")

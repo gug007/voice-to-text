@@ -26,22 +26,13 @@ final class HotkeyManager {
     private let hotKeyId: UInt32 = 1
     private var handler: Handler?
     private var registrationGeneration: UInt64 = 0
+    private var standaloneModifierBinding: HotkeyBinding = .rightControlBinding
     private var standaloneModifierState = StandaloneModifierHotkeyState(
         modifierKeyCode: UInt16(kVK_RightControl)
     )
     private var standaloneActiveInputTracker = StandaloneActiveInputTracker()
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
-    private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
-    private let otherModifierDeviceMask = UInt64(
-        NX_DEVICELCTLKEYMASK
-            | NX_DEVICELSHIFTKEYMASK
-            | NX_DEVICERSHIFTKEYMASK
-            | NX_DEVICELCMDKEYMASK
-            | NX_DEVICERCMDKEYMASK
-            | NX_DEVICELALTKEYMASK
-            | NX_DEVICERALTKEYMASK
-    )
 
     static let shared = HotkeyManager()
 
@@ -115,13 +106,17 @@ final class HotkeyManager {
     }
 
     private func registerStandaloneModifier(binding: HotkeyBinding, generation: UInt64) {
-        guard binding == .rightControlBinding else { return }
+        guard binding.isStandaloneModifier else { return }
 
         guard ListenEventPermission.isGranted || ListenEventPermission.request() else {
             AppLog.app.error("Standalone modifier hotkey needs Input Monitoring permission")
             return
         }
 
+        standaloneModifierBinding = binding
+        standaloneModifierState = StandaloneModifierHotkeyState(
+            modifierKeyCode: UInt16(truncatingIfNeeded: binding.keyCode)
+        )
         let context = StandaloneModifierEventTapContext(manager: self, generation: generation)
         modifierEventTapContext = context
         let contextPtr = Unmanaged.passUnretained(context).toOpaque()
@@ -148,15 +143,13 @@ final class HotkeyManager {
                 guard let manager = context.manager else { return Unmanaged.passUnretained(event) }
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let rawMouseButtonNumber = event.getIntegerValueField(.mouseEventButtonNumber)
-                let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
-                let hasOtherModifierDown = event.flags.rawValue & manager.otherModifierDeviceMask != 0
+                let rawModifierFlags = event.flags.rawValue
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(
                         type: type,
                         keyCode: keyCode,
                         rawMouseButtonNumber: rawMouseButtonNumber,
-                        rightControlIsDown: rightControlIsDown,
-                        hasOtherModifierDown: hasOtherModifierDown,
+                        rawModifierFlags: rawModifierFlags,
                         generation: context.generation
                     )
                 }
@@ -182,8 +175,7 @@ final class HotkeyManager {
         type: CGEventType,
         keyCode: UInt16,
         rawMouseButtonNumber: Int64,
-        rightControlIsDown: Bool,
-        hasOtherModifierDown: Bool,
+        rawModifierFlags: UInt64,
         generation: UInt64
     ) {
         guard isCurrentRegistration(generation) else { return }
@@ -191,15 +183,30 @@ final class HotkeyManager {
         let effects: [StandaloneModifierHotkeyEffect]
         switch type {
         case .flagsChanged:
+            let stateKeyCode = HotkeyBinding.modifierKeyEventMatches(
+                keyCode,
+                binding: standaloneModifierBinding
+            )
+                ? UInt16(truncatingIfNeeded: standaloneModifierBinding.keyCode)
+                : keyCode
             effects = standaloneModifierState.handleFlagsChanged(
-                keyCode: keyCode,
-                isModifierDown: rightControlIsDown,
-                hasOtherModifierDown: hasOtherModifierDown
+                keyCode: stateKeyCode,
+                isModifierDown: HotkeyBinding.modifierIsDown(
+                    standaloneModifierBinding,
+                    rawModifierFlags: rawModifierFlags
+                ),
+                hasOtherModifierDown: HotkeyBinding.otherModifiersAreDown(
+                    than: standaloneModifierBinding,
+                    rawModifierFlags: rawModifierFlags
+                )
                     || standaloneActiveInputTracker.hasActiveInput
                     || NSEvent.pressedMouseButtons != 0
             )
         case .keyDown:
-            standaloneActiveInputTracker.keyDown(keyCode, excluding: UInt16(kVK_RightControl))
+            standaloneActiveInputTracker.keyDown(
+                keyCode,
+                excluding: UInt16(truncatingIfNeeded: standaloneModifierBinding.keyCode)
+            )
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
         case .keyUp:
             standaloneActiveInputTracker.keyUp(keyCode)

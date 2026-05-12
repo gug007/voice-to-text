@@ -41,6 +41,7 @@ struct HotkeyCaptureHarness {
     static func main() throws {
         try capturesRightControlAsStandaloneOnlyOnRelease()
         try capturesRightControlChordWhenAnotherKeyIsPressed()
+        try capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown()
         try escapeCancelsCapture()
         print("Hotkey capture harness passed")
     }
@@ -103,6 +104,27 @@ struct HotkeyCaptureHarness {
         try expect(
             session.handle(event: rightControlUp) == .ignored,
             "right Control release after a chord does not overwrite the chord"
+        )
+    }
+
+    private static func capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown() throws {
+        var session = HotkeyCaptureSession()
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: .control
+        )
+        _ = session.handle(event: rightControlDown)
+
+        let rightControlUpWithLeftControlStillDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: .control
+        )
+        try expect(
+            session.handle(event: rightControlUpWithLeftControlStillDown) == .captured(.rightControlBinding),
+            "right Control release captures standalone even if another Control key remains down"
         )
     }
 

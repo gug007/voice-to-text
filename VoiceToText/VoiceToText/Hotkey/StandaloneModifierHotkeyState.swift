@@ -5,6 +5,7 @@ enum StandaloneModifierHotkeyEffect: Equatable {
     case cancelScheduledPress
     case emitPressed
     case emitReleased
+    case emitCancelled
 }
 
 struct StandaloneModifierHotkeyState {
@@ -38,9 +39,17 @@ struct StandaloneModifierHotkeyState {
         guard modifierIsDown, keyCode != modifierKeyCode else { return [] }
         suppressUntilRelease = true
 
-        guard pendingPressToken != nil else { return [] }
-        pendingPressToken = nil
-        return [.cancelScheduledPress]
+        if pendingPressToken != nil {
+            pendingPressToken = nil
+            return [.cancelScheduledPress]
+        }
+
+        if pressWasEmitted {
+            pressWasEmitted = false
+            return [.emitCancelled]
+        }
+
+        return []
     }
 
     mutating func fireScheduledPress(token: UInt64) -> [StandaloneModifierHotkeyEffect] {

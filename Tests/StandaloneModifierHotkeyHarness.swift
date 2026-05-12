@@ -21,6 +21,7 @@ struct StandaloneModifierHotkeyHarness {
         try holdAloneEmitsPressThenRelease()
         try quickTapEmitsPressAndReleaseOnKeyUp()
         try chordBeforeDelaySuppressesStandaloneHotkey()
+        try chordAfterDelayedPressCancelsStandaloneHotkey()
         try releaseUsesRightControlTransitionNotAggregateControlFlags()
         print("Standalone modifier hotkey harness passed")
     }
@@ -60,6 +61,22 @@ struct StandaloneModifierHotkeyHarness {
             state.handleFlagsChanged(keyCode: UInt16(kVK_RightControl)),
             [.cancelScheduledPress],
             "right Control release after suppressed chord emits nothing"
+        )
+    }
+
+    private static func chordAfterDelayedPressCancelsStandaloneHotkey() throws {
+        var state = StandaloneModifierHotkeyState(modifierKeyCode: UInt16(kVK_RightControl))
+        _ = state.handleFlagsChanged(keyCode: UInt16(kVK_RightControl))
+        _ = state.fireScheduledPress(token: 1)
+        try expect(
+            state.handleKeyDown(keyCode: UInt16(kVK_ANSI_M)),
+            [.emitCancelled],
+            "another key after delayed press cancels standalone hotkey"
+        )
+        try expect(
+            state.handleFlagsChanged(keyCode: UInt16(kVK_RightControl)),
+            [.cancelScheduledPress],
+            "right Control release after cancelled chord emits nothing"
         )
     }
 

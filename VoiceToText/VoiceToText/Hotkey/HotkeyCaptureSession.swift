@@ -11,12 +11,16 @@ enum HotkeyCaptureOutcome: Equatable {
 
 struct HotkeyCaptureSession {
     private var pendingStandaloneModifier: HotkeyBinding?
+    private var captureIsComplete = false
 
     mutating func reset() {
         pendingStandaloneModifier = nil
+        captureIsComplete = false
     }
 
     mutating func handle(event: NSEvent) -> HotkeyCaptureOutcome {
+        guard !captureIsComplete else { return .ignored }
+
         switch event.type {
         case .flagsChanged:
             return handleModifierEvent(event)
@@ -32,6 +36,7 @@ struct HotkeyCaptureSession {
 
         let pureModifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
         if event.keyCode == UInt16(kVK_Escape) && pureModifiers.isEmpty {
+            captureIsComplete = true
             return .cancelled
         }
 
@@ -40,19 +45,21 @@ struct HotkeyCaptureSession {
             return .rejected("Add at least one modifier (⌘ ⌥ ⌃ ⇧), pick a function key, or press Right Control.")
         }
 
+        captureIsComplete = true
         return .captured(candidate)
     }
 
     private mutating func handleModifierEvent(_ event: NSEvent) -> HotkeyCaptureOutcome {
         guard let candidate = HotkeyBinding.fromModifierEvent(event) else { return .ignored }
 
-        if event.modifierFlags.contains(.control) {
+        if pendingStandaloneModifier == nil {
             pendingStandaloneModifier = candidate
             return .pendingStandaloneModifier
         }
 
         guard pendingStandaloneModifier == candidate else { return .ignored }
         pendingStandaloneModifier = nil
+        captureIsComplete = true
         return .captured(candidate)
     }
 }

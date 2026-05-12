@@ -26,8 +26,8 @@ private func openApplicationEvent(loginItem: Bool) -> NSAppleEventDescriptor {
     )
     if loginItem {
         event.setParam(
-            NSAppleEventDescriptor(typeCode: OSType(keyAELaunchedAsLogInItem)),
-            forKeyword: keyAEPropData
+            NSAppleEventDescriptor(boolean: true),
+            forKeyword: keyAELaunchedAsLogInItem
         )
     }
     return event

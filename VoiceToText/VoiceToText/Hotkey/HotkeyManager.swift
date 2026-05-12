@@ -105,8 +105,8 @@ final class HotkeyManager {
             callback: { _, _, event, userData in
                 guard let userData else { return Unmanaged.passUnretained(event) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 let type = event.type
+                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(type: type, keyCode: keyCode)
                 }
@@ -134,6 +134,13 @@ final class HotkeyManager {
             effects = standaloneModifierState.handleFlagsChanged(keyCode: keyCode)
         case .keyDown:
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
+        case .tapDisabledByTimeout, .tapDisabledByUserInput:
+            AppLog.app.warning("Standalone modifier event tap was disabled; re-enabling")
+            if let modifierEventTap {
+                CGEvent.tapEnable(tap: modifierEventTap, enable: true)
+                isRegistered = true
+            }
+            effects = []
         default:
             effects = []
         }
@@ -164,6 +171,10 @@ final class HotkeyManager {
             case .emitReleased:
                 AppLog.app.info("Standalone modifier hotkey released")
                 handler?(.released)
+
+            case .emitCancelled:
+                AppLog.app.info("Standalone modifier hotkey cancelled")
+                handler?(.cancel)
             }
         }
     }

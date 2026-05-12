@@ -611,6 +611,7 @@ struct GeneralPane: View {
     @ViewBuilder
     private var statusCard: some View {
         let isRegistered = HotkeyManager.shared.isRegistered
+        let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
         RowCard {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
@@ -620,16 +621,38 @@ struct GeneralPane: View {
                         Text("Global hotkey")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    Text(isRegistered
-                         ? "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
-                         : "Hotkey registration failed. See logs for details.")
+                    Text(hotkeyStatusMessage(
+                        isRegistered: isRegistered,
+                        usesStandaloneRightControl: usesStandaloneRightControl
+                    ))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if !isRegistered {
+                    Button("Retry") {
+                        DictationController.shared.retryHotkeyRegistrationIfNeeded()
+                        refreshPermissions()
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
             }
             .padding(18)
         }
+    }
+
+    private func hotkeyStatusMessage(
+        isRegistered: Bool,
+        usesStandaloneRightControl: Bool
+    ) -> String {
+        if isRegistered {
+            return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
+        }
+        if usesStandaloneRightControl && !accessibilityGranted {
+            return "Right Control needs Accessibility permission. Enable it below, then retry."
+        }
+        return "Hotkey registration failed. Retry, or check Accessibility permission."
     }
 
     @ViewBuilder

@@ -18,6 +18,7 @@ enum DictationHotkeyEvent {
     case pressed
     case released
     case escape
+    case cancel
 }
 
 enum DictationHotkeyState {
@@ -46,6 +47,14 @@ enum DictationHotkeyPolicy {
     ) -> DictationHotkeyAction {
         if event == .escape {
             return state == .recording ? .cancelRecording : .none
+        }
+
+        if event == .cancel {
+            switch state {
+            case .preparing: return .cancelPendingRecording
+            case .recording: return .cancelRecording
+            case .idle, .transcribing, .reviewing, .error: return .none
+            }
         }
 
         switch mode {

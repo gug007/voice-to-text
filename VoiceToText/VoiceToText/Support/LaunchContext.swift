@@ -11,10 +11,9 @@ enum LaunchContext {
 
     private static func isLoginItemLaunch(appleEvent: NSAppleEventDescriptor?) -> Bool {
         guard let appleEvent,
-              appleEvent.eventID == kAEOpenApplication,
-              let launchDescriptor = appleEvent.paramDescriptor(forKeyword: keyAEPropData) else {
+              appleEvent.eventID == kAEOpenApplication else {
             return false
         }
-        return launchDescriptor.enumCodeValue == keyAELaunchedAsLogInItem
+        return appleEvent.paramDescriptor(forKeyword: keyAELaunchedAsLogInItem) != nil
     }
 }

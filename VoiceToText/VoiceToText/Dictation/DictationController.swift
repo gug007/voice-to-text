@@ -151,7 +151,7 @@ final class DictationController {
         state = .idle
     }
 
-    private func installRecordingEscMonitors() {
+    private func installRecordingEscMonitors() -> Bool {
         removeRecordingEscMonitors()
         recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard RecordingEscapePolicy.shouldCancel(
@@ -190,7 +190,8 @@ final class DictationController {
             userInfo: selfPtr
         ) else {
             AppLog.dictation.error("Recording Escape event tap creation failed")
-            return
+            removeRecordingEscMonitors()
+            return false
         }
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
@@ -198,6 +199,7 @@ final class DictationController {
         recordingEscEventTap = tap
         recordingEscRunLoopSource = source
         enableRecordingEscEventTap()
+        return true
     }
 
     private func enableRecordingEscEventTap() {
@@ -286,7 +288,12 @@ final class DictationController {
             let start = Date()
             recordStart = start
             LiveHUDPanel.shared.show()
-            installRecordingEscMonitors()
+            guard installRecordingEscMonitors() else {
+                _ = recorder.stop()
+                LiveHUDPanel.shared.hide()
+                state = .error("Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.")
+                return
+            }
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {

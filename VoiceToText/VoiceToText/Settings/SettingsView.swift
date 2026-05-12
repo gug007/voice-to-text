@@ -670,7 +670,7 @@ struct GeneralPane: View {
                         Text("Accessibility")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    Text("Required to type transcribed text into other apps.")
+                    Text("Required for global shortcuts, Esc cancel, and typing text into other apps.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }

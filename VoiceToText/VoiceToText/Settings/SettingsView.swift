@@ -480,7 +480,7 @@ struct GeneralPane: View {
             case .accessibility:
                 return Alert(
                     title: Text("Accessibility Access Required"),
-                    message: Text("VoiceToText needs Accessibility permission to type transcribed text into other apps. Open System Settings → Privacy & Security → Accessibility and enable VoiceToText."),
+                    message: Text("VoiceToText needs Accessibility permission for global shortcuts, Esc cancel, and typing text into other apps. Open System Settings → Privacy & Security → Accessibility and enable VoiceToText."),
                     primaryButton: .default(Text("Open System Settings")) {
                         AccessibilityPermission.promptForPermission()
                         AccessibilityPermission.openSystemSettings()
@@ -670,7 +670,7 @@ struct GeneralPane: View {
                         Text("Accessibility")
                             .font(.system(size: 14, weight: .medium))
                     }
-                    Text("Required to type transcribed text into other apps.")
+                    Text("Required for global shortcuts, Esc cancel, and typing text into other apps.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
@@ -739,9 +739,9 @@ struct GeneralPane: View {
         case .recording:
             switch HotkeyStore.shared.mode {
             case .hold:
-                return "Release the shortcut, or click Stop when you're done speaking."
+                return "Release the shortcut, press Esc to cancel, or click Stop."
             case .toggle:
-                return "Press the shortcut again, or click Stop when you're done speaking."
+                return "Press the shortcut again, press Esc to cancel, or click Stop."
             }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."

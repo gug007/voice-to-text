@@ -17,6 +17,7 @@ enum RecordingShortcutMode: String, Codable, CaseIterable, Identifiable {
 enum DictationHotkeyEvent {
     case pressed
     case released
+    case escape
 }
 
 enum DictationHotkeyState {
@@ -33,6 +34,7 @@ enum DictationHotkeyAction: Equatable {
     case startRecording
     case stopAndTranscribe
     case confirmPaste
+    case cancelRecording
     case cancelPendingRecording
 }
 
@@ -42,6 +44,10 @@ enum DictationHotkeyPolicy {
         state: DictationHotkeyState,
         event: DictationHotkeyEvent
     ) -> DictationHotkeyAction {
+        if event == .escape {
+            return state == .recording ? .cancelRecording : .none
+        }
+
         switch mode {
         case .hold:
             return holdAction(state: state, event: event)

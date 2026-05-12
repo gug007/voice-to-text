@@ -20,6 +20,12 @@ swiftc -parse-as-library \
 "$TMPDIR/recording-start-gate-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/RecordingEscapePolicy.swift \
+  Tests/RecordingEscapePolicyHarness.swift \
+  -o "$TMPDIR/recording-escape-policy-harness"
+"$TMPDIR/recording-escape-policy-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyStoreHarness.swift \

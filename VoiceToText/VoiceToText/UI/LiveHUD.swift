@@ -240,8 +240,8 @@ private struct RecordingView: View {
 
     private var recordingHint: String {
         switch HotkeyStore.shared.mode {
-        case .hold: return "Release when done"
-        case .toggle: return "Press again when done"
+        case .hold: return "Release to finish · Esc cancels"
+        case .toggle: return "Press again to finish · Esc cancels"
         }
     }
 }

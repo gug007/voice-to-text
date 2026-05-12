@@ -1,8 +1,28 @@
 import AppKit
 import AVFoundation
+import Carbon.HIToolbox
 import Foundation
 import Observation
 import OSLog
+
+private final class RecordingEscapeEventTapContext {
+    weak var controller: DictationController?
+    let swallowState: RecordingEscapeSwallowState
+    let allowedModifierFlags: NSEvent.ModifierFlags
+    let recordingShortcutKeyCode: UInt16?
+
+    init(
+        controller: DictationController,
+        swallowState: RecordingEscapeSwallowState,
+        allowedModifierFlags: NSEvent.ModifierFlags,
+        recordingShortcutKeyCode: UInt16?
+    ) {
+        self.controller = controller
+        self.swallowState = swallowState
+        self.allowedModifierFlags = allowedModifierFlags
+        self.recordingShortcutKeyCode = recordingShortcutKeyCode
+    }
+}
 
 @Observable
 @MainActor
@@ -23,7 +43,13 @@ final class DictationController {
     private let recorder = AudioRecorder()
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
-    private var escMonitor: Any?
+    private var reviewEscMonitor: Any?
+    private var recordingLocalEscMonitor: Any?
+    private var recordingEscEventTap: CFMachPort?
+    private var recordingEscRunLoopSource: CFRunLoopSource?
+    private var recordingEscEventTapContext: RecordingEscapeEventTapContext?
+    @ObservationIgnored
+    private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
 
     private var reviewBeforePaste: Bool {
@@ -99,17 +125,48 @@ final class DictationController {
     ) {
         switch action {
         case .startRecording:
+            guard AccessibilityPermission.isGranted else {
+                AccessibilityPermission.promptForPermission()
+                AppLog.dictation.warning("Missing Accessibility permission, could not start global hotkey recording")
+                state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
+                return
+            }
             let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
             Task { await startRecording(startID: startID) }
         case .stopAndTranscribe:
             Task { await stopAndTranscribe() }
         case .confirmPaste:
             confirmPaste()
+        case .cancelRecording:
+            cancelRecording()
         case .cancelPendingRecording:
             cancelPendingRecording()
         case .none:
             break
         }
+    }
+
+    private func cancelRecording() {
+        guard state == .recording else { return }
+        AppLog.dictation.info("Recording cancelled")
+        stopRecording(cancelledByEscape: false)
+    }
+
+    private func cancelRecordingFromEscape() {
+        guard state == .recording else { return }
+        AppLog.dictation.info("Recording cancelled by Escape")
+        stopRecording(cancelledByEscape: true)
+    }
+
+    private func stopRecording(cancelledByEscape: Bool) {
+        recordingStartGate.reset()
+        stopElapsedTicker()
+        if !cancelledByEscape {
+            removeRecordingEscMonitors()
+        }
+        _ = recorder.stop()
+        LiveHUDPanel.shared.hide()
+        state = .idle
     }
 
     private func cancelPendingRecording() {
@@ -123,16 +180,149 @@ final class DictationController {
     private func cancelReview() {
         guard case .reviewing = state else { return }
         AppLog.dictation.info("Review cancelled")
-        removeEscMonitor()
+        removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
         state = .idle
     }
 
-    private func installEscMonitor() {
-        removeEscMonitor()
+    private func installRecordingEscMonitors() -> Bool {
+        removeRecordingEscMonitors()
+        let escapeSwallowState = recordingEscapeSwallowState
+        let allowedModifierFlags = recordingEscapeAllowedModifierFlags
+        let recordingShortcutKeyCode = recordingEscapeShortcutKeyCode
+        recordingLocalEscMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+            if event.type == .keyUp,
+               RecordingEscapePolicy.isEscape(keyCode: event.keyCode),
+               escapeSwallowState.finishIfNeeded() {
+                Task { @MainActor in self?.removeRecordingEscMonitors() }
+                return nil
+            }
+
+            guard RecordingEscapePolicy.shouldStartCancel(
+                isKeyDown: event.type == .keyDown,
+                keyCode: event.keyCode,
+                modifierFlags: event.modifierFlags,
+                allowedModifierFlags: allowedModifierFlags,
+                recordingShortcutKeyCode: recordingShortcutKeyCode
+            ) else { return event }
+            if escapeSwallowState.begin() {
+                Task { @MainActor in self?.cancelRecordingFromEscape() }
+            }
+            return nil
+        }
+
+        let context = RecordingEscapeEventTapContext(
+            controller: self,
+            swallowState: recordingEscapeSwallowState,
+            allowedModifierFlags: allowedModifierFlags,
+            recordingShortcutKeyCode: recordingShortcutKeyCode
+        )
+        recordingEscEventTapContext = context
+        let contextPtr = Unmanaged.passUnretained(context).toOpaque()
+        let mask = CGEventMask(
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+        )
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: { _, type, event, userData in
+                guard let userData else { return Unmanaged.passUnretained(event) }
+                let context = Unmanaged<RecordingEscapeEventTapContext>.fromOpaque(userData).takeUnretainedValue()
+                guard let controller = context.controller else { return Unmanaged.passUnretained(event) }
+
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    DispatchQueue.main.async { controller.enableRecordingEscEventTap() }
+                    return Unmanaged.passUnretained(event)
+                }
+
+                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                if type == .keyUp,
+                   RecordingEscapePolicy.isEscape(keyCode: keyCode),
+                   context.swallowState.finishIfNeeded() {
+                    DispatchQueue.main.async { controller.removeRecordingEscMonitors() }
+                    return nil
+                }
+
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+                guard RecordingEscapePolicy.shouldStartCancel(
+                    isKeyDown: type == .keyDown,
+                    keyCode: keyCode,
+                    modifierFlags: flags,
+                    allowedModifierFlags: context.allowedModifierFlags,
+                    recordingShortcutKeyCode: context.recordingShortcutKeyCode
+                ) else {
+                    return Unmanaged.passUnretained(event)
+                }
+
+                if context.swallowState.begin() {
+                    DispatchQueue.main.async { controller.cancelRecordingFromEscape() }
+                }
+                return nil
+            },
+            userInfo: contextPtr
+        ) else {
+            AppLog.dictation.error("Recording Escape event tap creation failed")
+            removeRecordingEscMonitors()
+            return false
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        recordingEscEventTap = tap
+        recordingEscRunLoopSource = source
+        enableRecordingEscEventTap()
+        return true
+    }
+
+    private var recordingEscapeAllowedModifierFlags: NSEvent.ModifierFlags {
+        guard HotkeyStore.shared.mode == .hold else { return [] }
+        return Self.eventModifierFlags(forCarbonModifiers: HotkeyStore.shared.binding.modifiers)
+    }
+
+    private var recordingEscapeShortcutKeyCode: UInt16? {
+        guard HotkeyStore.shared.mode == .hold else { return nil }
+        return UInt16(truncatingIfNeeded: HotkeyStore.shared.binding.keyCode)
+    }
+
+    private static func eventModifierFlags(forCarbonModifiers modifiers: UInt32) -> NSEvent.ModifierFlags {
+        var flags: NSEvent.ModifierFlags = []
+        if modifiers & UInt32(cmdKey) != 0 { flags.insert(.command) }
+        if modifiers & UInt32(optionKey) != 0 { flags.insert(.option) }
+        if modifiers & UInt32(controlKey) != 0 { flags.insert(.control) }
+        if modifiers & UInt32(shiftKey) != 0 { flags.insert(.shift) }
+        return flags
+    }
+
+    private func enableRecordingEscEventTap() {
+        guard let recordingEscEventTap else { return }
+        CGEvent.tapEnable(tap: recordingEscEventTap, enable: true)
+    }
+
+    private func removeRecordingEscMonitors() {
+        recordingEscapeSwallowState.reset()
+        if let recordingLocalEscMonitor {
+            NSEvent.removeMonitor(recordingLocalEscMonitor)
+            self.recordingLocalEscMonitor = nil
+        }
+        if let recordingEscRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), recordingEscRunLoopSource, .commonModes)
+            self.recordingEscRunLoopSource = nil
+        }
+        if let recordingEscEventTap {
+            CFMachPortInvalidate(recordingEscEventTap)
+            self.recordingEscEventTap = nil
+        }
+        recordingEscEventTapContext = nil
+    }
+
+    private func installReviewEscMonitor() {
+        removeReviewEscMonitor()
         // Local monitor: our review panel is key, so Esc is dispatched into our app.
-        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 53 {
+        reviewEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == UInt16(kVK_Escape) {
                 Task { @MainActor in self?.cancelReview() }
                 return nil
             }
@@ -140,10 +330,10 @@ final class DictationController {
         }
     }
 
-    private func removeEscMonitor() {
-        if let escMonitor {
-            NSEvent.removeMonitor(escMonitor)
-            self.escMonitor = nil
+    private func removeReviewEscMonitor() {
+        if let reviewEscMonitor {
+            NSEvent.removeMonitor(reviewEscMonitor)
+            self.reviewEscMonitor = nil
         }
     }
 
@@ -194,6 +384,12 @@ final class DictationController {
             let start = Date()
             recordStart = start
             LiveHUDPanel.shared.show()
+            guard installRecordingEscMonitors() else {
+                _ = recorder.stop()
+                LiveHUDPanel.shared.hide()
+                state = .error("Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.")
+                return
+            }
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
@@ -224,6 +420,7 @@ final class DictationController {
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
         recordingStartGate.reset()
         stopElapsedTicker()
+        removeRecordingEscMonitors()
         LiveHUDPanel.shared.hide()
         state = .error("Audio input device changed. Try again.")
     }
@@ -240,6 +437,7 @@ final class DictationController {
     private func stopAndTranscribe() async {
         recordingStartGate.reset()
         stopElapsedTicker()
+        removeRecordingEscMonitors()
         let samples = recorder.stop()
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
 
@@ -302,13 +500,13 @@ final class DictationController {
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() }
         )
-        installEscMonitor()
+        installReviewEscMonitor()
     }
 
     private func confirmPaste() {
         guard case .reviewing = state else { return }
         let edited = LiveHUDPanel.shared.currentReviewText
-        removeEscMonitor()
+        removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
 
         // Key status is released back to the previous app when our panel is
@@ -325,7 +523,7 @@ final class DictationController {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
             AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
-            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy → Accessibility.")
+            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
             return
         }
 

@@ -423,7 +423,9 @@ private struct KeyCap: View {
 
 struct GeneralPane: View {
     @State private var accessibilityGranted = AccessibilityPermission.isGranted
+    @State private var listenEventGranted = ListenEventPermission.isGranted
     @State private var micStatus = MicPermission.status
+    @State private var hotkeyRegistrationRefreshID = 0
     @State private var permissionAlert: PermissionAlert?
     @Bindable private var dictation = DictationController.shared
     @Bindable private var loginItem = LoginItemController.shared
@@ -492,6 +494,7 @@ struct GeneralPane: View {
     private func refreshPermissions() {
         let wasAccessibilityGranted = accessibilityGranted
         accessibilityGranted = AccessibilityPermission.isGranted
+        listenEventGranted = ListenEventPermission.isGranted
         micStatus = MicPermission.status
         if accessibilityGranted && !wasAccessibilityGranted {
             DictationController.shared.retryHotkeyRegistrationIfNeeded()
@@ -623,7 +626,8 @@ struct GeneralPane: View {
                     }
                     Text(hotkeyStatusMessage(
                         isRegistered: isRegistered,
-                        usesStandaloneRightControl: usesStandaloneRightControl
+                        usesStandaloneRightControl: usesStandaloneRightControl,
+                        listenEventGranted: listenEventGranted
                     ))
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -633,6 +637,7 @@ struct GeneralPane: View {
                     Button("Retry") {
                         DictationController.shared.retryHotkeyRegistrationIfNeeded()
                         refreshPermissions()
+                        hotkeyRegistrationRefreshID += 1
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -640,17 +645,19 @@ struct GeneralPane: View {
             }
             .padding(18)
         }
+        .id(hotkeyRegistrationRefreshID)
     }
 
     private func hotkeyStatusMessage(
         isRegistered: Bool,
-        usesStandaloneRightControl: Bool
+        usesStandaloneRightControl: Bool,
+        listenEventGranted: Bool
     ) -> String {
         if isRegistered {
             return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
         }
-        if usesStandaloneRightControl && !accessibilityGranted {
-            return "Right Control needs Accessibility permission. Enable it below, then retry."
+        if usesStandaloneRightControl && !listenEventGranted {
+            return "Right Control needs Input Monitoring permission. Click Retry, then enable VoiceToText if prompted."
         }
         return "Hotkey registration failed. Retry, or check Accessibility permission."
     }

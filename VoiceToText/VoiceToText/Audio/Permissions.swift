@@ -50,3 +50,14 @@ enum AccessibilityPermission {
         NSWorkspace.shared.open(url)
     }
 }
+
+enum ListenEventPermission {
+    static var isGranted: Bool {
+        CGPreflightListenEventAccess()
+    }
+
+    @discardableResult
+    static func request() -> Bool {
+        CGRequestListenEventAccess()
+    }
+}

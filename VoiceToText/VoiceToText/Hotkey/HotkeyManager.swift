@@ -92,6 +92,11 @@ final class HotkeyManager {
     private func registerStandaloneModifier(binding: HotkeyBinding) {
         guard binding == .rightControlBinding else { return }
 
+        guard ListenEventPermission.isGranted || ListenEventPermission.request() else {
+            AppLog.app.error("Standalone modifier hotkey needs Input Monitoring permission")
+            return
+        }
+
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
         let mask = CGEventMask(
             (1 << CGEventType.flagsChanged.rawValue)
@@ -102,10 +107,9 @@ final class HotkeyManager {
             place: .tailAppendEventTap,
             options: .listenOnly,
             eventsOfInterest: mask,
-            callback: { _, _, event, userData in
+            callback: { _, type, event, userData in
                 guard let userData else { return Unmanaged.passUnretained(event) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                let type = event.type
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
                 DispatchQueue.main.async {
                     manager.handleStandaloneModifierEvent(type: type, keyCode: keyCode)

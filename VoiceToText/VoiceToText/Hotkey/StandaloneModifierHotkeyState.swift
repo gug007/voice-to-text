@@ -20,19 +20,24 @@ struct StandaloneModifierHotkeyState {
         self.modifierKeyCode = modifierKeyCode
     }
 
-    mutating func handleFlagsChanged(keyCode: UInt16) -> [StandaloneModifierHotkeyEffect] {
+    mutating func handleFlagsChanged(
+        keyCode: UInt16,
+        isModifierDown: Bool
+    ) -> [StandaloneModifierHotkeyEffect] {
         guard keyCode == modifierKeyCode else { return [] }
 
-        if modifierIsDown {
-            return releaseModifier()
+        if isModifierDown {
+            guard !modifierIsDown else { return [] }
+            nextToken += 1
+            modifierIsDown = true
+            pressWasEmitted = false
+            suppressUntilRelease = false
+            pendingPressToken = nextToken
+            return [.schedulePress(nextToken)]
         }
 
-        nextToken += 1
-        modifierIsDown = true
-        pressWasEmitted = false
-        suppressUntilRelease = false
-        pendingPressToken = nextToken
-        return [.schedulePress(nextToken)]
+        guard modifierIsDown else { return [] }
+        return releaseModifier()
     }
 
     mutating func handleKeyDown(keyCode: UInt16) -> [StandaloneModifierHotkeyEffect] {

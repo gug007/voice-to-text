@@ -1,6 +1,7 @@
 import AppKit
 import Carbon.HIToolbox
 import Foundation
+import IOKit.hidsystem
 import OSLog
 
 final class HotkeyManager {
@@ -18,6 +19,7 @@ final class HotkeyManager {
     )
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
+    private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
 
     static let shared = HotkeyManager()
 
@@ -111,8 +113,13 @@ final class HotkeyManager {
                 guard let userData else { return Unmanaged.passUnretained(event) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
                 let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                let rightControlIsDown = event.flags.rawValue & manager.rightControlDeviceMask != 0
                 DispatchQueue.main.async {
-                    manager.handleStandaloneModifierEvent(type: type, keyCode: keyCode)
+                    manager.handleStandaloneModifierEvent(
+                        type: type,
+                        keyCode: keyCode,
+                        rightControlIsDown: rightControlIsDown
+                    )
                 }
                 return Unmanaged.passUnretained(event)
             },
@@ -131,11 +138,18 @@ final class HotkeyManager {
         AppLog.app.info("Standalone modifier hotkey registered: keyCode=\(binding.keyCode)")
     }
 
-    private func handleStandaloneModifierEvent(type: CGEventType, keyCode: UInt16) {
+    private func handleStandaloneModifierEvent(
+        type: CGEventType,
+        keyCode: UInt16,
+        rightControlIsDown: Bool
+    ) {
         let effects: [StandaloneModifierHotkeyEffect]
         switch type {
         case .flagsChanged:
-            effects = standaloneModifierState.handleFlagsChanged(keyCode: keyCode)
+            effects = standaloneModifierState.handleFlagsChanged(
+                keyCode: keyCode,
+                isModifierDown: rightControlIsDown
+            )
         case .keyDown:
             effects = standaloneModifierState.handleKeyDown(keyCode: keyCode)
         case .tapDisabledByTimeout, .tapDisabledByUserInput:
@@ -144,7 +158,7 @@ final class HotkeyManager {
                 CGEvent.tapEnable(tap: modifierEventTap, enable: true)
                 isRegistered = true
             }
-            effects = []
+            effects = standaloneModifierState.reset()
         default:
             effects = []
         }

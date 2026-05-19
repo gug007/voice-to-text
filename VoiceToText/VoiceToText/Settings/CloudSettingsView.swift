@@ -11,17 +11,18 @@ struct CloudPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 32) {
                 PaneHeader(
                     title: "Cloud",
-                    subtitle: "Connect to online transcription services. Your access key is saved securely on this Mac."
+                    subtitle: "Connect to online transcription. Your key stays on this Mac."
                 )
 
-                openAICard
+                openAISection
 
-                privacyCard
+                privacyFooter
             }
-            .padding(32)
+            .padding(.horizontal, 36)
+            .padding(.vertical, 36)
         }
         .onAppear {
             draftKey = ""
@@ -30,104 +31,177 @@ struct CloudPane: View {
         }
     }
 
+    // MARK: - OpenAI section
+
     @ViewBuilder
-    private var openAICard: some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("OpenAI API key")
-                            .font(.system(size: 14, weight: .medium))
-                        Text("Used for Whisper-1, GPT-4o Transcribe, and GPT-4o Mini Transcribe.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    keyStateBadge
-                }
-
-                SecureField("sk-…", text: $draftKey, prompt: Text(keyStore.hasKey ? "Replace existing key" : "Paste your OpenAI API key"))
-                    .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 13, design: .monospaced))
-                    .disableAutocorrection(true)
-                    .onSubmit { save() }
-
-                HStack(spacing: 10) {
-                    Button("Save") { save() }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.small)
-                        .disabled(draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                    Button("Test Connection") { Task { await testConnection() } }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(!keyStore.hasKey || isTesting)
-
-                    if isTesting {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-
-                    Spacer()
-
-                    if keyStore.hasKey {
-                        Button(role: .destructive) {
-                            keyStore.clearKey()
-                            draftKey = ""
-                            setStatus("API key removed.", kind: .neutral)
-                        } label: {
-                            Label("Remove", systemImage: "trash")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
-                }
-
-                if let statusMessage {
-                    Text(statusMessage)
+    private var openAISection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            HStack(alignment: .center, spacing: 14) {
+                providerIcon
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("OpenAI")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Whisper-1, GPT-4o Transcribe, GPT-4o Mini Transcribe")
                         .font(.system(size: 11))
-                        .foregroundStyle(statusColor)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 12)
+                statusBadge
+            }
 
-                Link("Get an API key from platform.openai.com →",
-                     destination: URL(string: "https://platform.openai.com/api-keys")!)
+            keyField
+
+            actionRow
+
+            if let statusMessage {
+                Text(statusMessage)
                     .font(.system(size: 11))
+                    .foregroundStyle(statusColor)
+                    .transition(.opacity)
             }
-            .padding(18)
-        }
-    }
 
-    @ViewBuilder
-    private var privacyCard: some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Privacy")
-                    .font(.system(size: 13, weight: .medium))
-                Text("When a cloud model is active, your recorded audio is uploaded to that provider for transcription. Local models (Parakeet, Whisper-large) keep audio on your Mac.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(18)
-        }
-    }
-
-    @ViewBuilder
-    private var keyStateBadge: some View {
-        if keyStore.hasKey {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.system(size: 11))
-                Text("Configured")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-        } else {
-            Text("Not set")
+            Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+                HStack(spacing: 4) {
+                    Text("Get an API key")
+                    Image(systemName: "arrow.up.right")
+                        .font(.system(size: 9, weight: .semibold))
+                }
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.orange)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(.tint)
+        }
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.06))
+        )
+    }
+
+    private var providerIcon: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            Color.blue.opacity(0.22),
+                            Color.blue.opacity(0.08)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Image(systemName: "cloud.fill")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.blue)
+        }
+        .frame(width: 34, height: 34)
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(keyStore.hasKey ? Color.green : Color.orange)
+                .frame(width: 6, height: 6)
+            Text(keyStore.hasKey ? "Configured" : "Not set")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+        }
+        .fixedSize()
+    }
+
+    private var keyField: some View {
+        SecureField(
+            "",
+            text: $draftKey,
+            prompt: Text(keyStore.hasKey ? "Replace existing key" : "Paste your API key")
+                .foregroundStyle(.tertiary)
+        )
+        .textFieldStyle(.plain)
+        .font(.system(size: 13, design: .monospaced))
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08))
+        )
+        .onSubmit { save() }
+    }
+
+    @ViewBuilder
+    private var actionRow: some View {
+        HStack(spacing: 10) {
+            Button("Save") { save() }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+                .disabled(draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+            Button {
+                Task { await testConnection() }
+            } label: {
+                if isTesting {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Testing…")
+                    }
+                } else {
+                    Text("Test")
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
+            .disabled(!keyStore.hasKey || isTesting)
+
+            Spacer()
+
+            if keyStore.hasKey {
+                Button {
+                    keyStore.clearKey()
+                    draftKey = ""
+                    setStatus("Key removed.", kind: .neutral)
+                } label: {
+                    Text("Remove")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.red.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .help("Forget the saved API key")
+            }
         }
     }
+
+    // MARK: - Privacy footer
+
+    private var privacyFooter: some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "lock.shield")
+                .font(.system(size: 12))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 1)
+            VStack(alignment: .leading, spacing: 3) {
+                Text("Privacy")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                Text("Cloud models upload your audio to the provider. Local models keep audio on this Mac.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    // MARK: - Helpers
 
     private var statusColor: Color {
         switch statusKind {
@@ -148,15 +222,15 @@ struct CloudPane: View {
         do {
             try keyStore.setKey(trimmed)
             draftKey = ""
-            setStatus("API key saved to Keychain.", kind: .success)
+            setStatus("Key saved.", kind: .success)
         } catch {
-            setStatus("Could not save key: \(error.localizedDescription)", kind: .failure)
+            setStatus("Couldn't save key: \(error.localizedDescription)", kind: .failure)
         }
     }
 
     private func testConnection() async {
         guard let apiKey = OpenAIAPIKey.read() else {
-            setStatus("No API key configured.", kind: .failure)
+            setStatus("No key configured.", kind: .failure)
             return
         }
         isTesting = true
@@ -175,9 +249,9 @@ struct CloudPane: View {
             }
             switch http.statusCode {
             case 200..<300:
-                setStatus("Connection OK — key accepted.", kind: .success)
+                setStatus("Connection OK — key works.", kind: .success)
             case 401:
-                setStatus("HTTP 401 — key was rejected by OpenAI.", kind: .failure)
+                setStatus("Key was rejected by OpenAI.", kind: .failure)
             default:
                 setStatus("Test failed: HTTP \(http.statusCode).", kind: .failure)
             }

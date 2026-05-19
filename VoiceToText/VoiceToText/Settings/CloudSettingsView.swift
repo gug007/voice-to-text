@@ -37,7 +37,7 @@ struct CloudPane: View {
     private var openAISection: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack(alignment: .center, spacing: 14) {
-                providerIcon
+                ProviderIconTile(symbol: "cloud.fill", tint: .blue)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("OpenAI")
                         .font(.system(size: 16, weight: .semibold))
@@ -46,7 +46,10 @@ struct CloudPane: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 12)
-                statusBadge
+                StatusDot(
+                    color: keyStore.hasKey ? .green : .orange,
+                    label: keyStore.hasKey ? "Configured" : "Not set"
+                )
             }
 
             keyField
@@ -60,7 +63,7 @@ struct CloudPane: View {
                     .transition(.opacity)
             }
 
-            Link(destination: URL(string: "https://platform.openai.com/api-keys")!) {
+            Link(destination: OpenAIEndpoint.apiKeysDocs) {
                 HStack(spacing: 4) {
                     Text("Get an API key")
                     Image(systemName: "arrow.up.right")
@@ -80,39 +83,6 @@ struct CloudPane: View {
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.06))
         )
-    }
-
-    private var providerIcon: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            Color.blue.opacity(0.22),
-                            Color.blue.opacity(0.08)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Image(systemName: "cloud.fill")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.blue)
-        }
-        .frame(width: 34, height: 34)
-    }
-
-    @ViewBuilder
-    private var statusBadge: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(keyStore.hasKey ? Color.green : Color.orange)
-                .frame(width: 6, height: 6)
-            Text(keyStore.hasKey ? "Configured" : "Not set")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-        .fixedSize()
     }
 
     private var keyField: some View {
@@ -219,44 +189,21 @@ struct CloudPane: View {
     private func save() {
         let trimmed = draftKey.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        do {
-            try keyStore.setKey(trimmed)
-            draftKey = ""
-            setStatus("Key saved.", kind: .success)
-        } catch {
-            setStatus("Couldn't save key: \(error.localizedDescription)", kind: .failure)
-        }
+        keyStore.setKey(trimmed)
+        draftKey = ""
+        setStatus("Key saved.", kind: .success)
     }
 
     private func testConnection() async {
-        guard let apiKey = OpenAIAPIKey.read() else {
-            setStatus("No key configured.", kind: .failure)
-            return
-        }
         isTesting = true
         defer { isTesting = false }
-
-        var request = URLRequest(url: URL(string: "https://api.openai.com/v1/models")!)
-        request.httpMethod = "GET"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
-        request.timeoutInterval = 15
-
-        do {
-            let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else {
-                setStatus("Test failed: invalid response.", kind: .failure)
-                return
-            }
-            switch http.statusCode {
-            case 200..<300:
-                setStatus("Connection OK — key works.", kind: .success)
-            case 401:
-                setStatus("Key was rejected by OpenAI.", kind: .failure)
-            default:
-                setStatus("Test failed: HTTP \(http.statusCode).", kind: .failure)
-            }
-        } catch {
-            setStatus("Test failed: \(error.localizedDescription)", kind: .failure)
+        switch await OpenAITranscriptionEngine.testConnection() {
+        case .ok:
+            setStatus("Connection OK — key works.", kind: .success)
+        case .rejected:
+            setStatus("Key was rejected by OpenAI.", kind: .failure)
+        case .failed(let message):
+            setStatus(message, kind: .failure)
         }
     }
 }

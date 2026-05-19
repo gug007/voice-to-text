@@ -1,13 +1,26 @@
 import Foundation
 
+nonisolated enum OpenAIEndpoint {
+    static let transcriptions = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
+    static let models = URL(string: "https://api.openai.com/v1/models")!
+    static let apiKeysDocs = URL(string: "https://platform.openai.com/api-keys")!
+}
+
+enum OpenAIConnectionTest {
+    /// Reachability probe used by the settings UI. Returns nil on success;
+    /// a short user-facing failure message otherwise.
+    case ok
+    case rejected
+    case failed(String)
+}
+
 /// Engine that uploads the captured audio buffer to OpenAI's
-/// `/v1/audio/transcriptions` endpoint. The API key lives in the Keychain
-/// and is read on every request so changes propagate without rebuilding the
-/// engine.
+/// `/v1/audio/transcriptions` endpoint. The API key is read from
+/// `OpenAIAPIKey` on every request so changes propagate without rebuilding
+/// the engine.
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     let modelId: String
 
-    private let endpoint = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
     private let session: URLSession
     private let sampleRate: Int
 
@@ -43,19 +56,21 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let wav = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        var request = URLRequest(url: endpoint)
+        var request = Self.authorizedRequest(url: OpenAIEndpoint.transcriptions, apiKey: apiKey)
         request.httpMethod = "POST"
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue(
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
         )
+        let prompt = [opts.initialPrompt, contextPrompt]
+            .compactMap { $0 }
+            .joined(separator: " ")
         request.httpBody = Self.makeMultipartBody(
             boundary: boundary,
             modelId: modelId,
             wav: wav,
             language: opts.language,
-            prompt: combinedPrompt(userPrompt: opts.initialPrompt, context: contextPrompt)
+            prompt: prompt.isEmpty ? nil : prompt
         )
 
         let data: Data
@@ -72,8 +87,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let summary = Self.errorMessage(from: data)
-                ?? "HTTP \(http.statusCode)"
+            let summary = Self.errorMessage(from: data) ?? "HTTP \(http.statusCode)"
             throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
         }
 
@@ -82,23 +96,37 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             let body = try JSONDecoder().decode(Body.self, from: data)
             return body.text.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
-            throw TranscriptionEngineError.transcriptionFailed(
-                "Could not parse OpenAI response"
-            )
+            throw TranscriptionEngineError.transcriptionFailed("Could not parse OpenAI response")
         }
     }
 
-    private func combinedPrompt(userPrompt: String?, context: String?) -> String? {
-        switch (userPrompt, context) {
-        case let (user?, ctx?):
-            return user + " " + ctx
-        case let (user?, nil):
-            return user
-        case let (nil, ctx?):
-            return ctx
-        case (nil, nil):
-            return nil
+    /// Lightweight reachability check used by the Cloud settings pane. Hits
+    /// `/v1/models` with the saved API key and reports whether the key works.
+    static func testConnection() async -> OpenAIConnectionTest {
+        guard let apiKey = OpenAIAPIKey.read() else {
+            return .failed("No key configured.")
         }
+        var request = authorizedRequest(url: OpenAIEndpoint.models, apiKey: apiKey)
+        request.timeoutInterval = 15
+        do {
+            let (_, response) = try await URLSession.shared.data(for: request)
+            guard let http = response as? HTTPURLResponse else {
+                return .failed("Test failed: invalid response.")
+            }
+            switch http.statusCode {
+            case 200..<300: return .ok
+            case 401: return .rejected
+            default: return .failed("Test failed: HTTP \(http.statusCode).")
+            }
+        } catch {
+            return .failed("Test failed: \(error.localizedDescription)")
+        }
+    }
+
+    private nonisolated static func authorizedRequest(url: URL, apiKey: String) -> URLRequest {
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        return request
     }
 
     private nonisolated static func makeMultipartBody(
@@ -111,10 +139,10 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         var body = Data()
 
         func appendField(_ name: String, _ value: String) {
-            body.append("--\(boundary)\r\n".utf8Data)
-            body.append("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8Data)
-            body.append(value.utf8Data)
-            body.append("\r\n".utf8Data)
+            body.append(Data("--\(boundary)\r\n".utf8))
+            body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
+            body.append(Data(value.utf8))
+            body.append(Data("\r\n".utf8))
         }
 
         appendField("model", modelId)
@@ -126,13 +154,13 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             appendField("prompt", prompt)
         }
 
-        body.append("--\(boundary)\r\n".utf8Data)
-        body.append("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".utf8Data)
-        body.append("Content-Type: audio/wav\r\n\r\n".utf8Data)
+        body.append(Data("--\(boundary)\r\n".utf8))
+        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".utf8))
+        body.append(Data("Content-Type: audio/wav\r\n\r\n".utf8))
         body.append(wav)
-        body.append("\r\n".utf8Data)
+        body.append(Data("\r\n".utf8))
 
-        body.append("--\(boundary)--\r\n".utf8Data)
+        body.append(Data("--\(boundary)--\r\n".utf8))
         return body
     }
 
@@ -148,8 +176,4 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         }
         return String(data: data, encoding: .utf8)
     }
-}
-
-nonisolated private extension String {
-    var utf8Data: Data { Data(self.utf8) }
 }

@@ -191,7 +191,7 @@ final class ModelRegistry {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.refreshInstalledState() }
+            MainActor.assumeIsolated { self?.refreshCloudReadiness() }
         }
     }
 
@@ -201,8 +201,6 @@ final class ModelRegistry {
     func bootstrapActiveModelIfNeeded() {
         let id = activeModelId
         guard let descriptor = ModelCatalog.model(for: id) else { return }
-        // Cloud models have no on-disk warmup — readiness depends purely on
-        // API key presence, validated when dictation actually starts.
         if descriptor.isCloud { return }
         switch readiness(for: id) {
         case .installed, .preparing:
@@ -216,18 +214,31 @@ final class ModelRegistry {
 
     func refreshInstalledState() {
         for model in ModelCatalog.all {
-            switch model.backend.cloudProvider {
-            case .openAI:
-                readiness[model.id] = OpenAIAPIKey.read() != nil
-                    ? .installed(sizeBytes: 0)
-                    : .notInstalled
-            case nil:
-                if ModelStorage.isInstalled(model) {
-                    readiness[model.id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(model))
-                } else {
-                    readiness[model.id] = .notInstalled
-                }
-            }
+            updateReadiness(for: model)
+        }
+    }
+
+    /// Cheaper variant used when only API-key-driven readiness can have
+    /// changed. Skips disk scans for local models.
+    private func refreshCloudReadiness() {
+        for model in ModelCatalog.all where model.backend.isCloud {
+            updateReadiness(for: model)
+        }
+    }
+
+    private func updateReadiness(for model: ModelDescriptor) {
+        let next: ModelReadiness
+        switch model.backend.cloudProvider {
+        case .openAI:
+            next = OpenAIAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
+        case nil:
+            let state = ModelStorage.installedState(model)
+            next = state.installed ? .installed(sizeBytes: state.sizeBytes) : .notInstalled
+        }
+        // Avoid spurious view invalidation: @Observable propagates assignments
+        // regardless of equality, so guard with an explicit compare.
+        if readiness[model.id] != next {
+            readiness[model.id] = next
         }
     }
 
@@ -302,9 +313,6 @@ final class ModelRegistry {
 
     func deleteModel(id: String) {
         guard let descriptor = ModelCatalog.model(for: id) else { return }
-        // Cloud models have no on-disk footprint; the trash button isn't
-        // rendered for them. Guard regardless so a stray call can't try to
-        // touch a non-existent directory.
         if descriptor.isCloud {
             engines[id] = nil
             return

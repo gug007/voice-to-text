@@ -152,7 +152,7 @@ private struct ModelRow: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            providerIcon
+            ProviderIconTile(isCloud: model.isCloud)
 
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
@@ -200,30 +200,6 @@ private struct ModelRow: View {
         )
     }
 
-    // MARK: Provider icon (left)
-
-    private var providerIcon: some View {
-        let tint: Color = model.isCloud ? .blue : .green
-        let symbol = model.isCloud ? "cloud.fill" : "laptopcomputer"
-        return ZStack {
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.22), tint.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
-        }
-        .frame(width: 34, height: 34)
-        .help(model.isCloud
-              ? "Cloud — runs on the provider's servers"
-              : "Local — runs on this Mac")
-    }
-
     private var activeBadge: some View {
         HStack(spacing: 3) {
             Image(systemName: "checkmark")
@@ -263,14 +239,7 @@ private struct ModelRow: View {
     @ViewBuilder
     private var cloudReadinessControl: some View {
         if keyStore.hasKey {
-            HStack(spacing: 5) {
-                Circle()
-                    .fill(.green)
-                    .frame(width: 6, height: 6)
-                Text("Connected")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
+            StatusDot(color: .green, label: "Connected")
         } else {
             Button {
                 onShowCloudSettings()
@@ -322,14 +291,7 @@ private struct ModelRow: View {
 
         case .installed:
             HStack(spacing: 8) {
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(.green)
-                        .frame(width: 6, height: 6)
-                    Text("Installed")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.secondary)
-                }
+                StatusDot(color: .green, label: "Installed")
                 Button {
                     registry.deleteModel(id: model.id)
                 } label: {

@@ -24,18 +24,37 @@ enum ModelStorage {
     }
 
     static func isInstalled(_ descriptor: ModelDescriptor) -> Bool {
-        guard let url = location(for: descriptor) else { return false }
-        var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
-            return false
-        }
-        let contents = (try? FileManager.default.contentsOfDirectory(atPath: url.path)) ?? []
-        return !contents.isEmpty
+        installedState(descriptor).installed
     }
 
     static func diskUsageBytes(_ descriptor: ModelDescriptor) -> Int64 {
-        guard let url = location(for: descriptor) else { return 0 }
-        return folderSize(at: url)
+        installedState(descriptor).sizeBytes
+    }
+
+    /// Single-pass walk that returns both whether the model directory has
+    /// any contents and its total allocated size. Callers that need both
+    /// should prefer this over `isInstalled` + `diskUsageBytes`, which would
+    /// enumerate the same tree twice.
+    static func installedState(_ descriptor: ModelDescriptor) -> (installed: Bool, sizeBytes: Int64) {
+        guard let url = location(for: descriptor) else { return (false, 0) }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
+            return (false, 0)
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return (false, 0) }
+
+        var total: Int64 = 0
+        var hasFiles = false
+        for case let fileURL as URL in enumerator {
+            hasFiles = true
+            let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
+            total += Int64(values?.totalFileAllocatedSize ?? 0)
+        }
+        return (hasFiles, total)
     }
 
     static func delete(_ descriptor: ModelDescriptor) throws {
@@ -43,21 +62,6 @@ enum ModelStorage {
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }
-    }
-
-    private static func folderSize(at url: URL) -> Int64 {
-        guard let enumerator = FileManager.default.enumerator(
-            at: url,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-
-        var total: Int64 = 0
-        for case let fileURL as URL in enumerator {
-            let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
-            total += Int64(values?.totalFileAllocatedSize ?? 0)
-        }
-        return total
     }
 }
 

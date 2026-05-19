@@ -32,18 +32,20 @@ nonisolated enum WAVEncoder {
         data.append(contentsOf: [0x64, 0x61, 0x74, 0x61])              // "data"
         data.appendLE(dataSize)
 
-        // Float32 [-1,1] -> Int16 little-endian. macOS is little-endian so a
-        // raw memcpy of the Int16 buffer matches the on-disk byte order.
-        var pcm = [Int16](repeating: 0, count: samples.count)
-        for index in 0..<samples.count {
-            let clamped = max(-1.0, min(1.0, samples[index]))
-            pcm[index] = Int16((clamped * 32_767.0).rounded())
-        }
-        pcm.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            let byteCount = buffer.count * MemoryLayout<Int16>.size
-            base.withMemoryRebound(to: UInt8.self, capacity: byteCount) { bytes in
-                data.append(bytes, count: byteCount)
+        // Convert Float32 [-1,1] → Int16 LE directly into `data` so we don't
+        // hold a separate `[Int16]` buffer alongside the WAV blob. macOS is
+        // little-endian, so the raw Int16 byte layout matches WAV's on-disk
+        // order without per-sample byte-swapping.
+        let byteCount = samples.count * bytesPerSample
+        let payloadStart = data.count
+        data.count += byteCount
+        data.withUnsafeMutableBytes { rawBuffer in
+            let int16Buffer = rawBuffer.baseAddress!
+                .advanced(by: payloadStart)
+                .assumingMemoryBound(to: Int16.self)
+            for index in 0..<samples.count {
+                let clamped = max(-1.0, min(1.0, samples[index]))
+                int16Buffer[index] = Int16((clamped * 32_767.0).rounded())
             }
         }
         return data

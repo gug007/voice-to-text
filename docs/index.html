@@ -8,7 +8,7 @@
   <meta name="theme-color" content="#FFFFFF" media="(prefers-color-scheme: light)">
 
   <title>VoiceToText — Free Offline Dictation App for Mac</title>
-  <meta name="description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. 100% offline, on the Apple Neural Engine.">
+  <meta name="description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. Local-first on the Apple Neural Engine, with optional OpenAI cloud models.">
   <meta name="author" content="Gurgen Abagyan">
   <meta name="robots" content="index,follow">
   <meta name="format-detection" content="telephone=no">
@@ -22,7 +22,7 @@
   <meta property="og:site_name" content="VoiceToText">
   <meta property="og:url" content="https://gug007.github.io/voice-to-text/">
   <meta property="og:title" content="VoiceToText — Free Offline Dictation App for Mac">
-  <meta property="og:description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. 100% offline, on the Apple Neural Engine.">
+  <meta property="og:description" content="Free, open-source Mac dictation. Hold a hotkey, speak, release — words type into any app. Local-first on the Apple Neural Engine, with optional OpenAI cloud models.">
   <meta property="og:image" content="https://gug007.github.io/voice-to-text/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
@@ -216,7 +216,7 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "VoiceToText",
-    "description": "Free, open-source macOS dictation app. Push-to-talk speech-to-text that runs 100% offline on the Apple Neural Engine and types into any app.",
+    "description": "Free, open-source macOS dictation app. Push-to-talk speech-to-text that runs offline on the Apple Neural Engine by default, with optional OpenAI cloud models, and types into any app.",
     "url": "https://gug007.github.io/voice-to-text/",
     "downloadUrl": "https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg",
     "applicationCategory": "UtilitiesApplication",
@@ -240,9 +240,10 @@
     "screenshot": "https://gug007.github.io/voice-to-text/demo.gif",
     "featureList": [
       "Push-to-talk global hotkey (Option+Space, customizable)",
-      "100% offline on-device transcription",
+      "Local-first on-device transcription (offline)",
       "Apple Neural Engine acceleration",
       "WhisperKit and FluidAudio (Parakeet) engines",
+      "Optional OpenAI cloud models (GPT-4o Transcribe, GPT-4o Mini Transcribe, Whisper-1)",
       "Types into any focused macOS app",
       "Menu bar app, native SwiftUI"
     ]
@@ -268,7 +269,7 @@
         "name": "Does VoiceToText work offline?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. All speech recognition runs on-device on the Apple Neural Engine. Your audio never leaves your Mac, and no internet connection is required after installation."
+          "text": "Yes, by default. Local models (Parakeet, Whisper) run on-device on the Apple Neural Engine — no internet required and audio never leaves your Mac. Cloud models from OpenAI are opt-in: they only run when you explicitly pick one as the active engine."
         }
       },
       {
@@ -276,7 +277,7 @@
         "name": "How accurate is it?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Accuracy comes from the models: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) — the same state-of-the-art models behind popular paid apps. Pick the engine that fits your accuracy-versus-speed preference."
+          "text": "Accuracy depends on the model. Local: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) — the same state-of-the-art models behind popular paid apps. Optional cloud: OpenAI's GPT-4o Transcribe is the highest-accuracy option overall. Pick the model that fits your accuracy, speed, and privacy preference."
         }
       },
       {
@@ -284,7 +285,15 @@
         "name": "Which speech recognition models does VoiceToText use?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "VoiceToText ships with two engines: WhisperKit (OpenAI's Whisper) for maximum accuracy, and FluidAudio (NVIDIA's Parakeet) for maximum speed. Both run locally on the Apple Neural Engine."
+          "text": "Local (default): WhisperKit (OpenAI's Whisper) for accuracy and FluidAudio (NVIDIA's Parakeet) for speed — both run on the Apple Neural Engine. Optional cloud: OpenAI GPT-4o Transcribe, GPT-4o Mini Transcribe, and Whisper-1, used by pasting your own API key in Settings → Cloud."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Can I use cloud transcription models like OpenAI's?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes — cloud is opt-in. Paste an OpenAI API key in Settings → Cloud and pick GPT-4o Transcribe, GPT-4o Mini Transcribe, or Whisper-1 in the Models pane. Your key is stored in the macOS Keychain and audio is only uploaded when one of these models is the active engine. Switch back to a local model anytime."
         }
       },
       {
@@ -308,7 +317,7 @@
         "name": "How is VoiceToText different from Apple Dictation or Wispr Flow?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, and 100% on-device."
+          "text": "Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that always processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, on-device by default — and lets you optionally bring your own OpenAI key for cloud models when you want maximum accuracy."
         }
       },
       {
@@ -316,7 +325,7 @@
         "name": "Do you collect any data?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. No accounts, no telemetry, no network calls. The repo is public — inspect the source or watch the network with Little Snitch to verify."
+          "text": "No. No accounts, no telemetry, no first-party servers. With a local model the app makes zero network calls. If you opt in to an OpenAI cloud model, your audio for that request goes directly to OpenAI under your own API key — VoiceToText never sees it. The repo is public; inspect the source or watch the network with Little Snitch to verify."
         }
       }
     ]
@@ -385,6 +394,9 @@
         <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
         <path d="M10 4V3a1 1 0 00-1-1H4a1 1 0 00-1 1v6a1 1 0 001 1h1" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round"/>
       </symbol>
+      <symbol id="i-cloud" viewBox="0 0 20 20">
+        <path d="M14.5 15H6a4 4 0 01-.4-7.98A5 5 0 0115.5 8a3.5 3.5 0 01-1 7z" stroke="currentColor" stroke-width="1.75" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      </symbol>
     </defs>
   </svg>
 
@@ -398,6 +410,7 @@
       </a>
       <nav class="nav__links" aria-label="Primary">
         <a href="#features">Features</a>
+        <a href="#cloud">Cloud</a>
         <a href="#compare">Compare</a>
         <a href="#faq">FAQ</a>
       </nav>
@@ -454,7 +467,7 @@
         </p>
 
         <p class="hero__subcopy">
-          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; words are typed into Claude Code, Cursor, Slack, or any focused app. On the Apple Neural Engine. Offline.
+          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; words are typed into Claude Code, Cursor, Slack, or any focused app. Offline on the Apple Neural Engine. OpenAI cloud models optional.
         </p>
 
         <div class="hero__ctas">
@@ -469,7 +482,7 @@
         </div>
 
         <p class="hero__meta">Free · macOS 14+ · Apple Silicon</p>
-        <p class="hero__meta-sub t-caption">No account. No subscription. No cloud.</p>
+        <p class="hero__meta-sub t-caption">No account. No subscription. Cloud is opt-in.</p>
       </div>
     </section>
 
@@ -599,8 +612,8 @@
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-box"/></svg>
             </div>
-            <h3 class="feature-card__title">Two engines, your pick</h3>
-            <p class="feature-card__body">WhisperKit (OpenAI Whisper) for accuracy. FluidAudio (Parakeet) for speed. Switch in Settings anytime.</p>
+            <h3 class="feature-card__title">Local or cloud, your pick</h3>
+            <p class="feature-card__body">WhisperKit (Whisper) and FluidAudio (Parakeet) on-device, plus optional OpenAI cloud models. Switch in Settings anytime.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
@@ -609,6 +622,47 @@
             <h3 class="feature-card__title">Types into any app</h3>
             <p class="feature-card__body">Slack, Mail, Notes, browsers, terminals, code editors &mdash; anywhere macOS shows a text cursor, words land there.</p>
           </li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- 5b. CLOUD MODELS (OPTIONAL) -->
+    <section class="section cloud reveal" id="cloud" aria-labelledby="cloud-title">
+      <div class="container">
+        <p class="section__eyebrow">Optional</p>
+        <h2 id="cloud-title" class="section__title">Want even higher accuracy? Plug in OpenAI.</h2>
+        <p class="section__deck">
+          VoiceToText is local-first. If you want the latest cloud transcription models, paste an OpenAI API key in <strong>Settings &rarr; Cloud</strong> and pick one from the Models list. Local stays the default &mdash; cloud only runs when you make a cloud model active.
+        </p>
+
+        <ul class="features__grid" role="list">
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-sparkle"/></svg>
+            </div>
+            <h3 class="feature-card__title">GPT-4o Transcribe</h3>
+            <p class="feature-card__body">OpenAI&rsquo;s most accurate transcription model. Strong across 99+ languages.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-bolt"/></svg>
+            </div>
+            <h3 class="feature-card__title">GPT-4o Mini Transcribe</h3>
+            <p class="feature-card__body">Nearly as accurate as GPT-4o Transcribe, faster, and cheaper per minute.</p>
+          </li>
+          <li class="feature-card">
+            <div class="feature-card__icon" aria-hidden="true">
+              <svg class="icon icon--lg"><use href="#i-cloud"/></svg>
+            </div>
+            <h3 class="feature-card__title">Whisper-1</h3>
+            <p class="feature-card__body">OpenAI&rsquo;s original hosted Whisper. The cheapest cloud option.</p>
+          </li>
+        </ul>
+
+        <ul class="cloud__bullets t-caption" role="list">
+          <li>Bring your own OpenAI API key &mdash; stored in your Mac&rsquo;s Keychain, never sent anywhere else.</li>
+          <li>Audio only leaves your Mac when a cloud model is the active engine. Local models never touch the network.</li>
+          <li>Swap back to Parakeet or Whisper-large at any time. No account, no lock-in.</li>
         </ul>
       </div>
     </section>
@@ -743,7 +797,7 @@
             <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
 
             <div class="compare__row-label">Multiple speech engines</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>WhisperKit + Parakeet</div>
+            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</div>
             <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Proprietary only</div>
             <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Whisper variants</div>
             <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</div>
@@ -774,7 +828,7 @@
               <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
               <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
-              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>WhisperKit + Parakeet</dd>
+              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</dd>
               <dt>AI coding agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Headline use case</dd>
             </dl>
           </article>
@@ -884,7 +938,7 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Yes. All speech recognition runs on-device on the Apple Neural Engine. Your audio never leaves your Mac, and no internet connection is required after installation.
+              Yes, by default. Local models (Parakeet, Whisper) run on-device on the Apple Neural Engine &mdash; no internet required and audio never leaves your Mac. Cloud models from OpenAI are opt-in: they only run when you explicitly pick one as the active engine.
             </div>
           </details>
 
@@ -894,7 +948,7 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Accuracy comes from the models: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) &mdash; the same state-of-the-art models behind popular paid apps. Pick the engine that fits your accuracy-versus-speed preference.
+              Accuracy depends on the model. <strong>Local:</strong> OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) &mdash; the same state-of-the-art models behind popular paid apps. <strong>Optional cloud:</strong> OpenAI's GPT-4o Transcribe is the highest-accuracy option overall. Pick the model that fits your accuracy, speed, and privacy preference.
             </div>
           </details>
 
@@ -904,7 +958,17 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              VoiceToText ships with two engines: WhisperKit (OpenAI's Whisper) for maximum accuracy, and FluidAudio (NVIDIA's Parakeet) for maximum speed. Both run locally on the Apple Neural Engine.
+              <strong>Local (default):</strong> WhisperKit (OpenAI's Whisper) for accuracy and FluidAudio (NVIDIA's Parakeet) for speed &mdash; both run on the Apple Neural Engine. <strong>Optional cloud:</strong> OpenAI GPT-4o Transcribe, GPT-4o Mini Transcribe, and Whisper-1, used by pasting your own API key in <em>Settings &rarr; Cloud</em>.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>Can I use cloud transcription models like OpenAI's?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Yes &mdash; cloud is opt-in. Paste an OpenAI API key in <em>Settings &rarr; Cloud</em> and pick GPT-4o Transcribe, GPT-4o Mini Transcribe, or Whisper-1 in the Models pane. Your key is stored in the macOS Keychain and audio is only uploaded when one of these models is the active engine. Switch back to a local model anytime.
             </div>
           </details>
 
@@ -934,7 +998,7 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, and 100% on-device.
+              Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that always processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, on-device by default &mdash; and lets you optionally bring your own OpenAI key for cloud models when you want maximum accuracy.
             </div>
           </details>
 
@@ -944,7 +1008,7 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              No. No accounts, no telemetry, no network calls. The repo is public &mdash; inspect the source or watch the network with Little Snitch to verify.
+              No. No accounts, no telemetry, no first-party servers. With a local model the app makes zero network calls. If you opt in to an OpenAI cloud model, your audio for that request goes directly to OpenAI under your own API key &mdash; VoiceToText never sees it. The repo is public; inspect the source or watch the network with Little Snitch to verify.
             </div>
           </details>
         </div>
@@ -1027,11 +1091,11 @@
           <img class="brand-mark" src="app-icon.png" width="28" height="28" alt="" decoding="async">
           <span>VoiceToText</span>
         </a>
-        <p class="footer__tagline">Free, offline dictation for Mac. Open source on GitHub.</p>
+        <p class="footer__tagline">Free, local-first dictation for Mac. Open source on GitHub.</p>
         <p class="footer__attribution t-caption">
           Built in public by <a href="https://github.com/gug007" target="_blank" rel="noopener">@gug007</a>.
         </p>
-        <p class="footer__privacy t-caption">No telemetry. No account. No network calls.</p>
+        <p class="footer__privacy t-caption">No telemetry. No account. No network calls in local mode.</p>
       </div>
 
       <nav class="footer__columns" aria-label="Footer">
@@ -1039,6 +1103,7 @@
           <h3 class="footer__col-title t-label">Product</h3>
           <ul role="list">
             <li><a href="#features">Features</a></li>
+            <li><a href="#cloud">Cloud</a></li>
             <li><a href="#compare">Compare</a></li>
             <li><a href="#faq">FAQ</a></li>
             <li><a href="#download">Download</a></li>

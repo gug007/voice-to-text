@@ -510,3 +510,8 @@ button { font-family: inherit; }
 @media (max-width: 900px) { .footer__inner { grid-template-columns: 1fr; gap: var(--space-8); } .footer__columns { grid-template-columns: repeat(3, 1fr); gap: var(--space-6); } }
 @media (max-width: 600px) { .footer__columns { grid-template-columns: repeat(2, 1fr); } }
 @media (max-width: 380px) { .footer__columns { grid-template-columns: 1fr; } }
+
+/* Cloud section bullets — re-enable disc markers stripped by the global ul reset. */
+.cloud__bullets { max-width: 760px; margin: var(--space-8) auto 0; padding-left: var(--space-5); list-style: disc; color: var(--color-text-muted); }
+.cloud__bullets li { padding-left: var(--space-2); }
+.cloud__bullets li + li { margin-top: var(--space-2); }

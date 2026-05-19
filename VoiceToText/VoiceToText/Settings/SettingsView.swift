@@ -82,72 +82,59 @@ struct ModelsPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                HStack(alignment: .bottom) {
+            VStack(alignment: .leading, spacing: 28) {
+                HStack(alignment: .firstTextBaseline) {
                     PaneHeader(
                         title: "Models",
-                        subtitle: "Download a model to your Mac and pick one for dictation."
+                        subtitle: "Pick the model you want to use for dictation."
                     )
                     Spacer()
                     if registry.totalDiskUsageBytes > 0 {
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Disk used")
-                                .font(.system(size: 10, weight: .medium))
-                                .foregroundStyle(.tertiary)
-                                .textCase(.uppercase)
-                            Text(registry.totalDiskUsageBytes.formattedDiskSize)
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("\(registry.totalDiskUsageBytes.formattedDiskSize) on disk")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.tertiary)
                     }
                 }
 
-                VStack(spacing: 0) {
-                    ForEach(Array(ModelCatalog.all.enumerated()), id: \.element.id) { index, model in
-                        ModelRow(model: model, registry: registry, onShowCloudSettings: onShowCloudSettings)
-                            .contentShape(Rectangle())
-                            .onTapGesture { registry.setActive(model.id) }
-
-                        if index < ModelCatalog.all.count - 1 {
-                            Divider().opacity(0.5)
-                        }
+                VStack(spacing: 8) {
+                    ForEach(ModelCatalog.all) { model in
+                        ModelRow(
+                            model: model,
+                            registry: registry,
+                            onShowCloudSettings: onShowCloudSettings
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { registry.setActive(model.id) }
                     }
                 }
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(Color(nsColor: .controlBackgroundColor))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .strokeBorder(Color.primary.opacity(0.08))
-                )
             }
-            .padding(32)
+            .padding(.horizontal, 36)
+            .padding(.vertical, 36)
         }
         .onAppear { registry.refreshInstalledState() }
     }
 }
 
-private struct StatBar: View {
+private struct StatDots: View {
     let label: String
     let value: Int
 
-    private static let segmentCount = 10
+    private static let dotCount = 10
 
     var body: some View {
-        HStack(spacing: 7) {
+        HStack(spacing: 6) {
             Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.tertiary)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-            HStack(spacing: 2) {
-                ForEach(0..<Self.segmentCount, id: \.self) { i in
-                    RoundedRectangle(cornerRadius: 1.2, style: .continuous)
+            HStack(spacing: 3) {
+                ForEach(0..<Self.dotCount, id: \.self) { i in
+                    Circle()
                         .fill(i < value
-                              ? Color.primary.opacity(0.72)
-                              : Color.primary.opacity(0.12))
-                        .frame(width: 7, height: 4)
+                              ? Color.primary.opacity(0.65)
+                              : Color.primary.opacity(0.10))
+                        .frame(width: 4, height: 4)
                 }
             }
         }
@@ -164,28 +151,27 @@ private struct ModelRow: View {
     private var isActive: Bool { registry.activeModelId == model.id }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 14) {
-            Image(systemName: isActive ? "largecircle.fill.circle" : "circle")
-                .font(.system(size: 18))
-                .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
+        HStack(alignment: .center, spacing: 16) {
+            providerIcon
 
             VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(model.displayName)
-                        .font(.system(size: 14, weight: .medium))
-                    kindBadge
+                        .font(.system(size: 14, weight: .semibold))
+                    if isActive { activeBadge }
                 }
                 Text(model.notes)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                HStack(spacing: 18) {
-                    StatBar(label: "Quality", value: model.quality)
-                    StatBar(label: "Speed", value: model.speed)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 16) {
+                    StatDots(label: "Quality", value: model.quality)
+                    StatDots(label: "Speed", value: model.speed)
                 }
                 .padding(.top, 2)
             }
 
-            Spacer()
+            Spacer(minLength: 12)
 
             VStack(alignment: .trailing, spacing: 6) {
                 readinessControl
@@ -199,7 +185,59 @@ private struct ModelRow: View {
             }
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 14)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isActive
+                      ? Color.accentColor.opacity(0.10)
+                      : Color(nsColor: .controlBackgroundColor).opacity(0.6))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(isActive
+                              ? Color.accentColor.opacity(0.35)
+                              : Color.primary.opacity(0.06))
+        )
+    }
+
+    // MARK: Provider icon (left)
+
+    private var providerIcon: some View {
+        let tint: Color = model.isCloud ? .blue : .green
+        let symbol = model.isCloud ? "cloud.fill" : "laptopcomputer"
+        return ZStack {
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .fill(
+                    LinearGradient(
+                        colors: [tint.opacity(0.22), tint.opacity(0.08)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+            Image(systemName: symbol)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(tint)
+        }
+        .frame(width: 34, height: 34)
+        .help(model.isCloud
+              ? "Cloud — runs on the provider's servers"
+              : "Local — runs on this Mac")
+    }
+
+    private var activeBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 9, weight: .bold))
+            Text("Active")
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                .fill(Color.accentColor.opacity(0.15))
+        )
     }
 
     private var displaySize: String? {
@@ -211,41 +249,7 @@ private struct ModelRow: View {
         return "~\(approx.formattedDiskSize)"
     }
 
-    @ViewBuilder
-    private var kindBadge: some View {
-        if let provider = model.backend.cloudProvider {
-            badge(
-                icon: "cloud.fill",
-                label: "Cloud",
-                tint: .blue,
-                tooltip: "Cloud — hosted by \(provider.displayName)"
-            )
-        } else {
-            badge(
-                icon: "laptopcomputer",
-                label: "Local",
-                tint: .green,
-                tooltip: "Local — runs on this Mac"
-            )
-        }
-    }
-
-    private func badge(icon: String, label: String, tint: Color, tooltip: String) -> some View {
-        HStack(spacing: 3) {
-            Image(systemName: icon)
-                .font(.system(size: 9, weight: .semibold))
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-        }
-        .foregroundStyle(tint)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4)
-                .fill(tint.opacity(0.12))
-        )
-        .help(tooltip)
-    }
+    // MARK: Readiness controls (right)
 
     @ViewBuilder
     private var readinessControl: some View {
@@ -259,11 +263,11 @@ private struct ModelRow: View {
     @ViewBuilder
     private var cloudReadinessControl: some View {
         if keyStore.hasKey {
-            HStack(spacing: 4) {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-                    .font(.system(size: 11))
-                Text("API key set")
+            HStack(spacing: 5) {
+                Circle()
+                    .fill(.green)
+                    .frame(width: 6, height: 6)
+                Text("Connected")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
@@ -271,15 +275,21 @@ private struct ModelRow: View {
             Button {
                 onShowCloudSettings()
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: 3) {
                     Text("Add API key")
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 9, weight: .semibold))
+                        .font(.system(size: 8, weight: .bold))
                 }
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.orange)
+                .padding(.horizontal, 9)
+                .padding(.vertical, 4)
+                .background(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.orange.opacity(0.12))
+                )
             }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(.orange)
+            .buttonStyle(.plain)
             .help("Open Cloud settings to add your API key")
         }
     }
@@ -298,11 +308,12 @@ private struct ModelRow: View {
             VStack(alignment: .trailing, spacing: 4) {
                 ProgressView(value: fraction)
                     .progressViewStyle(.linear)
-                    .frame(width: 140)
+                    .frame(width: 120)
                 HStack(spacing: 6) {
                     Text(message)
                         .font(.system(size: 10))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
                     Text("\(Int(fraction * 100))%")
                         .font(.system(size: 10, weight: .medium, design: .monospaced))
                         .foregroundStyle(.tertiary)
@@ -310,22 +321,23 @@ private struct ModelRow: View {
             }
 
         case .installed:
-            HStack(spacing: 10) {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.system(size: 11))
+            HStack(spacing: 8) {
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(.green)
+                        .frame(width: 6, height: 6)
                     Text("Installed")
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
-                Button(role: .destructive) {
+                Button {
                     registry.deleteModel(id: model.id)
                 } label: {
                     Image(systemName: "trash")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+                .buttonStyle(.plain)
                 .help("Delete model from disk")
             }
 

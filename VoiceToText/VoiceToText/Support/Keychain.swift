@@ -15,19 +15,29 @@ enum KeychainError: LocalizedError {
 }
 
 nonisolated enum Keychain {
-    static func set(_ value: String, service: String, account: String) throws {
-        let data = Data(value.utf8)
-        let baseQuery: [String: Any] = [
+    /// All queries opt into the macOS data-protection keychain so items are
+    /// scoped to this app's bundle ID (iOS-style). Without this flag the legacy
+    /// file-based keychain prompts the user every time the binary's code
+    /// signature changes — annoying for dev builds and surprising in release
+    /// when the app is re-signed by an updater.
+    private static func baseQuery(service: String, account: String) -> [String: Any] {
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true,
         ]
+    }
+
+    static func set(_ value: String, service: String, account: String) throws {
+        let data = Data(value.utf8)
+        let base = baseQuery(service: service, account: account)
         let updateStatus = SecItemUpdate(
-            baseQuery as CFDictionary,
+            base as CFDictionary,
             [kSecValueData as String: data] as CFDictionary
         )
         if updateStatus == errSecItemNotFound {
-            var addQuery = baseQuery
+            var addQuery = base
             addQuery[kSecValueData as String] = data
             addQuery[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlocked
             let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
@@ -40,13 +50,9 @@ nonisolated enum Keychain {
     }
 
     static func get(service: String, account: String) -> String? {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-            kSecReturnData as String: true,
-            kSecMatchLimit as String: kSecMatchLimitOne,
-        ]
+        var query = baseQuery(service: service, account: account)
+        query[kSecReturnData as String] = true
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
         guard status == errSecSuccess,
@@ -59,11 +65,7 @@ nonisolated enum Keychain {
 
     @discardableResult
     static func delete(service: String, account: String) -> Bool {
-        let query: [String: Any] = [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
+        let query = baseQuery(service: service, account: account)
         let status = SecItemDelete(query as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }

@@ -50,7 +50,7 @@ enum ModelCatalog {
             backendModelId: "parakeet-tdt-v3",
             approxSizeMB: 470,
             languages: "25 European + JA",
-            notes: "Fastest. Runs on the Apple Neural Engine.",
+            notes: "Fastest on your Mac. Best for English and major European languages.",
             quality: 8,
             speed: 10
         ),
@@ -61,7 +61,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-large-v3-v20240930_turbo",
             approxSizeMB: 632,
             languages: "99",
-            notes: "Best multilingual. 6× faster than Large v3 with near-equal accuracy.",
+            notes: "Excellent accuracy in 99 languages. A great all-rounder.",
             quality: 9,
             speed: 7
         ),
@@ -72,7 +72,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-large-v3-v20240930",
             approxSizeMB: 626,
             languages: "99",
-            notes: "Highest accuracy. Slower than Turbo.",
+            notes: "Most accurate offline option. Noticeably slower than Turbo.",
             quality: 10,
             speed: 3
         ),
@@ -83,7 +83,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-small",
             approxSizeMB: 244,
             languages: "99",
-            notes: "Lightweight multilingual option.",
+            notes: "Smaller and faster, but makes more mistakes.",
             quality: 5,
             speed: 8
         ),
@@ -94,7 +94,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-base",
             approxSizeMB: 77,
             languages: "99",
-            notes: "Very small. Limited accuracy.",
+            notes: "Very small. Quite a few mistakes — only worth it on slow Macs.",
             quality: 3,
             speed: 9
         ),
@@ -105,7 +105,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-tiny",
             approxSizeMB: 39,
             languages: "99",
-            notes: "Smallest. Lowest accuracy.",
+            notes: "Smallest. Lots of mistakes — mainly useful for testing.",
             quality: 2,
             speed: 10
         ),
@@ -116,7 +116,7 @@ enum ModelCatalog {
             backendModelId: "gpt-4o-transcribe",
             approxSizeMB: 0,
             languages: "99+",
-            notes: "OpenAI's highest-accuracy transcription (≈4.1% WER on LibriSpeech). Requires API key.",
+            notes: "The most accurate option overall. Audio goes to OpenAI.",
             quality: 10,
             speed: 5
         ),
@@ -127,7 +127,7 @@ enum ModelCatalog {
             backendModelId: "gpt-4o-mini-transcribe",
             approxSizeMB: 0,
             languages: "99+",
-            notes: "Smaller GPT-4o variant. ≈4.8% WER — still beats Whisper V3. Requires API key.",
+            notes: "Nearly as accurate as GPT-4o Transcribe and cheaper to run.",
             quality: 9,
             speed: 7
         ),
@@ -138,7 +138,7 @@ enum ModelCatalog {
             backendModelId: "whisper-1",
             approxSizeMB: 0,
             languages: "99",
-            notes: "Legacy hosted Whisper Large V2. Cheapest OpenAI option. Requires API key.",
+            notes: "OpenAI's older online model. Cheapest, but less accurate than GPT-4o.",
             quality: 8,
             speed: 6
         ),

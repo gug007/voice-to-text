@@ -14,7 +14,7 @@ struct CloudPane: View {
             VStack(alignment: .leading, spacing: 24) {
                 PaneHeader(
                     title: "Cloud",
-                    subtitle: "API keys for cloud transcription providers. Keys are stored in your macOS Keychain."
+                    subtitle: "Connect to online transcription services. Your access key is saved securely on this Mac."
                 )
 
                 openAICard

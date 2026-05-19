@@ -115,10 +115,10 @@ enum ModelCatalog {
             backend: .openAI,
             backendModelId: "gpt-4o-transcribe",
             approxSizeMB: 0,
-            languages: "Multilingual",
-            notes: "Cloud. OpenAI's highest-accuracy transcription. Requires API key.",
+            languages: "99+",
+            notes: "OpenAI's highest-accuracy transcription (≈4.1% WER on LibriSpeech). Requires API key.",
             quality: 10,
-            speed: 8
+            speed: 5
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-mini-transcribe",
@@ -126,10 +126,10 @@ enum ModelCatalog {
             backend: .openAI,
             backendModelId: "gpt-4o-mini-transcribe",
             approxSizeMB: 0,
-            languages: "Multilingual",
-            notes: "Cloud. Faster and cheaper than GPT-4o Transcribe. Requires API key.",
-            quality: 8,
-            speed: 9
+            languages: "99+",
+            notes: "Smaller GPT-4o variant. ≈4.8% WER — still beats Whisper V3. Requires API key.",
+            quality: 9,
+            speed: 7
         ),
         ModelDescriptor(
             id: "openai-whisper-1",
@@ -138,9 +138,9 @@ enum ModelCatalog {
             backendModelId: "whisper-1",
             approxSizeMB: 0,
             languages: "99",
-            notes: "Cloud. Legacy hosted Whisper Large V2. Cheapest OpenAI option. Requires API key.",
-            quality: 9,
-            speed: 7
+            notes: "Legacy hosted Whisper Large V2. Cheapest OpenAI option. Requires API key.",
+            quality: 8,
+            speed: 6
         ),
     ]
 

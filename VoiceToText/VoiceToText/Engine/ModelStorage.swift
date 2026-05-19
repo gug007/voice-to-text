@@ -11,18 +11,20 @@ enum ModelStorage {
         return appSupport.appendingPathComponent("FluidAudio/Models", isDirectory: true)
     }
 
-    nonisolated static func location(for descriptor: ModelDescriptor) -> URL {
+    nonisolated static func location(for descriptor: ModelDescriptor) -> URL? {
         switch descriptor.backend {
         case .fluidAudio:
             return fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
         case .whisperKit:
             return whisperKitBaseURL
                 .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(descriptor.backendModelId)", isDirectory: true)
+        case .openAI:
+            return nil
         }
     }
 
     static func isInstalled(_ descriptor: ModelDescriptor) -> Bool {
-        let url = location(for: descriptor)
+        guard let url = location(for: descriptor) else { return false }
         var isDir: ObjCBool = false
         guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue else {
             return false
@@ -32,11 +34,12 @@ enum ModelStorage {
     }
 
     static func diskUsageBytes(_ descriptor: ModelDescriptor) -> Int64 {
-        folderSize(at: location(for: descriptor))
+        guard let url = location(for: descriptor) else { return 0 }
+        return folderSize(at: url)
     }
 
     static func delete(_ descriptor: ModelDescriptor) throws {
-        let url = location(for: descriptor)
+        guard let url = location(for: descriptor) else { return }
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
         }

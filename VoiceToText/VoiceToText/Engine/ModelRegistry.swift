@@ -1,10 +1,30 @@
 import Foundation
 import Observation
 
+enum CloudProvider: String, Sendable, Hashable {
+    case openAI
+
+    var displayName: String {
+        switch self {
+        case .openAI: return "OpenAI"
+        }
+    }
+}
+
 struct ModelDescriptor: Identifiable, Hashable, Sendable {
     enum Backend: String, Sendable, Hashable {
         case whisperKit
         case fluidAudio
+        case openAI
+
+        var cloudProvider: CloudProvider? {
+            switch self {
+            case .whisperKit, .fluidAudio: return nil
+            case .openAI: return .openAI
+            }
+        }
+
+        var isCloud: Bool { cloudProvider != nil }
     }
 
     let id: String
@@ -17,6 +37,8 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// 1...10 subjective rating surfaced in the Models list.
     let quality: Int
     let speed: Int
+
+    var isCloud: Bool { backend.isCloud }
 }
 
 enum ModelCatalog {
@@ -87,6 +109,39 @@ enum ModelCatalog {
             quality: 2,
             speed: 10
         ),
+        ModelDescriptor(
+            id: "openai-gpt-4o-transcribe",
+            displayName: "GPT-4o Transcribe (OpenAI)",
+            backend: .openAI,
+            backendModelId: "gpt-4o-transcribe",
+            approxSizeMB: 0,
+            languages: "Multilingual",
+            notes: "Cloud. OpenAI's highest-accuracy transcription. Requires API key.",
+            quality: 10,
+            speed: 8
+        ),
+        ModelDescriptor(
+            id: "openai-gpt-4o-mini-transcribe",
+            displayName: "GPT-4o Mini Transcribe (OpenAI)",
+            backend: .openAI,
+            backendModelId: "gpt-4o-mini-transcribe",
+            approxSizeMB: 0,
+            languages: "Multilingual",
+            notes: "Cloud. Faster and cheaper than GPT-4o Transcribe. Requires API key.",
+            quality: 8,
+            speed: 9
+        ),
+        ModelDescriptor(
+            id: "openai-whisper-1",
+            displayName: "Whisper-1 (OpenAI)",
+            backend: .openAI,
+            backendModelId: "whisper-1",
+            approxSizeMB: 0,
+            languages: "99",
+            notes: "Cloud. Legacy hosted Whisper Large V2. Cheapest OpenAI option. Requires API key.",
+            quality: 9,
+            speed: 7
+        ),
     ]
 
     static func model(for id: String) -> ModelDescriptor? {
@@ -131,6 +186,13 @@ final class ModelRegistry {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             ?? "parakeet-tdt-v3"
         refreshInstalledState()
+        NotificationCenter.default.addObserver(
+            forName: OpenAIAPIKeyStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshInstalledState() }
+        }
     }
 
     /// Kick off a background download of the active model if it isn't already
@@ -138,6 +200,10 @@ final class ModelRegistry {
     /// the model is already present or a download is in flight.
     func bootstrapActiveModelIfNeeded() {
         let id = activeModelId
+        guard let descriptor = ModelCatalog.model(for: id) else { return }
+        // Cloud models have no on-disk warmup — readiness depends purely on
+        // API key presence, validated when dictation actually starts.
+        if descriptor.isCloud { return }
         switch readiness(for: id) {
         case .installed, .preparing:
             return
@@ -150,10 +216,17 @@ final class ModelRegistry {
 
     func refreshInstalledState() {
         for model in ModelCatalog.all {
-            if ModelStorage.isInstalled(model) {
-                readiness[model.id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(model))
-            } else {
-                readiness[model.id] = .notInstalled
+            switch model.backend.cloudProvider {
+            case .openAI:
+                readiness[model.id] = OpenAIAPIKey.read() != nil
+                    ? .installed(sizeBytes: 0)
+                    : .notInstalled
+            case nil:
+                if ModelStorage.isInstalled(model) {
+                    readiness[model.id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(model))
+                } else {
+                    readiness[model.id] = .notInstalled
+                }
             }
         }
     }
@@ -229,6 +302,13 @@ final class ModelRegistry {
 
     func deleteModel(id: String) {
         guard let descriptor = ModelCatalog.model(for: id) else { return }
+        // Cloud models have no on-disk footprint; the trash button isn't
+        // rendered for them. Guard regardless so a stray call can't try to
+        // touch a non-existent directory.
+        if descriptor.isCloud {
+            engines[id] = nil
+            return
+        }
         preparationTasks[id]?.cancel()
         preparationTasks[id] = nil
         _ = nextPreparationGeneration(for: id)
@@ -247,6 +327,8 @@ final class ModelRegistry {
             return WhisperKitEngine(modelId: descriptor.backendModelId)
         case .fluidAudio:
             return FluidAudioEngine(modelId: descriptor.backendModelId)
+        case .openAI:
+            return OpenAITranscriptionEngine(modelId: descriptor.backendModelId)
         }
     }
 

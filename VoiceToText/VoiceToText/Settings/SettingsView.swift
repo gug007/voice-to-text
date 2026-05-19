@@ -8,13 +8,14 @@ struct SettingsView: View {
     @State private var selection: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, hotkey, models, transcription, updates
+        case general, hotkey, models, transcription, cloud, updates
         var id: String { rawValue }
         var title: String {
             switch self {
             case .models: return "Models"
             case .hotkey: return "Shortcut"
             case .transcription: return "Transcription"
+            case .cloud: return "Cloud"
             case .general: return "General"
             case .updates: return "Updates"
             }
@@ -24,6 +25,7 @@ struct SettingsView: View {
             case .models: return "waveform"
             case .hotkey: return "command"
             case .transcription: return "text.bubble"
+            case .cloud: return "cloud"
             case .general: return "slider.horizontal.3"
             case .updates: return "arrow.down.circle"
             }
@@ -49,9 +51,10 @@ struct SettingsView: View {
     @ViewBuilder
     private var detailView: some View {
         switch selection {
-        case .models: ModelsPane(registry: registry)
+        case .models: ModelsPane(registry: registry, onShowCloudSettings: { selection = .cloud })
         case .hotkey: HotkeyPane()
         case .transcription: TranscriptionPane()
+        case .cloud: CloudPane()
         case .general: GeneralPane()
         case .updates: UpdatesPane()
         }
@@ -75,6 +78,7 @@ struct PaneHeader: View {
 
 struct ModelsPane: View {
     @Bindable var registry: ModelRegistry
+    var onShowCloudSettings: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -100,7 +104,7 @@ struct ModelsPane: View {
 
                 VStack(spacing: 0) {
                     ForEach(Array(ModelCatalog.all.enumerated()), id: \.element.id) { index, model in
-                        ModelRow(model: model, registry: registry)
+                        ModelRow(model: model, registry: registry, onShowCloudSettings: onShowCloudSettings)
                             .contentShape(Rectangle())
                             .onTapGesture { registry.setActive(model.id) }
 
@@ -154,6 +158,8 @@ private struct StatBar: View {
 private struct ModelRow: View {
     let model: ModelDescriptor
     @Bindable var registry: ModelRegistry
+    let onShowCloudSettings: () -> Void
+    @Bindable private var keyStore = OpenAIAPIKeyStore.shared
 
     private var isActive: Bool { registry.activeModelId == model.id }
 
@@ -164,8 +170,11 @@ private struct ModelRow: View {
                 .foregroundStyle(isActive ? Color.accentColor : Color.secondary.opacity(0.5))
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(model.displayName)
-                    .font(.system(size: 14, weight: .medium))
+                HStack(spacing: 6) {
+                    Text(model.displayName)
+                        .font(.system(size: 14, weight: .medium))
+                    kindBadge
+                }
                 Text(model.notes)
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
@@ -180,18 +189,21 @@ private struct ModelRow: View {
 
             VStack(alignment: .trailing, spacing: 6) {
                 readinessControl
-                Text(displaySize)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                if let size = displaySize {
+                    Text(size)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
         }
         .padding(.horizontal, 18)
         .padding(.vertical, 14)
     }
 
-    private var displaySize: String {
+    private var displaySize: String? {
+        if model.isCloud { return nil }
         if case .installed(let bytes) = registry.readiness(for: model.id) {
             return bytes.formattedDiskSize
         }
@@ -200,7 +212,80 @@ private struct ModelRow: View {
     }
 
     @ViewBuilder
+    private var kindBadge: some View {
+        if let provider = model.backend.cloudProvider {
+            badge(
+                icon: "cloud.fill",
+                label: "Cloud",
+                tint: .blue,
+                tooltip: "Cloud — hosted by \(provider.displayName)"
+            )
+        } else {
+            badge(
+                icon: "laptopcomputer",
+                label: "Local",
+                tint: .green,
+                tooltip: "Local — runs on this Mac"
+            )
+        }
+    }
+
+    private func badge(icon: String, label: String, tint: Color, tooltip: String) -> some View {
+        HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.system(size: 9, weight: .semibold))
+            Text(label)
+                .font(.system(size: 10, weight: .semibold))
+        }
+        .foregroundStyle(tint)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 2)
+        .background(
+            RoundedRectangle(cornerRadius: 4)
+                .fill(tint.opacity(0.12))
+        )
+        .help(tooltip)
+    }
+
+    @ViewBuilder
     private var readinessControl: some View {
+        if model.isCloud {
+            cloudReadinessControl
+        } else {
+            localReadinessControl
+        }
+    }
+
+    @ViewBuilder
+    private var cloudReadinessControl: some View {
+        if keyStore.hasKey {
+            HStack(spacing: 4) {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+                    .font(.system(size: 11))
+                Text("API key set")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+        } else {
+            Button {
+                onShowCloudSettings()
+            } label: {
+                HStack(spacing: 4) {
+                    Text("Add API key")
+                    Image(systemName: "arrow.right")
+                        .font(.system(size: 9, weight: .semibold))
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .tint(.orange)
+            .help("Open Cloud settings to add your API key")
+        }
+    }
+
+    @ViewBuilder
+    private var localReadinessControl: some View {
         switch registry.readiness(for: model.id) {
         case .notInstalled:
             Button("Download") {

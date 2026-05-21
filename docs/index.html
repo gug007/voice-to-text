@@ -222,7 +222,7 @@
     "keywords": "voice to text mac, speech to text mac, mac dictation, push-to-talk dictation, offline speech recognition mac, free voice to text",
     "url": "https://voicetotext.cc/",
     "downloadUrl": "https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg",
-    "applicationCategory": "UtilitiesApplication",
+    "applicationCategory": "ProductivityApplication",
     "applicationSubCategory": "Speech to Text",
     "operatingSystem": "macOS 14.0",
     "processorRequirements": "Apple Silicon (M1 or newer)",
@@ -237,7 +237,8 @@
     "author": {
       "@type": "Person",
       "name": "Gurgen Abagyan",
-      "url": "https://github.com/gug007"
+      "url": "https://github.com/gug007",
+      "sameAs": "https://github.com/gug007"
     },
     "image": "https://voicetotext.cc/og-image.png",
     "screenshot": "https://voicetotext.cc/demo.gif",
@@ -343,6 +344,19 @@
   }
   </script>
 
+  <!-- Structured data: Person (author) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "name": "Gurgen Abagyan",
+    "url": "https://github.com/gug007",
+    "sameAs": [
+      "https://github.com/gug007"
+    ]
+  }
+  </script>
+
   <!-- Google tag (gtag.js) -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-6XX9WSS0TH"></script>
   <script>
@@ -436,15 +450,15 @@
       </button>
       <a class="btn btn--secondary btn--sm" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">
         <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
-        <span>View on GitHub</span>
+        <span>View source on GitHub</span>
       </a>
     </div>
   </header>
 
-  <main id="main">
+  <main id="main" tabindex="-1">
 
     <!-- 1. HERO -->
-    <section class="hero" id="top">
+    <section class="hero" id="top" aria-labelledby="hero-title">
       <div class="dictation-wave" aria-hidden="true">
         <span class="bars">
           <i style="--i:0"></i><i style="--i:1"></i><i style="--i:2"></i><i style="--i:3"></i>
@@ -469,7 +483,7 @@
       <div class="container hero__inner">
         <p class="hero__eyebrow">Free · Open source · macOS</p>
 
-        <h1 class="hero__title">
+        <h1 id="hero-title" class="hero__title">
           Voice to Text for Mac. Free. Offline.
         </h1>
 
@@ -484,16 +498,16 @@
         <div class="hero__ctas">
           <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span>Download for Mac</span>
+            <span>Get it free — download for Mac</span>
           </a>
           <a class="btn btn--secondary" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">
             <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
-            <span>View on GitHub</span>
+            <span>View source on GitHub</span>
           </a>
         </div>
 
-        <p class="hero__meta">Free · macOS 14+ · Apple Silicon</p>
-        <p class="hero__meta-sub t-caption">No account. No subscription. Cloud is opt-in.</p>
+        <p class="hero__meta">Free · Open source · macOS 14+ · Apple Silicon</p>
+        <p class="hero__meta-sub t-caption">No account. No subscription. No telemetry. Cloud is opt-in.</p>
       </div>
     </section>
 
@@ -507,13 +521,13 @@
             100% open source
           </li>
           <li class="chip">
-            <a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener" class="chip__link">Live on GitHub</a>
+            <a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener" class="chip__link">Browse the repo on GitHub</a>
           </li>
           <li class="chip">Built in public</li>
         </ul>
         <p class="proof__provenance">
           Powered by OpenAI Whisper (via WhisperKit) and Parakeet (via FluidAudio), on the Apple Neural Engine.
-          <a class="proof__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the code <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+          <a class="proof__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source code <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
         </p>
       </div>
     </section>
@@ -538,7 +552,7 @@
             </span>
             <span class="demo-field__content">
               <span class="demo-field__placeholder" data-dictation-placeholder>
-                Hold <kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd> to dictate
+                Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> to dictate
               </span>
               <span class="demo-field__text" data-dictation-text></span>
               <span class="demo-field__caret" data-dictation-caret aria-hidden="true"></span>
@@ -602,9 +616,9 @@
     <!-- 5. FEATURES -->
     <section class="section features reveal" id="features" aria-labelledby="features-title">
       <div class="container">
-        <h2 id="features-title" class="section__title">Why VoiceToText for Mac speech to text?</h2>
+        <h2 id="features-title" class="section__title">Everything you need from a Mac dictation app — nothing you don't.</h2>
         <p class="section__deck">
-          A native voice to text Mac app that keeps your voice on your Mac. Free, open, fast, and designed to live at your cursor.
+          Free, open-source, and built to stay out of your way. Your audio never leaves your Mac unless you explicitly choose cloud.
         </p>
 
         <ul class="features__grid" role="list">
@@ -612,44 +626,44 @@
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-lock"/></svg>
             </div>
-            <h3 class="feature-card__title">Offline and private</h3>
-            <p class="feature-card__body">Audio is transcribed locally on the Apple Neural Engine. No cloud, no telemetry, no network calls.</p>
-            <a class="feature-card__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+            <h3 class="feature-card__title">Your audio never leaves the Mac</h3>
+            <p class="feature-card__body">Transcription runs on the Apple Neural Engine, entirely offline. No cloud calls, no telemetry, nothing to trust.</p>
+            <a class="feature-card__link" href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source code <svg class="icon icon--sm" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-keyboard"/></svg>
             </div>
-            <h3 class="feature-card__title">True push-to-talk speak-to-text</h3>
-            <p class="feature-card__body">Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> to speak. Release to stop. A real speak-to-text app for Mac &mdash; no toggles, no cutoffs mid-sentence, no rebound.</p>
+            <h3 class="feature-card__title">Hold to talk. Release to insert.</h3>
+            <p class="feature-card__body">Press <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, let go. Text appears at the cursor. No toggles, no accidental cutoffs, no mode to escape.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-bolt"/></svg>
             </div>
-            <h3 class="feature-card__title">Apple Silicon native</h3>
-            <p class="feature-card__body">A SwiftUI menu-bar app that rides the Neural Engine. No Electron, low battery drain, fast cold start.</p>
+            <h3 class="feature-card__title">Instant start, minimal battery</h3>
+            <p class="feature-card__body">Pure SwiftUI, menu-bar only. It cold-starts in under a second and barely registers in Activity Monitor — no Electron overhead.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-agent"/></svg>
             </div>
-            <h3 class="feature-card__title">Built for AI agents</h3>
-            <p class="feature-card__body">Dictate prompts into Claude Code, Cursor, Codex, Copilot Chat, or ChatGPT at thinking speed.</p>
+            <h3 class="feature-card__title">Prompt AI agents faster than you can type</h3>
+            <p class="feature-card__body">Speak a full, detailed prompt into Claude Code or Cursor. Thinking speed beats typing speed — every time.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-box"/></svg>
             </div>
-            <h3 class="feature-card__title">Local or cloud, your pick</h3>
-            <p class="feature-card__body">WhisperKit (Whisper) and FluidAudio (Parakeet) on-device, plus optional OpenAI cloud models. Switch in Settings anytime.</p>
+            <h3 class="feature-card__title">Switch engines without switching apps</h3>
+            <p class="feature-card__body">Parakeet and Whisper run on-device by default. Add an OpenAI key to unlock cloud models. One setting, no reinstall.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-apps"/></svg>
             </div>
-            <h3 class="feature-card__title">Voice to text app for any Mac app</h3>
-            <p class="feature-card__body">Slack, Mail, Notes, browsers, terminals, code editors &mdash; anywhere macOS shows a text cursor, your voice lands as text there. One voice to text app for every Mac and MacBook field.</p>
+            <h3 class="feature-card__title">Works in every app that accepts text</h3>
+            <p class="feature-card__body">Slack, Mail, Notes, browser address bars, terminals, code editors — if macOS puts a cursor there, VoiceToText types into it.</p>
           </li>
         </ul>
       </div>
@@ -659,9 +673,9 @@
     <section class="section cloud reveal" id="cloud" aria-labelledby="cloud-title">
       <div class="container">
         <p class="section__eyebrow">Optional</p>
-        <h2 id="cloud-title" class="section__title">Want even higher accuracy? Plug in OpenAI cloud speech to text.</h2>
+        <h2 id="cloud-title" class="section__title">Need higher accuracy? Add an OpenAI key and pick a cloud model.</h2>
         <p class="section__deck">
-          VoiceToText is local-first voice to text for Mac. If you want the latest cloud speech-to-text models, paste an OpenAI API key in <strong>Settings &rarr; Cloud</strong> and pick one from the Models list. Local stays the default &mdash; cloud only runs when you make a cloud model active.
+          Local models run by default — no key required. Paste an OpenAI API key in <strong>Settings &rarr; Cloud</strong> to unlock the models below. Audio only leaves your Mac when a cloud model is active.
         </p>
 
         <ul class="features__grid" role="list">
@@ -670,21 +684,21 @@
               <svg class="icon icon--lg"><use href="#i-sparkle"/></svg>
             </div>
             <h3 class="feature-card__title">GPT-4o Transcribe</h3>
-            <p class="feature-card__body">OpenAI&rsquo;s most accurate transcription model. Strong across 99+ languages.</p>
+            <p class="feature-card__body">Best accuracy available. Use it when correctness matters more than cost — accents, technical jargon, 99+ languages.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-bolt"/></svg>
             </div>
             <h3 class="feature-card__title">GPT-4o Mini Transcribe</h3>
-            <p class="feature-card__body">Nearly as accurate as GPT-4o Transcribe, faster, and cheaper per minute.</p>
+            <p class="feature-card__body">The everyday cloud pick. Accuracy close to GPT-4o Transcribe at a fraction of the cost — good default for high-volume use.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-cloud"/></svg>
             </div>
             <h3 class="feature-card__title">Whisper-1</h3>
-            <p class="feature-card__body">OpenAI&rsquo;s original hosted Whisper. The cheapest cloud option.</p>
+            <p class="feature-card__body">OpenAI&rsquo;s original hosted model. Lowest cost per minute — fine for straightforward dictation in major languages.</p>
           </li>
         </ul>
 
@@ -700,15 +714,15 @@
     <section class="section ai reveal" id="ai-agents" aria-labelledby="ai-title">
       <div class="container">
         <p class="section__eyebrow">Voice prompting</p>
-        <h2 id="ai-title" class="section__title">Voice to text for Claude Code, Cursor, and AI coding agents.</h2>
+        <h2 id="ai-title" class="section__title">Dictate prompts directly into Claude Code, Cursor, and other AI coding agents.</h2>
         <p class="section__deck">
-          Think in paragraphs. Speak them into the editor. Prompts stay on your Mac &mdash; no cloud speech to text sitting between you and the agent.
+          Speak a full prompt — context, constraints, examples — faster than you can type it. Text lands at the cursor inside the agent. No copy-paste, no middleman.
         </p>
 
         <div class="ai__grid">
           <div class="ai__body">
             <p class="ai__para">
-              Dictate the whole prompt: the file you want changed, the error, the constraint, the style you're aiming for. VoiceToText types it at the cursor in Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, Warp, or a plain terminal. Proprietary code never leaves the Mac.
+              Say the file, the error, the constraint, the style — all in one breath. VoiceToText types it at the cursor in Claude Code, Codex CLI, Cursor, Copilot Chat, or any terminal. Your code stays on your Mac; only the prompt goes to the agent.
             </p>
 
             <ul class="ai__apps" role="list" aria-label="Supported AI coding apps">
@@ -745,7 +759,7 @@
         <div class="ai__cta">
           <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span>Download for Mac</span>
+            <span>Get it free — download for Mac</span>
           </a>
         </div>
       </div>
@@ -1066,11 +1080,11 @@
         <div class="download__ctas">
           <a class="btn btn--primary btn--lg" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span>Download for Mac</span>
+            <span>Get it free — download the DMG</span>
           </a>
           <a class="btn btn--secondary btn--lg" href="https://github.com/gug007/voice-to-text/releases" target="_blank" rel="noopener">
             <svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>
-            <span>Browse Releases</span>
+            <span>See all releases on GitHub</span>
           </a>
         </div>
 
@@ -1145,23 +1159,23 @@
             <li><a href="#cloud">Cloud</a></li>
             <li><a href="#compare">Compare</a></li>
             <li><a href="#faq">FAQ</a></li>
-            <li><a href="#download">Download</a></li>
+            <li><a href="#download">Download the app</a></li>
           </ul>
         </div>
         <div class="footer__col">
           <h3 class="footer__col-title t-label">Project</h3>
           <ul role="list">
-            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">GitHub</a></li>
-            <li><a href="https://github.com/gug007/voice-to-text/releases" target="_blank" rel="noopener">Releases</a></li>
-            <li><a href="https://github.com/gug007/voice-to-text/blob/main/LICENSE" target="_blank" rel="noopener">License</a></li>
-            <li><a href="https://github.com/gug007/voice-to-text/issues" target="_blank" rel="noopener">Issues</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Source on GitHub</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/releases" target="_blank" rel="noopener">Release history</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/blob/main/LICENSE" target="_blank" rel="noopener">MIT license</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text/issues" target="_blank" rel="noopener">Report an issue</a></li>
           </ul>
         </div>
         <div class="footer__col">
           <h3 class="footer__col-title t-label">Trust</h3>
           <ul role="list">
-            <li><a href="#faq">Privacy</a></li>
-            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Read the source</a></li>
+            <li><a href="#faq">Privacy answers</a></li>
+            <li><a href="https://github.com/gug007/voice-to-text" target="_blank" rel="noopener">Audit the source code</a></li>
           </ul>
         </div>
       </nav>

@@ -380,11 +380,11 @@ button { font-family: inherit; }
 /* ---------- Demo card — minimalistic voice-input field + recording HUD ---------- */
 .demo-card { margin: 0 auto; max-width: 720px; display: flex; flex-direction: column; align-items: stretch; gap: clamp(20px, 3vw, 32px); padding: 0; background: transparent; }
 
-.demo-field { position: relative; display: flex; align-items: center; gap: 16px; padding: 20px 24px; min-height: 84px; background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 16px; box-shadow: 0 1px 0 var(--color-border-strong) inset, 0 8px 24px -16px rgba(0,0,0,.5); transition: border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard); }
-.demo-field[data-dictation-state="recording"] { border-color: var(--color-text-secondary); box-shadow: 0 0 0 3px var(--color-accent-muted), 0 8px 24px -12px rgba(0,0,0,.4); }
-.demo-field__icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; color: var(--color-text-secondary); border-radius: 12px; background: var(--color-accent-muted); transition: color var(--duration-base) var(--ease-standard); }
+.demo-field { position: relative; display: flex; align-items: center; gap: 18px; padding: 24px 28px; min-height: 92px; background: var(--color-surface-elevated); border: 0; border-radius: 22px; box-shadow: 0 0 0 1px var(--color-border), 0 1px 2px rgba(0,0,0,.04), 0 12px 32px -20px rgba(0,0,0,.5); transition: box-shadow var(--duration-base) var(--ease-standard); }
+.demo-field[data-dictation-state="recording"] { box-shadow: 0 0 0 1px var(--color-text-secondary), 0 0 0 5px var(--color-accent-muted), 0 12px 32px -16px rgba(0,0,0,.5); }
+.demo-field__icon { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; flex-shrink: 0; color: var(--color-text-muted); background: transparent; transition: color var(--duration-base) var(--ease-standard); }
 .demo-field[data-dictation-state="recording"] .demo-field__icon { color: var(--color-text-primary); }
-.demo-field__icon svg { width: 20px; height: 20px; }
+.demo-field__icon svg { width: 22px; height: 22px; stroke-width: 1.5; }
 .demo-field__content { position: relative; flex: 1 1 auto; min-width: 0; min-height: 1.5em; font-size: clamp(16px, 1.6vw, 19px); line-height: 1.5; color: var(--color-text-primary); }
 .demo-field__placeholder { position: absolute; inset: 0; color: var(--color-text-muted); pointer-events: none; transition: opacity var(--duration-base) var(--ease-standard); }
 .demo-field[data-dictation-state="recording"] .demo-field__placeholder,
@@ -413,9 +413,9 @@ button { font-family: inherit; }
 }
 
 @media (max-width: 640px) {
-  .demo-field { padding: 16px 18px; min-height: 72px; gap: 12px; border-radius: 14px; }
-  .demo-field__icon { width: 32px; height: 32px; border-radius: 10px; }
-  .demo-field__icon svg { width: 18px; height: 18px; }
+  .demo-field { padding: 20px 20px; min-height: 78px; gap: 14px; border-radius: 18px; }
+  .demo-field__icon { width: 22px; height: 22px; }
+  .demo-field__icon svg { width: 20px; height: 20px; }
   .demo-hud__trace { height: 52px; padding: 12px 18px 4px; border-radius: 18px 18px 0 0; }
   .demo-hud__meta { padding: 4px 18px 12px; border-radius: 0 0 18px 18px; }
 }

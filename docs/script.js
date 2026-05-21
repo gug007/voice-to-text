@@ -91,4 +91,211 @@
       }
     });
   });
+
+  // --- 5. Demo dictation cycle ------------------------------------------
+  // Animates the simulated VoiceToText recording HUD over a faux Claude
+  // Code window: show HUD, type a prompt while the timer counts, hide HUD,
+  // pause, then move to the next prompt. Pauses when off-screen, and
+  // collapses to a static finished state under reduced-motion.
+  const demoCard = document.querySelector('.demo-card');
+  const demoField = demoCard && demoCard.querySelector('.demo-field');
+  const demoHud = document.querySelector('[data-dictation-hud]');
+  const demoText = document.querySelector('[data-dictation-text]');
+  const demoTimer = document.querySelector('[data-dictation-timer]');
+  const demoCanvas = document.querySelector('[data-dictation-canvas]');
+
+  if (demoCard && demoField && demoHud && demoText && demoTimer && demoCanvas) {
+    // ECG-trace ribbon — mirrors the SwiftUI Canvas in LiveHUD.swift:
+    // 140-sample rolling buffer, filled shape mirrored above and below the
+    // centre, write-head on the right, gradient mask on the left.
+    const SAMPLES = 140;
+    const trace = new Array(SAMPLES).fill(0);
+    let traceSmoothed = 0;
+    let tracePhase = Math.random() * 10;
+    let traceRaf = null;
+    let traceCtx = demoCanvas.getContext('2d');
+    let traceDpr = 1;
+    let traceLast = 0;
+    let traceActive = false;
+
+    function resizeTraceCanvas() {
+      const rect = demoCanvas.getBoundingClientRect();
+      traceDpr = Math.min(window.devicePixelRatio || 1, 2);
+      demoCanvas.width = Math.max(1, Math.round(rect.width * traceDpr));
+      demoCanvas.height = Math.max(1, Math.round(rect.height * traceDpr));
+      traceCtx.setTransform(traceDpr, 0, 0, traceDpr, 0, 0);
+    }
+
+    function drawTrace() {
+      const w = demoCanvas.width / traceDpr;
+      const h = demoCanvas.height / traceDpr;
+      traceCtx.clearRect(0, 0, w, h);
+
+      const midY = h / 2;
+      const amp = h * 0.48;
+      const floor = 1.2;
+      const stepX = w / (SAMPLES - 1);
+
+      traceCtx.beginPath();
+      for (let i = 0; i < SAMPLES; i++) {
+        const off = Math.max(floor, trace[i] * amp);
+        const x = i * stepX;
+        const y = midY - off;
+        if (i === 0) traceCtx.moveTo(x, y); else traceCtx.lineTo(x, y);
+      }
+      for (let i = SAMPLES - 1; i >= 0; i--) {
+        const off = Math.max(floor, trace[i] * amp);
+        traceCtx.lineTo(i * stepX, midY + off);
+      }
+      traceCtx.closePath();
+      traceCtx.fillStyle = 'rgba(255,255,255,0.85)';
+      traceCtx.fill();
+    }
+
+    function tickTrace(now) {
+      if (!traceActive) return;
+      if (!traceLast) traceLast = now;
+      const dt = Math.min(0.05, (now - traceLast) / 1000);
+      traceLast = now;
+      tracePhase += dt;
+      const t = tracePhase;
+      const envelope = 0.55 + 0.45 * Math.sin(t * 1.05);
+      const raw = 0.42
+        + 0.34 * Math.sin(t * 2.7)
+        + 0.18 * Math.sin(t * 6.3 + 1.2)
+        + (Math.random() - 0.5) * 0.22;
+      const target = Math.max(0, Math.min(1, raw * envelope));
+      traceSmoothed = traceSmoothed * 0.6 + target * 0.4;
+      trace.shift();
+      trace.push(traceSmoothed);
+      drawTrace();
+      traceRaf = window.requestAnimationFrame(tickTrace);
+    }
+
+    function startTrace() {
+      if (traceActive) return;
+      traceActive = true;
+      resizeTraceCanvas();
+      traceLast = 0;
+      traceRaf = window.requestAnimationFrame(tickTrace);
+    }
+
+    function stopTrace() {
+      traceActive = false;
+      if (traceRaf) window.cancelAnimationFrame(traceRaf);
+      traceRaf = null;
+      // Bleed the buffer back toward silence so a frozen trace looks idle.
+      for (let i = 0; i < trace.length; i++) trace[i] *= 0.4;
+      drawTrace();
+    }
+
+    window.addEventListener('resize', () => {
+      if (traceActive) resizeTraceCanvas();
+    }, { passive: true });
+    const PROMPTS = [
+      'refactor this function so it streams tokens instead of buffering, keep the type signature',
+      'add a dark-mode toggle to the settings sheet and persist the choice',
+      'write a quick benchmark comparing parakeet vs whisper-large',
+    ];
+
+    const formatTime = (seconds) => {
+      const total = Math.floor(seconds);
+      const m = Math.floor(total / 60);
+      const s = total % 60;
+      return `${m}:${s.toString().padStart(2, '0')}`;
+    };
+
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const setText = (s) => {
+      demoText.textContent = s;
+      demoField.classList.toggle('has-text', s.length > 0);
+    };
+
+    let cycleToken = 0;
+    let running = false;
+
+    async function runCycle() {
+      if (running) return;
+      running = true;
+      const myToken = ++cycleToken;
+      let i = 0;
+      while (myToken === cycleToken) {
+        const prompt = PROMPTS[i % PROMPTS.length];
+        setText('');
+        demoTimer.textContent = '0:00';
+        demoField.dataset.dictationState = 'idle';
+
+        await sleep(900);
+        if (myToken !== cycleToken) break;
+
+        demoField.dataset.dictationState = 'recording';
+        demoHud.classList.add('is-visible');
+        startTrace();
+        const startedAt = performance.now();
+        const timerHandle = window.setInterval(() => {
+          demoTimer.textContent = formatTime((performance.now() - startedAt) / 1000);
+        }, 100);
+
+        await sleep(320);
+        if (myToken !== cycleToken) { clearInterval(timerHandle); break; }
+
+        let typed = '';
+        const baseDelay = 32;
+        for (let k = 0; k < prompt.length; k++) {
+          if (myToken !== cycleToken) break;
+          typed += prompt[k];
+          setText(typed);
+          const ch = prompt[k];
+          const jitter = ch === ' ' ? 60 : ch === ',' ? 140 : Math.random() * 30;
+          await sleep(baseDelay + jitter);
+        }
+        clearInterval(timerHandle);
+        if (myToken !== cycleToken) break;
+
+        await sleep(650);
+        demoHud.classList.remove('is-visible');
+        demoField.dataset.dictationState = 'idle';
+        stopTrace();
+
+        await sleep(1700);
+        i++;
+      }
+      running = false;
+    }
+
+    function stopCycle() {
+      cycleToken++;
+      demoHud.classList.remove('is-visible');
+      demoField.dataset.dictationState = 'idle';
+      stopTrace();
+    }
+
+    if (prefersReducedMotion.matches) {
+      setText(PROMPTS[0]);
+      demoTimer.textContent = '0:05';
+      demoHud.classList.add('is-visible');
+      demoField.dataset.dictationState = 'recording';
+      resizeTraceCanvas();
+      // Single static snapshot of a believable trace, no animation loop.
+      for (let i = 0; i < SAMPLES; i++) {
+        const t = i / SAMPLES;
+        trace[i] = 0.35 + 0.25 * Math.sin(t * 14) + 0.12 * Math.sin(t * 38);
+      }
+      drawTrace();
+    } else if ('IntersectionObserver' in window) {
+      const demoIo = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) runCycle();
+          else stopCycle();
+        }
+      }, { threshold: 0.25 });
+      demoIo.observe(demoCard);
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) stopCycle();
+        else if (demoCard.getBoundingClientRect().top < window.innerHeight) runCycle();
+      });
+    } else {
+      runCycle();
+    }
+  }
 })();

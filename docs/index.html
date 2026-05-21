@@ -516,18 +516,36 @@
           Hold the hotkey. Speak a full sentence. Release. Your words appear at the cursor &mdash; in a code editor, a terminal, a Slack thread, a note.
         </p>
 
-        <figure class="macos-window">
-          <div class="macos-window__body">
-            <img
-              src="demo.gif"
-              alt="VoiceToText demo: user holds Option plus Space and speaks a prompt; transcribed text is typed into Claude Code in real time on macOS. Menu-bar icon shows recording state."
-              loading="lazy"
-              decoding="async"
-              width="1280"
-              height="800">
+        <figure class="demo-card" aria-label="VoiceToText voice-input field with recording HUD">
+          <div class="demo-field" data-dictation-state="idle">
+            <span class="demo-field__icon" aria-hidden="true">
+              <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="7.5" y="2.5" width="5" height="10" rx="2.5"/>
+                <path d="M4.5 10a5.5 5.5 0 0 0 11 0"/>
+                <path d="M10 15.5V18"/>
+              </svg>
+            </span>
+            <span class="demo-field__content">
+              <span class="demo-field__placeholder" data-dictation-placeholder>
+                Hold <kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd> to dictate
+              </span>
+              <span class="demo-field__text" data-dictation-text></span>
+              <span class="demo-field__caret" data-dictation-caret aria-hidden="true"></span>
+            </span>
           </div>
-          <figcaption class="macos-window__caption">
-            Dictating a prompt into Claude Code. Nothing leaves the Mac.
+
+          <div class="demo-hud" data-dictation-hud aria-hidden="true">
+            <div class="demo-hud__trace">
+              <canvas class="demo-hud__canvas" data-dictation-canvas width="480" height="60" aria-hidden="true"></canvas>
+            </div>
+            <div class="demo-hud__meta">
+              <span class="demo-hud__timer" data-dictation-timer>0:00</span>
+              <span class="demo-hud__hint">Release to finish &middot; Esc cancels</span>
+            </div>
+          </div>
+
+          <figcaption class="demo-card__caption">
+            Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; words appear at the cursor. Nothing leaves the Mac.
           </figcaption>
         </figure>
       </div>

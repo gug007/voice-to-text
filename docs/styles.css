@@ -377,6 +377,49 @@ button { font-family: inherit; }
   .macos-window__title { font-size: 11px; }
 }
 
+/* ---------- Demo card — minimalistic voice-input field + recording HUD ---------- */
+.demo-card { margin: 0 auto; max-width: 720px; display: flex; flex-direction: column; align-items: stretch; gap: clamp(20px, 3vw, 32px); padding: 0; background: transparent; }
+
+.demo-field { position: relative; display: flex; align-items: center; gap: 16px; padding: 20px 24px; min-height: 84px; background: var(--color-surface-elevated); border: 1px solid var(--color-border); border-radius: 16px; box-shadow: 0 1px 0 var(--color-border-strong) inset, 0 8px 24px -16px rgba(0,0,0,.5); transition: border-color var(--duration-base) var(--ease-standard), box-shadow var(--duration-base) var(--ease-standard); }
+.demo-field[data-dictation-state="recording"] { border-color: var(--color-text-secondary); box-shadow: 0 0 0 3px var(--color-accent-muted), 0 8px 24px -12px rgba(0,0,0,.4); }
+.demo-field__icon { display: inline-flex; align-items: center; justify-content: center; width: 36px; height: 36px; flex-shrink: 0; color: var(--color-text-secondary); border-radius: 12px; background: var(--color-accent-muted); transition: color var(--duration-base) var(--ease-standard); }
+.demo-field[data-dictation-state="recording"] .demo-field__icon { color: var(--color-text-primary); }
+.demo-field__icon svg { width: 20px; height: 20px; }
+.demo-field__content { position: relative; flex: 1 1 auto; min-width: 0; min-height: 1.5em; font-size: clamp(16px, 1.6vw, 19px); line-height: 1.5; color: var(--color-text-primary); }
+.demo-field__placeholder { position: absolute; inset: 0; color: var(--color-text-muted); pointer-events: none; transition: opacity var(--duration-base) var(--ease-standard); }
+.demo-field[data-dictation-state="recording"] .demo-field__placeholder,
+.demo-field.has-text .demo-field__placeholder { opacity: 0; }
+.demo-field__placeholder .keycap { background: var(--color-surface); border-color: var(--color-border-strong); }
+.demo-field__text { color: var(--color-text-primary); word-break: break-word; }
+.demo-field__caret { display: none; width: 2px; height: 1.1em; background: var(--color-text-primary); vertical-align: text-bottom; margin-left: 2px; transform: translateY(.18em); animation: demo-blink 1.05s steps(2,end) infinite; flex-shrink: 0; }
+.demo-field[data-dictation-state="recording"] .demo-field__caret,
+.demo-field.has-text .demo-field__caret { display: inline-block; }
+@keyframes demo-blink { 50% { opacity: 0; } }
+
+/* HUD — mirrors the in-app LiveHUD recording panel */
+.demo-hud { align-self: center; width: min(100%, 460px); opacity: 0; pointer-events: none; transform: translateY(-8px); transition: opacity .35s var(--ease-standard), transform .35s var(--ease-standard); }
+.demo-hud.is-visible { opacity: 1; transform: translateY(0); }
+.demo-hud__trace { display: block; height: 64px; padding: 16px 22px 4px; background: #1F1F22; border-radius: 22px 22px 0 0; -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); }
+.demo-hud__canvas { display: block; width: 100%; height: 100%; }
+.demo-hud__meta { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 4px 22px 16px; background: #1F1F22; border-radius: 0 0 22px 22px; box-shadow: 0 18px 44px -10px rgba(0,0,0,.55); }
+.demo-hud__timer { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; }
+.demo-hud__hint { font-size: 11px; color: rgba(255,255,255,.42); letter-spacing: .01em; }
+
+.demo-card__caption { text-align: center; font-size: var(--fs-body-sm); color: var(--color-text-secondary); margin: 0; }
+
+@media (prefers-reduced-motion: reduce) {
+  .demo-hud { opacity: 1; transform: none; }
+  .demo-field__caret { animation: none; }
+}
+
+@media (max-width: 640px) {
+  .demo-field { padding: 16px 18px; min-height: 72px; gap: 12px; border-radius: 14px; }
+  .demo-field__icon { width: 32px; height: 32px; border-radius: 10px; }
+  .demo-field__icon svg { width: 18px; height: 18px; }
+  .demo-hud__trace { height: 52px; padding: 12px 18px 4px; border-radius: 18px 18px 0 0; }
+  .demo-hud__meta { padding: 4px 18px 12px; border-radius: 0 0 18px 18px; }
+}
+
 /* How it works — T13: flat cards, border only */
 .how__steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-5); }
 .how__step { position: relative; padding: var(--space-6); background: transparent; border: 1px solid var(--color-border); border-radius: var(--radius-lg); transition: border-color var(--duration-fast) var(--ease-standard); }

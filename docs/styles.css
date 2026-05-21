@@ -399,8 +399,8 @@ button { font-family: inherit; }
 /* HUD — mirrors the in-app LiveHUD recording panel */
 .demo-hud { align-self: center; width: min(100%, 460px); opacity: 0; pointer-events: none; transform: translateY(-8px); transition: opacity .35s var(--ease-standard), transform .35s var(--ease-standard); }
 .demo-hud.is-visible { opacity: 1; transform: translateY(0); }
-.demo-hud__trace { display: block; height: 64px; padding: 16px 22px 4px; background: #1F1F22; border-radius: 22px 22px 0 0; -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); }
-.demo-hud__canvas { display: block; width: 100%; height: 100%; }
+.demo-hud__trace { display: block; height: 64px; padding: 16px 22px 4px; background: #1F1F22; border-radius: 22px 22px 0 0; }
+.demo-hud__canvas { display: block; width: 100%; height: 100%; -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); mask-image: linear-gradient(to right, transparent 0%, #000 16%, #000 100%); }
 .demo-hud__meta { display: flex; align-items: center; justify-content: center; gap: 14px; padding: 4px 22px 16px; background: #1F1F22; border-radius: 0 0 22px 22px; box-shadow: 0 18px 44px -10px rgba(0,0,0,.55); }
 .demo-hud__timer { font-family: var(--font-mono); font-size: 12px; color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; }
 .demo-hud__hint { font-size: 11px; color: rgba(255,255,255,.42); letter-spacing: .01em; }

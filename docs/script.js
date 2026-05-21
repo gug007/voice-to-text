@@ -17,7 +17,8 @@
   const nav = document.querySelector('.nav');
   if (nav) {
     const syncScrolled = () => {
-      nav.dataset.scrolled = window.scrollY > 8 ? 'true' : 'false';
+      const next = window.scrollY > 8 ? 'true' : 'false';
+      if (nav.dataset.scrolled !== next) nav.dataset.scrolled = next;
     };
     syncScrolled();
     document.addEventListener('scroll', syncScrolled, { passive: true });
@@ -44,6 +45,35 @@
     }
   }
 
+  // --- 2b. Staggered child reveals (feature/how/compare cards) -----------
+  // Under reduced-motion the .reveal-child class is never applied (CSS guards it),
+  // so content stays visible. Under normal motion, cards fade-up sequentially.
+  if (!prefersReducedMotion.matches && 'IntersectionObserver' in window) {
+    const CHILD_SELECTORS = '.how__step, .feature-card, .compare__card';
+    const childGroups = document.querySelectorAll('.how__steps, .features__grid, .compare__mobile');
+    childGroups.forEach((group) => {
+      const children = group.querySelectorAll(CHILD_SELECTORS);
+      children.forEach((child, idx) => {
+        child.classList.add('reveal-child');
+        child.style.transitionDelay = `${idx * 60}ms`;
+      });
+      const groupIo = new IntersectionObserver(
+        (entries, obs) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.querySelectorAll('.reveal-child').forEach((child) => {
+                child.classList.add('is-visible');
+              });
+              obs.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.1, rootMargin: '0px 0px -30px 0px' }
+      );
+      groupIo.observe(group);
+    });
+  }
+
   // --- 3. Theme toggle ---------------------------------------------------
   const themeToggle = document.querySelector('[data-theme-toggle]');
   if (themeToggle) {
@@ -53,10 +83,16 @@
       if (explicit === 'light' || explicit === 'dark') return explicit;
       return prefersLight.matches ? 'light' : 'dark';
     };
+    const syncToggleLabel = (theme) => {
+      themeToggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+      themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    };
+    syncToggleLabel(currentTheme());
     themeToggle.addEventListener('click', () => {
       const next = currentTheme() === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       try { localStorage.setItem('vtt-theme', next); } catch (e) {}
+      syncToggleLabel(next);
     });
   }
 
@@ -65,11 +101,14 @@
   // If data-copy starts with '#', it is treated as a selector and the
   // element's textContent is copied; otherwise the attribute value is used.
   const flash = (el, msg) => {
-    const original = el.dataset.label || el.textContent;
-    el.dataset.label = original;
+    const original = el.dataset.flashOriginal ?? el.textContent;
+    el.dataset.flashOriginal = original;
+    if (el._flashTimer) clearTimeout(el._flashTimer);
     el.textContent = msg;
-    window.setTimeout(() => {
+    el._flashTimer = window.setTimeout(() => {
       el.textContent = original;
+      delete el.dataset.flashOriginal;
+      el._flashTimer = null;
     }, 1500);
   };
 
@@ -115,7 +154,7 @@
     let tracePhase = Math.random() * 10;
     let traceAccum = 0;
     let traceRaf = null;
-    let traceCtx = demoCanvas.getContext('2d');
+    const traceCtx = demoCanvas.getContext('2d');
     let traceDpr = 1;
     let traceLast = 0;
     let traceActive = false;
@@ -306,4 +345,54 @@
       runCycle();
     }
   }
+  // --- 6. Sticky mobile CTA bar ----------------------------------------
+  // Shows a bottom-pinned download button on <=640px viewports after the
+  // user scrolls past the hero CTAs. Dismissible with an X button.
+  // Respects prefers-reduced-motion: the bar still appears but without
+  // the slide-in transition (handled by CSS transition: none rule).
+  const stickyCta = document.getElementById('stickyCta');
+  const stickyCta__close = document.getElementById('stickyCta__close');
+
+  if (stickyCta && stickyCta__close) {
+    const heroCtas = document.querySelector('.hero__ctas');
+    let dismissed = false;
+
+    // Only activate on narrow viewports
+    const isNarrow = () => window.matchMedia('(max-width: 640px)').matches;
+
+    const syncStickyCta = () => {
+      if (dismissed || !isNarrow()) {
+        stickyCta.classList.remove('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'true');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.setAttribute('tabindex', '-1'));
+        return;
+      }
+
+      // Show once the hero CTAs are scrolled out of the viewport
+      const heroRect = heroCtas ? heroCtas.getBoundingClientRect() : null;
+      const pastHero = heroRect ? heroRect.bottom < 0 : window.scrollY > 300;
+
+      if (pastHero) {
+        stickyCta.classList.add('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'false');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.removeAttribute('tabindex'));
+      } else {
+        stickyCta.classList.remove('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'true');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.setAttribute('tabindex', '-1'));
+      }
+    };
+
+    document.addEventListener('scroll', syncStickyCta, { passive: true });
+    window.addEventListener('resize', syncStickyCta, { passive: true });
+    syncStickyCta();
+
+    stickyCta__close.addEventListener('click', () => {
+      dismissed = true;
+      stickyCta.classList.remove('is-visible');
+      stickyCta.classList.add('is-dismissed');
+      stickyCta.setAttribute('aria-hidden', 'true');
+    });
+  }
+
 })();

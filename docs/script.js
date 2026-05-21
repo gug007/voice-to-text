@@ -17,7 +17,8 @@
   const nav = document.querySelector('.nav');
   if (nav) {
     const syncScrolled = () => {
-      nav.dataset.scrolled = window.scrollY > 8 ? 'true' : 'false';
+      const next = window.scrollY > 8 ? 'true' : 'false';
+      if (nav.dataset.scrolled !== next) nav.dataset.scrolled = next;
     };
     syncScrolled();
     document.addEventListener('scroll', syncScrolled, { passive: true });
@@ -82,10 +83,16 @@
       if (explicit === 'light' || explicit === 'dark') return explicit;
       return prefersLight.matches ? 'light' : 'dark';
     };
+    const syncToggleLabel = (theme) => {
+      themeToggle.setAttribute('aria-label', theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme');
+      themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+    };
+    syncToggleLabel(currentTheme());
     themeToggle.addEventListener('click', () => {
       const next = currentTheme() === 'dark' ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', next);
       try { localStorage.setItem('vtt-theme', next); } catch (e) {}
+      syncToggleLabel(next);
     });
   }
 
@@ -94,11 +101,14 @@
   // If data-copy starts with '#', it is treated as a selector and the
   // element's textContent is copied; otherwise the attribute value is used.
   const flash = (el, msg) => {
-    const original = el.dataset.label || el.textContent;
-    el.dataset.label = original;
+    const original = el.dataset.flashOriginal ?? el.textContent;
+    el.dataset.flashOriginal = original;
+    if (el._flashTimer) clearTimeout(el._flashTimer);
     el.textContent = msg;
-    window.setTimeout(() => {
+    el._flashTimer = window.setTimeout(() => {
       el.textContent = original;
+      delete el.dataset.flashOriginal;
+      el._flashTimer = null;
     }, 1500);
   };
 
@@ -144,7 +154,7 @@
     let tracePhase = Math.random() * 10;
     let traceAccum = 0;
     let traceRaf = null;
-    let traceCtx = demoCanvas.getContext('2d');
+    const traceCtx = demoCanvas.getContext('2d');
     let traceDpr = 1;
     let traceLast = 0;
     let traceActive = false;

@@ -810,10 +810,10 @@
 
               <tr>
                 <th scope="row" class="compare__row-label">Price</th>
-                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Free forever</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-a" aria-describedby="compare-footnotes-title">2</a></sup></td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-a" aria-describedby="compare-footnotes-title">3</a></sup></td>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Free &mdash; no paid tiers</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Subscription required<sup><a href="#fn-1" id="fn-1-ref-a" aria-describedby="compare-footnotes-title">1</a></sup></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Subscription or one-time fee<sup><a href="#fn-2" id="fn-2-ref-a" aria-describedby="compare-footnotes-title">2</a></sup></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>One-time purchase<sup><a href="#fn-3" id="fn-3-ref-a" aria-describedby="compare-footnotes-title">3</a></sup></td>
                 <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</td>
               </tr>
 
@@ -832,7 +832,7 @@
                 <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cloud only</td>
                 <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</td>
                 <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>On-device (English &amp; select langs)</td>
               </tr>
 
               <tr>
@@ -863,38 +863,38 @@
               </tr>
 
               <tr>
-                <th scope="row" class="compare__row-label">Apple Neural Engine acceleration</th>
-                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Native</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-a" aria-describedby="compare-footnotes-title">1</a></sup></td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
+                <th scope="row" class="compare__row-label">Apple Neural Engine (Apple Silicon)</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>N/A &mdash; cloud-side inference<sup><a href="#fn-4" id="fn-4-ref-a" aria-describedby="compare-footnotes-title">4</a></sup></td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</td>
               </tr>
 
               <tr>
                 <th scope="row" class="compare__row-label">Native macOS app (no Electron)</th>
                 <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Electron-based</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</td>
                 <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
               </tr>
 
               <tr>
-                <th scope="row" class="compare__row-label">Multiple speech engines</th>
-                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Proprietary only</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Whisper variants</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple only</td>
+                <th scope="row" class="compare__row-label">Choice of local speech engine</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + optional OpenAI cloud</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Single proprietary cloud model</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Multiple Whisper model sizes</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Multiple Whisper sizes (Pro)<sup><a href="#fn-5" id="fn-5-ref-a" aria-describedby="compare-footnotes-title">5</a></sup></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple model only</td>
               </tr>
 
               <tr>
-                <th scope="row" class="compare__row-label">Tuned for AI coding agents</th>
-                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; headline use case</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</td>
-                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Messaged</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</td>
+                <th scope="row" class="compare__row-label">Marketed for developer / AI-agent workflows</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Primary use case</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>General dictation focus</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Marketed for developers</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>General transcription focus</td>
                 <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
               </tr>
             </tbody>
@@ -906,67 +906,67 @@
           <article class="compare__card compare__card--ours">
             <header class="compare__card-head">
               <h3>VoiceToText</h3>
-              <span class="chip chip--accent"><span class="chip__dot" aria-hidden="true"></span>Open source</span>
+              <span class="chip chip--accent"><span class="chip__dot" aria-hidden="true"></span>Free &amp; open source</span>
             </header>
             <dl>
-              <dt>Price</dt><dd><span class="status status--ok" aria-hidden="true"></span>Free forever</dd>
+              <dt>Price</dt><dd><span class="status status--ok" aria-hidden="true"></span>Free &mdash; no paid tiers</dd>
               <dt>Open source</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; on GitHub</dd>
               <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
               <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>None required</dd>
               <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span><span class="sr-only">Yes. </span>Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></dd>
               <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
-              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
-              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</dd>
-              <dt>AI coding agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Headline use case</dd>
+              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + optional OpenAI cloud</dd>
+              <dt>AI agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Primary use case</dd>
             </dl>
           </article>
 
           <article class="compare__card">
             <header class="compare__card-head"><h3>Wispr Flow</h3></header>
             <dl>
-              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</dd>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>Subscription required<sup><a href="#fn-1" id="fn-1-ref-b" aria-describedby="compare-footnotes-title">1</a></sup></dd>
               <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
               <dt>Runs offline</dt><dd><span class="status status--no" aria-hidden="true"></span>Cloud only</dd>
               <dt>No account</dt><dd><span class="status status--no" aria-hidden="true"></span>Account required</dd>
               <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span>Customizable hold</dd>
               <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
-              <dt>Neural Engine</dt><dd><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-b" aria-describedby="compare-footnotes-title">1</a></sup></dd>
-              <dt>No Electron</dt><dd><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</dd>
-              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Proprietary only</dd>
-              <dt>AI coding agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Works in apps</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--no" aria-hidden="true"></span>N/A &mdash; cloud-side inference<sup><a href="#fn-4" id="fn-4-ref-b" aria-describedby="compare-footnotes-title">4</a></sup></dd>
+              <dt>No Electron</dt><dd><span class="status status--no" aria-hidden="true"></span>Electron-based</dd>
+              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Single proprietary cloud model</dd>
+              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>General dictation focus</dd>
             </dl>
           </article>
 
           <article class="compare__card">
             <header class="compare__card-head"><h3>Superwhisper</h3></header>
             <dl>
-              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-b" aria-describedby="compare-footnotes-title">2</a></sup></dd>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>Subscription or one-time fee<sup><a href="#fn-2" id="fn-2-ref-b" aria-describedby="compare-footnotes-title">2</a></sup></dd>
               <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
               <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
               <dt>No account</dt><dd><span class="status status--no" aria-hidden="true"></span>Account required</dd>
               <dt>Push-to-talk</dt><dd><span class="status status--ok" aria-hidden="true"></span>Customizable hold</dd>
               <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
-              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
-              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
-              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper variants</dd>
-              <dt>AI coding agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Messaged</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
+              <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Multiple Whisper model sizes</dd>
+              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Marketed for developers</dd>
             </dl>
           </article>
 
           <article class="compare__card">
             <header class="compare__card-head"><h3>MacWhisper</h3></header>
             <dl>
-              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-b" aria-describedby="compare-footnotes-title">3</a></sup></dd>
+              <dt>Price</dt><dd><span class="status status--no" aria-hidden="true"></span>One-time purchase<sup><a href="#fn-3" id="fn-3-ref-b" aria-describedby="compare-footnotes-title">3</a></sup></dd>
               <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
               <dt>Runs offline</dt><dd><span class="status status--ok" aria-hidden="true"></span>On-device</dd>
               <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>No account</dd>
               <dt>Push-to-talk</dt><dd><span class="status status--partial" aria-hidden="true"></span>Pro (Global mode)</dd>
               <dt>Any text field</dt><dd><span class="status status--partial" aria-hidden="true"></span>Pro only</dd>
-              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
-              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
-              <dt>Engines</dt><dd><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</dd>
-              <dt>AI coding agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Works in apps</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
+              <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
+              <dt>Engines</dt><dd><span class="status status--partial" aria-hidden="true"></span>Multiple Whisper sizes (Pro)<sup><a href="#fn-5" id="fn-5-ref-b" aria-describedby="compare-footnotes-title">5</a></sup></dd>
+              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>General transcription focus</dd>
             </dl>
           </article>
 
@@ -975,23 +975,25 @@
             <dl>
               <dt>Price</dt><dd><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</dd>
               <dt>Open source</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
-              <dt>Runs offline</dt><dd><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</dd>
+              <dt>Runs offline</dt><dd><span class="status status--partial" aria-hidden="true"></span>On-device (English &amp; select langs)</dd>
               <dt>No account</dt><dd><span class="status status--ok" aria-hidden="true"></span>None required</dd>
               <dt>Push-to-talk</dt><dd><span class="status status--no" aria-hidden="true"></span>Toggle only</dd>
               <dt>Any text field</dt><dd><span class="status status--ok" aria-hidden="true"></span>System-wide</dd>
-              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes</dd>
+              <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
-              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Apple only</dd>
-              <dt>AI coding agents</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
+              <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Apple model only</dd>
+              <dt>AI agents</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
             </dl>
           </article>
         </div>
 
         <h3 id="compare-footnotes-title" class="sr-only">Comparison table footnotes</h3>
         <ol class="compare__footnotes t-caption">
-          <li id="fn-1"><sup>1</sup> Wispr Flow does not advertise Apple Neural Engine acceleration; treat as unverified.</li>
-          <li id="fn-2"><sup>2</sup> Superwhisper lifetime pricing was in flux at research &mdash; verify on the vendor site.</li>
-          <li id="fn-3"><sup>3</sup> MacWhisper Pro price varies across sources ($69, $79.99, &euro;59) &mdash; verify on the Gumroad product page.</li>
+          <li id="fn-1"><sup>1</sup> Wispr Flow is subscription-only; verify current pricing on the vendor site.</li>
+          <li id="fn-2"><sup>2</sup> Superwhisper pricing varies between subscription and one-time options &mdash; verify on the vendor site.</li>
+          <li id="fn-3"><sup>3</sup> MacWhisper Pro is sold as a one-time purchase, but price varies across sources ($69, $79.99, &euro;59) &mdash; verify on the Gumroad product page.</li>
+          <li id="fn-4"><sup>4</sup> Wispr Flow runs inference in the cloud, so on-device Apple Neural Engine acceleration is not applicable.</li>
+          <li id="fn-5"><sup>5</sup> MacWhisper's free tier ships a single Whisper engine; multiple model sizes require the Pro upgrade.</li>
         </ol>
 
         <p class="compare__links t-caption">
@@ -1187,7 +1189,7 @@
 
       <div class="footer__brand-block">
         <a class="footer__brand" href="#top" aria-label="VoiceToText home">
-          <img class="brand-mark" src="app-icon.png" width="28" height="28" alt="" decoding="async">
+          <img class="brand-mark" src="app-icon.png" width="28" height="28" alt="" loading="lazy" decoding="async">
           <span>VoiceToText</span>
         </a>
         <p class="footer__tagline">Free, local-first dictation for Mac. Open source on GitHub.</p>

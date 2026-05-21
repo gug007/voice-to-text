@@ -16,15 +16,15 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
 
   <!-- Update canonical + og:url when custom domain is configured -->
-  <link rel="canonical" href="https://gug007.github.io/voice-to-text/">
+  <link rel="canonical" href="https://voicetotext.cc/">
 
   <!-- Open Graph -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="VoiceToText">
-  <meta property="og:url" content="https://gug007.github.io/voice-to-text/">
+  <meta property="og:url" content="https://voicetotext.cc/">
   <meta property="og:title" content="Voice to Text for Mac — Free Speech to Text App · VoiceToText">
   <meta property="og:description" content="Free voice to text and speech to text app for Mac. Hold a hotkey, speak, release — words type into any app. Offline on Apple Silicon, no account, open source.">
-  <meta property="og:image" content="https://gug007.github.io/voice-to-text/og-image.png">
+  <meta property="og:image" content="https://voicetotext.cc/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
   <meta property="og:image:alt" content="VoiceToText — free voice to text and speech to text app for Mac, typing into a code editor">
@@ -34,7 +34,7 @@
   <meta name="twitter:card" content="summary_large_image">
   <meta name="twitter:title" content="Voice to Text for Mac — Free Speech to Text · VoiceToText">
   <meta name="twitter:description" content="Free voice to text & speech to text for Mac. Push-to-talk, offline on the Apple Neural Engine. Open-source alternative to Wispr Flow and Superwhisper.">
-  <meta name="twitter:image" content="https://gug007.github.io/voice-to-text/og-image.png">
+  <meta name="twitter:image" content="https://voicetotext.cc/og-image.png">
   <meta name="twitter:image:alt" content="VoiceToText voice to text on Mac: hold a hotkey, speak, words typed into the focused app">
 
   <!-- Icons — uses the shipped macOS AppIcon for brand continuity. -->
@@ -220,7 +220,7 @@
     "alternateName": ["Voice to Text Mac", "Speech to Text Mac", "VoiceToText"],
     "description": "Free, open-source voice to text and speech to text app for Mac. Push-to-talk dictation that runs offline on the Apple Neural Engine, with optional OpenAI cloud models, and types into any focused macOS app.",
     "keywords": "voice to text mac, speech to text mac, mac dictation, push-to-talk dictation, offline speech recognition mac, free voice to text",
-    "url": "https://gug007.github.io/voice-to-text/",
+    "url": "https://voicetotext.cc/",
     "downloadUrl": "https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg",
     "applicationCategory": "UtilitiesApplication",
     "applicationSubCategory": "Speech to Text",
@@ -239,8 +239,8 @@
       "name": "Gurgen Abagyan",
       "url": "https://github.com/gug007"
     },
-    "image": "https://gug007.github.io/voice-to-text/og-image.png",
-    "screenshot": "https://gug007.github.io/voice-to-text/demo.gif",
+    "image": "https://voicetotext.cc/og-image.png",
+    "screenshot": "https://voicetotext.cc/demo.gif",
     "featureList": [
       "Voice to text on Mac with a push-to-talk global hotkey (Option+Space, customizable)",
       "Speech to text that runs offline on-device (no internet required)",
@@ -273,6 +273,14 @@
         "acceptedAnswer": {
           "@type": "Answer",
           "text": "Yes, by default. Local speech-to-text models (Parakeet, Whisper) run on-device on the Apple Neural Engine — no internet required and audio never leaves your Mac. Cloud models from OpenAI are opt-in: they only run when you explicitly pick one as the active engine."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How do I use voice to text on my Mac or MacBook?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Install VoiceToText from the DMG, grant Microphone and Accessibility permissions, then hold Option+Space in any app on your Mac or MacBook, speak naturally, and release. Your speech is transcribed and typed at the cursor — no Apple Dictation panel, no copy-paste. Works the same on M1, M2, M3 and newer MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio."
         }
       },
       {
@@ -470,7 +478,7 @@
         </p>
 
         <p class="hero__subcopy">
-          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; your words are transcribed and typed into Claude Code, Cursor, Slack, or any focused Mac app. Offline voice to text on the Apple Neural Engine. OpenAI cloud speech models optional.
+          A free voice to text app for Mac and MacBook. Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; your words are transcribed and typed into Claude Code, Cursor, Slack, or any focused Mac app. Offline speech to text on the Apple Neural Engine. OpenAI cloud speech models optional.
         </p>
 
         <div class="hero__ctas">
@@ -557,8 +565,8 @@
     <!-- 4. HOW IT WORKS -->
     <section class="section how reveal" id="how-it-works" aria-labelledby="how-title">
       <div class="container">
-        <h2 id="how-title" class="section__title">How voice to text on Mac works.</h2>
-        <p class="section__deck">Three keys. One loop. No menus, no windows, no copy-paste &mdash; just push-to-talk speech to text into the focused app.</p>
+        <h2 id="how-title" class="section__title">How to use voice to text on Mac and MacBook.</h2>
+        <p class="section__deck">Three keys. One loop. No menus, no windows, no copy-paste &mdash; just push-to-talk speech to text into the focused app on any Mac or MacBook.</p>
 
         <ol class="how__steps">
           <li class="how__step">
@@ -960,6 +968,16 @@
             </summary>
             <div class="faq-item__a">
               Yes, by default. Local speech-to-text models (Parakeet, Whisper) run on-device on the Apple Neural Engine &mdash; no internet required and audio never leaves your Mac. Cloud models from OpenAI are opt-in: they only run when you explicitly pick one as the active engine.
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>How do I use voice to text on my Mac or MacBook?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Install VoiceToText from the DMG, grant Microphone and Accessibility permissions, then hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> in any app on your Mac or MacBook, speak naturally, and release. Your speech is transcribed and typed at the cursor &mdash; no Apple Dictation panel, no copy-paste. Works the same on M1, M2, M3 and newer MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio.
             </div>
           </details>
 

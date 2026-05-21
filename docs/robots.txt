@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://gug007.github.io/voice-to-text/sitemap.xml
+Sitemap: https://voicetotext.cc/sitemap.xml

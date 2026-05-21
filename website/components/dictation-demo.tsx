@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { HotkeyCombo } from "@/components/ui/hotkey-combo";
+
 const PROMPTS = [
   "refactor this function so it streams tokens instead of buffering, keep the type signature",
   "add a dark-mode toggle to the settings sheet and persist the choice",
@@ -21,10 +23,11 @@ export function DictationDemo() {
   const [text, setText] = useState("");
   const [timer, setTimer] = useState("0:00");
 
-  // Refs that mutate without re-rendering.
+  // Refs that mutate without re-rendering. phaseRef is seeded inside the
+  // effect (Math.random would be impure during render).
   const traceRef = useRef<number[]>(new Array(SAMPLES).fill(0));
   const smoothedRef = useRef(0);
-  const phaseRef = useRef(Math.random() * 10);
+  const phaseRef = useRef(0);
   const accumRef = useRef(0);
   const activeRef = useRef(false);
   const rafRef = useRef<number | null>(null);
@@ -41,6 +44,7 @@ export function DictationDemo() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    phaseRef.current = Math.random() * 10;
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
     const resizeCanvas = () => {
@@ -190,6 +194,10 @@ export function DictationDemo() {
     };
 
     if (reducedMotion.matches) {
+      // One-shot: render a believable static snapshot of the demo so users
+      // with reduced motion still see what the app does. React batches these
+      // into a single render (effect runs once, deps are empty).
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setText(PROMPTS[0]);
       setTimer("0:05");
       setState("recording");
@@ -268,17 +276,7 @@ export function DictationDemo() {
         </span>
         <span className="demo-field__content">
           <span className="demo-field__placeholder">
-            Hold{" "}
-            <span className="kbd-combo">
-              <span className="sr-only">Option plus Space</span>
-              <kbd className="keycap keycap--inline" aria-hidden="true">
-                &#8997;
-              </kbd>
-              <kbd className="keycap keycap--inline" aria-hidden="true">
-                Space
-              </kbd>
-            </span>{" "}
-            to dictate
+            Hold <HotkeyCombo /> to dictate
           </span>
           <span className="demo-field__text">{text}</span>
           <span className="demo-field__caret" aria-hidden="true"></span>
@@ -297,22 +295,12 @@ export function DictationDemo() {
         </div>
         <div className="demo-hud__meta">
           <span className="demo-hud__timer">{timer}</span>
-          <span className="demo-hud__hint">Release to finish &middot; Esc cancels</span>
+          <span className="demo-hud__hint">Release to finish · Esc cancels</span>
         </div>
       </div>
 
       <figcaption className="demo-card__caption">
-        Hold{" "}
-        <span className="kbd-combo">
-          <span className="sr-only">Option plus Space</span>
-          <kbd className="keycap keycap--inline" aria-hidden="true">
-            &#8997;
-          </kbd>
-          <kbd className="keycap keycap--inline" aria-hidden="true">
-            Space
-          </kbd>
-        </span>
-        , speak, release &mdash; words appear at the cursor. Nothing leaves the Mac.
+        Hold <HotkeyCombo />, speak, release — words appear at the cursor. Nothing leaves the Mac.
       </figcaption>
     </figure>
   );

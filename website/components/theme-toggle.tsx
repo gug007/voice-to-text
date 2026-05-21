@@ -1,33 +1,49 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
+const STORAGE_KEY = "vtt-theme";
+
 function readTheme(): Theme {
-  if (typeof document === "undefined") return "dark";
   const explicit = document.documentElement.getAttribute("data-theme");
   if (explicit === "light" || explicit === "dark") return explicit;
   return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
 }
 
+function subscribeTheme(notify: () => void): () => void {
+  const media = window.matchMedia("(prefers-color-scheme: light)");
+  media.addEventListener("change", notify);
+  const mo = new MutationObserver(notify);
+  mo.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme"],
+  });
+  return () => {
+    media.removeEventListener("change", notify);
+    mo.disconnect();
+  };
+}
+
+/** Sun/moon toggle. Reads the live theme from <html data-theme> so it stays
+ *  in sync if anything else flips it (e.g. another tab). */
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<Theme>("dark");
+  const theme = useSyncExternalStore<Theme>(
+    subscribeTheme,
+    readTheme,
+    () => "dark",
+  );
 
-  useEffect(() => {
-    setTheme(readTheme());
-  }, []);
-
-  const handleToggle = () => {
+  const handleToggle = useCallback(() => {
     const next: Theme = readTheme() === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
     try {
-      localStorage.setItem("vtt-theme", next);
+      localStorage.setItem(STORAGE_KEY, next);
     } catch {
-      /* localStorage may be unavailable; ignore */
+      /* localStorage may be unavailable; the toggle still updates the DOM */
     }
-    setTheme(next);
-  };
+  }, []);
 
   const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
 

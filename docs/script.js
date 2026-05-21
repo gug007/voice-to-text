@@ -306,4 +306,54 @@
       runCycle();
     }
   }
+  // --- 6. Sticky mobile CTA bar ----------------------------------------
+  // Shows a bottom-pinned download button on <=640px viewports after the
+  // user scrolls past the hero CTAs. Dismissible with an X button.
+  // Respects prefers-reduced-motion: the bar still appears but without
+  // the slide-in transition (handled by CSS transition: none rule).
+  const stickyCta = document.getElementById('stickyCta');
+  const stickyCta__close = document.getElementById('stickyCta__close');
+
+  if (stickyCta && stickyCta__close) {
+    const heroCtas = document.querySelector('.hero__ctas');
+    let dismissed = false;
+
+    // Only activate on narrow viewports
+    const isNarrow = () => window.matchMedia('(max-width: 640px)').matches;
+
+    const syncStickyCta = () => {
+      if (dismissed || !isNarrow()) {
+        stickyCta.classList.remove('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'true');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.setAttribute('tabindex', '-1'));
+        return;
+      }
+
+      // Show once the hero CTAs are scrolled out of the viewport
+      const heroRect = heroCtas ? heroCtas.getBoundingClientRect() : null;
+      const pastHero = heroRect ? heroRect.bottom < 0 : window.scrollY > 300;
+
+      if (pastHero) {
+        stickyCta.classList.add('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'false');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.removeAttribute('tabindex'));
+      } else {
+        stickyCta.classList.remove('is-visible');
+        stickyCta.setAttribute('aria-hidden', 'true');
+        stickyCta.querySelectorAll('a, button').forEach((el) => el.setAttribute('tabindex', '-1'));
+      }
+    };
+
+    document.addEventListener('scroll', syncStickyCta, { passive: true });
+    window.addEventListener('resize', syncStickyCta, { passive: true });
+    syncStickyCta();
+
+    stickyCta__close.addEventListener('click', () => {
+      dismissed = true;
+      stickyCta.classList.remove('is-visible');
+      stickyCta.classList.add('is-dismissed');
+      stickyCta.setAttribute('aria-hidden', 'true');
+    });
+  }
+
 })();

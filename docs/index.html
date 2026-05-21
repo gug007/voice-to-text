@@ -152,10 +152,10 @@
   .btn:active{transform:translateY(1px)}
   .btn--sm{height:var(--control-height-md);padding-inline:var(--space-4);font-size:var(--fs-body-sm)}
   .btn--primary{background:var(--color-accent-solid);color:var(--color-accent-ink);border-color:var(--color-accent-solid)}
-  .btn--primary:hover{background:var(--color-accent-hover);border-color:var(--color-accent-hover);color:var(--color-accent-ink);transform:translateY(-1px);box-shadow:0 14px 30px -12px rgba(0,0,0,.45),0 2px 6px -2px rgba(0,0,0,.2)}
+  .btn--primary:hover{background:var(--color-accent-hover);border-color:var(--color-accent-hover);color:var(--color-accent-ink);transform:translateY(-1px) scale(1.015);box-shadow:0 14px 30px -12px rgba(0,0,0,.45),0 2px 6px -2px rgba(0,0,0,.2)}
   .btn--primary:active{transform:translateY(0);box-shadow:none}
   .btn--secondary{background:transparent;color:var(--color-text-primary);border-color:var(--color-border-strong)}
-  .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary);transform:translateY(-1px)}
+  .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary);transform:translateY(-1px);box-shadow:0 4px 12px -4px rgba(0,0,0,.2)}
   /* Nav */
   .nav{position:fixed;top:0;left:0;right:0;z-index:var(--z-nav);padding:var(--space-3) var(--page-gutter);background:transparent;border-bottom:1px solid transparent;transition:background var(--duration-base) var(--ease-standard),border-color var(--duration-base) var(--ease-standard),backdrop-filter var(--duration-base) var(--ease-standard)}
   .nav[data-scrolled="true"]{background:var(--color-bg);background:color-mix(in srgb,var(--color-bg) 72%,transparent);border-bottom-color:var(--color-border);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
@@ -181,13 +181,13 @@
   .hero{overflow:hidden}
   .dictation-wave{position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:center;pointer-events:none;opacity:.3}
   .dictation-wave .bars{display:flex;align-items:center;justify-content:space-between;width:100%;height:62%;padding:0;-webkit-mask-image:radial-gradient(ellipse 88% 80% at center,#000 38%,transparent 96%);mask-image:radial-gradient(ellipse 88% 80% at center,#000 38%,transparent 96%)}
-  .dictation-wave .bars i{--peak:.72;--peak:calc(0.60 + 0.32 * sin(calc(var(--i) * 0.22rad)));display:block;width:4px;height:100%;background:linear-gradient(180deg,transparent 0%,var(--color-text-primary) 14%,var(--color-text-primary) 86%,transparent 100%);border-radius:3px;transform:scaleY(.2);transform-origin:center;animation:wave-bar 1.8s cubic-bezier(.45,0,.2,1) infinite;animation-delay:calc(var(--i) * -45ms);flex-shrink:0}
+  .dictation-wave .bars i{--peak:.72;--peak:calc(0.60 + 0.32 * sin(calc(var(--i) * 0.22rad)));display:block;width:clamp(2px,0.32vw,5px);min-width:2px;height:100%;background:linear-gradient(180deg,transparent 0%,var(--color-text-primary) 14%,var(--color-text-primary) 86%,transparent 100%);border-radius:3px;transform:scaleY(.2);transform-origin:center;animation:wave-bar 1.8s cubic-bezier(.45,0,.2,1) infinite;animation-delay:calc(var(--i) * -45ms);flex-shrink:1}
   @keyframes wave-bar{0%,100%{transform:scaleY(.2)}50%{transform:scaleY(var(--peak))}}
   @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .dictation-wave{opacity:.18}}
   :root[data-theme="light"] .dictation-wave{opacity:.18}
   @media (prefers-reduced-motion:reduce){.dictation-wave .bars i{animation:none;transform:scaleY(var(--peak,.6))}}
-  @media (max-width:640px){.dictation-wave .bars{height:56%}.dictation-wave .bars i{width:3px}}
-  @media (max-width:380px){.dictation-wave .bars i{width:2px;border-radius:2px}}
+  @media (max-width:640px){.dictation-wave .bars{height:56%}}
+  @media (max-width:380px){.dictation-wave .bars i{border-radius:2px}}
   /* Hero — premium ambient halo + faint dot grid */
   .hero{position:relative;padding-top:clamp(120px,15vh,180px);padding-bottom:clamp(72px,10vh,120px);text-align:center;background-image:radial-gradient(ellipse 55% 45% at center 42%,rgba(255,255,255,.045),transparent 72%),radial-gradient(circle at 1px 1px,rgba(255,255,255,.028) 1px,transparent 0);background-size:auto,26px 26px}
   @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .hero{background-image:radial-gradient(ellipse 55% 45% at center 42%,rgba(9,9,11,.03),transparent 72%),radial-gradient(circle at 1px 1px,rgba(9,9,11,.04) 1px,transparent 0)}}
@@ -780,84 +780,111 @@
 
         <!-- Desktop grid -->
         <div class="compare__frame" role="region" aria-label="Feature comparison between VoiceToText and competitors">
-          <div class="compare__grid">
-            <div class="compare__head compare__head--row">Feature</div>
-            <div class="compare__head compare__head--ours">VoiceToText</div>
-            <div class="compare__head">Wispr Flow</div>
-            <div class="compare__head">Superwhisper</div>
-            <div class="compare__head">MacWhisper</div>
-            <div class="compare__head">Apple Dictation</div>
+          <table class="compare__grid">
+            <caption class="sr-only">Feature comparison between VoiceToText, Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation</caption>
+            <thead>
+              <tr>
+                <th scope="col" class="compare__head compare__head--row">Feature</th>
+                <th scope="col" class="compare__head compare__head--ours">VoiceToText</th>
+                <th scope="col" class="compare__head">Wispr Flow</th>
+                <th scope="col" class="compare__head">Superwhisper</th>
+                <th scope="col" class="compare__head">MacWhisper</th>
+                <th scope="col" class="compare__head">Apple Dictation</th>
+              </tr>
+            </thead>
+            <tbody>
 
-            <div class="compare__row-label">Price</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Free forever</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-a" aria-describedby="compare-footnotes-title">2</a></sup></div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-a" aria-describedby="compare-footnotes-title">3</a></sup></div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Price</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Free forever</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$12&ndash;15 / mo</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$8.49 / mo &middot; paid lifetime<sup><a href="#fn-2" id="fn-2-ref-a" aria-describedby="compare-footnotes-title">2</a></sup></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>$69&ndash;80 lifetime<sup><a href="#fn-3" id="fn-3-ref-a" aria-describedby="compare-footnotes-title">3</a></sup></td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Free (built-in)</td>
+              </tr>
 
-            <div class="compare__row-label">Open source</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; on GitHub</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
+              <tr>
+                <th scope="row" class="compare__row-label">Open source</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; on GitHub</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
+              </tr>
 
-            <div class="compare__row-label">Runs 100% offline</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cloud only</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Runs 100% offline</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>On-device</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cloud only</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>On-device</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>On-device (some langs)</td>
+              </tr>
 
-            <div class="compare__row-label">No account required</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>None required</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>No account</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>None required</div>
+              <tr>
+                <th scope="row" class="compare__row-label">No account required</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>None required</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Account required</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>No account</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>None required</td>
+              </tr>
 
-            <div class="compare__row-label">Push-to-talk (hold key)</div>
-            <div class="compare__cell compare__cell--ours" role="cell"><span class="sr-only">Yes. </span><span class="status status--ok" aria-hidden="true"></span>Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro (Global mode)</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Toggle only</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Push-to-talk (hold key)</th>
+                <td class="compare__cell compare__cell--ours"><span class="sr-only">Yes. </span><span class="status status--ok" aria-hidden="true"></span>Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span></td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Customizable hold</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro (Global mode)</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Toggle only</td>
+              </tr>
 
-            <div class="compare__row-label">Works in any text field</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro only</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Works in any text field</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>System-wide</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Pro only</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>System-wide</td>
+              </tr>
 
-            <div class="compare__row-label">Apple Neural Engine acceleration</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Native</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-a" aria-describedby="compare-footnotes-title">1</a></sup></div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Apple Neural Engine acceleration</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Native</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>&mdash; Not advertised<sup><a href="#fn-1" id="fn-1-ref-a" aria-describedby="compare-footnotes-title">1</a></sup></td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Yes</td>
+              </tr>
 
-            <div class="compare__row-label">Native macOS app (no Electron)</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Native macOS app (no Electron)</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Cross-platform shell</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Native</td>
+              </tr>
 
-            <div class="compare__row-label">Multiple speech engines</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Proprietary only</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Whisper variants</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple only</div>
+              <tr>
+                <th scope="row" class="compare__row-label">Multiple speech engines</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + OpenAI cloud</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Proprietary only</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Whisper variants</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Whisper variants (Pro)</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple only</td>
+              </tr>
 
-            <div class="compare__row-label">Tuned for AI coding agents</div>
-            <div class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; headline use case</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</div>
-            <div class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Messaged</div>
-            <div class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</div>
-            <div class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></div>
-          </div>
+              <tr>
+                <th scope="row" class="compare__row-label">Tuned for AI coding agents</th>
+                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; headline use case</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</td>
+                <td class="compare__cell"><span class="status status--ok" aria-hidden="true"></span>Messaged</td>
+                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Works in apps</td>
+                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
         <!-- Mobile stacked cards -->

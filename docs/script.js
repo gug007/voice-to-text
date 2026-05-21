@@ -44,6 +44,35 @@
     }
   }
 
+  // --- 2b. Staggered child reveals (feature/how/compare cards) -----------
+  // Under reduced-motion the .reveal-child class is never applied (CSS guards it),
+  // so content stays visible. Under normal motion, cards fade-up sequentially.
+  if (!prefersReducedMotion.matches && 'IntersectionObserver' in window) {
+    const CHILD_SELECTORS = '.how__step, .feature-card, .compare__card';
+    const childGroups = document.querySelectorAll('.how__steps, .features__grid, .compare__mobile');
+    childGroups.forEach((group) => {
+      const children = group.querySelectorAll(CHILD_SELECTORS);
+      children.forEach((child, idx) => {
+        child.classList.add('reveal-child');
+        child.style.transitionDelay = `${idx * 60}ms`;
+      });
+      const groupIo = new IntersectionObserver(
+        (entries, obs) => {
+          for (const entry of entries) {
+            if (entry.isIntersecting) {
+              entry.target.querySelectorAll('.reveal-child').forEach((child) => {
+                child.classList.add('is-visible');
+              });
+              obs.unobserve(entry.target);
+            }
+          }
+        },
+        { threshold: 0.1, rootMargin: '0px 0px -30px 0px' }
+      );
+      groupIo.observe(group);
+    });
+  }
+
   // --- 3. Theme toggle ---------------------------------------------------
   const themeToggle = document.querySelector('[data-theme-toggle]');
   if (themeToggle) {

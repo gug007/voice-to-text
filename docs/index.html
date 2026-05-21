@@ -19,23 +19,28 @@
   <link rel="canonical" href="https://voicetotext.cc/">
 
   <!-- Open Graph -->
+  <!-- NOTE: og-image.png (1200x630) is not yet generated. Using app-icon.png
+       (512x512) as fallback. Replace with a proper social preview image and
+       restore og:image:width/height to 1200/630 and twitter:card to
+       summary_large_image once og-image.png is added to /docs/. -->
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="VoiceToText">
   <meta property="og:url" content="https://voicetotext.cc/">
-  <meta property="og:title" content="Voice to Text for Mac — Free Speech to Text App · VoiceToText">
-  <meta property="og:description" content="Free voice to text and speech to text app for Mac. Hold a hotkey, speak, release — words type into any app. Offline on Apple Silicon, no account, open source.">
-  <meta property="og:image" content="https://voicetotext.cc/og-image.png">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="VoiceToText — free voice to text and speech to text app for Mac, typing into a code editor">
+  <meta property="og:title" content="Voice to Text for Mac — Free Dictation App">
+  <meta property="og:description" content="Free push-to-talk dictation for Mac. Hold a hotkey, speak, release — text appears in any app. Offline on Apple Silicon, no account needed, open source.">
+  <meta property="og:image" content="https://voicetotext.cc/app-icon.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="512">
+  <meta property="og:image:height" content="512">
+  <meta property="og:image:alt" content="VoiceToText app icon — a microphone symbol representing the free Mac push-to-talk dictation app">
   <meta property="og:locale" content="en_US">
 
   <!-- Twitter Card -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="Voice to Text for Mac — Free Speech to Text · VoiceToText">
-  <meta name="twitter:description" content="Free voice to text & speech to text for Mac. Push-to-talk, offline on the Apple Neural Engine. Open-source alternative to Wispr Flow and Superwhisper.">
-  <meta name="twitter:image" content="https://voicetotext.cc/og-image.png">
-  <meta name="twitter:image:alt" content="VoiceToText voice to text on Mac: hold a hotkey, speak, words typed into the focused app">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="Voice to Text for Mac — Free Dictation App">
+  <meta name="twitter:description" content="Free push-to-talk dictation for Mac. Hold a hotkey, speak, release — text appears in any app. Offline on Apple Silicon, no account needed, open source.">
+  <meta name="twitter:image" content="https://voicetotext.cc/app-icon.png">
+  <meta name="twitter:image:alt" content="VoiceToText app icon — a microphone symbol representing the free Mac push-to-talk dictation app">
 
   <!-- Icons — uses the shipped macOS AppIcon for brand continuity. -->
   <link rel="icon" type="image/png" sizes="64x64" href="icon-64.png">
@@ -153,7 +158,7 @@
   .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary);transform:translateY(-1px)}
   /* Nav */
   .nav{position:fixed;top:0;left:0;right:0;z-index:var(--z-nav);padding:var(--space-3) var(--page-gutter);background:transparent;border-bottom:1px solid transparent;transition:background var(--duration-base) var(--ease-standard),border-color var(--duration-base) var(--ease-standard),backdrop-filter var(--duration-base) var(--ease-standard)}
-  .nav[data-scrolled="true"]{background:color-mix(in srgb,var(--color-bg) 72%,transparent);border-bottom-color:var(--color-border);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
+  .nav[data-scrolled="true"]{background:var(--color-bg);background:color-mix(in srgb,var(--color-bg) 72%,transparent);border-bottom-color:var(--color-border);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
   @supports not (backdrop-filter:blur(1px)){.nav[data-scrolled="true"]{background:var(--color-bg)}}
   .nav__inner{max-width:var(--container-xl);margin-inline:auto;display:flex;align-items:center;gap:var(--space-6)}
   .nav__brand{display:inline-flex;align-items:center;gap:var(--space-2);font-weight:var(--fw-semibold);color:var(--color-text-primary);font-size:var(--fs-body-md);letter-spacing:-.01em}
@@ -496,7 +501,7 @@
         </p>
 
         <div class="hero__ctas">
-          <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
+          <a class="btn btn--primary btn--lg" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
             <span>Get it free — download for Mac</span>
           </a>
@@ -506,8 +511,8 @@
           </a>
         </div>
 
-        <p class="hero__meta">Free · Open source · macOS 14+ · Apple Silicon</p>
-        <p class="hero__meta-sub t-caption">No account &middot; No subscription &middot; Cloud is opt-in.</p>
+        <p class="hero__meta">Free · Open source · No account · No subscription</p>
+        <p class="hero__meta-sub t-caption">Requires macOS 14 Sonoma+ &middot; Apple Silicon only (M1+) &middot; Intel Macs not supported.</p>
       </div>
     </section>
 
@@ -991,79 +996,80 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Install VoiceToText from the DMG, grant Microphone and Accessibility permissions, then hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> in any app on your Mac or MacBook, speak naturally, and release. Your speech is transcribed and typed at the cursor &mdash; no Apple Dictation panel, no copy-paste. Works the same on M1, M2, M3 and newer MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio.
+              Install from the DMG, grant Microphone and Accessibility permissions, then hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span> in any app, speak, and release. Text is typed at the cursor &mdash; no panel, no copy-paste. Works identically on MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio (M1 or newer).
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>How accurate is it?</span>
+              <span>Why does it need Accessibility permission?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Accuracy depends on the model. <strong>Local:</strong> OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) &mdash; the same state-of-the-art models behind popular paid apps. <strong>Optional cloud:</strong> OpenAI's GPT-4o Transcribe is the highest-accuracy option overall. Pick the model that fits your accuracy, speed, and privacy preference.
+              Accessibility permission is how macOS lets one app type into another. VoiceToText uses it solely to inject transcribed text at the cursor &mdash; it does not read your screen, monitor keystrokes, or access any other app&rsquo;s data. The source code is public if you want to verify exactly how the permission is used.
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>Which speech recognition models does VoiceToText use?</span>
+              <span>What are the system requirements?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              <strong>Local (default):</strong> WhisperKit (OpenAI's Whisper) for accuracy and FluidAudio (NVIDIA's Parakeet) for speed &mdash; both run on the Apple Neural Engine. <strong>Optional cloud:</strong> OpenAI GPT-4o Transcribe, GPT-4o Mini Transcribe, and Whisper-1, used by pasting your own API key in <em>Settings &rarr; Cloud</em>.
+              macOS 14 Sonoma or later, and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because the local models rely on the Apple Neural Engine. Cloud models work on any supported Mac with an internet connection.
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>Can I use cloud transcription models like OpenAI's?</span>
+              <span>How accurate is it? Which models does it use?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Yes &mdash; cloud is opt-in. Paste an OpenAI API key in <em>Settings &rarr; Cloud</em> and pick GPT-4o Transcribe, GPT-4o Mini Transcribe, or Whisper-1 in the Models pane. Your key is stored in the macOS Keychain and audio is only uploaded when one of these models is the active engine. Switch back to a local model anytime.
+              Accuracy is on par with leading paid dictation apps. <strong>Local (default):</strong> WhisperKit (OpenAI Whisper) for accuracy and FluidAudio (NVIDIA Parakeet) for speed &mdash; both run on the Apple Neural Engine. <strong>Optional cloud:</strong> OpenAI GPT-4o Transcribe delivers the highest accuracy overall. Paste your own OpenAI API key in <em>Settings &rarr; Cloud</em> to enable cloud models; your key is stored in the macOS Keychain.
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>Can I use VoiceToText to dictate prompts into Claude Code, Cursor, or other AI coding tools?</span>
+              <span>What languages are supported?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Yes. VoiceToText types into whatever app has focus, including Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, and any terminal or code editor. It is purpose-built for voice prompting AI coding agents at natural speaking speed.
+              WhisperKit supports 99 languages out of the box &mdash; the same coverage as OpenAI&rsquo;s Whisper model. Parakeet (FluidAudio) is English-only but faster for English speakers. If you dictate in a non-English language, select a Whisper model in <em>Settings &rarr; Models</em>.
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>What Macs does VoiceToText support?</span>
+              <span>How is VoiceToText different from Apple Dictation, Apple Intelligence, or Wispr Flow?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              VoiceToText requires macOS 14 (Sonoma) or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because there is no Apple Neural Engine.
+              <strong>Apple Dictation</strong> is toggle-based and tied to Apple&rsquo;s servers. <strong>Apple Intelligence</strong> writing tools rewrite text after the fact &mdash; they are not real-time dictation at the cursor. <strong>Wispr Flow</strong> is a paid subscription that always sends audio to the cloud. VoiceToText is free, open source, push-to-talk, on-device by default, and lets you bring your own OpenAI key when you want maximum accuracy. <a href="#compare">See the full comparison.</a>
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>How is VoiceToText different from Apple Dictation or Wispr Flow?</span>
+              <span>Can I dictate into Claude Code, Cursor, or other AI coding tools?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that always processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, on-device by default &mdash; and lets you optionally bring your own OpenAI key for cloud models when you want maximum accuracy.
+              Yes. VoiceToText types into whatever app has focus &mdash; Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, any terminal, any editor. Hold the hotkey, speak your prompt, release. No switching windows, no copy-paste.
             </div>
           </details>
 
           <details class="faq-item">
             <summary class="faq-item__q">
-              <span>Do you collect any data?</span>
+              <span>Do you collect any usage data or telemetry?</span>
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              No. No accounts, no telemetry, no first-party servers. With a local model the app makes zero network calls. If you opt in to an OpenAI cloud model, your audio for that request goes directly to OpenAI under your own API key &mdash; VoiceToText never sees it. The repo is public; inspect the source or watch the network with Little Snitch to verify.
+              No. No accounts, no analytics, no first-party servers. The app makes zero network calls with a local model. If you opt in to a cloud model, audio goes directly from your Mac to OpenAI &mdash; VoiceToText is never in that path. The repo is public; verify it yourself or watch traffic with Little Snitch.
             </div>
           </details>
+        </div>
         </div>
       </div>
     </section>
@@ -1096,7 +1102,7 @@
             <span class="download__step-num">1</span>
             <div>
               <h3 class="download__step-title">Open the DMG</h3>
-              <p class="download__step-body">and drag <strong>VoiceToText</strong> to <code class="code-inline">/Applications</code>.</p>
+              <p class="download__step-body">Drag <strong>VoiceToText</strong> to <code class="code-inline">/Applications</code>. Takes 5 seconds.</p>
             </div>
           </li>
           <li class="download__step">
@@ -1110,7 +1116,7 @@
             <span class="download__step-num">3</span>
             <div>
               <h3 class="download__step-title">Grant Microphone and Accessibility</h3>
-              <p class="download__step-body">when prompted &mdash; mic captures audio, accessibility types into the focused app.</p>
+              <p class="download__step-body">One-time prompt &mdash; mic hears you, accessibility types into whatever app you're in. Revoke anytime in System Settings.</p>
             </div>
           </li>
           <li class="download__step">
@@ -1185,6 +1191,15 @@
       </p>
     </div>
   </footer>
+
+  <!-- Mobile sticky CTA bar (<=640px only, dismissible) -->
+  <div class="sticky-cta" id="stickyCta" aria-hidden="true" role="complementary" aria-label="Download VoiceToText">
+    <a class="sticky-cta__btn btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download tabindex="-1" aria-hidden="true">
+      <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
+      <span>Get it free</span>
+    </a>
+    <button class="sticky-cta__close" id="stickyCta__close" tabindex="-1" aria-hidden="true" aria-label="Dismiss download bar">&times;</button>
+  </div>
 
   <script src="script.js" defer></script>
 </body>

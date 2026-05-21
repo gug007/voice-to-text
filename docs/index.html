@@ -152,10 +152,10 @@
   .btn:active{transform:translateY(1px)}
   .btn--sm{height:var(--control-height-md);padding-inline:var(--space-4);font-size:var(--fs-body-sm)}
   .btn--primary{background:var(--color-accent-solid);color:var(--color-accent-ink);border-color:var(--color-accent-solid)}
-  .btn--primary:hover{background:var(--color-accent-hover);border-color:var(--color-accent-hover);color:var(--color-accent-ink);transform:translateY(-1px) scale(1.015);box-shadow:0 14px 30px -12px rgba(0,0,0,.45),0 2px 6px -2px rgba(0,0,0,.2)}
+  .btn--primary:hover{background:var(--color-accent-hover);border-color:var(--color-accent-hover);color:var(--color-accent-ink);transform:translateY(-1px) scale(1.015);box-shadow:var(--btn-primary-hover-shadow)}
   .btn--primary:active{transform:translateY(0);box-shadow:none}
   .btn--secondary{background:transparent;color:var(--color-text-primary);border-color:var(--color-border-strong)}
-  .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary);transform:translateY(-1px);box-shadow:0 4px 12px -4px rgba(0,0,0,.2)}
+  .btn--secondary:hover{background:var(--color-surface-elevated);border-color:var(--color-text-secondary);color:var(--color-text-primary);transform:translateY(-1px);box-shadow:var(--shadow-sm)}
   /* Nav */
   .nav{position:fixed;top:0;left:0;right:0;z-index:var(--z-nav);padding:var(--space-3) var(--page-gutter);background:transparent;border-bottom:1px solid transparent;transition:background var(--duration-base) var(--ease-standard),border-color var(--duration-base) var(--ease-standard),backdrop-filter var(--duration-base) var(--ease-standard)}
   .nav[data-scrolled="true"]{background:var(--color-bg);background:color-mix(in srgb,var(--color-bg) 72%,transparent);border-bottom-color:var(--color-border);-webkit-backdrop-filter:blur(18px) saturate(180%);backdrop-filter:blur(18px) saturate(180%)}
@@ -209,6 +209,14 @@
   }
   /* Below-the-fold placeholder to prevent layout shift before full CSS lands. */
   .reveal{opacity:0}
+  /* a11y: suppress decorative motion in critical CSS for prefers-reduced-motion users */
+  @media (prefers-reduced-motion:reduce){
+    a{transition:none}
+    .btn{transition:none}
+    .btn--primary:hover,.btn--secondary:hover{transform:none;box-shadow:none}
+    .nav{transition:none}
+    .theme-toggle{transition:none}
+  }
   </style>
 
   <!-- T10: async-load the full stylesheet. Preload + onload swap = no render
@@ -1003,7 +1011,7 @@
               <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
             </summary>
             <div class="faq-item__a">
-              Yes &mdash; completely free, forever. VoiceToText is open source (OSI-approved license) with no paid tiers, no accounts, and no in-app purchases. <a href="#download">Download it here.</a>
+              Yes &mdash; completely free, forever. VoiceToText is open source (OSI-approved license) with no paid tiers, no accounts, and no in-app purchases. <a href="#download">Download VoiceToText free.</a>
             </div>
           </details>
 

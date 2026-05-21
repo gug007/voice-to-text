@@ -250,6 +250,13 @@ button { font-family: inherit; }
 .reveal.is-visible { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
 
+/* Staggered child-reveal for card grids — JS adds .reveal-child + delay.
+   CSS guard: the whole block only applies when motion is accepted. */
+@media (prefers-reduced-motion: no-preference) {
+  .reveal-child { opacity: 0; transform: translateY(8px); transition: opacity 480ms var(--ease-enter), transform 480ms var(--ease-enter); }
+  .reveal-child.is-visible { opacity: 1; transform: none; }
+}
+
 /* Icons */
 .icon { width: 16px; height: 16px; display: inline-block; vertical-align: middle; flex-shrink: 0; }
 .icon--sm { width: 12px; height: 12px; }
@@ -611,7 +618,7 @@ button { font-family: inherit; }
 /* 2. Primary CTA focus ring — high-visibility for keyboard users */
 .btn--primary:focus-visible {
   outline: none;
-  box-shadow: var(--focus-ring), 0 14px 30px -12px rgba(0,0,0,.45);
+  box-shadow: var(--focus-ring), var(--btn-primary-hover-shadow);
 }
 
 /* 3. Download steps — step number highlight on hover for visual warmth */
@@ -705,4 +712,49 @@ button { font-family: inherit; }
 /* Prevent sticky bar from obscuring footer content */
 @media (max-width: 640px) {
   .footer { padding-bottom: calc(var(--space-12) + 64px); }
+}
+
+/* ============================================================
+   REDUCED-MOTION: suppress all remaining transitions/transforms
+   not already covered by component-level rules above.
+   WCAG 2.1 SC 2.3.3 (AAA) recommends; SC 2.3.1 (AA) mandates
+   no animation that flashes. We go further: strip decorative
+   motion entirely so every transition/transform is opt-in via
+   (prefers-reduced-motion: no-preference).
+   ============================================================ */
+@media (prefers-reduced-motion: reduce) {
+  /* Global link colour fades */
+  a { transition: none; }
+
+  /* Button hover lift + colour transitions */
+  .btn { transition: none; }
+  .btn--primary:hover,
+  .btn--secondary:hover { transform: none; box-shadow: none; }
+
+  /* Nav background fade + backdrop-filter */
+  .nav { transition: none; }
+
+  /* Theme toggle colour/border fade */
+  .theme-toggle { transition: none; }
+
+  /* Demo field state transitions (box-shadow, icon colour, placeholder fade) */
+  .demo-field { transition: none; }
+  .demo-field__icon { transition: none; }
+  .demo-field__placeholder { transition: none; }
+
+  /* FAQ chevron rotation */
+  .faq-item__chevron { transition: none; }
+  .faq-item[open] .faq-item__chevron { transform: none; }
+
+  /* Download step-num hover */
+  .download__step:hover .download__step-num { transition: none; }
+
+  /* Sticky CTA close button */
+  .sticky-cta__close { transition: none; }
+
+  /* How-step and feature-card border-colour fades (transforms already gated
+     via prefers-reduced-motion: no-preference wrappers above) */
+  .how__step { transition: none; }
+  .feature-card { transition: none; }
+  .compare__card { transition: none; }
 }

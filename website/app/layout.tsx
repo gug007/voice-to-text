@@ -12,9 +12,11 @@ import {
 
 import "./globals.css";
 
-const TITLE = "Voice to Text for Mac — Free Speech to Text App · VoiceToText";
+const TITLE = "Voice to Text for Mac — Free, Offline · VoiceToText";
 const DESCRIPTION =
-  "Free voice to text app for Mac. Hold a hotkey, speak, release — words type into any app instantly. Offline on Apple Silicon, no account. Download free.";
+  "Free voice to text for Mac. Hold a hotkey in any app — Slack, Notes, Mail, ChatGPT — and your words type at the cursor. Offline. No account. Free download.";
+const TWITTER_DESCRIPTION =
+  "Free push-to-talk voice to text for Mac. Words type at the cursor in Slack, Notes, Mail, ChatGPT, or any app. Offline on the Apple Neural Engine.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -44,24 +46,13 @@ export const metadata: Metadata = {
     siteName: "VoiceToText",
     url: SITE_URL,
     title: TITLE,
-    description:
-      "Free voice to text and speech to text app for Mac. Hold a hotkey, speak, release — words type into any app. Offline on Apple Silicon, no account, open source.",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "VoiceToText — free voice to text and speech to text app for Mac, typing into a code editor",
-      },
-    ],
+    description: DESCRIPTION,
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Voice to Text for Mac — Free Speech to Text · VoiceToText",
-    description:
-      "Free voice to text & speech to text for Mac. Push-to-talk, offline on the Apple Neural Engine. Open-source alternative to Wispr Flow and Superwhisper.",
-    images: ["/og-image.png"],
+    title: TITLE,
+    description: TWITTER_DESCRIPTION,
   },
   icons: {
     icon: [

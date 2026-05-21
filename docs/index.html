@@ -345,6 +345,14 @@
       },
       {
         "@type": "Question",
+        "name": "What apps does VoiceToText work in?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Any Mac app with a text field. Apple Notes, Notion, Obsidian, Bear, Pages, Google Docs, Microsoft Word, Slack, Messages, Mail, Gmail, Outlook, WhatsApp, Discord, Safari and Chrome address bars, ChatGPT, Claude.ai — if macOS puts a cursor there, your voice types into it. No app-specific setup."
+        }
+      },
+      {
+        "@type": "Question",
         "name": "Can I dictate into Claude Code, Cursor, or other AI coding tools?",
         "acceptedAnswer": {
           "@type": "Answer",
@@ -511,7 +519,7 @@
         </p>
 
         <p class="hero__subcopy">
-          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; your words land at the cursor in Claude Code, Cursor, Slack, or any Mac app, transcribed offline on the Apple Neural Engine.
+          Hold <span class="kbd-combo"><span class="sr-only">Option plus Space</span><kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd></span>, speak, release &mdash; your words land at the cursor in Notes, Slack, Mail, Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine.
         </p>
 
         <div class="hero__ctas">
@@ -557,7 +565,7 @@
         <p class="section__eyebrow">See it work</p>
         <h2 id="demo-title" class="section__title">Speech to text in any Mac app.</h2>
         <p class="section__deck">
-          Hold the hotkey. Speak a full sentence. Release. Your voice is transcribed and typed at the cursor &mdash; in a code editor, a terminal, a Slack thread, a note &mdash; without ever leaving your Mac.
+          Hold the hotkey. Speak a full sentence. Release. Your voice is transcribed and typed at the cursor &mdash; in an email, a Slack thread, a Notion page, a Google Doc, ChatGPT, or a code editor &mdash; without ever leaving your Mac.
         </p>
 
         <figure class="demo-card" aria-label="VoiceToText voice-input field with recording HUD">
@@ -667,8 +675,8 @@
             <div class="feature-card__icon" aria-hidden="true">
               <svg class="icon icon--lg"><use href="#i-agent"/></svg>
             </div>
-            <h3 class="feature-card__title">Prompt AI agents faster than you can type</h3>
-            <p class="feature-card__body">Speak a full, detailed prompt into Claude Code or Cursor. Thinking speed beats typing speed — every time.</p>
+            <h3 class="feature-card__title">Faster than typing &mdash; in any app</h3>
+            <p class="feature-card__body">A long Slack reply, a thoughtful email, a meeting note, a search query, an AI prompt &mdash; talking is faster than typing. Hold, speak, release.</p>
           </li>
           <li class="feature-card">
             <div class="feature-card__icon" aria-hidden="true">
@@ -729,48 +737,58 @@
       </div>
     </section>
 
-    <!-- 6. AI-AGENT USE CASE -->
+    <!-- 6. USE CASES — every Mac app -->
     <section class="section ai reveal" id="ai-agents" aria-labelledby="ai-title">
       <div class="container">
-        <p class="section__eyebrow">Voice prompting</p>
-        <h2 id="ai-title" class="section__title">Dictate prompts directly into Claude Code, Cursor, and other AI coding agents.</h2>
+        <p class="section__eyebrow">Use cases</p>
+        <h2 id="ai-title" class="section__title">Speak in every Mac app &mdash; from Notes and Slack to ChatGPT and Cursor.</h2>
         <p class="section__deck">
-          Speak a full prompt — context, constraints, examples — faster than you can type it. Text lands at the cursor inside the agent. No copy-paste, no middleman.
+          Whatever app is in focus gets your words at the cursor. Writing an email, drafting a Slack reply, capturing a thought in Apple Notes, prompting ChatGPT, refactoring with Cursor &mdash; same hotkey, same speed.
         </p>
 
         <div class="ai__grid">
           <div class="ai__body">
             <p class="ai__para">
-              Say the file, the error, the constraint, the style — all in one breath. VoiceToText types it at the cursor in Claude Code, Codex CLI, Cursor, Copilot Chat, or any terminal. Your code stays on your Mac; only the prompt goes to the agent.
+              A long Slack thread, a meeting note in Apple Notes, a draft in Notion, a Gmail reply, a search in your browser, a ChatGPT question, a Cursor refactor &mdash; same gesture every time. Hold to talk, release to insert. Your voice never leaves the Mac in local mode.
             </p>
 
-            <ul class="ai__apps" role="list" aria-label="Supported AI coding apps">
-              <li class="ai__app">Claude Code</li>
-              <li class="ai__app">Cursor</li>
-              <li class="ai__app">Codex CLI</li>
-              <li class="ai__app">Copilot Chat</li>
+            <ul class="ai__apps" role="list" aria-label="Apps people use VoiceToText with">
+              <li class="ai__app">Apple Notes</li>
+              <li class="ai__app">Slack</li>
+              <li class="ai__app">Messages</li>
+              <li class="ai__app">Mail</li>
+              <li class="ai__app">Gmail</li>
+              <li class="ai__app">Notion</li>
+              <li class="ai__app">Obsidian</li>
+              <li class="ai__app">Pages</li>
+              <li class="ai__app">Google Docs</li>
+              <li class="ai__app">Safari</li>
+              <li class="ai__app">Chrome</li>
               <li class="ai__app">ChatGPT</li>
+              <li class="ai__app">Claude.ai</li>
+              <li class="ai__app">Cursor</li>
+              <li class="ai__app">Claude Code</li>
+              <li class="ai__app">VS Code</li>
               <li class="ai__app">Warp</li>
               <li class="ai__app">Terminal</li>
-              <li class="ai__app">VS Code</li>
             </ul>
           </div>
 
-          <figure class="ai__transcript" aria-label="Example of a voice-dictated prompt">
+          <figure class="ai__transcript" aria-label="Example of a voice-dictated Slack message">
             <div class="ai__transcript-chrome" aria-hidden="true">
               <span class="macos-window__dot" style="--c:#FF5F57"></span>
               <span class="macos-window__dot" style="--c:#FEBC2E"></span>
               <span class="macos-window__dot" style="--c:#28C840"></span>
-              <span class="ai__transcript-title">Claude Code</span>
+              <span class="ai__transcript-title">Slack &mdash; #design</span>
               <span class="ai__transcript-hotkey" aria-hidden="true">
                 <kbd class="keycap keycap--inline" aria-hidden="true">&#8997;</kbd><kbd class="keycap keycap--inline" aria-hidden="true">Space</kbd>
               </span>
             </div>
-            <pre class="ai__transcript-body"><code>&#9612; refactor this function so it streams
-&#9612; tokens instead of buffering, keep the
-&#9612; type signature, add a test with fakes</code></pre>
+            <pre class="ai__transcript-body"><code>&#9612; running late to standup &mdash; just
+&#9612; finishing a customer call. start
+&#9612; without me, I'll catch up after.</code></pre>
             <figcaption class="ai__transcript-caption">
-              <strong>Spoken into Claude Code in one push.</strong> No copy-paste, no separate window.
+              <strong>Spoken into Slack in one push.</strong> No window switch, no copy-paste.
             </figcaption>
           </figure>
         </div>
@@ -778,7 +796,7 @@
         <div class="ai__cta">
           <a class="btn btn--primary" href="https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg" download>
             <svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>
-            <span>Get it free — download for Mac</span>
+            <span>Get it free &mdash; download for Mac</span>
           </a>
         </div>
       </div>
@@ -889,14 +907,6 @@
                 <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span>Apple model only</td>
               </tr>
 
-              <tr>
-                <th scope="row" class="compare__row-label">Marketed for developer / AI-agent workflows</th>
-                <td class="compare__cell compare__cell--ours"><span class="status status--ok" aria-hidden="true"></span>Primary use case</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>General dictation focus</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>Marketed for developers</td>
-                <td class="compare__cell"><span class="status status--partial" aria-hidden="true"></span>General transcription focus</td>
-                <td class="compare__cell"><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></td>
-              </tr>
             </tbody>
           </table>
         </div>
@@ -918,7 +928,6 @@
               <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
               <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Whisper + Parakeet + optional OpenAI cloud</dd>
-              <dt>AI agents</dt><dd><span class="status status--ok" aria-hidden="true"></span>Primary use case</dd>
             </dl>
           </article>
 
@@ -934,7 +943,6 @@
               <dt>Neural Engine</dt><dd><span class="status status--no" aria-hidden="true"></span>N/A &mdash; cloud-side inference<sup><a href="#fn-4" id="fn-4-ref-b" aria-describedby="compare-footnotes-title">4</a></sup></dd>
               <dt>No Electron</dt><dd><span class="status status--no" aria-hidden="true"></span>Electron-based</dd>
               <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Single proprietary cloud model</dd>
-              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>General dictation focus</dd>
             </dl>
           </article>
 
@@ -950,7 +958,6 @@
               <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
               <dt>Engines</dt><dd><span class="status status--ok" aria-hidden="true"></span>Multiple Whisper model sizes</dd>
-              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>Marketed for developers</dd>
             </dl>
           </article>
 
@@ -966,7 +973,6 @@
               <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>SwiftUI native</dd>
               <dt>Engines</dt><dd><span class="status status--partial" aria-hidden="true"></span>Multiple Whisper sizes (Pro)<sup><a href="#fn-5" id="fn-5-ref-b" aria-describedby="compare-footnotes-title">5</a></sup></dd>
-              <dt>AI agents</dt><dd><span class="status status--partial" aria-hidden="true"></span>General transcription focus</dd>
             </dl>
           </article>
 
@@ -982,7 +988,6 @@
               <dt>Neural Engine</dt><dd><span class="status status--ok" aria-hidden="true"></span>Yes &mdash; Apple Silicon</dd>
               <dt>No Electron</dt><dd><span class="status status--ok" aria-hidden="true"></span>Native</dd>
               <dt>Engines</dt><dd><span class="status status--no" aria-hidden="true"></span>Apple model only</dd>
-              <dt>AI agents</dt><dd><span class="status status--no" aria-hidden="true"></span><span class="sr-only">No</span><span aria-hidden="true">&mdash;</span></dd>
             </dl>
           </article>
         </div>
@@ -1090,6 +1095,16 @@
             </summary>
             <div class="faq-item__a">
               <strong>Apple Dictation</strong> is toggle-based and tied to Apple&rsquo;s servers. <strong>Apple Intelligence</strong> writing tools rewrite text after the fact &mdash; they are not real-time dictation at the cursor. <strong>Wispr Flow</strong> is a paid subscription that always sends audio to the cloud. VoiceToText is free, open source, push-to-talk, on-device by default, and lets you bring your own OpenAI key when you want maximum accuracy. <a href="#compare">See the full comparison.</a>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-item__q">
+              <span>What apps does VoiceToText work in?</span>
+              <svg class="icon faq-item__chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+            </summary>
+            <div class="faq-item__a">
+              Any Mac app with a text field. Apple Notes, Notion, Obsidian, Bear, Pages, Google Docs, Microsoft Word, Slack, Messages, Mail, Gmail, Outlook, WhatsApp, Discord, Safari and Chrome address bars, ChatGPT, Claude.ai &mdash; if macOS puts a cursor there, your voice types into it. No app-specific setup.
             </div>
           </details>
 

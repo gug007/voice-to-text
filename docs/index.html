@@ -103,17 +103,17 @@
   @media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
     --color-bg:#FFFFFF;--color-surface:#FFFFFF;--color-surface-elevated:#FAFAFA;
     --color-border:#EAEAEC;--color-border-strong:#D4D4D8;
-    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#71717A;
+    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#6F6F78;
     --color-accent:#09090B;--color-accent-solid:#09090B;--color-accent-hover:#27272A;
-    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.30);
+    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.50);
     --color-accent-ink:#FFFFFF;
   }}
   :root[data-theme="light"]{
     --color-bg:#FFFFFF;--color-surface:#FFFFFF;--color-surface-elevated:#FAFAFA;
     --color-border:#EAEAEC;--color-border-strong:#D4D4D8;
-    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#71717A;
+    --color-text-primary:#09090B;--color-text-secondary:#52525B;--color-text-muted:#6F6F78;
     --color-accent:#09090B;--color-accent-solid:#09090B;--color-accent-hover:#27272A;
-    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.30);
+    --color-accent-muted:rgba(9,9,11,.06);--color-accent-ring:rgba(9,9,11,.50);
     --color-accent-ink:#FFFFFF;
   }
   /* Reset */
@@ -267,82 +267,82 @@
     "mainEntity": [
       {
         "@type": "Question",
-        "name": "Is this voice to text Mac app really free?",
+        "name": "Is VoiceToText free?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. VoiceToText is 100% free voice to text for Mac, open source, released under an OSI-approved license. There are no paid tiers, no accounts, no telemetry, and no in-app purchases."
+          "text": "Yes — completely free, forever. VoiceToText is open source (OSI-approved license) with no paid tiers, no accounts, and no in-app purchases."
         }
       },
       {
         "@type": "Question",
-        "name": "Does this speech to text Mac app work offline?",
+        "name": "Does it work offline? Is my voice data sent anywhere?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes, by default. Local speech-to-text models (Parakeet, Whisper) run on-device on the Apple Neural Engine — no internet required and audio never leaves your Mac. Cloud models from OpenAI are opt-in: they only run when you explicitly pick one as the active engine."
+          "text": "Yes, it works fully offline by default. Local models (Whisper, Parakeet) run on the Apple Neural Engine — audio never leaves your Mac and the app makes zero network calls. Cloud models (OpenAI GPT-4o Transcribe, etc.) are strictly opt-in: audio is sent directly to OpenAI under your own API key only when you explicitly select a cloud engine. VoiceToText itself never receives your audio."
         }
       },
       {
         "@type": "Question",
-        "name": "How do I use voice to text on my Mac or MacBook?",
+        "name": "How do I use voice to text on my Mac?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Install VoiceToText from the DMG, grant Microphone and Accessibility permissions, then hold Option+Space in any app on your Mac or MacBook, speak naturally, and release. Your speech is transcribed and typed at the cursor — no Apple Dictation panel, no copy-paste. Works the same on M1, M2, M3 and newer MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio."
+          "text": "Install from the DMG, grant Microphone and Accessibility permissions, then hold Option+Space in any app, speak, and release. Text is typed at the cursor — no panel, no copy-paste. Works identically on MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio (M1 or newer)."
         }
       },
       {
         "@type": "Question",
-        "name": "How accurate is it?",
+        "name": "Why does it need Accessibility permission?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Accuracy depends on the model. Local: OpenAI's Whisper (via WhisperKit) and NVIDIA's Parakeet (via FluidAudio) — the same state-of-the-art models behind popular paid apps. Optional cloud: OpenAI's GPT-4o Transcribe is the highest-accuracy option overall. Pick the model that fits your accuracy, speed, and privacy preference."
+          "text": "Accessibility permission is how macOS lets one app type into another. VoiceToText uses it solely to inject transcribed text at the cursor — it does not read your screen, monitor keystrokes, or access any other app's data. The source code is public if you want to verify exactly how the permission is used."
         }
       },
       {
         "@type": "Question",
-        "name": "Which speech recognition models does VoiceToText use?",
+        "name": "What are the system requirements?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Local (default): WhisperKit (OpenAI's Whisper) for accuracy and FluidAudio (NVIDIA's Parakeet) for speed — both run on the Apple Neural Engine. Optional cloud: OpenAI GPT-4o Transcribe, GPT-4o Mini Transcribe, and Whisper-1, used by pasting your own API key in Settings → Cloud."
+          "text": "macOS 14 Sonoma or later, and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because the local models rely on the Apple Neural Engine. Cloud models work on any supported Mac with an internet connection."
         }
       },
       {
         "@type": "Question",
-        "name": "Can I use cloud transcription models like OpenAI's?",
+        "name": "How accurate is it? Which models does it use?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes — cloud is opt-in. Paste an OpenAI API key in Settings → Cloud and pick GPT-4o Transcribe, GPT-4o Mini Transcribe, or Whisper-1 in the Models pane. Your key is stored in the macOS Keychain and audio is only uploaded when one of these models is the active engine. Switch back to a local model anytime."
+          "text": "Accuracy is on par with leading paid dictation apps. Local (default): WhisperKit (OpenAI Whisper) for accuracy and FluidAudio (NVIDIA Parakeet) for speed — both run on the Apple Neural Engine. Optional cloud: OpenAI GPT-4o Transcribe delivers the highest accuracy overall. Paste your own OpenAI API key in Settings → Cloud to enable cloud models; your key is stored in the macOS Keychain."
         }
       },
       {
         "@type": "Question",
-        "name": "Can I use VoiceToText to dictate prompts into Claude Code, Cursor, or other AI coding tools?",
+        "name": "What languages are supported?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Yes. VoiceToText types into whatever app has focus, including Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, and any terminal or code editor. It is purpose-built for voice prompting AI coding agents at natural speaking speed."
+          "text": "WhisperKit supports 99 languages out of the box — the same coverage as OpenAI's Whisper model. Parakeet (FluidAudio) is English-only but faster for English speakers. If you dictate in a non-English language, select a Whisper model in Settings → Models."
         }
       },
       {
         "@type": "Question",
-        "name": "What Macs does VoiceToText support?",
+        "name": "How is VoiceToText different from Apple Dictation, Apple Intelligence, or Wispr Flow?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "VoiceToText requires macOS 14 (Sonoma) or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because there is no Apple Neural Engine."
+          "text": "Apple Dictation is toggle-based and tied to Apple's servers. Apple Intelligence writing tools rewrite text after the fact — they are not real-time dictation at the cursor. Wispr Flow is a paid subscription that always sends audio to the cloud. VoiceToText is free, open source, push-to-talk, on-device by default, and lets you bring your own OpenAI key when you want maximum accuracy."
         }
       },
       {
         "@type": "Question",
-        "name": "How is VoiceToText different from Apple Dictation or Wispr Flow?",
+        "name": "Can I dictate into Claude Code, Cursor, or other AI coding tools?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "Apple Dictation is toggle-style and tied to Apple's models. Wispr Flow is a paid subscription that always processes audio in the cloud. VoiceToText is free, open source, held push-to-talk, on-device by default — and lets you optionally bring your own OpenAI key for cloud models when you want maximum accuracy."
+          "text": "Yes. VoiceToText types into whatever app has focus — Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, any terminal, any editor. Hold the hotkey, speak your prompt, release. No switching windows, no copy-paste."
         }
       },
       {
         "@type": "Question",
-        "name": "Do you collect any data?",
+        "name": "Do you collect any usage data or telemetry?",
         "acceptedAnswer": {
           "@type": "Answer",
-          "text": "No. No accounts, no telemetry, no first-party servers. With a local model the app makes zero network calls. If you opt in to an OpenAI cloud model, your audio for that request goes directly to OpenAI under your own API key — VoiceToText never sees it. The repo is public; inspect the source or watch the network with Little Snitch to verify."
+          "text": "No. No accounts, no analytics, no first-party servers. The app makes zero network calls with a local model. If you opt in to a cloud model, audio goes directly from your Mac to OpenAI — VoiceToText is never in that path. The repo is public; verify it yourself or watch traffic with Little Snitch."
         }
       }
     ]
@@ -489,7 +489,7 @@
         <p class="hero__eyebrow">Free &middot; Open source &middot; macOS</p>
 
         <h1 id="hero-title" class="hero__title">
-          Speak.<br>It types.
+          Voice to Text for Mac. Free. Offline.
         </h1>
 
         <p class="hero__lead">
@@ -1069,7 +1069,6 @@
               No. No accounts, no analytics, no first-party servers. The app makes zero network calls with a local model. If you opt in to a cloud model, audio goes directly from your Mac to OpenAI &mdash; VoiceToText is never in that path. The repo is public; verify it yourself or watch traffic with Little Snitch.
             </div>
           </details>
-        </div>
         </div>
       </div>
     </section>

@@ -86,8 +86,8 @@ export default function OpengraphImage() {
               maxWidth: 920,
             }}
           >
-            Hold ⌥Space, speak, release &mdash; your words type at the cursor in
-            Slack, Notes, Mail, ChatGPT, or any Mac app.
+            Hold Option+Space, speak, release &mdash; your words type at the
+            cursor in Slack, Notes, Mail, ChatGPT, or any Mac app.
           </div>
         </div>
 

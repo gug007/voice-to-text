@@ -109,9 +109,11 @@
     // 140-sample rolling buffer, filled shape mirrored above and below the
     // centre, write-head on the right, gradient mask on the left.
     const SAMPLES = 140;
+    const SAMPLE_INTERVAL = 0.07;
     const trace = new Array(SAMPLES).fill(0);
     let traceSmoothed = 0;
     let tracePhase = Math.random() * 10;
+    let traceAccum = 0;
     let traceRaf = null;
     let traceCtx = demoCanvas.getContext('2d');
     let traceDpr = 1;
@@ -155,20 +157,26 @@
     function tickTrace(now) {
       if (!traceActive) return;
       if (!traceLast) traceLast = now;
-      const dt = Math.min(0.05, (now - traceLast) / 1000);
+      const dt = Math.min(0.1, (now - traceLast) / 1000);
       traceLast = now;
       tracePhase += dt;
-      const t = tracePhase;
-      const envelope = 0.55 + 0.45 * Math.sin(t * 1.05);
-      const raw = 0.42
-        + 0.34 * Math.sin(t * 2.7)
-        + 0.18 * Math.sin(t * 6.3 + 1.2)
-        + (Math.random() - 0.5) * 0.22;
-      const target = Math.max(0, Math.min(1, raw * envelope));
-      traceSmoothed = traceSmoothed * 0.6 + target * 0.4;
-      trace.shift();
-      trace.push(traceSmoothed);
-      drawTrace();
+      traceAccum += dt;
+      let pushed = false;
+      while (traceAccum >= SAMPLE_INTERVAL) {
+        traceAccum -= SAMPLE_INTERVAL;
+        const t = tracePhase;
+        const envelope = 0.55 + 0.45 * Math.sin(t * 0.55);
+        const raw = 0.42
+          + 0.34 * Math.sin(t * 1.4)
+          + 0.18 * Math.sin(t * 3.1 + 1.2)
+          + (Math.random() - 0.5) * 0.22;
+        const target = Math.max(0, Math.min(1, raw * envelope));
+        traceSmoothed = traceSmoothed * 0.6 + target * 0.4;
+        trace.shift();
+        trace.push(traceSmoothed);
+        pushed = true;
+      }
+      if (pushed) drawTrace();
       traceRaf = window.requestAnimationFrame(tickTrace);
     }
 

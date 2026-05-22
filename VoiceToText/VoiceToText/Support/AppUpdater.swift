@@ -158,42 +158,49 @@ final class AppUpdater {
         }
     }
 
-    // MARK: - GitHub API
+    // MARK: - GitHub Releases
 
-    private struct Release: Decodable {
+    private struct Release {
         let tagName: String
         let body: String?
         let assets: [Asset]
-        enum CodingKeys: String, CodingKey {
-            case tagName = "tag_name"
-            case body
-            case assets
-        }
     }
 
-    private struct Asset: Decodable {
+    private struct Asset {
         let name: String
         let browserDownloadURL: URL
-        enum CodingKeys: String, CodingKey {
-            case name
-            case browserDownloadURL = "browser_download_url"
-        }
     }
 
     private func fetchLatestRelease() async throws -> Release {
-        let url = URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest")!
+        let url = GitHubLatestReleaseLocator.latestReleaseURL(repo: Self.repo)
         var request = URLRequest(url: url)
         request.timeoutInterval = 30
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        request.setValue("VoiceToText", forHTTPHeaderField: "User-Agent")
 
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (_, response) = try await URLSession.shared.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw UpdaterError.network("Invalid response")
         }
-        guard http.statusCode == 200 else {
-            throw UpdaterError.network("GitHub API returned status \(http.statusCode)")
+        guard (200..<400).contains(http.statusCode),
+              let finalURL = response.url,
+              let tagName = GitHubLatestReleaseLocator.tagName(from: finalURL, repo: Self.repo) else {
+            throw UpdaterError.network("Could not resolve latest GitHub release")
         }
-        return try JSONDecoder().decode(Release.self, from: data)
+
+        let assetName = GitHubLatestReleaseLocator.versionedAssetName(tagName: tagName)
+        return Release(
+            tagName: tagName,
+            body: nil,
+            assets: [
+                Asset(
+                    name: assetName,
+                    browserDownloadURL: GitHubLatestReleaseLocator.versionedAssetURL(
+                        repo: Self.repo,
+                        tagName: tagName
+                    )
+                ),
+            ]
+        )
     }
 
     // MARK: - Download

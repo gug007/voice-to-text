@@ -19,17 +19,24 @@ function WaveBars() {
   );
 }
 
+const META = ["Free", "Open source", "No account", "No subscription"];
+
 export function Hero() {
   return (
     <section className="section hero reveal" id="top" aria-labelledby="hero-title">
       <WaveBars />
       <div className="container hero__inner">
-        <p className="hero__eyebrow">Free · Open source · macOS</p>
+        <p className="hero__eyebrow">
+          <span className="hero__eyebrow-dot" aria-hidden="true" />
+          Free · Open source · macOS
+        </p>
         <h1 id="hero-title" className="hero__title">
-          Voice to Text for Mac. Free. Offline.
+          Voice to text for Mac.
+          <br />
+          <span className="hero__title-accent">Free. Offline.</span>
         </h1>
         <p className="hero__lead">
-          Push-to-talk dictation for Mac. On-device. No account. Free.
+          Push-to-talk dictation that types straight into any Mac app — on-device, no account, no subscription.
         </p>
         <p className="hero__subcopy">
           Hold <HotkeyCombo />, speak, release — your words land at the cursor in Notes, Slack, Mail,
@@ -40,12 +47,19 @@ export function Hero() {
             <Icon name="download" />
             <span>Get it free — download for Mac</span>
           </a>
-          <ExternalLink className="btn btn--secondary" href={REPO_URL}>
+          <ExternalLink className="btn btn--secondary btn--lg" href={REPO_URL}>
             <Icon name="github" />
             <span>View source on GitHub</span>
           </ExternalLink>
         </div>
-        <p className="hero__meta">Free · Open source · No account · No subscription</p>
+        <p className="hero__meta">
+          {META.map((item, i) => (
+            <span key={item} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-3)" }}>
+              {item}
+              {i < META.length - 1 ? <span className="hero__meta-sep" aria-hidden="true" /> : null}
+            </span>
+          ))}
+        </p>
         <p className="hero__meta-sub t-caption">
           Requires macOS 14 Sonoma+ · Apple Silicon only (M1+) · Intel Macs not supported.
         </p>

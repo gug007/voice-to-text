@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
 import { IconSprite } from "@/components/icon-sprite";
@@ -11,6 +12,18 @@ import {
 } from "@/lib/seo";
 
 import "./globals.css";
+
+const sans = Geist({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-sans",
+});
+
+const mono = Geist_Mono({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-mono",
+});
 
 const TITLE = "Voice to Text for Mac — Free, Offline · VoiceToText";
 const DESCRIPTION =
@@ -87,7 +100,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

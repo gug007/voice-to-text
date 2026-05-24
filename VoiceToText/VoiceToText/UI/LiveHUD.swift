@@ -39,8 +39,13 @@ final class LiveHUDState {
     /// Editable transcript bound to the review TextEditor.
     var reviewText: String = ""
 
+    /// Cursor position inside the review editor. Written by the editor's
+    /// delegate, read by DictationController when Resume is pressed so the
+    /// new transcription can be spliced in at the caret.
+    @ObservationIgnored var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @ObservationIgnored var onPaste: (@MainActor () -> Void)?
     @ObservationIgnored var onCancel: (@MainActor () -> Void)?
+    @ObservationIgnored var onResume: (@MainActor () -> Void)?
 }
 
 @MainActor
@@ -56,14 +61,18 @@ final class LiveHUDPanel {
     private init() {}
 
     func show() {
+        reviewPanel?.orderOut(nil)
+
         state.mode = .recording
         state.isRecording = true
         state.elapsedSeconds = 0
         state.level = 0
         state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
         state.reviewText = ""
+        state.selectedRange = NSRange(location: 0, length: 0)
         state.onPaste = nil
         state.onCancel = nil
+        state.onResume = nil
 
         let p = ensureRecordingPanel()
         position(p, size: recordingSize)
@@ -73,17 +82,24 @@ final class LiveHUDPanel {
 
     func showReview(
         text: String,
+        cursorLocation: Int? = nil,
         onPaste: @escaping @MainActor () -> Void,
-        onCancel: @escaping @MainActor () -> Void
+        onCancel: @escaping @MainActor () -> Void,
+        onResume: @escaping @MainActor () -> Void
     ) {
         recordingPanel?.orderOut(nil)
+
+        let nsLen = (text as NSString).length
+        let caret = max(0, min(cursorLocation ?? nsLen, nsLen))
 
         state.mode = .reviewing
         state.isRecording = false
         state.level = 0
         state.reviewText = text
+        state.selectedRange = NSRange(location: caret, length: 0)
         state.onPaste = onPaste
         state.onCancel = onCancel
+        state.onResume = onResume
 
         let p = ensureReviewPanel()
         position(p, size: reviewSize)
@@ -114,12 +130,17 @@ final class LiveHUDPanel {
         state.level = 0
         state.onPaste = nil
         state.onCancel = nil
+        state.onResume = nil
         recordingPanel?.orderOut(nil)
         reviewPanel?.orderOut(nil)
     }
 
     /// Current edited review text (read at paste time).
     var currentReviewText: String { state.reviewText }
+
+    /// Current caret position inside the review editor (read at resume time
+    /// to decide where to splice the next transcription).
+    var currentCursorLocation: Int { state.selectedRange.location }
 
     private func ensureRecordingPanel() -> NSPanel {
         if let recordingPanel { return recordingPanel }
@@ -248,19 +269,20 @@ private struct RecordingView: View {
 
 private struct ReviewView: View {
     @Bindable var state: LiveHUDState
-    @FocusState private var editorFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            TextEditor(text: $state.reviewText)
-                .font(.system(size: 15))
-                .foregroundStyle(.white.opacity(0.92))
-                .scrollContentBackground(.hidden)
+            ReviewTextEditor(text: $state.reviewText, state: state)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .focused($editorFocused)
-                .onAppear { editorFocused = true }
 
             HStack(spacing: 8) {
+                ReviewKeyButton(
+                    title: "Resume",
+                    systemImage: "mic.fill",
+                    hint: "⌘R",
+                    emphasis: .secondary
+                ) { state.onResume?() }
+
                 Spacer()
 
                 ReviewKeyButton(
@@ -279,19 +301,141 @@ private struct ReviewView: View {
     }
 }
 
+/// NSTextView-backed editor: we need the caret position when Resume is
+/// pressed so the next transcription can be spliced in at the cursor.
+/// SwiftUI's TextEditor doesn't expose a selection binding on macOS in a way
+/// that survives panel focus changes, so we wrap an NSTextView directly.
+private struct ReviewTextEditor: NSViewRepresentable {
+    @Binding var text: String
+    let state: LiveHUDState
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        Self.configureScrollView(scrollView)
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+        Self.configureTextView(textView, delegate: context.coordinator)
+        textView.string = text
+        textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
+        context.coordinator.lastSyncedText = text
+        focusOnNextRunLoop(textView)
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        context.coordinator.parent = self
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+
+        // Skip resync when nothing came in from the outside — otherwise we'd
+        // clobber the user's caret on every keystroke (textDidChange writes
+        // through the binding, which triggers updateNSView).
+        guard textView.string != text, context.coordinator.lastSyncedText != text else {
+            return
+        }
+        textView.string = text
+        textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
+        context.coordinator.lastSyncedText = text
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    private func clampedRange(_ range: NSRange, in text: String) -> NSRange {
+        let length = (text as NSString).length
+        let location = max(0, min(range.location, length))
+        let extent = max(0, min(range.length, length - location))
+        return NSRange(location: location, length: extent)
+    }
+
+    private func focusOnNextRunLoop(_ textView: NSTextView) {
+        DispatchQueue.main.async {
+            textView.window?.makeFirstResponder(textView)
+        }
+    }
+
+    private static func configureTextView(_ textView: NSTextView, delegate: NSTextViewDelegate) {
+        textView.delegate = delegate
+        textView.font = .systemFont(ofSize: 15)
+        textView.textColor = NSColor.white.withAlphaComponent(0.92)
+        textView.insertionPointColor = .systemBlue
+        textView.backgroundColor = .clear
+        textView.drawsBackground = false
+        textView.isRichText = false
+        textView.allowsUndo = true
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticSpellingCorrectionEnabled = false
+    }
+
+    private static func configureScrollView(_ scrollView: NSScrollView) {
+        scrollView.drawsBackground = false
+        scrollView.backgroundColor = .clear
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: ReviewTextEditor
+        /// Last text we either sent to or received from the NSTextView.
+        /// Lets `updateNSView` distinguish "user just typed" from "binding
+        /// changed externally" and skip self-inflicted refreshes.
+        var lastSyncedText: String = ""
+
+        init(parent: ReviewTextEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            lastSyncedText = textView.string
+            parent.text = textView.string
+            parent.state.selectedRange = textView.selectedRange()
+        }
+
+        func textViewDidChangeSelection(_ notification: Notification) {
+            guard let textView = notification.object as? NSTextView else { return }
+            parent.state.selectedRange = textView.selectedRange()
+        }
+    }
+}
+
 private struct ReviewKeyButton: View {
     enum Emphasis { case primary, secondary }
 
     let title: String
+    let systemImage: String?
     let hint: String
     let emphasis: Emphasis
     let action: () -> Void
 
+    init(
+        title: String,
+        systemImage: String? = nil,
+        hint: String,
+        emphasis: Emphasis,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.hint = hint
+        self.emphasis = emphasis
+        self.action = action
+    }
+
     var body: some View {
         Button(action: action) {
             HStack(spacing: 8) {
-                Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .medium))
+                        .accessibilityLabel(title)
+                } else {
+                    Text(title)
+                        .font(.system(size: 13, weight: .medium))
+                }
                 Text(hint)
                     .font(.system(size: 11, weight: .regular, design: .monospaced))
                     .foregroundStyle(.white.opacity(emphasis == .primary ? 0.55 : 0.4))

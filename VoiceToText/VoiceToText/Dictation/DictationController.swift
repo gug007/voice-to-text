@@ -52,6 +52,51 @@ final class DictationController {
     private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
     private var standaloneModifierEventCoordinator = StandaloneModifierEventCoordinator()
+    private var resumeContext: ResumeContext?
+
+    /// Snapshot of the review text taken when the user clicks Resume.
+    /// Splits the text at the caret so the next transcription can be
+    /// spliced into the same position when recording finishes.
+    private struct ResumeContext {
+        let fullText: String
+        let cursorLocation: Int
+        let prefix: String
+        let suffix: String
+
+        init(fullText: String, cursorLocation: Int) {
+            let ns = fullText as NSString
+            let safeCursor = max(0, min(cursorLocation, ns.length))
+            self.fullText = fullText
+            self.cursorLocation = safeCursor
+            self.prefix = ns.substring(to: safeCursor)
+            self.suffix = ns.substring(from: safeCursor)
+        }
+
+        struct Splice {
+            let text: String
+            let caret: Int
+        }
+
+        /// Insert `transcript` at the original caret, adding a single space
+        /// on each side only when neither neighbour already provides
+        /// whitespace. Returns the caret position right after the insertion.
+        func splicing(_ transcript: String) -> Splice {
+            let leading = Self.needsSpace(after: prefix, before: transcript) ? " " : ""
+            let trailing = Self.needsSpace(after: transcript, before: suffix) ? " " : ""
+            let combined = prefix + leading + transcript + trailing + suffix
+            let caret = (prefix as NSString).length
+                + (leading as NSString).length
+                + (transcript as NSString).length
+            return Splice(text: combined, caret: caret)
+        }
+
+        private static func needsSpace(after left: String, before right: String) -> Bool {
+            guard !left.isEmpty, !right.isEmpty else { return false }
+            let leftEndsWhitespace = left.last?.isWhitespace ?? false
+            let rightStartsWhitespace = right.first?.isWhitespace ?? false
+            return !leftEndsWhitespace && !rightStartsWhitespace
+        }
+    }
 
     private var reviewBeforePaste: Bool {
         UserDefaults.standard.bool(forKey: "review.beforePaste")
@@ -191,8 +236,7 @@ final class DictationController {
             removeRecordingEscMonitors()
         }
         _ = recorder.stop()
-        LiveHUDPanel.shared.hide()
-        state = .idle
+        finishRecordingSession(fallbackTo: .idle)
     }
 
     private func cancelPendingRecording() {
@@ -200,7 +244,7 @@ final class DictationController {
         standaloneModifierEventCoordinator.reset()
         recordingStartGate.cancelActiveStart()
         if case .preparing = state {
-            state = .idle
+            finishRecordingSession(fallbackTo: .idle)
         }
     }
 
@@ -353,6 +397,12 @@ final class DictationController {
                 Task { @MainActor in self?.cancelReview() }
                 return nil
             }
+            // ⌘R resumes recording with the new transcript spliced at the caret.
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               event.charactersIgnoringModifiers?.lowercased() == "r" {
+                Task { @MainActor in self?.resumeRecording() }
+                return nil
+            }
             return event
         }
     }
@@ -449,8 +499,7 @@ final class DictationController {
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()
-        LiveHUDPanel.shared.hide()
-        state = .error("Audio input device changed. Try again.")
+        finishRecordingSession(fallbackTo: .error("Audio input device changed. Try again."))
     }
 
     private func preparationErrorMessage(for descriptor: ModelDescriptor) -> String {
@@ -473,8 +522,7 @@ final class DictationController {
         guard !samples.isEmpty,
               samples.count >= DictationConfig.minTranscribeSamples,
               let descriptor = ModelRegistry.shared.activeModel else {
-            LiveHUDPanel.shared.hide()
-            state = .idle
+            finishRecordingSession(fallbackTo: .idle)
             return
         }
 
@@ -483,14 +531,12 @@ final class DictationController {
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
-            LiveHUDPanel.shared.hide()
-            state = .idle
+            finishRecordingSession(fallbackTo: .idle)
             return
         }
 
         guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
-            LiveHUDPanel.shared.hide()
-            state = .error("Failed to prepare model for transcription.")
+            finishRecordingSession(fallbackTo: .error("Failed to prepare model for transcription."))
             return
         }
 
@@ -499,20 +545,24 @@ final class DictationController {
             AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
             rawText = try await engine.transcribe(samples: samples, contextPrompt: nil)
         } catch {
-            LiveHUDPanel.shared.hide()
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
-            state = .error("Transcription failed: \(error.localizedDescription)")
+            finishRecordingSession(fallbackTo: .error("Transcription failed: \(error.localizedDescription)"))
             return
         }
 
         let processed = TranscriptPostProcessor.process(rawText)
         if processed.isEmpty {
-            LiveHUDPanel.shared.hide()
-            state = .error("Transcription returned empty text. Try speaking closer to the mic.")
+            finishRecordingSession(fallbackTo: .error("Transcription returned empty text. Try speaking closer to the mic."))
             return
         }
 
-        if reviewBeforePaste {
+        // Resume always returns to review with the new transcript spliced at
+        // the original caret; otherwise honor the user's review preference.
+        if let resume = resumeContext {
+            resumeContext = nil
+            let spliced = resume.splicing(processed)
+            enterReview(text: spliced.text, cursorLocation: spliced.caret)
+        } else if reviewBeforePaste {
             enterReview(text: processed)
         } else {
             LiveHUDPanel.shared.hide()
@@ -522,14 +572,51 @@ final class DictationController {
 
     // MARK: - Review flow
 
-    private func enterReview(text: String) {
+    private func enterReview(text: String, cursorLocation: Int? = nil) {
         state = .reviewing(text: text)
         LiveHUDPanel.shared.showReview(
             text: text,
+            cursorLocation: cursorLocation,
             onPaste: { [weak self] in self?.confirmPaste() },
-            onCancel: { [weak self] in self?.cancelReview() }
+            onCancel: { [weak self] in self?.cancelReview() },
+            onResume: { [weak self] in self?.resumeRecording() }
         )
         installReviewEscMonitor()
+    }
+
+    private func resumeRecording() {
+        guard case .reviewing = state else { return }
+
+        guard AccessibilityPermission.isGranted else {
+            AccessibilityPermission.promptForPermission()
+            AppLog.dictation.warning("Missing Accessibility permission, could not resume recording")
+            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
+            return
+        }
+
+        let context = ResumeContext(
+            fullText: LiveHUDPanel.shared.currentReviewText,
+            cursorLocation: LiveHUDPanel.shared.currentCursorLocation
+        )
+        AppLog.dictation.info("Resuming recording at cursor=\(context.cursorLocation) (prefix=\(context.prefix.count)ch, suffix=\(context.suffix.count)ch)")
+        resumeContext = context
+        removeReviewEscMonitor()
+
+        let startID = recordingStartGate.beginStart(pendingHold: false)
+        Task { await startRecording(startID: startID) }
+    }
+
+    /// Common cleanup after stopping a recording: when a resume is in flight,
+    /// restore the review HUD with the user's original text and caret;
+    /// otherwise hide the HUD and transition to `fallbackState`.
+    private func finishRecordingSession(fallbackTo fallbackState: State) {
+        if let resume = resumeContext {
+            resumeContext = nil
+            enterReview(text: resume.fullText, cursorLocation: resume.cursorLocation)
+            return
+        }
+        LiveHUDPanel.shared.hide()
+        state = fallbackState
     }
 
     private func confirmPaste() {

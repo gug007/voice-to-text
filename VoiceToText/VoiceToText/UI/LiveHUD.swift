@@ -277,7 +277,7 @@ private struct RecordingView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            ECGTrace(samples: state.levelHistory)
+            LevelBars(samples: state.levelHistory)
                 .frame(maxWidth: .infinity)
                 .frame(height: 72)
 
@@ -641,54 +641,51 @@ private struct ReviewKeyButton: View {
     }
 }
 
-/// Minimal scrolling envelope ribbon: the mic level mirrored above and below a
-/// center line, filled as a single shape. A tiny floor keeps a thin ribbon
-/// visible when silent. Left edge fades out, right edge is the write head.
-private struct ECGTrace: View {
+/// Mirrored capsule bars, oldest → newest left → right. Each bar springs to
+/// its level independently so the strip feels alive even on a steady signal.
+/// A small floor keeps silent bars visible as a thin baseline.
+private struct LevelBars: View {
     let samples: [Double]
 
+    private static let barCount = 56
+    private static let barSpacing: CGFloat = 3
+    private static let minBarHeight: CGFloat = 3
+
     var body: some View {
-        Canvas { ctx, size in
-            guard samples.count > 1 else { return }
+        GeometryReader { geo in
+            let totalSpacing = Self.barSpacing * CGFloat(Self.barCount - 1)
+            let barWidth = max(2, (geo.size.width - totalSpacing) / CGFloat(Self.barCount))
+            let maxHeight = geo.size.height
 
-            let midY = size.height / 2
-            let amp = size.height * 0.48
-            let floor: CGFloat = 1.2
-            let stepX = size.width / CGFloat(samples.count - 1)
-
-            func offset(_ s: Double) -> CGFloat {
-                let clamped = min(max(s, 0), 1)
-                return max(floor, CGFloat(clamped) * amp)
-            }
-
-            var path = Path()
-            // Upper edge, left → right.
-            for i in 0..<samples.count {
-                let x = CGFloat(i) * stepX
-                let y = midY - offset(samples[i])
-                if i == 0 {
-                    path.move(to: CGPoint(x: x, y: y))
-                } else {
-                    path.addLine(to: CGPoint(x: x, y: y))
+            HStack(alignment: .center, spacing: Self.barSpacing) {
+                ForEach(0..<Self.barCount, id: \.self) { index in
+                    let level = level(at: index)
+                    Capsule()
+                        .fill(Color.white.opacity(opacity(at: index)))
+                        .frame(width: barWidth, height: barHeight(level: level, max: maxHeight))
+                        .animation(.spring(response: 0.18, dampingFraction: 0.75), value: level)
                 }
             }
-            // Lower edge, right → left, closing the ribbon.
-            for i in stride(from: samples.count - 1, through: 0, by: -1) {
-                let x = CGFloat(i) * stepX
-                let y = midY + offset(samples[i])
-                path.addLine(to: CGPoint(x: x, y: y))
-            }
-            path.closeSubpath()
-
-            ctx.fill(path, with: .color(.white.opacity(0.85)))
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         }
-        .mask(
-            LinearGradient(
-                colors: [.clear, .white],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        )
-        .animation(.linear(duration: 0.08), value: samples)
+    }
+
+    private func level(at index: Int) -> Double {
+        guard !samples.isEmpty else { return 0 }
+        let step = Double(samples.count) / Double(Self.barCount)
+        let sampleIndex = min(samples.count - 1, Int(Double(index) * step))
+        return samples[sampleIndex]
+    }
+
+    private func barHeight(level: Double, max maxHeight: CGFloat) -> CGFloat {
+        let clamped = min(1, Swift.max(0, level))
+        return Self.minBarHeight + (maxHeight - Self.minBarHeight) * CGFloat(clamped)
+    }
+
+    // Older samples on the left fade out; the rightmost bars sit at the
+    // "write head" and read as the current input.
+    private func opacity(at index: Int) -> Double {
+        let t = Double(index) / Double(Self.barCount - 1)
+        return 0.22 + 0.68 * t
     }
 }

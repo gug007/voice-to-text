@@ -43,6 +43,7 @@ final class DictationController {
     private let recorder = AudioRecorder()
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
+    private var transcribingElapsedTask: Task<Void, Never>?
     private var reviewEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
     private var recordingEscEventTap: CFMachPort?
@@ -492,6 +493,28 @@ final class DictationController {
         elapsedTask = nil
     }
 
+    private func enterTranscribing() {
+        state = .transcribing
+        LiveHUDPanel.shared.showTranscribing()
+        startTranscribingElapsedTicker(from: Date())
+    }
+
+    private func startTranscribingElapsedTicker(from start: Date) {
+        transcribingElapsedTask?.cancel()
+        transcribingElapsedTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self, self.state == .transcribing else { return }
+                LiveHUDPanel.shared.setTranscribingElapsed(Date().timeIntervalSince(start))
+                try? await Task.sleep(for: .milliseconds(100))
+            }
+        }
+    }
+
+    private func stopTranscribingElapsedTicker() {
+        transcribingElapsedTask?.cancel()
+        transcribingElapsedTask = nil
+    }
+
     private func handleAudioConfigurationChange() {
         guard state == .recording else { return }
         AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
@@ -529,7 +552,8 @@ final class DictationController {
             return
         }
 
-        state = .transcribing
+        enterTranscribing()
+        defer { stopTranscribingElapsedTicker() }
 
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard voiced else {

@@ -20,6 +20,7 @@ private final class KeyAcceptingPanel: NSPanel {
 
 enum LiveHUDMode {
     case recording
+    case transcribing
     case reviewing
 }
 
@@ -42,6 +43,9 @@ final class LiveHUDState {
     /// the user when a Resume attempt produced nothing (silent, empty, error)
     /// so the failure isn't completely invisible after API call charges, etc.
     var reviewBanner: String?
+    /// Seconds since transcription started — drives the elapsed counter on
+    /// the transcribing HUD so the user knows the request hasn't hung.
+    var transcribingElapsedSeconds: Double = 0
 
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
@@ -74,6 +78,7 @@ final class LiveHUDPanel {
         state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
         state.reviewText = ""
         state.reviewBanner = nil
+        state.transcribingElapsedSeconds = 0
         state.selectedRange = NSRange(location: 0, length: 0)
         state.onPaste = nil
         state.onCancel = nil
@@ -83,6 +88,20 @@ final class LiveHUDPanel {
         position(p, size: recordingSize)
         p.orderFrontRegardless()
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
+    }
+
+    /// Switch the already-visible recording panel into the transcribing
+    /// indicator while the engine is processing. Reuses the recording panel
+    /// (same size, same position) so the transition is seamless.
+    func showTranscribing() {
+        state.mode = .transcribing
+        state.isRecording = false
+        state.level = 0
+        state.transcribingElapsedSeconds = 0
+
+        let p = ensureRecordingPanel()
+        position(p, size: recordingSize)
+        p.orderFrontRegardless()
     }
 
     func showReview(
@@ -121,6 +140,10 @@ final class LiveHUDPanel {
         state.elapsedSeconds = seconds
     }
 
+    func setTranscribingElapsed(_ seconds: Double) {
+        state.transcribingElapsedSeconds = seconds
+    }
+
     func setLevel(_ level: Double) {
         // Exponential smoothing so the trace doesn't jitter on every tap buffer.
         let smoothed = state.level * 0.6 + level * 0.4
@@ -136,6 +159,7 @@ final class LiveHUDPanel {
         state.isRecording = false
         state.level = 0
         state.reviewBanner = nil
+        state.transcribingElapsedSeconds = 0
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
@@ -222,6 +246,8 @@ struct LiveHUDView: View {
             switch state.mode {
             case .recording:
                 RecordingView(state: state)
+            case .transcribing:
+                TranscribingView(state: state)
             case .reviewing:
                 ReviewView(state: state)
             }
@@ -272,6 +298,115 @@ private struct RecordingView: View {
         case .hold: return "Release to finish · Esc cancels"
         case .toggle: return "Press again to finish · Esc cancels"
         }
+    }
+}
+
+private struct TranscribingView: View {
+    @Bindable var state: LiveHUDState
+
+    var body: some View {
+        VStack(spacing: 14) {
+            PulsingDots()
+                .frame(height: 14)
+
+            ShimmerText("Transcribing")
+                .font(.system(size: 14, weight: .medium))
+
+            Text(elapsedString)
+                .font(.system(size: 11, weight: .regular, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.42))
+                .monospacedDigit()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var elapsedString: String {
+        String(format: "%0.1fs", state.transcribingElapsedSeconds)
+    }
+}
+
+/// Three dots that pulse in sequence — a familiar "thinking" indicator that
+/// reads as a system is working without claiming false progress.
+private struct PulsingDots: View {
+    @State private var phase: Double = 0
+
+    private static let dotCount = 3
+    private static let dotSize: CGFloat = 8
+    private static let dotSpacing: CGFloat = 10
+    private static let cycleDuration: TimeInterval = 1.2
+
+    var body: some View {
+        HStack(spacing: Self.dotSpacing) {
+            ForEach(0..<Self.dotCount, id: \.self) { index in
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: Self.dotSize, height: Self.dotSize)
+                    .opacity(opacity(at: index))
+                    .scaleEffect(scale(at: index))
+            }
+        }
+        .onAppear {
+            withAnimation(.linear(duration: Self.cycleDuration).repeatForever(autoreverses: false)) {
+                phase = 1
+            }
+        }
+    }
+
+    /// Each dot's wave is offset by 1/dotCount so the highlight travels left
+    /// → right; `triangle` smooths the opacity/scale across the cycle.
+    private func wave(at index: Int) -> Double {
+        let offset = Double(index) / Double(Self.dotCount)
+        let p = (phase + offset).truncatingRemainder(dividingBy: 1.0)
+        return 1 - abs(p - 0.5) * 2
+    }
+
+    private func opacity(at index: Int) -> Double {
+        0.25 + 0.7 * wave(at: index)
+    }
+
+    private func scale(at index: Int) -> Double {
+        0.8 + 0.4 * wave(at: index)
+    }
+}
+
+/// Text with a soft gradient sweep travelling across it — the "AI thinking"
+/// look common in modern LLM UIs (ChatGPT, Claude, etc.).
+private struct ShimmerText: View {
+    let text: String
+    @State private var phase: CGFloat = -1
+
+    init(_ text: String) { self.text = text }
+
+    private static let cycleDuration: TimeInterval = 1.8
+    private static let baseOpacity: Double = 0.4
+
+    var body: some View {
+        Text(text)
+            .foregroundStyle(.white.opacity(Self.baseOpacity))
+            .overlay(
+                GeometryReader { geo in
+                    LinearGradient(
+                        stops: [
+                            .init(color: .white.opacity(0), location: 0),
+                            .init(color: .white.opacity(0.95), location: 0.5),
+                            .init(color: .white.opacity(0), location: 1),
+                        ],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: geo.size.width * 0.6)
+                    .offset(x: geo.size.width * phase)
+                    .mask(
+                        Text(text)
+                            .frame(width: geo.size.width, alignment: .leading)
+                    )
+                }
+            )
+            .onAppear {
+                withAnimation(.linear(duration: Self.cycleDuration).repeatForever(autoreverses: false)) {
+                    phase = 1.6
+                }
+            }
     }
 }
 

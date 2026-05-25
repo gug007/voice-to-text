@@ -573,7 +573,15 @@ final class DictationController {
         let rawText: String
         do {
             AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
-            rawText = try await engine.transcribe(samples: samples, contextPrompt: nil)
+            rawText = try await engine.transcribe(
+                samples: samples,
+                contextPrompt: nil,
+                progress: { current, total in
+                    Task { @MainActor in
+                        LiveHUDPanel.shared.setTranscribingProgress(current: current, total: total)
+                    }
+                }
+            )
         } catch {
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
             finishRecordingSession(fallbackTo: .error("Transcription failed: \(error.localizedDescription)"))
@@ -641,13 +649,10 @@ final class DictationController {
         Task { await startRecording(startID: startID) }
     }
 
-    /// Common cleanup after stopping a recording: when a resume is in flight,
-    /// restore the review HUD with the user's original text and caret;
-    /// otherwise hide the HUD and transition to `fallbackState`.
-    ///
-    /// `resumeBanner` surfaces a one-line notice in the restored Review HUD
-    /// so the user sees *why* nothing was appended — without it, silent drops
-    /// look like the app simply ate the recording (and any API charges).
+    /// Restores the Review HUD with the original text/caret when a resume is
+    /// in flight; otherwise hides the HUD and transitions to `fallbackState`.
+    /// `resumeBanner` surfaces *why* nothing was appended so silent drops
+    /// after a paid API call stay visible.
     private func finishRecordingSession(
         fallbackTo fallbackState: State,
         resumeBanner: String? = nil
@@ -677,11 +682,8 @@ final class DictationController {
         removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
 
-        // Key status is released back to the previous app when our panel is
-        // ordered out, AND we must not synthesize Cmd+V while the user is
-        // still holding any modifier from the hotkey chord (e.g. ⌥ in ⌥Space):
-        // otherwise Cmd+V becomes Cmd+Opt+V and most apps ignore or remap it,
-        // so the text appears to vanish.
+        // Wait for the hotkey-chord modifiers to release first — otherwise
+        // Cmd+V lands as Cmd+Opt+V (or similar) and most apps drop it.
         Task { @MainActor [weak self] in
             await Self.waitForModifiersClear()
             self?.deliver(text: edited)
@@ -694,7 +696,7 @@ final class DictationController {
               ContinuousClock.now < deadline {
             try? await Task.sleep(for: PasteTiming.pollInterval)
         }
-        // Pad so the previously-focused app fully accepts first-responder
+        // Lets the previously-focused app fully accept first-responder
         // status before the synthetic Cmd+V key event lands.
         try? await Task.sleep(for: PasteTiming.focusSettleDelay)
     }

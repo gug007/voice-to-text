@@ -24,12 +24,19 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     private let session: URLSession
     private let sampleRate: Int
 
+    /// Tail of the prior chunk's transcript passed as `prompt` to the next
+    /// — gives the model rolling context for consistent punctuation and
+    /// proper-noun spelling across boundaries.
+    private static let contextPromptTailLength = 200
+
     init(modelId: String, sampleRate: Int = 16_000) {
         self.modelId = modelId
         self.sampleRate = sampleRate
         let config = URLSessionConfiguration.default
-        config.timeoutIntervalForRequest = 120
-        config.timeoutIntervalForResource = 180
+        // 240 s per chunk covers whisper-1's 90–180 s processing of a 10-min
+        // chunk; the resource budget covers a full chunked job.
+        config.timeoutIntervalForRequest = 240
+        config.timeoutIntervalForResource = 1800
         self.session = URLSession(configuration: config)
     }
 
@@ -47,11 +54,43 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         progress?(1.0, "Ready")
     }
 
-    func transcribe(samples: [Float], contextPrompt: String?) async throws -> String {
+    func transcribe(
+        samples: [Float],
+        contextPrompt: String?,
+        progress: TranscribeProgress?
+    ) async throws -> String {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
 
+        let chunks = AudioChunker.split(samples: samples, sampleRate: sampleRate)
+        guard !chunks.isEmpty else { return "" }
+
+        var pieces: [String] = []
+        pieces.reserveCapacity(chunks.count)
+
+        for (index, chunk) in chunks.enumerated() {
+            let rollingContext = pieces.last.map { Self.tail(of: $0) }
+            let combinedContext = [contextPrompt, rollingContext]
+                .compactMap { $0 }
+                .joined(separator: " ")
+            let text = try await transcribeChunk(
+                samples: chunk,
+                apiKey: apiKey,
+                contextPrompt: combinedContext.isEmpty ? nil : combinedContext
+            )
+            pieces.append(text)
+            progress?(index + 1, chunks.count)
+        }
+
+        return pieces.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func transcribeChunk(
+        samples: [Float],
+        apiKey: String,
+        contextPrompt: String?
+    ) async throws -> String {
         let opts = TranscriptionDecoderOptions.current
         let wav = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
 
@@ -98,6 +137,11 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         } catch {
             throw TranscriptionEngineError.transcriptionFailed("Could not parse OpenAI response")
         }
+    }
+
+    private nonisolated static func tail(of text: String) -> String {
+        guard text.count > contextPromptTailLength else { return text }
+        return String(text.suffix(contextPromptTailLength))
     }
 
     /// Lightweight reachability check used by the Cloud settings pane. Hits

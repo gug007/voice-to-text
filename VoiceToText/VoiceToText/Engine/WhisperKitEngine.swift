@@ -54,7 +54,13 @@ actor WhisperKitEngine: TranscriptionEngine {
         }
     }
 
-    func transcribe(samples: [Float], contextPrompt: String?) async throws -> String {
+    // WhisperKit handles long-form audio via its own 30 s sliding window,
+    // so the external chunker — and `progress` — are unused.
+    func transcribe(
+        samples: [Float],
+        contextPrompt: String?,
+        progress _: TranscribeProgress?
+    ) async throws -> String {
         guard let pipe else {
             throw TranscriptionEngineError.notReady
         }

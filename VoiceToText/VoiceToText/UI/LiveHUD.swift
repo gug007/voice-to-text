@@ -39,13 +39,11 @@ final class LiveHUDState {
     var levelHistory: [Double] = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
     /// Editable transcript bound to the review TextEditor.
     var reviewText: String = ""
-    /// Optional one-line notice shown above the review editor — used to tell
-    /// the user when a Resume attempt produced nothing (silent, empty, error)
-    /// so the failure isn't completely invisible after API call charges, etc.
+    /// One-line notice shown above the review editor when a Resume attempt
+    /// silently produced nothing (so failures after API charges stay visible).
     var reviewBanner: String?
-    /// Seconds since transcription started — drives the elapsed counter on
-    /// the transcribing HUD so the user knows the request hasn't hung.
     var transcribingElapsedSeconds: Double = 0
+    var transcribingProgress: TranscribingProgress?
 
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
@@ -54,6 +52,11 @@ final class LiveHUDState {
     @ObservationIgnored var onPaste: (@MainActor () -> Void)?
     @ObservationIgnored var onCancel: (@MainActor () -> Void)?
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
+}
+
+struct TranscribingProgress: Equatable {
+    let current: Int
+    let total: Int
 }
 
 @MainActor
@@ -79,6 +82,7 @@ final class LiveHUDPanel {
         state.reviewText = ""
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
         state.selectedRange = NSRange(location: 0, length: 0)
         state.onPaste = nil
         state.onCancel = nil
@@ -90,14 +94,14 @@ final class LiveHUDPanel {
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
     }
 
-    /// Switch the already-visible recording panel into the transcribing
-    /// indicator while the engine is processing. Reuses the recording panel
-    /// (same size, same position) so the transition is seamless.
+    /// Reuses the recording panel (same size/position) for a seamless
+    /// hand-off from "recording" to "transcribing".
     func showTranscribing() {
         state.mode = .transcribing
         state.isRecording = false
         state.level = 0
         state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
 
         let p = ensureRecordingPanel()
         position(p, size: recordingSize)
@@ -144,6 +148,10 @@ final class LiveHUDPanel {
         state.transcribingElapsedSeconds = seconds
     }
 
+    func setTranscribingProgress(current: Int, total: Int) {
+        state.transcribingProgress = TranscribingProgress(current: current, total: total)
+    }
+
     func setLevel(_ level: Double) {
         // Exponential smoothing so the trace doesn't jitter on every tap buffer.
         let smoothed = state.level * 0.6 + level * 0.4
@@ -160,6 +168,7 @@ final class LiveHUDPanel {
         state.level = 0
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
@@ -312,10 +321,15 @@ private struct TranscribingView: View {
             ShimmerText("Transcribing")
                 .font(.system(size: 14, weight: .medium))
 
-            Text(elapsedString)
-                .font(.system(size: 11, weight: .regular, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.42))
-                .monospacedDigit()
+            HStack(spacing: 10) {
+                if let progress = state.transcribingProgress {
+                    Text("\(progress.current) / \(progress.total)")
+                }
+                Text(elapsedString)
+                    .monospacedDigit()
+            }
+            .font(.system(size: 11, weight: .regular, design: .monospaced))
+            .foregroundStyle(.white.opacity(0.42))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -325,8 +339,6 @@ private struct TranscribingView: View {
     }
 }
 
-/// Three dots that pulse in sequence — a familiar "thinking" indicator that
-/// reads as a system is working without claiming false progress.
 private struct PulsingDots: View {
     @State private var phase: Double = 0
 
@@ -352,8 +364,8 @@ private struct PulsingDots: View {
         }
     }
 
-    /// Each dot's wave is offset by 1/dotCount so the highlight travels left
-    /// → right; `triangle` smooths the opacity/scale across the cycle.
+    // Per-dot phase offset makes the highlight travel left → right;
+    // the triangle shape smooths the cycle.
     private func wave(at index: Int) -> Double {
         let offset = Double(index) / Double(Self.dotCount)
         let p = (phase + offset).truncatingRemainder(dividingBy: 1.0)
@@ -369,8 +381,6 @@ private struct PulsingDots: View {
     }
 }
 
-/// Text with a soft gradient sweep travelling across it — the "AI thinking"
-/// look common in modern LLM UIs (ChatGPT, Claude, etc.).
 private struct ShimmerText: View {
     let text: String
     @State private var phase: CGFloat = -1

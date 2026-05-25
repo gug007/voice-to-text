@@ -40,7 +40,13 @@ actor FluidAudioEngine: TranscriptionEngine {
         }
     }
 
-    func transcribe(samples: [Float], contextPrompt _: String?) async throws -> String {
+    // Parakeet streams natively over long audio via its TDT decoder state,
+    // so the external chunker — and `progress` — are unused.
+    func transcribe(
+        samples: [Float],
+        contextPrompt _: String?,
+        progress _: TranscribeProgress?
+    ) async throws -> String {
         guard let manager else {
             throw TranscriptionEngineError.notReady
         }

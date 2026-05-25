@@ -38,6 +38,10 @@ final class LiveHUDState {
     var levelHistory: [Double] = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
     /// Editable transcript bound to the review TextEditor.
     var reviewText: String = ""
+    /// Optional one-line notice shown above the review editor — used to tell
+    /// the user when a Resume attempt produced nothing (silent, empty, error)
+    /// so the failure isn't completely invisible after API call charges, etc.
+    var reviewBanner: String?
 
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
@@ -69,6 +73,7 @@ final class LiveHUDPanel {
         state.level = 0
         state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
         state.reviewText = ""
+        state.reviewBanner = nil
         state.selectedRange = NSRange(location: 0, length: 0)
         state.onPaste = nil
         state.onCancel = nil
@@ -83,6 +88,7 @@ final class LiveHUDPanel {
     func showReview(
         text: String,
         cursorLocation: Int? = nil,
+        banner: String? = nil,
         onPaste: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void,
         onResume: @escaping @MainActor () -> Void
@@ -96,6 +102,7 @@ final class LiveHUDPanel {
         state.isRecording = false
         state.level = 0
         state.reviewText = text
+        state.reviewBanner = banner
         state.selectedRange = NSRange(location: caret, length: 0)
         state.onPaste = onPaste
         state.onCancel = onCancel
@@ -128,6 +135,7 @@ final class LiveHUDPanel {
     func hide() {
         state.isRecording = false
         state.level = 0
+        state.reviewBanner = nil
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
@@ -271,7 +279,11 @@ private struct ReviewView: View {
     @Bindable var state: LiveHUDState
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
+            if let banner = state.reviewBanner {
+                ReviewBanner(message: banner)
+            }
+
             ReviewTextEditor(text: $state.reviewText, state: state)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
@@ -399,6 +411,34 @@ private struct ReviewTextEditor: NSViewRepresentable {
             guard let textView = notification.object as? NSTextView else { return }
             parent.state.selectedRange = textView.selectedRange()
         }
+    }
+}
+
+private struct ReviewBanner: View {
+    let message: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Color.orange.opacity(0.85))
+            Text(message)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.orange.opacity(0.18))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.35))
+        )
     }
 }
 

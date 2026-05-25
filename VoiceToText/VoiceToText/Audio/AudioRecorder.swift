@@ -88,6 +88,27 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
+    /// Same teardown as `stop()` but waits a tap-buffer duration first so any
+    /// audio sitting in the input pipeline gets delivered to our tap before
+    /// the tap is removed. Without this drain, the last spoken word (whatever
+    /// is in the in-flight tap buffer) is discarded, which the user
+    /// experiences as the recording being truncated. Use this on paths that
+    /// will actually transcribe the audio; cancel paths can still use `stop()`.
+    func flushAndStop() async -> [Float] {
+        guard isRecording else { return [] }
+        try? await Task.sleep(for: Self.drainDuration)
+        return stop()
+    }
+
+    /// 2× the tap buffer duration so the in-flight buffer plus the next one
+    /// both reach our tap callback before we tear it down. With 1024 frames
+    /// @ 16 kHz the buffer itself is ~64 ms; the doubling leaves margin for
+    /// HAL scheduling jitter.
+    private static let drainDuration: Duration = {
+        let bufferSeconds = Double(AudioConfig.tapBufferSize) / AudioConfig.targetSampleRate
+        return .milliseconds(Int((bufferSeconds * 2 * 1000).rounded(.up)))
+    }()
+
     private func handleConfigurationChange() {
         _ = stop()
         let cb = onConfigurationChange

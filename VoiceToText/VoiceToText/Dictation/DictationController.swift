@@ -516,13 +516,16 @@ final class DictationController {
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()
-        let samples = recorder.stop()
+        let samples = await recorder.flushAndStop()
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
 
         guard !samples.isEmpty,
               samples.count >= DictationConfig.minTranscribeSamples,
               let descriptor = ModelRegistry.shared.activeModel else {
-            finishRecordingSession(fallbackTo: .idle)
+            finishRecordingSession(
+                fallbackTo: .idle,
+                resumeBanner: "Recording too short — try again."
+            )
             return
         }
 
@@ -531,7 +534,10 @@ final class DictationController {
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
-            finishRecordingSession(fallbackTo: .idle)
+            finishRecordingSession(
+                fallbackTo: .idle,
+                resumeBanner: "No speech detected — try again."
+            )
             return
         }
 
@@ -572,11 +578,16 @@ final class DictationController {
 
     // MARK: - Review flow
 
-    private func enterReview(text: String, cursorLocation: Int? = nil) {
+    private func enterReview(
+        text: String,
+        cursorLocation: Int? = nil,
+        banner: String? = nil
+    ) {
         state = .reviewing(text: text)
         LiveHUDPanel.shared.showReview(
             text: text,
             cursorLocation: cursorLocation,
+            banner: banner,
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() },
             onResume: { [weak self] in self?.resumeRecording() }
@@ -609,14 +620,31 @@ final class DictationController {
     /// Common cleanup after stopping a recording: when a resume is in flight,
     /// restore the review HUD with the user's original text and caret;
     /// otherwise hide the HUD and transition to `fallbackState`.
-    private func finishRecordingSession(fallbackTo fallbackState: State) {
+    ///
+    /// `resumeBanner` surfaces a one-line notice in the restored Review HUD
+    /// so the user sees *why* nothing was appended — without it, silent drops
+    /// look like the app simply ate the recording (and any API charges).
+    private func finishRecordingSession(
+        fallbackTo fallbackState: State,
+        resumeBanner: String? = nil
+    ) {
         if let resume = resumeContext {
             resumeContext = nil
-            enterReview(text: resume.fullText, cursorLocation: resume.cursorLocation)
+            let banner = resumeBanner ?? Self.errorMessage(from: fallbackState)
+            enterReview(
+                text: resume.fullText,
+                cursorLocation: resume.cursorLocation,
+                banner: banner
+            )
             return
         }
         LiveHUDPanel.shared.hide()
         state = fallbackState
+    }
+
+    private static func errorMessage(from state: State) -> String? {
+        if case .error(let message) = state { return message }
+        return nil
     }
 
     private func confirmPaste() {
@@ -626,11 +654,32 @@ final class DictationController {
         LiveHUDPanel.shared.hide()
 
         // Key status is released back to the previous app when our panel is
-        // ordered out; give the system a moment before simulating Cmd+V.
+        // ordered out, AND we must not synthesize Cmd+V while the user is
+        // still holding any modifier from the hotkey chord (e.g. ⌥ in ⌥Space):
+        // otherwise Cmd+V becomes Cmd+Opt+V and most apps ignore or remap it,
+        // so the text appears to vanish.
         Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .milliseconds(80))
+            await Self.waitForModifiersClear()
             self?.deliver(text: edited)
         }
+    }
+
+    private static func waitForModifiersClear() async {
+        let deadline = ContinuousClock.now.advanced(by: PasteTiming.maxModifierWait)
+        while !NSEvent.modifierFlags.intersection(PasteTiming.trackedModifiers).isEmpty,
+              ContinuousClock.now < deadline {
+            try? await Task.sleep(for: PasteTiming.pollInterval)
+        }
+        // Pad so the previously-focused app fully accepts first-responder
+        // status before the synthetic Cmd+V key event lands.
+        try? await Task.sleep(for: PasteTiming.focusSettleDelay)
+    }
+
+    private enum PasteTiming {
+        static let trackedModifiers: NSEvent.ModifierFlags = [.command, .option, .control, .shift]
+        static let pollInterval: Duration = .milliseconds(15)
+        static let maxModifierWait: Duration = .milliseconds(400)
+        static let focusSettleDelay: Duration = .milliseconds(40)
     }
 
     // MARK: - Output

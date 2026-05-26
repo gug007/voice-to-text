@@ -22,6 +22,7 @@ enum LiveHUDMode {
     case recording
     case transcribing
     case reviewing
+    case failed
 }
 
 @Observable
@@ -45,6 +46,14 @@ final class LiveHUDState {
     var transcribingElapsedSeconds: Double = 0
     var transcribingProgress: TranscribingProgress?
 
+    /// Last error surfaced through the failure HUD. Cleared whenever the HUD
+    /// transitions away from `.failed`.
+    var failureMessage: String = ""
+    /// Whether the failure HUD should offer a Retry button. Failures whose
+    /// audio can't possibly succeed on a second pass (too-short, VAD silent)
+    /// set this to `false` and only show Dismiss.
+    var failureCanRetry: Bool = false
+
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
     /// new transcription can be spliced in at the caret.
@@ -52,6 +61,7 @@ final class LiveHUDState {
     @ObservationIgnored var onPaste: (@MainActor () -> Void)?
     @ObservationIgnored var onCancel: (@MainActor () -> Void)?
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
+    @ObservationIgnored var onRetry: (@MainActor () -> Void)?
 }
 
 struct TranscribingProgress: Equatable {
@@ -68,6 +78,7 @@ final class LiveHUDPanel {
 
     private let recordingSize = NSSize(width: 480, height: 150)
     private let reviewSize = NSSize(width: 560, height: 260)
+    private let failureSize = NSSize(width: 480, height: 200)
 
     private init() {}
 
@@ -83,10 +94,13 @@ final class LiveHUDPanel {
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
+        state.failureMessage = ""
+        state.failureCanRetry = false
         state.selectedRange = NSRange(location: 0, length: 0)
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
+        state.onRetry = nil
 
         let p = ensureRecordingPanel()
         position(p, size: recordingSize)
@@ -95,8 +109,12 @@ final class LiveHUDPanel {
     }
 
     /// Reuses the recording panel (same size/position) for a seamless
-    /// hand-off from "recording" to "transcribing".
+    /// hand-off from "recording" to "transcribing". Also hides the review
+    /// panel — needed when transitioning from the failure HUD (which is
+    /// hosted on the review panel) into a retry.
     func showTranscribing() {
+        reviewPanel?.orderOut(nil)
+
         state.mode = .transcribing
         state.isRecording = false
         state.level = 0
@@ -126,10 +144,13 @@ final class LiveHUDPanel {
         state.level = 0
         state.reviewText = text
         state.reviewBanner = banner
+        state.failureMessage = ""
+        state.failureCanRetry = false
         state.selectedRange = NSRange(location: caret, length: 0)
         state.onPaste = onPaste
         state.onCancel = onCancel
         state.onResume = onResume
+        state.onRetry = nil
 
         let p = ensureReviewPanel()
         position(p, size: reviewSize)
@@ -138,6 +159,40 @@ final class LiveHUDPanel {
         p.orderFrontRegardless()
         p.makeKeyAndOrderFront(nil)
         AppLog.hud.info("HUD review shown at \(String(describing: p.frame))")
+    }
+
+    /// Displays the failure HUD with a user-facing error message. Offers Retry
+    /// when `canRetry` is true (network/transient failures); otherwise only a
+    /// Dismiss action (e.g. "no speech detected", where re-running the same
+    /// audio won't help). Hosted on the key-accepting review panel so the
+    /// buttons and Esc work, sized smaller than the review HUD.
+    func showFailure(
+        message: String,
+        canRetry: Bool,
+        onRetry: @escaping @MainActor () -> Void,
+        onCancel: @escaping @MainActor () -> Void
+    ) {
+        recordingPanel?.orderOut(nil)
+
+        state.mode = .failed
+        state.isRecording = false
+        state.level = 0
+        state.failureMessage = message
+        state.failureCanRetry = canRetry
+        state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
+        state.reviewText = ""
+        state.reviewBanner = nil
+        state.onCancel = onCancel
+        state.onRetry = onRetry
+        state.onPaste = nil
+        state.onResume = nil
+
+        let p = ensureReviewPanel()
+        position(p, size: failureSize)
+        p.orderFrontRegardless()
+        p.makeKeyAndOrderFront(nil)
+        AppLog.hud.info("HUD failure shown: \(message)")
     }
 
     func setElapsed(_ seconds: Double) {
@@ -169,9 +224,12 @@ final class LiveHUDPanel {
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
+        state.failureMessage = ""
+        state.failureCanRetry = false
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
+        state.onRetry = nil
         recordingPanel?.orderOut(nil)
         reviewPanel?.orderOut(nil)
     }
@@ -259,6 +317,8 @@ struct LiveHUDView: View {
                 TranscribingView(state: state)
             case .reviewing:
                 ReviewView(state: state)
+            case .failed:
+                FailedView(state: state)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -555,6 +615,51 @@ private struct ReviewTextEditor: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.state.selectedRange = textView.selectedRange()
+        }
+    }
+}
+
+/// Shown when transcription fails or returns nothing. Surfaces the error
+/// message (so the user knows what went wrong) and offers Retry when the
+/// audio still has a chance to transcribe on a second pass (network blip,
+/// transient model error, empty decode).
+private struct FailedView: View {
+    @Bindable var state: LiveHUDState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(Color.orange.opacity(0.9))
+                    .padding(.top, 1)
+                Text(state.failureMessage)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.88))
+                    .fixedSize(horizontal: false, vertical: true)
+                Spacer(minLength: 0)
+            }
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 8) {
+                Spacer()
+
+                ReviewKeyButton(
+                    title: state.failureCanRetry ? "Dismiss" : "Close",
+                    hint: "esc",
+                    emphasis: .secondary
+                ) { state.onCancel?() }
+
+                if state.failureCanRetry {
+                    ReviewKeyButton(
+                        title: "Retry",
+                        systemImage: "arrow.clockwise",
+                        hint: "↩",
+                        emphasis: .primary
+                    ) { state.onRetry?() }
+                }
+            }
         }
     }
 }

@@ -45,6 +45,7 @@ final class DictationController {
     private var elapsedTask: Task<Void, Never>?
     private var transcribingElapsedTask: Task<Void, Never>?
     private var reviewEscMonitor: Any?
+    private var failureEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
     private var recordingEscEventTap: CFMachPort?
     private var recordingEscRunLoopSource: CFRunLoopSource?
@@ -54,6 +55,11 @@ final class DictationController {
     private var recordingStartGate = RecordingStartGate()
     private var standaloneModifierEventCoordinator = StandaloneModifierEventCoordinator()
     private var resumeContext: ResumeContext?
+    /// Audio kept around after a recoverable transcription failure so the
+    /// user's Retry button can re-run the pipeline on the same samples
+    /// (e.g. after a network blip). Cleared on success, dismissal, or when
+    /// a new recording starts.
+    private var lastFailedSamples: [Float]?
 
     /// Snapshot of the review text taken when the user clicks Resume.
     /// Splits the text at the caret so the next transcription can be
@@ -257,6 +263,15 @@ final class DictationController {
         state = .idle
     }
 
+    private func dismissFailure() {
+        guard case .error = state else { return }
+        AppLog.dictation.info("Failure HUD dismissed")
+        removeFailureEscMonitor()
+        lastFailedSamples = nil
+        LiveHUDPanel.shared.hide()
+        state = .idle
+    }
+
     private func installRecordingEscMonitors() -> Bool {
         removeRecordingEscMonitors()
         let escapeSwallowState = recordingEscapeSwallowState
@@ -415,10 +430,37 @@ final class DictationController {
         }
     }
 
+    /// Failure HUD shares the key-accepting review panel, so Esc and Return
+    /// land as local key events: Esc dismisses, Return retries (when retry
+    /// is available — guarded by `lastFailedSamples`).
+    private func installFailureEscMonitor() {
+        removeFailureEscMonitor()
+        failureEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == UInt16(kVK_Escape) {
+                Task { @MainActor in self?.dismissFailure() }
+                return nil
+            }
+            if event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+                Task { @MainActor in self?.retryTranscription() }
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeFailureEscMonitor() {
+        if let failureEscMonitor {
+            NSEvent.removeMonitor(failureEscMonitor)
+            self.failureEscMonitor = nil
+        }
+    }
+
     // MARK: - Start
 
     private func startRecording(startID: RecordingStartGate.StartID) async {
         guard recordingStartGate.accepts(startID) else { return }
+        removeFailureEscMonitor()
+        lastFailedSamples = nil
         AppLog.dictation.info("startRecording: requesting mic permission (current=\(String(describing: MicPermission.status.rawValue)))")
         let granted = await MicPermission.request()
         AppLog.dictation.info("startRecording: mic permission granted=\(granted)")
@@ -494,6 +536,11 @@ final class DictationController {
     }
 
     private func enterTranscribing() {
+        // Idempotent: retryTranscription enters transcribing synchronously
+        // to close a state-race, and runTranscriptionPipeline calls this
+        // again on its normal path. Skipping the duplicate keeps the elapsed
+        // ticker from resetting to 0 mid-retry.
+        guard state != .transcribing else { return }
         state = .transcribing
         LiveHUDPanel.shared.showTranscribing()
         startTranscribingElapsedTicker(from: Date())
@@ -522,7 +569,7 @@ final class DictationController {
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()
-        finishRecordingSession(fallbackTo: .error("Audio input device changed. Try again."))
+        enterFailureHUD(message: "Audio input device changed. Try again.")
     }
 
     private func preparationErrorMessage(for descriptor: ModelDescriptor) -> String {
@@ -543,12 +590,34 @@ final class DictationController {
         AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
 
         guard !samples.isEmpty,
-              samples.count >= DictationConfig.minTranscribeSamples,
-              let descriptor = ModelRegistry.shared.activeModel else {
-            finishRecordingSession(
-                fallbackTo: .idle,
-                resumeBanner: "Recording too short — try again."
-            )
+              samples.count >= DictationConfig.minTranscribeSamples else {
+            enterFailureHUD(message: "Recording too short — try again.")
+            return
+        }
+
+        await runTranscriptionPipeline(samples: samples)
+    }
+
+    private func retryTranscription() {
+        guard case .error = state, let samples = lastFailedSamples else { return }
+        AppLog.dictation.info("Retrying transcription on \(samples.count) cached samples")
+        removeFailureEscMonitor()
+        lastFailedSamples = nil
+        // Synchronously transition to .transcribing so a hotkey press queued
+        // between this click and the Task firing maps to .none (per policy)
+        // instead of starting a competing recording that would race with the
+        // pipeline's own enterTranscribing call below.
+        enterTranscribing()
+        Task { await runTranscriptionPipeline(samples: samples) }
+    }
+
+    /// Runs VAD + transcription + post-processing on the given audio.
+    /// On any recoverable failure, surfaces the error through the failure
+    /// HUD with Retry; on success, hands off to the review/deliver flow.
+    /// Reusable across first-pass and retry so they share one code path.
+    private func runTranscriptionPipeline(samples: [Float]) async {
+        guard let descriptor = ModelRegistry.shared.activeModel else {
+            enterFailureHUD(message: "No active model selected.")
             return
         }
 
@@ -558,15 +627,16 @@ final class DictationController {
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
-            finishRecordingSession(
-                fallbackTo: .idle,
-                resumeBanner: "No speech detected — try again."
-            )
+            enterFailureHUD(message: "No speech detected — try again.")
             return
         }
 
         guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
-            finishRecordingSession(fallbackTo: .error("Failed to prepare model for transcription."))
+            enterFailureHUD(
+                message: "Failed to prepare model for transcription.",
+                samples: samples,
+                canRetry: true
+            )
             return
         }
 
@@ -584,15 +654,25 @@ final class DictationController {
             )
         } catch {
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
-            finishRecordingSession(fallbackTo: .error("Transcription failed: \(error.localizedDescription)"))
+            enterFailureHUD(
+                message: "Transcription failed: \(error.localizedDescription)",
+                samples: samples,
+                canRetry: true
+            )
             return
         }
 
         let processed = TranscriptPostProcessor.process(rawText)
         if processed.isEmpty {
-            finishRecordingSession(fallbackTo: .error("Transcription returned empty text. Try speaking closer to the mic."))
+            enterFailureHUD(
+                message: "Transcription returned empty text. Try speaking closer to the mic.",
+                samples: samples,
+                canRetry: true
+            )
             return
         }
+
+        lastFailedSamples = nil
 
         // Resume always returns to review with the new transcript spliced at
         // the original caret; otherwise honor the user's review preference.
@@ -606,6 +686,39 @@ final class DictationController {
             LiveHUDPanel.shared.hide()
             deliver(text: processed)
         }
+    }
+
+    /// Single entry point for transcription failures. Surfaces the error
+    /// visually instead of silently hiding the HUD. When a Resume was in
+    /// flight, restores the prior review text with the message as a banner;
+    /// otherwise shows the failure HUD with optional Retry (offered only
+    /// when re-running the same audio could plausibly succeed).
+    private func enterFailureHUD(
+        message: String,
+        samples: [Float]? = nil,
+        canRetry: Bool = false
+    ) {
+        if let resume = resumeContext {
+            resumeContext = nil
+            enterReview(
+                text: resume.fullText,
+                cursorLocation: resume.cursorLocation,
+                banner: message
+            )
+            return
+        }
+
+        let retryAvailable = canRetry && samples != nil
+        lastFailedSamples = retryAvailable ? samples : nil
+        state = .error(message)
+
+        LiveHUDPanel.shared.showFailure(
+            message: message,
+            canRetry: retryAvailable,
+            onRetry: { [weak self] in self?.retryTranscription() },
+            onCancel: { [weak self] in self?.dismissFailure() }
+        )
+        installFailureEscMonitor()
     }
 
     // MARK: - Review flow
@@ -649,31 +762,21 @@ final class DictationController {
         Task { await startRecording(startID: startID) }
     }
 
-    /// Restores the Review HUD with the original text/caret when a resume is
-    /// in flight; otherwise hides the HUD and transitions to `fallbackState`.
-    /// `resumeBanner` surfaces *why* nothing was appended so silent drops
-    /// after a paid API call stay visible.
-    private func finishRecordingSession(
-        fallbackTo fallbackState: State,
-        resumeBanner: String? = nil
-    ) {
+    /// Closes a recording session when the user cancels or the session ends
+    /// without producing a transcript. Restores the Review HUD if a Resume
+    /// was in flight (so the prior text isn't lost), otherwise hides the
+    /// HUD and returns to idle. Failures go through `enterFailureHUD` instead.
+    private func finishRecordingSession(fallbackTo fallbackState: State) {
         if let resume = resumeContext {
             resumeContext = nil
-            let banner = resumeBanner ?? Self.errorMessage(from: fallbackState)
             enterReview(
                 text: resume.fullText,
-                cursorLocation: resume.cursorLocation,
-                banner: banner
+                cursorLocation: resume.cursorLocation
             )
             return
         }
         LiveHUDPanel.shared.hide()
         state = fallbackState
-    }
-
-    private static func errorMessage(from state: State) -> String? {
-        if case .error(let message) = state { return message }
-        return nil
     }
 
     private func confirmPaste() {

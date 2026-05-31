@@ -29,6 +29,15 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         }
 
         var isCloud: Bool { cloudProvider != nil }
+
+        /// True for engines that transcribe a live audio stream — partials
+        /// appear as the user speaks — rather than a buffered recording.
+        var isStreaming: Bool {
+            switch self {
+            case .elevenLabs: return true
+            case .whisperKit, .fluidAudio, .openAI: return false
+            }
+        }
     }
 
     let id: String
@@ -43,21 +52,11 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     let speed: Int
 
     var isCloud: Bool { backend.isCloud }
+    var isRealtime: Bool { backend.isStreaming }
 }
 
 enum ModelCatalog {
     static let all: [ModelDescriptor] = [
-        ModelDescriptor(
-            id: "elevenlabs-scribe-v2-realtime",
-            displayName: "Scribe v2 Realtime (ElevenLabs)",
-            backend: .elevenLabs,
-            backendModelId: "scribe_v2_realtime",
-            approxSizeMB: 0,
-            languages: "90+",
-            notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
-            quality: 9,
-            speed: 10
-        ),
         ModelDescriptor(
             id: "parakeet-tdt-v3",
             displayName: "Parakeet TDT v3",
@@ -122,6 +121,17 @@ enum ModelCatalog {
             languages: "99",
             notes: "Smallest. Lots of mistakes — mainly useful for testing.",
             quality: 2,
+            speed: 10
+        ),
+        ModelDescriptor(
+            id: "elevenlabs-scribe-v2-realtime",
+            displayName: "Scribe v2 Realtime (ElevenLabs)",
+            backend: .elevenLabs,
+            backendModelId: "scribe_v2_realtime",
+            approxSizeMB: 0,
+            languages: "90+",
+            notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
+            quality: 9,
             speed: 10
         ),
         ModelDescriptor(

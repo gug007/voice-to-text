@@ -155,6 +155,7 @@ private struct ModelRow: View {
                 HStack(spacing: 8) {
                     Text(model.displayName)
                         .font(.system(size: 14, weight: .semibold))
+                    if model.isRealtime { RealtimeBadge() }
                     if isActive { activeBadge }
                 }
                 Text(model.notes)
@@ -211,6 +212,36 @@ private struct ModelRow: View {
             RoundedRectangle(cornerRadius: 4, style: .continuous)
                 .fill(Color.accentColor.opacity(0.15))
         )
+    }
+
+    /// Marks a real-time streaming model (text appears as you speak). A softly
+    /// pulsing dot + "LIVE", styled to match `activeBadge`.
+    private struct RealtimeBadge: View {
+        @State private var pulsing = false
+
+        var body: some View {
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.orange)
+                    .frame(width: 5, height: 5)
+                    .opacity(pulsing ? 1.0 : 0.35)
+                Text("LIVE")
+                    .font(.system(size: 10, weight: .semibold))
+                    .tracking(0.4)
+            }
+            .foregroundStyle(Color.orange)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    .fill(Color.orange.opacity(0.15))
+            )
+            .onAppear {
+                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
+        }
     }
 
     private var displaySize: String? {

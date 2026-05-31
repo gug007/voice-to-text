@@ -61,6 +61,13 @@ final class DictationController {
     /// a new recording starts.
     private var lastFailedSamples: [Float]?
 
+    /// The active live-streaming session, when the selected engine streams
+    /// (e.g. ElevenLabs). Audio is piped to it during recording and it produces
+    /// the final transcript via `finishStream()`. Nil for buffered engines and
+    /// on the retry path (which falls back to buffered `transcribe`).
+    @ObservationIgnored
+    private var streamingEngine: (any StreamingTranscriptionEngine)?
+
     /// Snapshot of the review text taken when the user clicks Resume.
     /// Splits the text at the caret so the next transcription can be
     /// spliced into the same position when recording finishes.
@@ -243,7 +250,18 @@ final class DictationController {
             removeRecordingEscMonitors()
         }
         _ = recorder.stop()
+        cancelStreamingSession()
         finishRecordingSession(fallbackTo: .idle)
+    }
+
+    /// Stops feeding audio to a live-streaming engine and cancels its session
+    /// without producing a transcript. Safe to call when no stream is active.
+    /// Used on every recording exit path that isn't a normal finish.
+    private func cancelStreamingSession() {
+        recorder.onAudioChunk = nil
+        guard let streaming = streamingEngine else { return }
+        streamingEngine = nil
+        Task { await streaming.cancelStream() }
     }
 
     private func cancelPendingRecording() {
@@ -483,7 +501,7 @@ final class DictationController {
         state = .preparing(modelDisplayName: descriptor.displayName)
         let preparedModel = await ModelRegistry.shared.prepareModel(id: descriptor.id)
         guard recordingStartGate.accepts(startID) else { return }
-        guard preparedModel != nil else {
+        guard let engine = preparedModel else {
             AppLog.dictation.error("startRecording: prepareModel returned nil")
             recordingStartGate.finish(startID)
             state = .error(preparationErrorMessage(for: descriptor))
@@ -498,14 +516,39 @@ final class DictationController {
             recorder.onLevel = { level in
                 LiveHUDPanel.shared.setLevel(level)
             }
+
+            // Live-streaming engines: open the session and pipe audio in as it's
+            // captured so partial transcripts show in the HUD while recording.
+            // If the session can't open (auth/network), fall back to buffered.
+            streamingEngine = nil
+            recorder.onAudioChunk = nil
+            if let streaming = engine as? any StreamingTranscriptionEngine {
+                do {
+                    try await streaming.startStream(contextPrompt: nil) { live in
+                        Task { @MainActor in LiveHUDPanel.shared.setPartialTranscript(live) }
+                    }
+                    guard recordingStartGate.accepts(startID) else {
+                        await streaming.cancelStream()
+                        return
+                    }
+                    streamingEngine = streaming
+                    recorder.onAudioChunk = { samples in
+                        streaming.feedAudio(samples)
+                    }
+                } catch {
+                    AppLog.dictation.error("ElevenLabs stream failed to open: \(error.localizedDescription); using buffered transcription")
+                }
+            }
+
             try recorder.start()
             state = .recording
             recordingStartGate.finish(startID)
             let start = Date()
             recordStart = start
-            LiveHUDPanel.shared.show()
+            LiveHUDPanel.shared.show(showsLiveText: streamingEngine != nil)
             guard installRecordingEscMonitors() else {
                 _ = recorder.stop()
+                cancelStreamingSession()
                 LiveHUDPanel.shared.hide()
                 state = .error("Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.")
                 return
@@ -569,6 +612,7 @@ final class DictationController {
         recordingStartGate.reset()
         stopElapsedTicker()
         removeRecordingEscMonitors()
+        cancelStreamingSession()
         enterFailureHUD(message: "Audio input device changed. Try again.")
     }
 
@@ -627,31 +671,48 @@ final class DictationController {
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
+            cancelStreamingSession()
             enterFailureHUD(message: "No speech detected — try again.")
             return
         }
 
-        guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
-            enterFailureHUD(
-                message: "Failed to prepare model for transcription.",
-                samples: samples,
-                canRetry: true
-            )
-            return
+        // Pick how the final transcript is produced: flush the live stream if
+        // one is active, otherwise transcribe the buffered samples (local
+        // engines, or a retry of a failed stream). Both share one error path.
+        let produce: () async throws -> String
+        if let streaming = streamingEngine {
+            // The audio source is done, so stop feeding it. finishStream tears
+            // the socket down itself — this isn't a cancelStreamingSession case.
+            streamingEngine = nil
+            recorder.onAudioChunk = nil
+            AppLog.dictation.info("Finishing live stream transcription")
+            produce = { try await streaming.finishStream() }
+        } else {
+            guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
+                enterFailureHUD(
+                    message: "Failed to prepare model for transcription.",
+                    samples: samples,
+                    canRetry: true
+                )
+                return
+            }
+            AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
+            produce = {
+                try await engine.transcribe(
+                    samples: samples,
+                    contextPrompt: nil,
+                    progress: { current, total in
+                        Task { @MainActor in
+                            LiveHUDPanel.shared.setTranscribingProgress(current: current, total: total)
+                        }
+                    }
+                )
+            }
         }
 
         let rawText: String
         do {
-            AppLog.dictation.info("Transcribing full buffer: \(samples.count) samples")
-            rawText = try await engine.transcribe(
-                samples: samples,
-                contextPrompt: nil,
-                progress: { current, total in
-                    Task { @MainActor in
-                        LiveHUDPanel.shared.setTranscribingProgress(current: current, total: total)
-                    }
-                }
-            )
+            rawText = try await produce()
         } catch {
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
             enterFailureHUD(

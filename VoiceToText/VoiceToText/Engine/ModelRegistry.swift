@@ -3,10 +3,12 @@ import Observation
 
 enum CloudProvider: String, Sendable, Hashable {
     case openAI
+    case elevenLabs
 
     var displayName: String {
         switch self {
         case .openAI: return "OpenAI"
+        case .elevenLabs: return "ElevenLabs"
         }
     }
 }
@@ -16,11 +18,13 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         case whisperKit
         case fluidAudio
         case openAI
+        case elevenLabs
 
         var cloudProvider: CloudProvider? {
             switch self {
             case .whisperKit, .fluidAudio: return nil
             case .openAI: return .openAI
+            case .elevenLabs: return .elevenLabs
             }
         }
 
@@ -43,6 +47,17 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
 enum ModelCatalog {
     static let all: [ModelDescriptor] = [
+        ModelDescriptor(
+            id: "elevenlabs-scribe-v2-realtime",
+            displayName: "Scribe v2 Realtime (ElevenLabs)",
+            backend: .elevenLabs,
+            backendModelId: "scribe_v2_realtime",
+            approxSizeMB: 0,
+            languages: "90+",
+            notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
+            quality: 9,
+            speed: 10
+        ),
         ModelDescriptor(
             id: "parakeet-tdt-v3",
             displayName: "Parakeet TDT v3",
@@ -193,6 +208,13 @@ final class ModelRegistry {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshCloudReadiness() }
         }
+        NotificationCenter.default.addObserver(
+            forName: ElevenLabsAPIKeyStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshCloudReadiness() }
+        }
     }
 
     /// Kick off a background download of the active model if it isn't already
@@ -231,6 +253,8 @@ final class ModelRegistry {
         switch model.backend.cloudProvider {
         case .openAI:
             next = OpenAIAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
+        case .elevenLabs:
+            next = ElevenLabsAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
         case nil:
             let state = ModelStorage.installedState(model)
             next = state.installed ? .installed(sizeBytes: state.sizeBytes) : .notInstalled
@@ -337,6 +361,8 @@ final class ModelRegistry {
             return FluidAudioEngine(modelId: descriptor.backendModelId)
         case .openAI:
             return OpenAITranscriptionEngine(modelId: descriptor.backendModelId)
+        case .elevenLabs:
+            return ElevenLabsRealtimeEngine(modelId: descriptor.backendModelId)
         }
     }
 

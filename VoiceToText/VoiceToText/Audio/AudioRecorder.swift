@@ -22,6 +22,12 @@ final class AudioRecorder: @unchecked Sendable {
     /// processed tap buffer. Used to drive the live voice indicator in the HUD.
     var onLevel: (@MainActor @Sendable (Double) -> Void)?
 
+    /// Called on the audio thread with each processed buffer of 16 kHz mono
+    /// Float32 samples, for engines that stream audio live (e.g. ElevenLabs).
+    /// Set before `start()`; cleared when the streaming session ends. The same
+    /// samples are still accumulated into the buffer for VAD and retry.
+    var onAudioChunk: (@Sendable ([Float]) -> Void)?
+
     private var preprocessingEnabled: Bool {
         if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
             return val
@@ -173,6 +179,10 @@ final class AudioRecorder: @unchecked Sendable {
         }
 
         queue.sync { buffer.append(contentsOf: samples) }
+
+        // Feed the same processed samples to a live streaming engine, in capture
+        // order, on this audio thread (the engine buffers and sends in order).
+        onAudioChunk?(samples)
 
         if let onLevel {
             Task { @MainActor in onLevel(rawLevel) }

@@ -18,7 +18,7 @@ enum ModelStorage {
         case .whisperKit:
             return whisperKitBaseURL
                 .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(descriptor.backendModelId)", isDirectory: true)
-        case .openAI:
+        case .openAI, .elevenLabs:
             return nil
         }
     }

@@ -31,6 +31,36 @@ extension TranscriptionEngine {
     }
 }
 
+/// A `TranscriptionEngine` that can also transcribe a *live* audio stream:
+/// audio is pushed in as it is captured and partial/committed text comes back
+/// before recording stops. Engines opt in by conforming; `DictationController`
+/// detects conformance at runtime and drives the live path, falling back to the
+/// buffered `transcribe(samples:)` for engines that don't (and for retries).
+protocol StreamingTranscriptionEngine: TranscriptionEngine {
+    /// Opens a streaming session. `onLiveText` is invoked on each update with
+    /// the best current transcript (committed text plus the in-progress
+    /// partial) for live display in the HUD. Throws if the session can't be
+    /// established (e.g. auth/network), so the caller can fall back to buffered.
+    func startStream(
+        contextPrompt: String?,
+        onLiveText: @escaping @Sendable (String) -> Void
+    ) async throws
+
+    /// Pushes a chunk of 16 kHz mono Float32 samples into the open session.
+    /// Synchronous and `nonisolated` so it can be called directly from the
+    /// audio thread in capture order — the engine buffers internally and sends
+    /// in order, which avoids the frame reordering that per-chunk `Task`s would
+    /// risk (actors give no FIFO guarantee across unstructured tasks).
+    func feedAudio(_ samples: [Float])
+
+    /// Flushes buffered audio, closes the session, and returns the final
+    /// committed transcript.
+    func finishStream() async throws -> String
+
+    /// Tears the session down without producing a result (e.g. user cancel).
+    func cancelStream() async
+}
+
 enum TranscriptionEngineError: LocalizedError {
     case notReady
     case modelLoadFailed(String)

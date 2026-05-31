@@ -46,6 +46,14 @@ final class LiveHUDState {
     var transcribingElapsedSeconds: Double = 0
     var transcribingProgress: TranscribingProgress?
 
+    /// Whether the recording HUD reserves a live-transcript area (true for
+    /// streaming engines like ElevenLabs). Buffered local engines leave this
+    /// false so the HUD stays compact.
+    var showsLiveText: Bool = false
+    /// Live transcript shown while recording with a streaming engine — the
+    /// committed text plus the in-progress partial. Replaced on each update.
+    var partialTranscript: String = ""
+
     /// Last error surfaced through the failure HUD. Cleared whenever the HUD
     /// transitions away from `.failed`.
     var failureMessage: String = ""
@@ -77,12 +85,19 @@ final class LiveHUDPanel {
     private let state = LiveHUDState.shared
 
     private let recordingSize = NSSize(width: 480, height: 150)
+    /// Taller recording layout that reserves room for the live transcript
+    /// (streaming engines). Used while `state.showsLiveText` is set, including
+    /// the recording→transcribing hand-off (which leaves the flag untouched).
+    private let recordingLiveSize = NSSize(width: 480, height: 224)
+    private var activeRecordingSize: NSSize {
+        state.showsLiveText ? recordingLiveSize : recordingSize
+    }
     private let reviewSize = NSSize(width: 560, height: 260)
     private let failureSize = NSSize(width: 480, height: 200)
 
     private init() {}
 
-    func show() {
+    func show(showsLiveText: Bool = false) {
         reviewPanel?.orderOut(nil)
 
         state.mode = .recording
@@ -94,6 +109,8 @@ final class LiveHUDPanel {
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
+        state.showsLiveText = showsLiveText
+        state.partialTranscript = ""
         state.failureMessage = ""
         state.failureCanRetry = false
         state.selectedRange = NSRange(location: 0, length: 0)
@@ -103,7 +120,7 @@ final class LiveHUDPanel {
         state.onRetry = nil
 
         let p = ensureRecordingPanel()
-        position(p, size: recordingSize)
+        position(p, size: activeRecordingSize)
         p.orderFrontRegardless()
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
     }
@@ -122,7 +139,7 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
 
         let p = ensureRecordingPanel()
-        position(p, size: recordingSize)
+        position(p, size: activeRecordingSize)
         p.orderFrontRegardless()
     }
 
@@ -207,6 +224,11 @@ final class LiveHUDPanel {
         state.transcribingProgress = TranscribingProgress(current: current, total: total)
     }
 
+    /// Live transcript update from a streaming engine (committed + partial).
+    func setPartialTranscript(_ text: String) {
+        state.partialTranscript = text
+    }
+
     func setLevel(_ level: Double) {
         // Exponential smoothing so the trace doesn't jitter on every tap buffer.
         let smoothed = state.level * 0.6 + level * 0.4
@@ -222,6 +244,8 @@ final class LiveHUDPanel {
         state.isRecording = false
         state.level = 0
         state.reviewBanner = nil
+        state.showsLiveText = false
+        state.partialTranscript = ""
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.failureMessage = ""
@@ -340,6 +364,20 @@ private struct RecordingView: View {
             LevelBars(samples: state.levelHistory)
                 .frame(maxWidth: .infinity)
                 .frame(height: 72)
+
+            if state.showsLiveText {
+                // Newest words stay visible via head truncation; the area is
+                // reserved (fixed min height) so the HUD doesn't jump as text
+                // streams in.
+                Text(state.partialTranscript.isEmpty ? "Listening…" : state.partialTranscript)
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundStyle(.white.opacity(state.partialTranscript.isEmpty ? 0.3 : 0.85))
+                    .lineLimit(3, reservesSpace: true)
+                    .truncationMode(.head)
+                    .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .animation(.easeOut(duration: 0.12), value: state.partialTranscript)
+            }
 
             HStack(spacing: 14) {
                 Text(timeString)

@@ -18,12 +18,13 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         case whisperKit
         case fluidAudio
         case openAI
+        case openAIRealtime
         case elevenLabs
 
         var cloudProvider: CloudProvider? {
             switch self {
             case .whisperKit, .fluidAudio: return nil
-            case .openAI: return .openAI
+            case .openAI, .openAIRealtime: return .openAI
             case .elevenLabs: return .elevenLabs
             }
         }
@@ -34,7 +35,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         /// appear as the user speaks — rather than a buffered recording.
         var isStreaming: Bool {
             switch self {
-            case .elevenLabs: return true
+            case .elevenLabs, .openAIRealtime: return true
             case .whisperKit, .fluidAudio, .openAI: return false
             }
         }
@@ -133,6 +134,17 @@ enum ModelCatalog {
             notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
             quality: 9,
             speed: 10
+        ),
+        ModelDescriptor(
+            id: "openai-gpt-4o-transcribe-realtime",
+            displayName: "GPT-4o Transcribe Realtime (OpenAI)",
+            backend: .openAIRealtime,
+            backendModelId: "gpt-4o-transcribe",
+            approxSizeMB: 0,
+            languages: "99+",
+            notes: "Live streaming — words appear as you speak. Audio goes to OpenAI.",
+            quality: 9,
+            speed: 9
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe",
@@ -371,6 +383,8 @@ final class ModelRegistry {
             return FluidAudioEngine(modelId: descriptor.backendModelId)
         case .openAI:
             return OpenAITranscriptionEngine(modelId: descriptor.backendModelId)
+        case .openAIRealtime:
+            return OpenAIRealtimeEngine(modelId: descriptor.backendModelId)
         case .elevenLabs:
             return ElevenLabsRealtimeEngine(modelId: descriptor.backendModelId)
         }

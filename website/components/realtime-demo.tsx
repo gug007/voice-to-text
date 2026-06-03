@@ -4,34 +4,35 @@ import { useEffect, useRef, useState } from "react";
 
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 
-const PROMPTS = [
-  "refactor this function so it streams tokens instead of buffering, keep the type signature",
-  "add a dark-mode toggle to the settings sheet and persist the choice",
-  "write a quick benchmark comparing parakeet vs whisper-large",
+// Sentences that read naturally while showing off live, word-by-word
+// streaming — the thing a buffered engine can't do.
+const SENTENCES = [
+  "Watch the words appear live as I speak, with no waiting for the transcript.",
+  "Real-time transcription streams straight into whatever app I'm already in.",
+  "Pause, keep talking, and the text just keeps flowing at the cursor.",
 ];
 
-// DOM level bars matching the app's LevelBars (LiveHUD.swift): 56 centered
-// capsules, oldest on the left (faded), newest at the right "write head"
-// (brightest). Height springs to the live mic level; a small floor keeps
-// silent bars visible as a thin baseline.
-const BAR_COUNT = 56;
-const MIN_BAR_PCT = 6;
-const MAX_BAR_PCT = 100;
+// DOM level bars matching the app's LevelBars: oldest on the left (faded),
+// newest at the right "write head" (brightest). Height tracks the live level.
+const BAR_COUNT = 48;
+const MIN_BAR = 4;
+const MAX_BAR = 52;
 const SAMPLE_INTERVAL = 0.07; // seconds between pushed levels
 
-type DictationState = "idle" | "recording";
+type RealtimeState = "idle" | "recording";
 
-export function DictationDemo() {
+export function RealtimeDemo() {
   const fieldRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
   const barsRef = useRef<HTMLDivElement>(null);
-  const [state, setState] = useState<DictationState>("idle");
-  const [text, setText] = useState("");
+
+  const [state, setState] = useState<RealtimeState>("idle");
+  const [partial, setPartial] = useState("");
+  const [pasted, setPasted] = useState("");
   const [pasteFlash, setPasteFlash] = useState(false);
   const [timer, setTimer] = useState("0:00");
 
-  // Mutating refs that drive the bar animation without re-rendering. phaseRef
-  // is seeded inside the effect (Math.random would be impure during render).
+  // Mutating refs that drive the bar animation without re-rendering.
   const historyRef = useRef<number[]>(new Array(BAR_COUNT).fill(0));
   const smoothedRef = useRef(0);
   const phaseRef = useRef(0);
@@ -55,8 +56,8 @@ export function DictationDemo() {
       const children = bars.children;
       for (let i = 0; i < children.length; i++) {
         const level = Math.min(1, Math.max(0, history[i]));
-        const h = MIN_BAR_PCT + (MAX_BAR_PCT - MIN_BAR_PCT) * level;
-        (children[i] as HTMLElement).style.height = `${h.toFixed(1)}%`;
+        const h = MIN_BAR + (MAX_BAR - MIN_BAR) * level;
+        (children[i] as HTMLElement).style.height = `${h.toFixed(1)}px`;
       }
     };
 
@@ -78,7 +79,6 @@ export function DictationDemo() {
           0.18 * Math.sin(t * 3.1 + 1.2) +
           (Math.random() - 0.5) * 0.22;
         const target = Math.max(0, Math.min(1, raw * envelope));
-        // Exponential smoothing, matching the app's setLevel.
         smoothedRef.current = smoothedRef.current * 0.6 + target * 0.4;
         historyRef.current.shift();
         historyRef.current.push(smoothedRef.current);
@@ -115,19 +115,18 @@ export function DictationDemo() {
       const myToken = ++cycleTokenRef.current;
       let i = 0;
       while (myToken === cycleTokenRef.current) {
-        const prompt = PROMPTS[i % PROMPTS.length];
+        const sentence = SENTENCES[i % SENTENCES.length];
 
         // Reset to an empty field, ready to dictate.
-        setText("");
+        setPasted("");
+        setPartial("");
         setPasteFlash(false);
         setTimer("0:00");
         setState("idle");
         await sleep(900);
         if (myToken !== cycleTokenRef.current) break;
 
-        // Hold the hotkey: HUD appears, the level bars come alive. The field
-        // stays empty while speaking — words only land on release, just like
-        // the app's hold-to-talk dictation.
+        // Start recording: HUD appears, bars come alive, "Listening".
         setState("recording");
         hud.classList.add("is-visible");
         startBars();
@@ -136,23 +135,42 @@ export function DictationDemo() {
           setTimer(formatTime((performance.now() - startedAt) / 1000));
         }, 100);
 
-        // Speak for a beat that scales with the sentence length.
-        const speakMs = Math.min(5200, 1500 + prompt.length * 30);
-        await sleep(speakMs);
+        // Beat of pure "Listening" before the first words land.
+        await sleep(750);
+        if (myToken !== cycleTokenRef.current) {
+          clearInterval(timerHandle);
+          break;
+        }
+
+        // Stream the transcript word by word — the real-time payoff.
+        const words = sentence.split(" ");
+        let acc = "";
+        for (let w = 0; w < words.length; w++) {
+          if (myToken !== cycleTokenRef.current) break;
+          acc += (acc ? " " : "") + words[w];
+          setPartial(acc);
+          await sleep(150 + Math.random() * 130);
+        }
+        if (myToken !== cycleTokenRef.current) {
+          clearInterval(timerHandle);
+          break;
+        }
+
+        await sleep(550);
         clearInterval(timerHandle);
         if (myToken !== cycleTokenRef.current) break;
 
-        // Release: the whole transcript pastes into the field at once and
-        // flashes, the HUD dismisses.
-        setText(prompt);
+        // Finish: text pastes into the field, HUD dismisses.
+        setPasted(sentence);
         setPasteFlash(true);
         hud.classList.remove("is-visible");
         setState("idle");
+        setPartial("");
         stopBars();
         await sleep(700);
         setPasteFlash(false);
 
-        await sleep(1700);
+        await sleep(2000);
         i++;
       }
     };
@@ -165,13 +183,12 @@ export function DictationDemo() {
     };
 
     if (reducedMotion.matches) {
-      // One-shot: render a believable static snapshot of the demo so users
-      // with reduced motion still see what the app does — mid-recording, field
-      // empty, level bars frozen. React batches these into a single render
-      // (effect runs once, deps are empty).
+      // Static, believable snapshot for reduced-motion users: HUD open,
+      // mid-stream, with a frozen level envelope.
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setTimer("0:05");
       setState("recording");
+      setPartial(SENTENCES[0]);
+      setTimer("0:04");
       hud.classList.add("is-visible");
       for (let i = 0; i < BAR_COUNT; i++) {
         const t = i / BAR_COUNT;
@@ -216,16 +233,16 @@ export function DictationDemo() {
     };
   }, []);
 
-  const hasText = text.length > 0;
+  const hasText = pasted.length > 0;
 
   return (
     <figure
-      className="demo-card"
-      aria-label="VoiceToText voice-input field with recording HUD"
+      className="demo-card rt-card"
+      aria-label="VoiceToText real-time dictation with a live transcript HUD"
     >
       <div
         ref={fieldRef}
-        className={`demo-field${hasText ? " has-text" : ""}${pasteFlash ? " is-pasted" : ""}`}
+        className={`demo-field rt-field${hasText ? " has-text" : ""}${pasteFlash ? " is-pasted" : ""}`}
         data-dictation-state={state}
       >
         <span className="demo-field__icon" aria-hidden="true">
@@ -237,36 +254,50 @@ export function DictationDemo() {
         </span>
         <span className="demo-field__content">
           <span className="demo-field__placeholder">
-            Hold <HotkeyCombo /> to dictate
+            Press <HotkeyCombo /> to dictate
           </span>
-          <span className="demo-field__text">{text}</span>
+          <span className="demo-field__text">{pasted}</span>
           <span className="demo-field__caret" aria-hidden="true"></span>
         </span>
       </div>
 
-      <div ref={hudRef} className="demo-hud" aria-hidden="true">
-        <div className="demo-hud__trace">
-          <div ref={barsRef} className="demo-hud__bars">
-            {Array.from({ length: BAR_COUNT }).map((_, i) => (
-              <span
-                key={i}
-                className="demo-hud__bar"
-                style={{
-                  opacity: 0.22 + 0.68 * (i / (BAR_COUNT - 1)),
-                  height: `${MIN_BAR_PCT}%`,
-                }}
-              />
-            ))}
-          </div>
+      <div ref={hudRef} className="demo-hud rt-hud" aria-hidden="true">
+        <div ref={barsRef} className="rt-hud__bars">
+          {Array.from({ length: BAR_COUNT }).map((_, i) => (
+            <span
+              key={i}
+              className="rt-hud__bar"
+              style={{
+                opacity: 0.22 + 0.68 * (i / (BAR_COUNT - 1)),
+                height: `${MIN_BAR}px`,
+              }}
+            />
+          ))}
         </div>
-        <div className="demo-hud__meta">
+
+        <div className="rt-hud__transcript">
+          {partial ? (
+            <span className="rt-hud__text">
+              {partial}
+              <span className="rt-hud__cursor" aria-hidden="true"></span>
+            </span>
+          ) : (
+            <span className="rt-hud__listening">
+              <span className="rt-hud__dot"></span>
+              <span className="rt-hud__shimmer">Listening</span>
+            </span>
+          )}
+        </div>
+
+        <div className="rt-hud__meta">
           <span className="demo-hud__timer">{timer}</span>
-          <span className="demo-hud__hint">Release to finish · Esc cancels</span>
+          <span className="demo-hud__hint">Press again to finish · Esc cancels</span>
         </div>
       </div>
 
       <figcaption className="demo-card__caption">
-        Hold <HotkeyCombo />, speak, release — words appear at the cursor. Nothing leaves the Mac.
+        Words stream in live as you speak, then paste at the cursor in any Mac app. Streaming sends audio
+        to your chosen provider under your own key.
       </figcaption>
     </figure>
   );

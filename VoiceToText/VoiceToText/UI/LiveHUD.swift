@@ -366,17 +366,33 @@ private struct RecordingView: View {
                 .frame(height: 72)
 
             if state.showsLiveText {
-                // Newest words stay visible via head truncation; the area is
-                // reserved (fixed min height) so the HUD doesn't jump as text
-                // streams in.
-                Text(state.partialTranscript.isEmpty ? "Listening…" : state.partialTranscript)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.white.opacity(state.partialTranscript.isEmpty ? 0.3 : 0.85))
-                    .lineLimit(3, reservesSpace: true)
-                    .truncationMode(.head)
-                    .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .animation(.easeOut(duration: 0.12), value: state.partialTranscript)
+                // The transcript area is pinned to a constant three-line height
+                // by the hidden sizer below, so the HUD never reflows — whether
+                // it shows the "Listening" indicator, one line, or three wrapped
+                // lines. An empty Text doesn't reserve its line count, so the
+                // sizer carries real line breaks to hold the height open.
+                // Newest words stay visible via head truncation.
+                ZStack(alignment: .topLeading) {
+                    Text("\n\n")
+                        .font(.system(size: 13, weight: .regular))
+                        .lineLimit(3, reservesSpace: true)
+                        .hidden()
+
+                    if state.partialTranscript.isEmpty {
+                        ListeningIndicator()
+                            .transition(.opacity)
+                    } else {
+                        Text(state.partialTranscript)
+                            .font(.system(size: 13, weight: .regular))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .lineLimit(3, reservesSpace: true)
+                            .truncationMode(.head)
+                            .multilineTextAlignment(.leading)
+                            .transition(.opacity)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .animation(.easeOut(duration: 0.18), value: state.partialTranscript)
             }
 
             HStack(spacing: 14) {
@@ -404,6 +420,34 @@ private struct RecordingView: View {
         switch HotkeyStore.shared.mode {
         case .hold: return "Release to finish · Esc cancels"
         case .toggle: return "Press again to finish · Esc cancels"
+        }
+    }
+}
+
+/// Placeholder shown while a streaming engine is connected but hasn't emitted
+/// any words yet. A breathing "live" dot beside a shimmering "Listening" label
+/// — reuses the same shimmer treatment as the transcribing state so the two
+/// phases read as one continuous animation rather than a hard cut.
+private struct ListeningIndicator: View {
+    @State private var pulsing = false
+
+    private static let dotSize: CGFloat = 7
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Circle()
+                .fill(.white)
+                .frame(width: Self.dotSize, height: Self.dotSize)
+                .scaleEffect(pulsing ? 1 : 0.85)
+                .opacity(pulsing ? 1 : 0.5)
+
+            ShimmerText("Listening")
+                .font(.system(size: 13, weight: .medium))
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
+                pulsing = true
+            }
         }
     }
 }
@@ -489,27 +533,30 @@ private struct ShimmerText: View {
     private static let baseOpacity: Double = 0.4
 
     var body: some View {
+        // A dim base word with a full-brightness copy locked exactly on top of
+        // it; only the gradient *mask* slides across, so the bright sweep tracks
+        // the letters precisely instead of rendering a shifted ghost copy.
         Text(text)
             .foregroundStyle(.white.opacity(Self.baseOpacity))
-            .overlay(
-                GeometryReader { geo in
-                    LinearGradient(
-                        stops: [
-                            .init(color: .white.opacity(0), location: 0),
-                            .init(color: .white.opacity(0.95), location: 0.5),
-                            .init(color: .white.opacity(0), location: 1),
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                    .frame(width: geo.size.width * 0.6)
-                    .offset(x: geo.size.width * phase)
-                    .mask(
-                        Text(text)
-                            .frame(width: geo.size.width, alignment: .leading)
-                    )
-                }
-            )
+            .overlay {
+                Text(text)
+                    .foregroundStyle(.white)
+                    .mask {
+                        GeometryReader { geo in
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .white.opacity(0), location: 0),
+                                    .init(color: .white.opacity(0.95), location: 0.5),
+                                    .init(color: .white.opacity(0), location: 1),
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: geo.size.width * 0.6)
+                            .offset(x: geo.size.width * phase)
+                        }
+                    }
+            }
             .onAppear {
                 withAnimation(.linear(duration: Self.cycleDuration).repeatForever(autoreverses: false)) {
                     phase = 1.6

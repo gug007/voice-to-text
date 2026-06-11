@@ -89,6 +89,19 @@ final class LiveHUDState {
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
     @ObservationIgnored var onRetry: (@MainActor () -> Void)?
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
+
+    /// Steps back one action at a time: each call restores the text from
+    /// before the most recent transform, so chained actions unwind in order
+    /// until the original transcript is back (then the Undo button hides).
+    func undoLastAction() {
+        guard let original = actionRevertStack.popLast() else { return }
+        reviewBanner = nil
+        // No-op restore would desync the recorded caret from the visible one
+        // (the editor skips syncs when the text is unchanged).
+        guard original != reviewText else { return }
+        selectedRange = NSRange(location: (original as NSString).length, length: 0)
+        reviewText = original
+    }
 }
 
 struct TranscribingProgress: Equatable {
@@ -111,9 +124,9 @@ final class LiveHUDPanel {
     private var activeRecordingSize: NSSize {
         state.showsLiveText ? recordingLiveSize : recordingSize
     }
-    private let reviewSize = NSSize(width: 560, height: 260)
+    private let reviewSize = NSSize(width: 620, height: 260)
     /// Taller review layout that reserves room for the action chips row.
-    private let reviewActionsSize = NSSize(width: 560, height: 300)
+    private let reviewActionsSize = NSSize(width: 620, height: 300)
     private let failureSize = NSSize(width: 480, height: 200)
 
     private init() {}
@@ -642,6 +655,16 @@ private struct ReviewView: View {
                     emphasis: .secondary
                 ) { state.onResume?() }
 
+                if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
+                    ReviewKeyButton(
+                        title: "Undo",
+                        systemImage: "arrow.uturn.backward",
+                        hint: nil,
+                        emphasis: .secondary
+                    ) { state.undoLastAction() }
+                    .help("Undo last action")
+                }
+
                 Spacer()
 
                 ReviewKeyButton(
@@ -663,8 +686,8 @@ private struct ReviewView: View {
 /// Row of AI action chips between the review editor and the key buttons.
 /// Clicking a chip (or ⌘1–⌘9) sends the transcript through the action's
 /// OpenAI transform; the running chip shimmers and the rest disable until
-/// the request settles. After a transform, a Revert chip restores the
-/// pre-action text.
+/// the request settles. After a transform, the Undo button next to the mic
+/// in the bottom bar restores the pre-action text.
 private struct ReviewActionsBar: View {
     @Bindable var state: LiveHUDState
 
@@ -679,31 +702,8 @@ private struct ReviewActionsBar: View {
                         isDisabled: state.runningActionId != nil && state.runningActionId != action.id
                     ) { state.onRunAction?(action) }
                 }
-
-                if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
-                    ReviewActionChip(
-                        title: "Undo",
-                        systemImage: "arrow.uturn.backward",
-                        hint: nil,
-                        isRunning: false,
-                        isDisabled: false
-                    ) { revert() }
-                }
             }
         }
-    }
-
-    /// Steps back one action at a time: each click restores the text from
-    /// before the most recent transform, so chained actions unwind in order
-    /// until the original transcript is back (then the chip disappears).
-    private func revert() {
-        guard let original = state.actionRevertStack.popLast() else { return }
-        state.reviewBanner = nil
-        // No-op restore would desync the recorded caret from the visible one
-        // (the editor skips syncs when the text is unchanged).
-        guard original != state.reviewText else { return }
-        state.selectedRange = NSRange(location: (original as NSString).length, length: 0)
-        state.reviewText = original
     }
 }
 
@@ -939,14 +939,14 @@ private struct ReviewKeyButton: View {
 
     let title: String
     let systemImage: String?
-    let hint: String
+    let hint: String?
     let emphasis: Emphasis
     let action: () -> Void
 
     init(
         title: String,
         systemImage: String? = nil,
-        hint: String,
+        hint: String?,
         emphasis: Emphasis,
         action: @escaping () -> Void
     ) {
@@ -968,9 +968,11 @@ private struct ReviewKeyButton: View {
                     Text(title)
                         .font(.system(size: 13, weight: .medium))
                 }
-                Text(hint)
-                    .font(.system(size: 11, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(emphasis == .primary ? 0.55 : 0.4))
+                if let hint {
+                    Text(hint)
+                        .font(.system(size: 11, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(emphasis == .primary ? 0.55 : 0.4))
+                }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 7)

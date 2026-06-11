@@ -23,6 +23,7 @@ struct ActionRunnerHarness {
         try testErrorMessage()
         try testCatalog()
         try testActionCodableRoundTrip()
+        try testCatalogSync()
         print("ActionRunnerHarness: all checks passed")
     }
 
@@ -154,5 +155,61 @@ struct ActionRunnerHarness {
         let migrated = try JSONDecoder().decode([DictationAction].self, from: legacy)
         try expect(migrated.count, 1, "legacy list decodes")
         try expect(migrated[0].isEnabled, false, "legacy actions without the key decode as disabled")
+        try expect(migrated[0].templateId, nil, "legacy actions carry no template link")
+        try expect(migrated[0].isUserEdited, false, "legacy actions count as untouched")
+    }
+
+    private static func testCatalogSync() throws {
+        let templates = [
+            ActionCatalog.Template(id: "t-one", name: "One", prompt: "First prompt."),
+            ActionCatalog.Template(id: "t-two", name: "Two", prompt: "Second prompt."),
+        ]
+
+        // Legacy adoption: a stored action matching a template by name gets
+        // linked, then receives the template's prompt update.
+        let legacyRow = DictationAction(name: "One", prompt: "Old prompt.", isEnabled: true)
+        var outcome = ActionCatalogSync.sync(
+            stored: [legacyRow],
+            seededTemplateIds: nil,
+            templates: templates
+        )
+        try expect(outcome.actions[0].templateId, "t-one", "name-matching legacy row adopts the template id")
+        try expect(outcome.actions[0].prompt, "First prompt.", "linked row picks up the catalog prompt")
+        try expect(outcome.actions[0].isEnabled, true, "sync never touches the toggle")
+        try expect(outcome.actions.count, 1, "missing record treats current templates as already offered")
+        try expect(outcome.changed, true, "adoption and record creation persist")
+
+        // Template updates flow into linked, non-edited rows; user-edited
+        // rows and hand-written rows are untouched; deleted templates stay
+        // deleted; brand-new templates are appended disabled.
+        let linked = DictationAction(name: "Stale", prompt: "Stale.", isEnabled: true, templateId: "t-one")
+        let edited = DictationAction(name: "Mine", prompt: "Mine.", isEnabled: true, templateId: "t-two", isUserEdited: true)
+        let custom = DictationAction(name: "Custom", prompt: "Custom.")
+        let newTemplates = templates + [
+            ActionCatalog.Template(id: "t-three", name: "Three", prompt: "Third prompt."),
+        ]
+        outcome = ActionCatalogSync.sync(
+            stored: [linked, edited, custom],
+            seededTemplateIds: ["t-one", "t-two", "t-gone"],
+            templates: newTemplates
+        )
+        try expect(outcome.actions[0].name, "One", "linked row tracks the template rename")
+        try expect(outcome.actions[1].name, "Mine", "user-edited row is never overwritten")
+        try expect(outcome.actions[2].name, "Custom", "hand-written row is never overwritten")
+        try expect(outcome.actions.count, 4, "new template is appended once")
+        try expect(outcome.actions[3].templateId, "t-three", "appended row links to its template")
+        try expect(outcome.actions[3].isEnabled, false, "appended row starts disabled")
+        try expect(
+            outcome.seededTemplateIds.contains("t-gone"), true,
+            "seeded record keeps ids of templates that left the catalog"
+        )
+
+        // Stable state: running sync again changes nothing.
+        let again = ActionCatalogSync.sync(
+            stored: outcome.actions,
+            seededTemplateIds: outcome.seededTemplateIds,
+            templates: newTemplates
+        )
+        try expect(again.changed, false, "sync is idempotent once reconciled")
     }
 }

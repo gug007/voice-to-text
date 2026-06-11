@@ -48,12 +48,12 @@ nonisolated enum ActionCatalog {
 
     static let defaults: [Template] = [
         Template(
-            name: "Translate to English",
-            prompt: "Translate the text into natural, fluent English. Keep the original meaning, tone, and formatting."
+            name: "Clean transcript",
+            prompt: "Rewrite the text so it is clear and concise. Remove filler words, fix grammar and punctuation, and keep the original meaning and tone."
         ),
         Template(
-            name: "Make text clear",
-            prompt: "Rewrite the text so it is clear and concise. Remove filler words, fix grammar and punctuation, and keep the original meaning and tone."
+            name: "Translate to English",
+            prompt: "Translate the text into natural, fluent English. Keep the original meaning, tone, and formatting."
         ),
         Template(
             name: "Improve prompt",

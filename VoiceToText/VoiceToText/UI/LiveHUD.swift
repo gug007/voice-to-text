@@ -75,9 +75,10 @@ final class LiveHUDState {
     /// text, if any. Drives the running shimmer on its chip and disables the
     /// other chips while the request is in flight.
     var runningActionId: UUID?
-    /// Snapshot of the review text taken just before the last action rewrote
-    /// it, so the user can revert a transform they don't like.
-    var actionRevertText: String?
+    /// Snapshots of the review text taken before each action rewrote it,
+    /// oldest first. Revert pops one entry at a time, so chained actions
+    /// (translate, then improve) undo step by step back to the original.
+    var actionRevertStack: [String] = []
 
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
@@ -137,7 +138,7 @@ final class LiveHUDPanel {
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil
-        state.actionRevertText = nil
+        state.actionRevertStack = []
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
@@ -197,7 +198,7 @@ final class LiveHUDPanel {
         state.reviewActions = ActionsStore.shared.enabledActions
         state.reviewShowsActions = ActionsStore.shared.showsInReview
         state.runningActionId = nil
-        state.actionRevertText = nil
+        state.actionRevertStack = []
         state.onPaste = onPaste
         state.onCancel = onCancel
         state.onResume = onResume
@@ -238,7 +239,7 @@ final class LiveHUDPanel {
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil
-        state.actionRevertText = nil
+        state.actionRevertStack = []
         state.onCancel = onCancel
         state.onRetry = onRetry
         state.onPaste = nil
@@ -293,7 +294,7 @@ final class LiveHUDPanel {
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil
-        state.actionRevertText = nil
+        state.actionRevertStack = []
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
@@ -679,7 +680,7 @@ private struct ReviewActionsBar: View {
                     ) { state.onRunAction?(action) }
                 }
 
-                if state.actionRevertText != nil, state.runningActionId == nil {
+                if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     ReviewActionChip(
                         title: "Revert",
                         systemImage: "arrow.uturn.backward",
@@ -692,9 +693,11 @@ private struct ReviewActionsBar: View {
         }
     }
 
+    /// Steps back one action at a time: each click restores the text from
+    /// before the most recent transform, so chained actions unwind in order
+    /// until the original transcript is back (then the chip disappears).
     private func revert() {
-        guard let original = state.actionRevertText else { return }
-        state.actionRevertText = nil
+        guard let original = state.actionRevertStack.popLast() else { return }
         state.reviewBanner = nil
         // No-op restore would desync the recorded caret from the visible one
         // (the editor skips syncs when the text is unchanged).

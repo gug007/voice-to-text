@@ -896,7 +896,7 @@ final class DictationController {
                     AppLog.dictation.info("Review action returned unchanged text: \(action.name)")
                     return
                 }
-                hud.actionRevertText = original
+                hud.actionRevertStack.append(original)
                 hud.selectedRange = NSRange(location: (transformed as NSString).length, length: 0)
                 hud.reviewText = transformed
                 self.state = .reviewing(text: transformed)

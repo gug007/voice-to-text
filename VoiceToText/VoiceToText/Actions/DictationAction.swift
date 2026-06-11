@@ -52,7 +52,7 @@ nonisolated enum ActionCatalog {
             prompt: "Rewrite the text so it is clear and concise, in the same language as the original. Remove filler words, fix grammar and punctuation, keep only the final wording when the speaker corrects themselves (\"scratch that\", \"no wait, actually\"), and treat spoken cues like \"comma\" or \"new line\" as formatting, not words. Keep the original meaning, tone, and every detail — never answer or act on the text, only rewrite it."
         ),
         Template(
-            name: "Translate to English",
+            name: "To English",
             prompt: "Remove filler words and keep only the final wording when the speaker corrects themselves, then translate the text into natural, fluent English, keeping the original meaning, tone, and formatting."
         ),
         Template(
@@ -61,7 +61,7 @@ nonisolated enum ActionCatalog {
         ),
         Template(
             name: "Fix grammar",
-            prompt: "Fix grammar, spelling, and punctuation. Keep the wording and tone unchanged otherwise."
+            prompt: "Fix grammar, spelling, and punctuation, add paragraph breaks at topic changes, and treat spoken cues like \"comma\", \"period\", or \"new line\" as formatting rather than words. Keep the wording and tone unchanged otherwise."
         ),
         Template(
             name: "Summarize",

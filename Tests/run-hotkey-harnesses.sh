@@ -65,3 +65,11 @@ swiftc -parse-as-library \
   Tests/LaunchContextHarness.swift \
   -o "$TMPDIR/launch-context-harness"
 "$TMPDIR/launch-context-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/OpenAIAPIKey.swift \
+  VoiceToText/VoiceToText/Actions/DictationAction.swift \
+  VoiceToText/VoiceToText/Actions/ActionRunner.swift \
+  Tests/ActionRunnerHarness.swift \
+  -o "$TMPDIR/action-runner-harness"
+"$TMPDIR/action-runner-harness"

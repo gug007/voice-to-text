@@ -62,6 +62,23 @@ final class LiveHUDState {
     /// set this to `false` and only show Dismiss.
     var failureCanRetry: Bool = false
 
+    /// Whether this review session shows the action chips row. Snapshotted
+    /// from `ActionsStore.shared.showsInReview` when the review HUD is shown
+    /// so the row's presence always matches the panel height chosen at the
+    /// same moment (same pattern as `showsLiveText`).
+    var reviewShowsActions: Bool = false
+    /// The actions offered by this review session, snapshotted alongside
+    /// `reviewShowsActions`. Chips, ⌘1–⌘9, and index lookups all read this
+    /// one list so mid-review settings changes can't desync them.
+    var reviewActions: [DictationAction] = []
+    /// Identifier of the dictation action currently rewriting the review
+    /// text, if any. Drives the running shimmer on its chip and disables the
+    /// other chips while the request is in flight.
+    var runningActionId: UUID?
+    /// Snapshot of the review text taken just before the last action rewrote
+    /// it, so the user can revert a transform they don't like.
+    var actionRevertText: String?
+
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
     /// new transcription can be spliced in at the caret.
@@ -70,6 +87,7 @@ final class LiveHUDState {
     @ObservationIgnored var onCancel: (@MainActor () -> Void)?
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
     @ObservationIgnored var onRetry: (@MainActor () -> Void)?
+    @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
 }
 
 struct TranscribingProgress: Equatable {
@@ -93,6 +111,8 @@ final class LiveHUDPanel {
         state.showsLiveText ? recordingLiveSize : recordingSize
     }
     private let reviewSize = NSSize(width: 560, height: 260)
+    /// Taller review layout that reserves room for the action chips row.
+    private let reviewActionsSize = NSSize(width: 560, height: 300)
     private let failureSize = NSSize(width: 480, height: 200)
 
     private init() {}
@@ -114,10 +134,15 @@ final class LiveHUDPanel {
         state.failureMessage = ""
         state.failureCanRetry = false
         state.selectedRange = NSRange(location: 0, length: 0)
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertText = nil
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
         state.onRetry = nil
+        state.onRunAction = nil
 
         let p = ensureRecordingPanel()
         position(p, size: activeRecordingSize)
@@ -149,7 +174,8 @@ final class LiveHUDPanel {
         banner: String? = nil,
         onPaste: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void,
-        onResume: @escaping @MainActor () -> Void
+        onResume: @escaping @MainActor () -> Void,
+        onRunAction: (@MainActor (DictationAction) -> Void)? = nil
     ) {
         recordingPanel?.orderOut(nil)
 
@@ -164,13 +190,22 @@ final class LiveHUDPanel {
         state.failureMessage = ""
         state.failureCanRetry = false
         state.selectedRange = NSRange(location: caret, length: 0)
+        // Snapshot once per session: the chip list, the row's presence, and
+        // the panel height are decided together, so a mid-review settings
+        // change (key added, action toggled) can't squeeze the editor inside
+        // a fixed frame or desync ⌘1–⌘9 from the visible chips.
+        state.reviewActions = ActionsStore.shared.enabledActions
+        state.reviewShowsActions = ActionsStore.shared.showsInReview
+        state.runningActionId = nil
+        state.actionRevertText = nil
         state.onPaste = onPaste
         state.onCancel = onCancel
         state.onResume = onResume
         state.onRetry = nil
+        state.onRunAction = onRunAction
 
         let p = ensureReviewPanel()
-        position(p, size: reviewSize)
+        position(p, size: state.reviewShowsActions ? reviewActionsSize : reviewSize)
         // Nonactivating panel: becomes key for keyboard input without activating
         // our app, so the Settings window stays wherever the user left it.
         p.orderFrontRegardless()
@@ -200,10 +235,15 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
         state.reviewText = ""
         state.reviewBanner = nil
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertText = nil
         state.onCancel = onCancel
         state.onRetry = onRetry
         state.onPaste = nil
         state.onResume = nil
+        state.onRunAction = nil
 
         let p = ensureReviewPanel()
         position(p, size: failureSize)
@@ -250,12 +290,24 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
         state.failureMessage = ""
         state.failureCanRetry = false
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertText = nil
         state.onPaste = nil
         state.onCancel = nil
         state.onResume = nil
         state.onRetry = nil
+        state.onRunAction = nil
         recordingPanel?.orderOut(nil)
         reviewPanel?.orderOut(nil)
+    }
+
+    /// Whether the given key event was delivered to the review panel.
+    /// Used to keep review-only shortcuts (⌘1–⌘9) from firing while the
+    /// user is typing in another of our windows (e.g. Settings).
+    func isReviewPanelEvent(_ event: NSEvent) -> Bool {
+        event.window === reviewPanel
     }
 
     /// Current edited review text (read at paste time).
@@ -577,6 +629,10 @@ private struct ReviewView: View {
             ReviewTextEditor(text: $state.reviewText, state: state)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
+            if state.reviewShowsActions {
+                ReviewActionsBar(state: state)
+            }
+
             HStack(spacing: 8) {
                 ReviewKeyButton(
                     title: "Resume",
@@ -600,6 +656,99 @@ private struct ReviewView: View {
                 ) { state.onPaste?() }
             }
         }
+    }
+}
+
+/// Row of AI action chips between the review editor and the key buttons.
+/// Clicking a chip (or ⌘1–⌘9) sends the transcript through the action's
+/// OpenAI transform; the running chip shimmers and the rest disable until
+/// the request settles. After a transform, a Revert chip restores the
+/// pre-action text.
+private struct ReviewActionsBar: View {
+    @Bindable var state: LiveHUDState
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(Array(state.reviewActions.enumerated()), id: \.element.id) { index, action in
+                    ReviewActionChip(
+                        title: action.name,
+                        hint: index < 9 ? "⌘\(index + 1)" : nil,
+                        isRunning: state.runningActionId == action.id,
+                        isDisabled: state.runningActionId != nil && state.runningActionId != action.id
+                    ) { state.onRunAction?(action) }
+                }
+
+                if state.actionRevertText != nil, state.runningActionId == nil {
+                    ReviewActionChip(
+                        title: "Revert",
+                        systemImage: "arrow.uturn.backward",
+                        hint: nil,
+                        isRunning: false,
+                        isDisabled: false
+                    ) { revert() }
+                }
+            }
+        }
+    }
+
+    private func revert() {
+        guard let original = state.actionRevertText else { return }
+        state.actionRevertText = nil
+        state.reviewBanner = nil
+        // No-op restore would desync the recorded caret from the visible one
+        // (the editor skips syncs when the text is unchanged).
+        guard original != state.reviewText else { return }
+        state.selectedRange = NSRange(location: (original as NSString).length, length: 0)
+        state.reviewText = original
+    }
+}
+
+private struct ReviewActionChip: View {
+    let title: String
+    var systemImage: String? = nil
+    let hint: String?
+    let isRunning: Bool
+    let isDisabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+                if isRunning {
+                    ShimmerText(title)
+                        .font(.system(size: 12, weight: .medium))
+                } else {
+                    Text(title)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.72))
+                }
+                if let hint, !isRunning {
+                    Text(hint)
+                        .font(.system(size: 10, weight: .regular, design: .monospaced))
+                        .foregroundStyle(.white.opacity(0.4))
+                }
+            }
+            .lineLimit(1)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .fill(Color.white.opacity(isRunning ? 0.10 : 0.05))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 7, style: .continuous)
+                    .strokeBorder(Color.white.opacity(isRunning ? 0.16 : 0.08))
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(isDisabled || isRunning)
+        .opacity(isDisabled ? 0.35 : 1)
     }
 }
 
@@ -635,7 +784,12 @@ private struct ReviewTextEditor: NSViewRepresentable {
         guard textView.string != text, context.coordinator.lastSyncedText != text else {
             return
         }
+        textView.breakUndoCoalescing()
         textView.string = text
+        // The replacement bypassed the undo machinery, so recorded operations
+        // now target ranges in text that no longer exists — replaying them
+        // would corrupt the transcript or raise NSRangeException.
+        textView.undoManager?.removeAllActions()
         textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
         context.coordinator.lastSyncedText = text
     }

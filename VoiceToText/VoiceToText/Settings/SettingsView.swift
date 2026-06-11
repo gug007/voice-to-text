@@ -8,12 +8,13 @@ struct SettingsView: View {
     @State private var selection: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, hotkey, models, cloud, updates
+        case general, hotkey, models, actions, cloud, updates
         var id: String { rawValue }
         var title: String {
             switch self {
             case .models: return "Models"
             case .hotkey: return "Shortcut"
+            case .actions: return "Actions"
             case .cloud: return "Cloud"
             case .general: return "General"
             case .updates: return "Updates"
@@ -23,6 +24,7 @@ struct SettingsView: View {
             switch self {
             case .models: return "waveform"
             case .hotkey: return "command"
+            case .actions: return "wand.and.stars"
             case .cloud: return "cloud"
             case .general: return "slider.horizontal.3"
             case .updates: return "arrow.down.circle"
@@ -51,6 +53,7 @@ struct SettingsView: View {
         switch selection {
         case .models: ModelsPane(registry: registry, onShowCloudSettings: { selection = .cloud })
         case .hotkey: HotkeyPane()
+        case .actions: ActionsPane(onShowCloudSettings: { selection = .cloud })
         case .cloud: CloudPane()
         case .general: GeneralPane()
         case .updates: UpdatesPane()

@@ -61,6 +61,15 @@ final class DictationController {
     /// a new recording starts.
     private var lastFailedSamples: [Float]?
 
+    /// In-flight AI action transform on the review text. Cancelled whenever
+    /// the review session ends (paste, cancel, resume) so a slow response
+    /// can't rewrite text the user already acted on. The generation counter
+    /// keeps a cancelled task's cleanup from clobbering a newer run's state.
+    @ObservationIgnored
+    private var reviewActionTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var reviewActionGeneration = 0
+
     /// The active live-streaming session, when the selected engine streams
     /// (e.g. ElevenLabs). Audio is piped to it during recording and it produces
     /// the final transcript via `finishStream()`. Nil for buffered engines and
@@ -276,6 +285,7 @@ final class DictationController {
     private func cancelReview() {
         guard case .reviewing = state else { return }
         AppLog.dictation.info("Review cancelled")
+        cancelReviewAction()
         removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()
         state = .idle
@@ -435,6 +445,23 @@ final class DictationController {
             if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
                event.charactersIgnoringModifiers?.lowercased() == "r" {
                 Task { @MainActor in self?.resumeRecording() }
+                return nil
+            }
+            // ⌘1–⌘9 run the matching review action. Matched by physical key
+            // (kVK_ANSI_*) so layouts with shifted digit rows (e.g. AZERTY)
+            // work; checked synchronously against this session's snapshot so
+            // the shortcut always mirrors the visible chips and the event
+            // passes through untouched otherwise; scoped to the review panel
+            // so keystrokes in Settings can't rewrite the transcript.
+            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+               let digit = Self.reviewActionDigitKeyCodes[event.keyCode] {
+                let handlesDigit = MainActor.assumeIsolated {
+                    LiveHUDPanel.shared.isReviewPanelEvent(event)
+                        && LiveHUDState.shared.reviewShowsActions
+                        && LiveHUDState.shared.reviewActions.indices.contains(digit - 1)
+                }
+                guard handlesDigit else { return event }
+                Task { @MainActor in self?.runReviewAction(atIndex: digit - 1) }
                 return nil
             }
             return event
@@ -789,6 +816,10 @@ final class DictationController {
         cursorLocation: Int? = nil,
         banner: String? = nil
     ) {
+        // Invalidate any action that slipped in during a previous session's
+        // exit window (e.g. ⌘R then ⌘1 in quick succession) so a stale
+        // transform can never overwrite this session's transcript.
+        cancelReviewAction()
         state = .reviewing(text: text)
         LiveHUDPanel.shared.showReview(
             text: text,
@@ -796,13 +827,103 @@ final class DictationController {
             banner: banner,
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() },
-            onResume: { [weak self] in self?.resumeRecording() }
+            onResume: { [weak self] in self?.resumeRecording() },
+            onRunAction: { [weak self] action in self?.runReviewAction(action) }
         )
         installReviewEscMonitor()
     }
 
+    // MARK: - Review actions
+
+    /// Physical digit-row keys for ⌘1–⌘9 (kVK_ANSI_* codes are not
+    /// contiguous). Positional matching keeps the shortcuts working on
+    /// layouts where digits live on the shifted layer (e.g. AZERTY).
+    private static let reviewActionDigitKeyCodes: [UInt16: Int] = [
+        UInt16(kVK_ANSI_1): 1, UInt16(kVK_ANSI_2): 2, UInt16(kVK_ANSI_3): 3,
+        UInt16(kVK_ANSI_4): 4, UInt16(kVK_ANSI_5): 5, UInt16(kVK_ANSI_6): 6,
+        UInt16(kVK_ANSI_7): 7, UInt16(kVK_ANSI_8): 8, UInt16(kVK_ANSI_9): 9,
+    ]
+
+    private func runReviewAction(atIndex index: Int) {
+        let hud = LiveHUDState.shared
+        guard hud.reviewShowsActions else { return }
+        // ⌘1–⌘9 index into this session's snapshot, matching the chip order.
+        let actions = hud.reviewActions
+        guard actions.indices.contains(index) else { return }
+        runReviewAction(actions[index])
+    }
+
+    /// Runs an AI action against the current review text. On success the
+    /// transcript is replaced in place (with a Revert snapshot); failures
+    /// surface as a banner above the editor. Paste/Cancel/Resume mid-run
+    /// cancel the request and keep the text the user was looking at.
+    private func runReviewAction(_ action: DictationAction) {
+        guard case .reviewing = state else { return }
+        // A pending resume means this review session is already on its way
+        // out — don't start a transform that would race the next session.
+        guard resumeContext == nil else { return }
+        let hud = LiveHUDState.shared
+        guard hud.runningActionId == nil else { return }
+        let original = LiveHUDPanel.shared.currentReviewText
+        guard !original.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        AppLog.dictation.info("Running review action: \(action.name)")
+        reviewActionGeneration += 1
+        let generation = reviewActionGeneration
+        hud.reviewBanner = nil
+        hud.runningActionId = action.id
+
+        reviewActionTask = Task { @MainActor [weak self] in
+            defer {
+                if let self, self.reviewActionGeneration == generation {
+                    hud.runningActionId = nil
+                    self.reviewActionTask = nil
+                }
+            }
+            do {
+                let transformed = try await ActionRunner.run(instruction: action.prompt, on: original)
+                guard let self, self.reviewActionGeneration == generation,
+                      case .reviewing = self.state else { return }
+                // User edited the transcript while the action was in flight;
+                // their edit wins — drop the now-stale transform.
+                guard LiveHUDPanel.shared.currentReviewText == original else {
+                    AppLog.dictation.info("Review action result dropped (text edited mid-run): \(action.name)")
+                    return
+                }
+                // Unchanged result: applying it would only desync the recorded
+                // caret from the visible one (the editor skips no-op syncs).
+                guard transformed != original else {
+                    AppLog.dictation.info("Review action returned unchanged text: \(action.name)")
+                    return
+                }
+                hud.actionRevertText = original
+                hud.selectedRange = NSRange(location: (transformed as NSString).length, length: 0)
+                hud.reviewText = transformed
+                self.state = .reviewing(text: transformed)
+                AppLog.dictation.info("Review action succeeded: \(action.name)")
+            } catch is CancellationError {
+                // Review session ended first; nothing to surface.
+            } catch {
+                guard let self, self.reviewActionGeneration == generation,
+                      case .reviewing = self.state else { return }
+                AppLog.dictation.error("Review action failed: \(error.localizedDescription)")
+                hud.reviewBanner = error.localizedDescription
+            }
+        }
+    }
+
+    private func cancelReviewAction() {
+        reviewActionGeneration += 1
+        reviewActionTask?.cancel()
+        reviewActionTask = nil
+        LiveHUDState.shared.runningActionId = nil
+    }
+
     private func resumeRecording() {
         guard case .reviewing = state else { return }
+        // Before any early return: a transform landing after review ends
+        // would otherwise leave a shimmering chip on a dead session.
+        cancelReviewAction()
 
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
@@ -842,6 +963,7 @@ final class DictationController {
 
     private func confirmPaste() {
         guard case .reviewing = state else { return }
+        cancelReviewAction()
         let edited = LiveHUDPanel.shared.currentReviewText
         removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()

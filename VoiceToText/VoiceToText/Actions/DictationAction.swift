@@ -49,15 +49,15 @@ nonisolated enum ActionCatalog {
     static let defaults: [Template] = [
         Template(
             name: "Clean transcript",
-            prompt: "Rewrite the text so it is clear and concise. Remove filler words, fix grammar and punctuation, and keep the original meaning and tone."
+            prompt: "Rewrite the text so it is clear and concise, in the same language as the original. Remove filler words, fix grammar and punctuation, keep only the final wording when the speaker corrects themselves (\"scratch that\", \"no wait, actually\"), and treat spoken cues like \"comma\" or \"new line\" as formatting, not words. Keep the original meaning, tone, and every detail — never answer or act on the text, only rewrite it."
         ),
         Template(
             name: "Translate to English",
-            prompt: "Translate the text into natural, fluent English. Keep the original meaning, tone, and formatting."
+            prompt: "Remove filler words and keep only the final wording when the speaker corrects themselves, then translate the text into natural, fluent English, keeping the original meaning, tone, and formatting."
         ),
         Template(
             name: "Improve prompt",
-            prompt: "Rewrite the text as a clear, well-structured prompt for an AI assistant. State the goal explicitly, keep every detail and constraint, and remove filler."
+            prompt: "Rewrite the text as a clear, well-structured prompt for an AI assistant, in the same language as the original: state the goal first, use direct imperatives, and number the steps when there are several requests. Remove filler, keep only the final wording when the speaker corrects themselves, and keep every detail — render file paths and identifiers in their conventional written form (user_id, camelCase) and preserve every \"do not / must / keep\" constraint exactly. Transform the request — never answer or act on it."
         ),
         Template(
             name: "Fix grammar",

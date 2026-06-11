@@ -682,7 +682,7 @@ private struct ReviewActionsBar: View {
 
                 if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     ReviewActionChip(
-                        title: "Revert",
+                        title: "Undo",
                         systemImage: "arrow.uturn.backward",
                         hint: nil,
                         isRunning: false,

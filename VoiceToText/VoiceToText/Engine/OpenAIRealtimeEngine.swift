@@ -43,6 +43,20 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     private var finishing = false
     private var finishSignaled = false
 
+    /// Committed audio buffers (auto-VAD or manual) whose transcripts have
+    /// not arrived yet. One-shot buffered sessions feed audio faster than
+    /// realtime, so at finish the server may still owe every transcript even
+    /// though `currentPartial` is empty — the buffered path drains this count
+    /// instead of trusting the live path's "nothing pending" shortcut.
+    private var pendingTranscripts = 0
+    /// Set by the buffered `transcribe` so `finishStream` always commits the
+    /// trailing buffer and waits for `pendingTranscripts`, rather than
+    /// returning immediately (and empty) when no partial has shown up yet.
+    private var commitOnFinish = false
+    /// Set when the receive loop exits — no more events can arrive, so any
+    /// finish wait should stop instead of running out its cap.
+    private var streamClosed = false
+
     init(modelId: String, inputSampleRate: Double = AudioConfig.targetSampleRate) {
         self.modelId = modelId
         let config = URLSessionConfiguration.default
@@ -87,6 +101,9 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         lastError = nil
         finishing = false
         finishSignaled = false
+        pendingTranscripts = 0
+        commitOnFinish = false
+        streamClosed = false
         converter = nil
         self.onLiveText = onLiveText
 
@@ -127,10 +144,26 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         audioContinuation?.finish()
         await senderTask?.value
 
-        // Server VAD auto-commits each utterance. If an utterance is still
-        // in-progress at stop, nudge a commit and wait briefly for its final
-        // transcript; if nothing is pending, everything is already committed.
-        if !currentPartial.isEmpty {
+        if commitOnFinish {
+            // One-shot buffered session: the bulk feed outruns the server, so
+            // every transcript may still be in flight even with no partial in
+            // sight. Commit the trailing buffer and wait for the pending count
+            // to drain — after a settle window that lets the commit's own
+            // `committed` event arrive — bailing early if the socket dies.
+            finishing = true
+            finishSignaled = false
+            await sendCommit()
+            var waitedMs = 0
+            while waitedMs < Self.bulkFinishCapMs, !streamClosed,
+                  waitedMs < Self.bulkCommitSettleMs || pendingTranscripts > 0 {
+                try? await Task.sleep(for: .milliseconds(Self.finishPollMs))
+                waitedMs += Self.finishPollMs
+            }
+        } else if !currentPartial.isEmpty {
+            // Live session: server VAD has been auto-committing utterances as
+            // the user spoke, so at most the trailing one is pending. Nudge a
+            // commit and wait briefly for its final transcript; if nothing is
+            // pending, everything is already committed.
             finishing = true
             finishSignaled = false
             await sendCommit()
@@ -162,6 +195,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         progress: TranscribeProgress?
     ) async throws -> String {
         try await startStream(contextPrompt: contextPrompt) { _ in }
+        commitOnFinish = true
         // ~200 ms per chunk at the input rate.
         let chunkSize = max(1, Int(inputFormat.sampleRate) / 5)
         var index = 0
@@ -243,6 +277,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
                 break
             }
         }
+        streamClosed = true
         signalFinishIfNeeded()
     }
 
@@ -260,19 +295,25 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
                 currentPartial += delta
                 emitLiveText()
             }
+        case "input_audio_buffer.committed":
+            pendingTranscripts += 1
         case "conversation.item.input_audio_transcription.completed":
             if let transcript = obj["transcript"] as? String, !transcript.isEmpty {
                 committed.append(transcript)
             }
             currentPartial = ""
+            pendingTranscripts = max(0, pendingTranscripts - 1)
             emitLiveText()
             signalFinishIfNeeded()
         case "error", "conversation.item.input_audio_transcription.failed":
             let err = (obj["error"] as? [String: Any])?["message"] as? String ?? type
             lastError = err
+            if type == "conversation.item.input_audio_transcription.failed" {
+                pendingTranscripts = max(0, pendingTranscripts - 1)
+            }
             AppLog.dictation.error("OpenAI realtime error: \(err)")
         default:
-            break // speech_started/stopped, committed, item.created, etc.
+            break // speech_started/stopped, item.created, etc.
         }
     }
 
@@ -302,6 +343,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         task = nil
         onLiveText = nil
         finishing = false
+        commitOnFinish = false
     }
 
     // MARK: - Resampling + encoding
@@ -353,4 +395,9 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     private static let finishGraceMs = 2_000
     private static let finishPollMs = 50
+    /// Buffered sessions: minimum wait so the manual commit's `committed`
+    /// event can arrive before `pendingTranscripts == 0` is trusted.
+    private static let bulkCommitSettleMs = 1_000
+    /// Buffered sessions: hard cap on waiting for in-flight transcripts.
+    private static let bulkFinishCapMs = 15_000
 }

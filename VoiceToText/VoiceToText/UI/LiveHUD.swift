@@ -189,6 +189,7 @@ final class LiveHUDPanel {
         onPaste: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void,
         onResume: @escaping @MainActor () -> Void,
+        onRetry: (@MainActor () -> Void)? = nil,
         onRunAction: (@MainActor (DictationAction) -> Void)? = nil
     ) {
         recordingPanel?.orderOut(nil)
@@ -215,7 +216,8 @@ final class LiveHUDPanel {
         state.onPaste = onPaste
         state.onCancel = onCancel
         state.onResume = onResume
-        state.onRetry = nil
+        // Retry on the failure banner: re-runs a failed Resume take's audio.
+        state.onRetry = onRetry
         state.onRunAction = onRunAction
 
         let p = ensureReviewPanel()
@@ -637,7 +639,7 @@ private struct ReviewView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let banner = state.reviewBanner {
-                ReviewBanner(message: banner)
+                ReviewBanner(message: banner, onRetry: state.onRetry)
             }
 
             ReviewTextEditor(text: $state.reviewText, state: state)
@@ -908,6 +910,7 @@ private struct FailedView: View {
 
 private struct ReviewBanner: View {
     let message: String
+    var onRetry: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -920,6 +923,23 @@ private struct ReviewBanner: View {
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
+            if let onRetry {
+                Button(action: onRetry) {
+                    HStack(spacing: 5) {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 10, weight: .semibold))
+                        Text("Retry")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(Color.orange.opacity(0.28)))
+                    .overlay(Capsule().strokeBorder(Color.orange.opacity(0.5)))
+                }
+                .buttonStyle(.plain)
+                .help("Retry transcribing the last recording")
+            }
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)

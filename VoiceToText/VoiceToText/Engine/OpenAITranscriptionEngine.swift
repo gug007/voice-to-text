@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 nonisolated enum OpenAIEndpoint {
     static let transcriptions = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
@@ -21,7 +22,9 @@ enum OpenAIConnectionTest {
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     let modelId: String
 
-    private let session: URLSession
+    /// Replaced wholesale when a request dies on a stale pooled connection
+    /// (see `send`); otherwise lives for the engine's lifetime.
+    private var session: URLSession
     private let sampleRate: Int
 
     /// Tail of the prior chunk's transcript passed as `prompt` to the next
@@ -32,12 +35,17 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     init(modelId: String, sampleRate: Int = 16_000) {
         self.modelId = modelId
         self.sampleRate = sampleRate
+        self.session = Self.makeSession()
+    }
+
+    private nonisolated static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.default
-        // 240 s per chunk covers whisper-1's 90–180 s processing of a 10-min
-        // chunk; the resource budget covers a full chunked job.
+        // Idle-timeout ceiling: each chunk request overrides this with a
+        // value scaled to its audio length (see `requestTimeout`); the
+        // resource budget covers a full chunked job.
         config.timeoutIntervalForRequest = 240
         config.timeoutIntervalForResource = 1800
-        self.session = URLSession(configuration: config)
+        return URLSession(configuration: config)
     }
 
     nonisolated var isReady: Bool {
@@ -97,6 +105,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let boundary = "Boundary-\(UUID().uuidString)"
         var request = Self.authorizedRequest(url: OpenAIEndpoint.transcriptions, apiKey: apiKey)
         request.httpMethod = "POST"
+        request.timeoutInterval = Self.requestTimeout(
+            forAudioSeconds: Double(samples.count) / Double(sampleRate)
+        )
         request.setValue(
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
@@ -115,7 +126,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await session.data(for: request)
+            (data, response) = try await send(request)
         } catch {
             throw TranscriptionEngineError.transcriptionFailed(
                 "Network error: \(error.localizedDescription)"
@@ -137,6 +148,36 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         } catch {
             throw TranscriptionEngineError.transcriptionFailed("Could not parse OpenAI response")
         }
+    }
+
+    /// One transparent retry for transport errors that typically mean the
+    /// pooled keep-alive connection died while the app sat idle between takes
+    /// (NAT/VPN mappings expire silently, and URLSession won't re-send a POST
+    /// on its own). The dead socket can still sit in the session's connection
+    /// pool — there's no API to flush it, and HTTP/2 would happily multiplex
+    /// the retry onto the same corpse — so the session itself is replaced to
+    /// guarantee the retry rides a fresh connection. All other failures
+    /// propagate immediately.
+    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch let error as URLError
+            where error.code == .networkConnectionLost || error.code == .timedOut {
+            AppLog.engine.warning(
+                "OpenAI transcription request failed (URLError \(error.code.rawValue)); retrying on a fresh connection"
+            )
+            session.invalidateAndCancel()
+            session = Self.makeSession()
+            return try await session.data(for: request)
+        }
+    }
+
+    /// Idle timeout for a single chunk request. Whisper-1 can take 90–180 s
+    /// to process a full 10-minute chunk, but a short dictation take should
+    /// fail (and offer Retry) quickly instead of hanging for that worst case
+    /// — so the allowance scales with the chunk's audio length.
+    private nonisolated static func requestTimeout(forAudioSeconds seconds: Double) -> TimeInterval {
+        min(240, max(60, 45 + seconds))
     }
 
     private nonisolated static func tail(of text: String) -> String {

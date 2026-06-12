@@ -57,8 +57,10 @@ final class DictationController {
     private var resumeContext: ResumeContext?
     /// Audio kept around after a recoverable transcription failure so the
     /// user's Retry button can re-run the pipeline on the same samples
-    /// (e.g. after a network blip). Cleared on success, dismissal, or when
-    /// a new recording starts.
+    /// (e.g. after a network blip). Backs both the failure HUD's Retry and
+    /// the review banner's Retry after a failed Resume take. Cleared on
+    /// success, dismissal, paste, review cancel, or when a new recording
+    /// starts.
     private var lastFailedSamples: [Float]?
 
     /// In-flight AI action transform on the review text. Cancelled whenever
@@ -287,6 +289,7 @@ final class DictationController {
         AppLog.dictation.info("Review cancelled")
         cancelReviewAction()
         removeReviewEscMonitor()
+        lastFailedSamples = nil
         LiveHUDPanel.shared.hide()
         state = .idle
     }
@@ -682,6 +685,26 @@ final class DictationController {
         Task { await runTranscriptionPipeline(samples: samples) }
     }
 
+    /// Retry for a failed Resume take: the review HUD is back up showing the
+    /// prior text with a failure banner, and the failed take's audio sits in
+    /// `lastFailedSamples`. Rebuilds the splice context from the *current*
+    /// text and caret — the user may have edited while the banner was showing
+    /// — then re-runs the pipeline on the stashed samples, so on success the
+    /// take lands at the caret exactly like a successful Resume would have.
+    private func retryFailedResumeTranscription() {
+        guard case .reviewing = state, let samples = lastFailedSamples else { return }
+        AppLog.dictation.info("Retrying failed resume transcription on \(samples.count) cached samples")
+        cancelReviewAction()
+        lastFailedSamples = nil
+        resumeContext = ResumeContext(
+            fullText: LiveHUDPanel.shared.currentReviewText,
+            cursorLocation: LiveHUDPanel.shared.currentCursorLocation
+        )
+        removeReviewEscMonitor()
+        enterTranscribing()
+        Task { await runTranscriptionPipeline(samples: samples) }
+    }
+
     /// Runs VAD + transcription + post-processing on the given audio.
     /// On any recoverable failure, surfaces the error through the failure
     /// HUD with Retry; on success, hands off to the review/deliver flow.
@@ -743,7 +766,7 @@ final class DictationController {
         } catch {
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
             enterFailureHUD(
-                message: "Transcription failed: \(error.localizedDescription)",
+                message: Self.transcriptionFailureMessage(for: error),
                 samples: samples,
                 canRetry: true
             )
@@ -776,27 +799,43 @@ final class DictationController {
         }
     }
 
+    /// Engine errors already read as complete sentences ("Transcription
+    /// failed: …", "Model load failed: …"); only foreign errors need the
+    /// prefix added for context.
+    private static func transcriptionFailureMessage(for error: Error) -> String {
+        if error is TranscriptionEngineError { return error.localizedDescription }
+        return "Transcription failed: \(error.localizedDescription)"
+    }
+
     /// Single entry point for transcription failures. Surfaces the error
     /// visually instead of silently hiding the HUD. When a Resume was in
-    /// flight, restores the prior review text with the message as a banner;
-    /// otherwise shows the failure HUD with optional Retry (offered only
-    /// when re-running the same audio could plausibly succeed).
+    /// flight, restores the prior review text with the message as a banner —
+    /// keeping the failed take's audio so the banner can offer Retry;
+    /// otherwise shows the failure HUD with optional Retry. Retry is offered
+    /// only when re-running the same audio could plausibly succeed.
     private func enterFailureHUD(
         message: String,
         samples: [Float]? = nil,
         canRetry: Bool = false
     ) {
+        let retryAvailable = canRetry && samples != nil
+
         if let resume = resumeContext {
             resumeContext = nil
+            lastFailedSamples = retryAvailable ? samples : nil
+            var bannerRetry: (@MainActor () -> Void)?
+            if retryAvailable {
+                bannerRetry = { [weak self] in self?.retryFailedResumeTranscription() }
+            }
             enterReview(
                 text: resume.fullText,
                 cursorLocation: resume.cursorLocation,
-                banner: message
+                banner: message,
+                bannerRetry: bannerRetry
             )
             return
         }
 
-        let retryAvailable = canRetry && samples != nil
         lastFailedSamples = retryAvailable ? samples : nil
         state = .error(message)
 
@@ -814,7 +853,8 @@ final class DictationController {
     private func enterReview(
         text: String,
         cursorLocation: Int? = nil,
-        banner: String? = nil
+        banner: String? = nil,
+        bannerRetry: (@MainActor () -> Void)? = nil
     ) {
         // Invalidate any action that slipped in during a previous session's
         // exit window (e.g. ⌘R then ⌘1 in quick succession) so a stale
@@ -828,6 +868,7 @@ final class DictationController {
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() },
             onResume: { [weak self] in self?.resumeRecording() },
+            onRetry: bannerRetry,
             onRunAction: { [weak self] action in self?.runReviewAction(action) }
         )
         installReviewEscMonitor()
@@ -871,6 +912,11 @@ final class DictationController {
         reviewActionGeneration += 1
         let generation = reviewActionGeneration
         hud.reviewBanner = nil
+        // Running an action dismisses a failed take's banner for good: drop
+        // the retry affordance and its audio so an action-failure banner
+        // can't resurrect a Retry button wired to the stale dictation take.
+        hud.onRetry = nil
+        lastFailedSamples = nil
         hud.runningActionId = action.id
 
         reviewActionTask = Task { @MainActor [weak self] in
@@ -964,6 +1010,7 @@ final class DictationController {
     private func confirmPaste() {
         guard case .reviewing = state else { return }
         cancelReviewAction()
+        lastFailedSamples = nil
         let edited = LiveHUDPanel.shared.currentReviewText
         removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()

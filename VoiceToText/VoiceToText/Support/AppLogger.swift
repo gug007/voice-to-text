@@ -1,7 +1,7 @@
 import Foundation
 import OSLog
 
-enum AppLog {
+nonisolated enum AppLog {
     private static let subsystem = "voice-to-text-ai.VoiceToText"
 
     static let app = Logger(subsystem: subsystem, category: "App")

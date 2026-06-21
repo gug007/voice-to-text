@@ -47,6 +47,16 @@ final class HotkeyManager {
 
     private init() {}
 
+    /// Liveness, not just "did we register once": the standalone-modifier event
+    /// tap can be invalidated by the OS without delivering a `.tapDisabled*`
+    /// event, leaving `isRegistered` stuck true over a dead port. The Carbon
+    /// hotkey can't die this way, so a nil tap with `isRegistered` reads healthy.
+    var isHealthy: Bool {
+        guard isRegistered else { return false }
+        guard let modifierEventTap else { return true }
+        return CFMachPortIsValid(modifierEventTap) && CGEvent.tapIsEnabled(tap: modifierEventTap)
+    }
+
     func register(binding: HotkeyBinding, handler: @escaping Handler) {
         unregister()
         registrationGeneration &+= 1

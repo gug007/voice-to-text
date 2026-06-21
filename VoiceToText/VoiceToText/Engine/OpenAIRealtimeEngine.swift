@@ -96,6 +96,10 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             throw TranscriptionEngineError.notReady
         }
 
+        // Tear down any prior session first so a reused actor never orphans its
+        // old socket / receive + sender tasks.
+        teardown()
+
         committed = []
         currentPartial = ""
         lastError = nil

@@ -12,6 +12,11 @@ final class AudioRecorder: @unchecked Sendable {
     private(set) var isRecording = false
     private var preprocessor = AudioPreprocessor()
     private var configChangeObserver: NSObjectProtocol?
+    /// Throttles HUD level updates to ~display cadence. The input tap fires at
+    /// the hardware rate (~47/sec at 48 kHz), and each emit drives a full
+    /// waveform re-render on the main actor — far more often than the eye needs.
+    private var lastLevelEmitNs: UInt64 = 0
+    private static let minLevelIntervalNs: UInt64 = 33_000_000  // ~30 Hz
 
     /// Called on the main actor if the audio engine's input configuration changes
     /// mid-recording (e.g. USB mic unplugged). Recording has already been stopped
@@ -171,8 +176,20 @@ final class AudioRecorder: @unchecked Sendable {
 
         // Measure loudness on the raw signal — the preprocessor's AGC slams
         // quiet audio toward full scale, which would make the HUD ribbon read
-        // loud even when the user isn't talking.
-        let rawLevel = onLevel != nil ? Self.perceptualLevel(samples) : 0
+        // loud even when the user isn't talking. Throttled to ~30 Hz: skipped
+        // buffers don't even pay for the RMS pass.
+        let levelToEmit: Double?
+        if onLevel != nil {
+            let nowNs = DispatchTime.now().uptimeNanoseconds
+            if nowNs &- lastLevelEmitNs >= Self.minLevelIntervalNs {
+                lastLevelEmitNs = nowNs
+                levelToEmit = Self.perceptualLevel(samples)
+            } else {
+                levelToEmit = nil
+            }
+        } else {
+            levelToEmit = nil
+        }
 
         if preprocessingEnabled {
             preprocessor.process(&samples)
@@ -184,8 +201,8 @@ final class AudioRecorder: @unchecked Sendable {
         // order, on this audio thread (the engine buffers and sends in order).
         onAudioChunk?(samples)
 
-        if let onLevel {
-            Task { @MainActor in onLevel(rawLevel) }
+        if let levelToEmit, let onLevel {
+            Task { @MainActor in onLevel(levelToEmit) }
         }
     }
 

@@ -44,6 +44,24 @@ final class DictationController {
     private var recordStart: Date?
     private var elapsedTask: Task<Void, Never>?
     private var transcribingElapsedTask: Task<Void, Never>?
+    /// Backstop that forces recovery if the machine wedges in `.transcribing`
+    /// (a CoreML/VAD inference or network read that never returns). Without it
+    /// the hotkey policy maps every press to `.none` and only relaunch recovers.
+    private var transcribingWatchdog: Task<Void, Never>?
+    /// Bumped on each entry into `.transcribing` and on watchdog recovery so a
+    /// late-returning pipeline can't clobber a newer state after the watchdog
+    /// (or a newer run) has already moved on.
+    @ObservationIgnored
+    private var transcriptionRunID: UInt64 = 0
+    /// Audio of the transcription currently in flight, kept so a watchdog
+    /// recovery can preserve it and offer Retry instead of silently dropping a
+    /// possibly-valid recording. Overwritten on each run.
+    @ObservationIgnored
+    private var inFlightTranscriptionSamples: [Float]?
+    /// Generous backstop: local engines emit no transcribe progress, so this
+    /// can't reset on liveness. Sized well beyond any realistic transcription so
+    /// it only catches a genuine wedge; a false fire still preserves the audio.
+    private static let transcribingWatchdogTimeout: Duration = .seconds(600)
     private var reviewEscMonitor: Any?
     private var failureEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
@@ -138,10 +156,30 @@ final class DictationController {
         HotkeyStore.shared.onChange = { [weak self] in
             Task { @MainActor in self?.registerCurrentBinding() }
         }
+        installHotkeyHealthObservers()
+    }
+
+    /// Headless recovery for the standalone-modifier event tap, which the OS can
+    /// silently invalidate (sleep/wake, fast-user-switch, Input-Monitoring/TCC
+    /// change) without `retryHotkeyRegistrationIfNeeded`'s window-bound callers
+    /// ever firing. Re-checks tap liveness on the events that accompany those
+    /// transitions. No-op for the default Carbon hotkey, which can't die this way.
+    private func installHotkeyHealthObservers() {
+        let center = NSWorkspace.shared.notificationCenter
+        let names: [NSNotification.Name] = [
+            NSWorkspace.didWakeNotification,
+            NSWorkspace.sessionDidBecomeActiveNotification,
+            NSWorkspace.screensDidWakeNotification,
+        ]
+        for name in names {
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.retryHotkeyRegistrationIfNeeded() }
+            }
+        }
     }
 
     func retryHotkeyRegistrationIfNeeded() {
-        guard !HotkeyManager.shared.isRegistered else { return }
+        guard !HotkeyManager.shared.isHealthy else { return }
         registerCurrentBinding()
     }
 
@@ -587,6 +625,7 @@ final class DictationController {
             AppLog.dictation.info("startRecording: recording started")
         } catch {
             recordingStartGate.finish(startID)
+            cancelStreamingSession()
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             state = .error("Could not start recording: \(error.localizedDescription)")
         }
@@ -614,9 +653,39 @@ final class DictationController {
         // again on its normal path. Skipping the duplicate keeps the elapsed
         // ticker from resetting to 0 mid-retry.
         guard state != .transcribing else { return }
+        transcriptionRunID &+= 1
         state = .transcribing
         LiveHUDPanel.shared.showTranscribing()
         startTranscribingElapsedTicker(from: Date())
+        armTranscribingWatchdog(runID: transcriptionRunID)
+    }
+
+    private func armTranscribingWatchdog(runID: UInt64) {
+        transcribingWatchdog?.cancel()
+        transcribingWatchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.transcribingWatchdogTimeout)
+            guard let self, !Task.isCancelled,
+                  self.state == .transcribing,
+                  self.transcriptionRunID == runID else { return }
+            AppLog.dictation.error("Transcription watchdog fired; forcing recovery")
+            self.recoverFromStuckTranscribing()
+        }
+    }
+
+    /// Forces the machine out of a wedged `.transcribing` so the hotkey works
+    /// again. Fences the in-flight pipeline (bumping the run ID), tears down any
+    /// streaming session, and surfaces a recoverable failure (which lands in
+    /// `.error`/`.reviewing` — both re-arm the hotkey per the policy).
+    private func recoverFromStuckTranscribing() {
+        transcriptionRunID &+= 1
+        stopTranscribingElapsedTicker()
+        cancelStreamingSession()
+        let samples = inFlightTranscriptionSamples
+        enterFailureHUD(
+            message: "Transcription is taking too long. Try again.",
+            samples: samples,
+            canRetry: samples != nil
+        )
     }
 
     private func startTranscribingElapsedTicker(from start: Date) {
@@ -633,6 +702,8 @@ final class DictationController {
     private func stopTranscribingElapsedTicker() {
         transcribingElapsedTask?.cancel()
         transcribingElapsedTask = nil
+        transcribingWatchdog?.cancel()
+        transcribingWatchdog = nil
     }
 
     private func handleAudioConfigurationChange() {
@@ -716,9 +787,12 @@ final class DictationController {
         }
 
         enterTranscribing()
+        let runID = transcriptionRunID
+        inFlightTranscriptionSamples = samples
         defer { stopTranscribingElapsedTicker() }
 
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
+        guard runID == transcriptionRunID else { return }
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
             cancelStreamingSession()
@@ -764,6 +838,7 @@ final class DictationController {
         do {
             rawText = try await produce()
         } catch {
+            guard runID == transcriptionRunID else { return }
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")
             enterFailureHUD(
                 message: Self.transcriptionFailureMessage(for: error),
@@ -772,6 +847,7 @@ final class DictationController {
             )
             return
         }
+        guard runID == transcriptionRunID else { return }
 
         let processed = TranscriptPostProcessor.process(rawText)
         if processed.isEmpty {

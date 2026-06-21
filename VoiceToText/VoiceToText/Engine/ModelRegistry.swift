@@ -219,6 +219,12 @@ final class ModelRegistry {
     @ObservationIgnored
     private var preparationGenerations: [String: UInt64] = [:]
 
+    /// `prepare()` (HuggingFace download, CoreML compile) has no internal
+    /// timeout, so a stalled network read parks the caller forever. Treat a
+    /// preparation that makes no progress for this long as stuck.
+    private static let prepareStallTimeoutMs = 120_000
+    private static let prepareStallPollMs = 1_000
+
     private init() {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             ?? "parakeet-tdt-v3"
@@ -320,7 +326,10 @@ final class ModelRegistry {
         }
 
         if let existingTask = preparationTasks[id] {
-            return await existingTask.value
+            let generation = preparationGenerations[id] ?? 0
+            let engine = await awaitPreparationOrStall(existingTask, id: id)
+            if engine == nil { evictStalledPreparation(id: id, generation: generation) }
+            return engine
         }
 
         let generation = nextPreparationGeneration(for: id)
@@ -350,11 +359,94 @@ final class ModelRegistry {
             }
         }
         preparationTasks[id] = task
-        let prepared = await task.value
+        let prepared = await awaitPreparationOrStall(task, id: id)
         if isCurrentPreparation(id: id, generation: generation) {
             preparationTasks[id] = nil
         }
+        if prepared == nil { evictStalledPreparation(id: id, generation: generation) }
         return prepared
+    }
+
+    /// Awaits an in-flight preparation but gives up if it makes no progress for
+    /// `prepareStallTimeoutMs`. Returns the engine on success, or nil if the
+    /// wait timed out — the underlying task is cancelled (best-effort) and left
+    /// to be fenced by `evictStalledPreparation`. This is what keeps a stalled
+    /// model download from parking the dictation state machine in `.preparing`
+    /// (and, via the dedup above, every later attempt with it) until relaunch.
+    private func awaitPreparationOrStall(
+        _ task: Task<TranscriptionEngine?, Never>,
+        id: String
+    ) async -> TranscriptionEngine? {
+        let gate = TimeoutGate()
+        return await withCheckedContinuation { (continuation: CheckedContinuation<TranscriptionEngine?, Never>) in
+            Task { @MainActor in
+                let value = await task.value
+                if gate.resolve() { continuation.resume(returning: value) }
+            }
+            Task { @MainActor in
+                var lastFraction = -1.0
+                var stalledMs = 0
+                while stalledMs < Self.prepareStallTimeoutMs {
+                    try? await Task.sleep(for: .milliseconds(Self.prepareStallPollMs))
+                    if gate.isResolved { return }
+                    let readiness = self.readiness[id]
+                    // The load/compile tail (CoreML prewarm) emits no progress
+                    // callbacks and can legitimately run for minutes on a cold
+                    // machine — don't count it as a stall. Only the metered
+                    // download phase has a meaningful "no progress" signal.
+                    if Self.isUnmeteredPrepPhase(readiness) {
+                        stalledMs = 0
+                        continue
+                    }
+                    let fraction = Self.preparingFraction(of: readiness)
+                    if fraction > lastFraction + 0.0001 {
+                        lastFraction = fraction
+                        stalledMs = 0
+                    } else {
+                        stalledMs += Self.prepareStallPollMs
+                    }
+                }
+                if gate.resolve() {
+                    // The prepare may have completed in the same tick we timed
+                    // out — prefer the real engine over a spurious failure.
+                    if let ready = self.engines[id], self.readiness[id]?.isInstalled == true {
+                        continuation.resume(returning: ready)
+                    } else {
+                        task.cancel()
+                        continuation.resume(returning: nil)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Fences a preparation that stalled out: drops the cached task and bumps
+    /// the generation so the still-running task's late writes are ignored, then
+    /// surfaces a recoverable failure. No-op once the task has finished
+    /// (readiness is no longer `.preparing`).
+    private func evictStalledPreparation(id: String, generation: UInt64) {
+        guard isCurrentPreparation(id: id, generation: generation) else { return }
+        guard case .preparing = readiness[id] else { return }
+        preparationTasks[id] = nil
+        readiness[id] = .failed("Preparation stalled. Check your connection and try again.")
+        _ = nextPreparationGeneration(for: id)
+    }
+
+    private static func preparingFraction(of readiness: ModelReadiness?) -> Double {
+        if case .preparing(let fraction, _) = readiness { return fraction }
+        // Any non-preparing state means the task finished; report full progress
+        // so the stall watchdog doesn't fire while the value path resolves.
+        return 1.0
+    }
+
+    /// The download phase reports continuous fraction progress, so a stall there
+    /// is real. The load/compile phase (CoreML prewarm) is a blocking call that
+    /// emits no progress — exempt it from stall detection so a slow cold compile
+    /// isn't mistaken for a hang.
+    private static func isUnmeteredPrepPhase(_ readiness: ModelReadiness?) -> Bool {
+        guard case .preparing(_, let message) = readiness else { return false }
+        let lower = message.lowercased()
+        return lower.contains("load") || lower.contains("compil")
     }
 
     func deleteModel(id: String) {
@@ -398,5 +490,25 @@ final class ModelRegistry {
 
     private func isCurrentPreparation(id: String, generation: UInt64) -> Bool {
         preparationGenerations[id] == generation
+    }
+}
+
+/// One-shot resolution gate so a value/timeout race resumes its continuation
+/// exactly once. Both racers may run on the same actor, but the lock keeps it
+/// correct regardless of scheduling.
+private final class TimeoutGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var resolved = false
+
+    var isResolved: Bool {
+        lock.lock(); defer { lock.unlock() }
+        return resolved
+    }
+
+    func resolve() -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if resolved { return false }
+        resolved = true
+        return true
     }
 }

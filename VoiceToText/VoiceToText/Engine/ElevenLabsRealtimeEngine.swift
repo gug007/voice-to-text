@@ -75,6 +75,10 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
             throw TranscriptionEngineError.notReady
         }
 
+        // Tear down any prior session first so a reused actor never orphans its
+        // old socket / receive + sender tasks.
+        teardown()
+
         // Reset session state in case the actor is reused.
         committedSegments = []
         partial = ""

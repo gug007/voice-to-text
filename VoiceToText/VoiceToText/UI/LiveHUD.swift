@@ -20,6 +20,9 @@ private final class KeyAcceptingPanel: NSPanel {
 
 enum LiveHUDMode {
     case recording
+    /// Recording resumed from a review session: the prior transcript stays on
+    /// screen (read-only) while new speech streams in at the caret.
+    case resumeRecording
     case transcribing
     case reviewing
     case failed
@@ -53,6 +56,13 @@ final class LiveHUDState {
     /// Live transcript shown while recording with a streaming engine — the
     /// committed text plus the in-progress partial. Replaced on each update.
     var partialTranscript: String = ""
+
+    /// While a resumed recording is in flight, the prior review text split at
+    /// the caret. The resume-recording view renders `recordingPrefix` +
+    /// live partial + `recordingSuffix`, so the transcript the user was
+    /// reviewing stays on screen while new words stream in where they'll land.
+    var recordingPrefix: String = ""
+    var recordingSuffix: String = ""
 
     /// Last error surfaced through the failure HUD. Cleared whenever the HUD
     /// transitions away from `.failed`.
@@ -145,6 +155,8 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
         state.showsLiveText = showsLiveText
         state.partialTranscript = ""
+        state.recordingPrefix = ""
+        state.recordingSuffix = ""
         state.failureMessage = ""
         state.failureCanRetry = false
         state.selectedRange = NSRange(location: 0, length: 0)
@@ -162,6 +174,34 @@ final class LiveHUDPanel {
         position(p, size: activeRecordingSize)
         p.orderFrontRegardless()
         AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
+    }
+
+    /// Recording resumed from a review session. Keeps the review panel up (so
+    /// there's no jump) and renders the resume-recording layout: the prior
+    /// transcript, split at the caret, stays visible while new speech streams
+    /// in at the insertion point.
+    func showResumeRecording(prefix: String, suffix: String, showsLiveText: Bool) {
+        recordingPanel?.orderOut(nil)
+
+        state.mode = .resumeRecording
+        state.isRecording = true
+        state.elapsedSeconds = 0
+        state.level = 0
+        state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
+        state.showsLiveText = showsLiveText
+        state.partialTranscript = ""
+        state.recordingPrefix = prefix
+        state.recordingSuffix = suffix
+        state.reviewBanner = nil
+        state.runningActionId = nil
+
+        // Reuse the review panel at its current size so the transcript doesn't
+        // shift when recording starts.
+        let p = ensureReviewPanel()
+        position(p, size: state.reviewShowsActions ? reviewActionsSize : reviewSize)
+        p.orderFrontRegardless()
+        p.makeKeyAndOrderFront(nil)
+        AppLog.hud.info("HUD resume-recording shown at \(String(describing: p.frame))")
     }
 
     /// Reuses the recording panel (same size/position) for a seamless
@@ -302,6 +342,8 @@ final class LiveHUDPanel {
         state.reviewBanner = nil
         state.showsLiveText = false
         state.partialTranscript = ""
+        state.recordingPrefix = ""
+        state.recordingSuffix = ""
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.failureMessage = ""
@@ -405,6 +447,8 @@ struct LiveHUDView: View {
             switch state.mode {
             case .recording:
                 RecordingView(state: state)
+            case .resumeRecording:
+                ResumeRecordingView(state: state)
             case .transcribing:
                 TranscribingView(state: state)
             case .reviewing:
@@ -489,6 +533,109 @@ private struct RecordingView: View {
         case .hold: return "Release to finish · Esc cancels"
         case .toggle: return "Press again to finish · Esc cancels"
         }
+    }
+}
+
+/// Recording resumed from a review session. The transcript the user was
+/// reviewing stays on screen (read-only); for streaming engines the new words
+/// appear in accent color at the caret, while a compact level meter, elapsed
+/// timer, and finish/cancel hint sit underneath.
+private struct ResumeRecordingView: View {
+    @Bindable var state: LiveHUDState
+
+    private static let bottomAnchor = "resume-transcript-end"
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: true) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        transcript
+                            .font(.system(size: 15))
+                            .multilineTextAlignment(.leading)
+                            .frame(maxWidth: .infinity, alignment: .topLeading)
+                        Color.clear.frame(height: 1).id(Self.bottomAnchor)
+                    }
+                }
+                .onChange(of: state.partialTranscript) {
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        proxy.scrollTo(Self.bottomAnchor, anchor: .bottom)
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+
+            HStack(spacing: 12) {
+                RecordingDot()
+                LevelBars(samples: state.levelHistory)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 26)
+                Text(timeString)
+                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.5))
+                    .monospacedDigit()
+            }
+
+            Text(recordingHint)
+                .font(.system(size: 12, weight: .medium))
+                .tracking(0.1)
+                .foregroundStyle(.white.opacity(0.42))
+                .frame(maxWidth: .infinity, alignment: .center)
+        }
+    }
+
+    // Prior transcript at the editor's normal brightness; the in-progress
+    // dictation streams in accent blue at the caret so it's clear where the
+    // new words land. Buffered engines emit no partial, so the prior text
+    // simply stays put until the take is transcribed.
+    private var transcript: Text {
+        let priorColor = Color.white.opacity(0.92)
+        var result = Text(state.recordingPrefix).foregroundColor(priorColor)
+        if !state.partialTranscript.isEmpty {
+            if needsLeadingSpace {
+                result = result + Text(" ")
+            }
+            result = result + Text(state.partialTranscript)
+                .foregroundColor(Color(nsColor: .systemBlue))
+        }
+        result = result + Text(state.recordingSuffix).foregroundColor(priorColor)
+        return result
+    }
+
+    private var needsLeadingSpace: Bool {
+        guard let last = state.recordingPrefix.last, let first = state.partialTranscript.first else {
+            return false
+        }
+        return !last.isWhitespace && !first.isWhitespace
+    }
+
+    private var timeString: String {
+        let total = Int(state.elapsedSeconds)
+        return String(format: "%d:%02d", total / 60, total % 60)
+    }
+
+    private var recordingHint: String {
+        switch HotkeyStore.shared.mode {
+        case .hold: return "Release to finish · Esc cancels"
+        case .toggle: return "Press again to finish · Esc cancels"
+        }
+    }
+}
+
+/// Pulsing red dot marking an active recording.
+private struct RecordingDot: View {
+    @State private var pulsing = false
+
+    var body: some View {
+        Circle()
+            .fill(Color.red)
+            .frame(width: 9, height: 9)
+            .opacity(pulsing ? 1 : 0.35)
+            .onAppear {
+                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
+                    pulsing = true
+                }
+            }
     }
 }
 
@@ -651,11 +798,12 @@ private struct ReviewView: View {
 
             HStack(spacing: 8) {
                 ReviewKeyButton(
-                    title: "Resume",
-                    systemImage: "mic.fill",
-                    hint: "⌘R",
+                    title: "Cancel",
+                    hint: "esc",
                     emphasis: .secondary
-                ) { state.onResume?() }
+                ) { state.onCancel?() }
+
+                Spacer()
 
                 if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     ReviewKeyButton(
@@ -667,13 +815,12 @@ private struct ReviewView: View {
                     .help("Undo last action")
                 }
 
-                Spacer()
-
                 ReviewKeyButton(
-                    title: "Cancel",
-                    hint: "esc",
+                    title: "Resume",
+                    systemImage: "mic.fill",
+                    hint: "⌘R",
                     emphasis: .secondary
-                ) { state.onCancel?() }
+                ) { state.onResume?() }
 
                 ReviewKeyButton(
                     title: "Paste",
@@ -859,6 +1006,17 @@ private struct ReviewTextEditor: NSViewRepresentable {
         func textViewDidChangeSelection(_ notification: Notification) {
             guard let textView = notification.object as? NSTextView else { return }
             parent.state.selectedRange = textView.selectedRange()
+        }
+
+        /// Return pastes; Shift+Return inserts a literal newline.
+        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
+            let shiftHeld = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
+            if shiftHeld {
+                return false // let the text view insert the newline itself
+            }
+            parent.state.onPaste?()
+            return true // swallow the Return so it pastes instead of adding a line
         }
     }
 }

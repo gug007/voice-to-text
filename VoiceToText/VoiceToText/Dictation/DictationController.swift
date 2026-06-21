@@ -613,7 +613,18 @@ final class DictationController {
             recordingStartGate.finish(startID)
             let start = Date()
             recordStart = start
-            LiveHUDPanel.shared.show(showsLiveText: streamingEngine != nil)
+            // Resuming from review: keep the prior transcript on screen and
+            // stream new words in at the caret, instead of the fresh-recording
+            // HUD which clears the screen.
+            if let resume = resumeContext {
+                LiveHUDPanel.shared.showResumeRecording(
+                    prefix: resume.prefix,
+                    suffix: resume.suffix,
+                    showsLiveText: streamingEngine != nil
+                )
+            } else {
+                LiveHUDPanel.shared.show(showsLiveText: streamingEngine != nil)
+            }
             guard installRecordingEscMonitors() else {
                 _ = recorder.stop()
                 cancelStreamingSession()

@@ -62,18 +62,21 @@ final class WindowOpener {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var wasLaunchedAtLogin = false
 
+    private var launchedAt = Date()
+    // A voicetotext:// trigger is a background dictation action: it must never
+    // surface the settings window or steal focus from the app the transcript
+    // will be typed into. We remember when one last arrived so the reopen that
+    // a URL open can generate doesn't pop the UI.
+    private var lastExternalCommandAt = Date.distantPast
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        launchedAt = Date()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
             appleEvent: NSAppleEventManager.shared().currentAppleEvent,
             launchUserInfo: notification.userInfo
         )
         guard Self.wasLaunchedAtLogin else { return }
-        DispatchQueue.main.async {
-            for window in NSApp.windows where window.canBecomeKey {
-                window.orderOut(nil)
-            }
-            NSApp.deactivate()
-        }
+        hideMainWindows()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
@@ -81,6 +84,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        // A reopen fired as a side effect of a voicetotext:// trigger must stay
+        // headless — don't bring up the settings window.
+        if Date().timeIntervalSince(lastExternalCommandAt) < 2 {
+            return true
+        }
         Task { @MainActor in
             WindowOpener.shared.openMain?()
         }
@@ -92,8 +100,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// VoiceToText (NSWorkspace.OpenConfiguration.activates = false, or
     /// `open -g`) so the transcript pastes into their app, which stays frontmost.
     func application(_ application: NSApplication, open urls: [URL]) {
-        for url in urls where url.scheme?.lowercased() == AppURLScheme.scheme {
+        let commandURLs = urls.filter { $0.scheme?.lowercased() == AppURLScheme.scheme }
+        guard !commandURLs.isEmpty else { return }
+        lastExternalCommandAt = Date()
+        // A cold launch triggered by the URL auto-opens the settings window;
+        // hide it so the trigger stays a headless, background action.
+        if Date().timeIntervalSince(launchedAt) < 3 {
+            hideMainWindows()
+        }
+        for url in commandURLs {
             DictationController.shared.handleExternalCommand(DictationController.ExternalCommand(url: url))
+        }
+    }
+
+    private func hideMainWindows() {
+        DispatchQueue.main.async {
+            for window in NSApp.windows where window.canBecomeKey {
+                window.orderOut(nil)
+            }
+            NSApp.deactivate()
         }
     }
 }

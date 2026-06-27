@@ -269,6 +269,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText uses the microphone to capture your voice for local speech-to-text transcription. Audio is processed on-device and never leaves your Mac.";
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -301,6 +302,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText uses the microphone to capture your voice for local speech-to-text transcription. Audio is processed on-device and never leaves your Mac.";
 				LD_RUNPATH_SEARCH_PATHS = (

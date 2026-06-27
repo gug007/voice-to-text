@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	Partial Info.plist. GENERATE_INFOPLIST_FILE stays YES, so Xcode merges the
+	keys it derives from build settings (bundle id, version, NSMicrophoneUsageDescription, …)
+	on top of these. Only put keys here that can't be expressed as INFOPLIST_KEY_* settings.
+
+	CFBundleURLTypes registers the custom "voicetotext://" URL scheme with
+	LaunchServices so other apps can trigger dictation, e.g. `open voicetotext://toggle`.
+	See DictationController.ExternalCommand for the supported commands.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>voice-to-text-ai.VoiceToText</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>voicetotext</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

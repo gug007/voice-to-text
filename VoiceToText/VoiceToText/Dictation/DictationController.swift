@@ -201,6 +201,56 @@ final class DictationController {
         )
     }
 
+    /// Commands accepted from external triggers via the `voicetotext://` URL
+    /// scheme. The URL host selects the command, e.g. `voicetotext://toggle`.
+    /// Unknown or missing commands fall back to `.toggle`.
+    enum ExternalCommand: String, CaseIterable {
+        case toggle
+        case start
+        case stop
+        case cancel
+
+        init(url: URL) {
+            let host = url.host.flatMap { $0.isEmpty ? nil : $0 }
+            let raw = host ?? url.pathComponents.first { $0 != "/" }
+            self = raw.flatMap { ExternalCommand(rawValue: $0.lowercased()) } ?? .toggle
+        }
+    }
+
+    /// Entry point for external triggers (URL scheme). Routes through the same
+    /// state-aware policy the global hotkey uses, so behaviour matches exactly.
+    /// This never activates the app, so the transcript still pastes into the
+    /// frontmost app — i.e. the one whose button was tapped.
+    func handleExternalCommand(_ command: ExternalCommand) {
+        AppLog.dictation.info(
+            "external command \(command.rawValue), current state=\(String(describing: self.state))"
+        )
+        switch command {
+        case .toggle:
+            toggle()
+        case .start:
+            // Start only from a resting state; ignore if already busy.
+            switch state {
+            case .idle, .error:
+                performHotkeyAction(.startRecording)
+            default:
+                break
+            }
+        case .stop:
+            // Stop & transcribe only while actively recording.
+            guard case .recording = state else { return }
+            performHotkeyAction(.stopAndTranscribe)
+        case .cancel:
+            if recordingStartGate.hasActiveStart {
+                cancelPendingRecording()
+                return
+            }
+            performHotkeyAction(
+                DictationHotkeyPolicy.action(mode: .toggle, state: hotkeyState, event: .cancel)
+            )
+        }
+    }
+
     func handleHotkeyEvent(_ event: DictationHotkeyEvent) {
         AppLog.dictation.info("hotkey event \(String(describing: event)), current state=\(String(describing: self.state))")
         let mode = HotkeyStore.shared.mode

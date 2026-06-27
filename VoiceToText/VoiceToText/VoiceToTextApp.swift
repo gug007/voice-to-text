@@ -86,4 +86,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    /// Handle `voicetotext://` URLs opened by other apps so a button elsewhere
+    /// can trigger dictation. Callers should open the URL without activating
+    /// VoiceToText (NSWorkspace.OpenConfiguration.activates = false, or
+    /// `open -g`) so the transcript pastes into their app, which stays frontmost.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        for url in urls where url.scheme?.lowercased() == AppURLScheme.scheme {
+            DictationController.shared.handleExternalCommand(DictationController.ExternalCommand(url: url))
+        }
+    }
 }

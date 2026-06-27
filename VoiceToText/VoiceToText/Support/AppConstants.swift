@@ -5,6 +5,13 @@ enum WindowID {
     static let main = "main"
 }
 
+enum AppURLScheme {
+    /// Custom URL scheme registered in Info.plist (CFBundleURLTypes). Lets other
+    /// apps trigger dictation, e.g. `open voicetotext://toggle`. Commands are
+    /// parsed by DictationController.ExternalCommand.
+    static let scheme = "voicetotext"
+}
+
 enum AudioConfig {
     static let targetSampleRate: Double = 16_000
     // 1024 frames @ 16 kHz = 64 ms — small enough for responsive live updates

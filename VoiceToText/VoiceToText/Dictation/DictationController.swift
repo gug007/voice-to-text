@@ -673,7 +673,11 @@ final class DictationController {
                     showsLiveText: streamingEngine != nil
                 )
             } else {
-                LiveHUDPanel.shared.show(showsLiveText: streamingEngine != nil)
+                LiveHUDPanel.shared.show(
+                    showsLiveText: streamingEngine != nil,
+                    onStop: { [weak self] in Task { await self?.stopAndTranscribe() } },
+                    onCancel: { [weak self] in self?.cancelRecording() }
+                )
             }
             guard installRecordingEscMonitors() else {
                 _ = recorder.stop()

@@ -96,6 +96,7 @@ final class LiveHUDState {
     @ObservationIgnored var selectedRange: NSRange = NSRange(location: 0, length: 0)
     @ObservationIgnored var onPaste: (@MainActor () -> Void)?
     @ObservationIgnored var onCancel: (@MainActor () -> Void)?
+    @ObservationIgnored var onStop: (@MainActor () -> Void)?
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
     @ObservationIgnored var onRetry: (@MainActor () -> Void)?
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
@@ -126,11 +127,11 @@ final class LiveHUDPanel {
     private var reviewPanel: NSPanel?
     private let state = LiveHUDState.shared
 
-    private let recordingSize = NSSize(width: 480, height: 150)
+    private let recordingSize = NSSize(width: 480, height: 168)
     /// Taller recording layout that reserves room for the live transcript
     /// (streaming engines). Used while `state.showsLiveText` is set, including
     /// the recording→transcribing hand-off (which leaves the flag untouched).
-    private let recordingLiveSize = NSSize(width: 480, height: 224)
+    private let recordingLiveSize = NSSize(width: 480, height: 240)
     private var activeRecordingSize: NSSize {
         state.showsLiveText ? recordingLiveSize : recordingSize
     }
@@ -141,7 +142,11 @@ final class LiveHUDPanel {
 
     private init() {}
 
-    func show(showsLiveText: Bool = false) {
+    func show(
+        showsLiveText: Bool = false,
+        onStop: (@MainActor () -> Void)? = nil,
+        onCancel: (@MainActor () -> Void)? = nil
+    ) {
         reviewPanel?.orderOut(nil)
 
         state.mode = .recording
@@ -165,7 +170,8 @@ final class LiveHUDPanel {
         state.runningActionId = nil
         state.actionRevertStack = []
         state.onPaste = nil
-        state.onCancel = nil
+        state.onCancel = onCancel
+        state.onStop = onStop
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
@@ -507,16 +513,25 @@ private struct RecordingView: View {
                 .animation(.easeOut(duration: 0.18), value: state.partialTranscript)
             }
 
-            HStack(spacing: 14) {
+            HStack(spacing: 8) {
                 Text(timeString)
                     .font(.system(size: 13, weight: .regular, design: .monospaced))
                     .foregroundStyle(.white.opacity(0.5))
                     .monospacedDigit()
 
-                Text(recordingHint)
-                    .font(.system(size: 12, weight: .medium))
-                    .tracking(0.1)
-                    .foregroundStyle(.white.opacity(0.42))
+                Spacer()
+
+                ReviewKeyButton(
+                    title: "Cancel",
+                    hint: "esc",
+                    emphasis: .secondary
+                ) { state.onCancel?() }
+
+                ReviewKeyButton(
+                    title: "Finish",
+                    hint: finishHint,
+                    emphasis: .primary
+                ) { state.onStop?() }
             }
         }
     }
@@ -528,10 +543,12 @@ private struct RecordingView: View {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    private var recordingHint: String {
+    // Toggle mode finishes on the same hotkey, so show it; hold mode finishes on
+    // release, which has no key to surface, so the button stands alone there.
+    private var finishHint: String? {
         switch HotkeyStore.shared.mode {
-        case .hold: return "Release to finish · Esc cancels"
-        case .toggle: return "Press again to finish · Esc cancels"
+        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
+        case .hold: return nil
         }
     }
 }

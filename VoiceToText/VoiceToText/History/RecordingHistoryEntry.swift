@@ -27,6 +27,12 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// `.meeting` (long background capture). Optional so indexes written before
     /// meetings existed still decode as dictations.
     let source: Source?
+    /// Whether the user starred this recording. Optional so indexes written
+    /// before favorites existed still decode (absent ⇒ not favorited).
+    let isFavorite: Bool?
+
+    /// Non-optional view of `isFavorite` for call sites.
+    var isFavorited: Bool { isFavorite ?? false }
 
     /// `meeting` is the long mic+system-audio capture (shown to users as
     /// "Conversation"); the rawValue is kept stable for stored indexes.
@@ -59,7 +65,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         sampleRate: Int,
         modelId: String?,
         modelName: String?,
-        source: Source? = nil
+        source: Source? = nil,
+        isFavorite: Bool? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -70,6 +77,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.modelId = modelId
         self.modelName = modelName
         self.source = source
+        self.isFavorite = isFavorite
     }
 }
 

@@ -100,6 +100,7 @@ struct RecordingsList: View {
     let isPlaying: (RecordingHistoryEntry) -> Bool
     let onPlay: (RecordingHistoryEntry) -> Void
     let onDelete: (RecordingHistoryEntry) -> Void
+    let onToggleFavorite: (RecordingHistoryEntry) -> Void
 
     var body: some View {
         InsetCard {
@@ -118,7 +119,8 @@ struct RecordingsList: View {
                         isPlaying: isPlaying(entry),
                         showsTypeBadge: showsTypeBadge,
                         onPlay: { onPlay(entry) },
-                        onDelete: { onDelete(entry) }
+                        onDelete: { onDelete(entry) },
+                        onToggleFavorite: { onToggleFavorite(entry) }
                     )
                 }
             }
@@ -126,7 +128,93 @@ struct RecordingsList: View {
     }
 }
 
+// MARK: - Favorites filter
+
+/// A small star pill that toggles a "favorites only" filter — sits in a section
+/// caption next to the count. Subtle when off, amber-tinted when on.
+struct FavoritesFilterButton: View {
+    @Binding var isOn: Bool
+
+    var body: some View {
+        Button { isOn.toggle() } label: {
+            HStack(spacing: 4) {
+                Image(systemName: isOn ? "star.fill" : "star")
+                    .font(.system(size: 10, weight: .semibold))
+                Text("Favorites")
+                    .font(.system(size: 11, weight: .medium))
+            }
+            .foregroundStyle(isOn ? Color.yellow : Color.secondary)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(isOn ? Color.yellow.opacity(0.16) : Color.primary.opacity(0.06))
+            )
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .help(isOn ? "Show all recordings" : "Show favorites only")
+    }
+}
+
 // MARK: - Capsule buttons
+
+/// A filled capsule split into a primary action and a trailing menu, iOS-style —
+/// one tap target for the common action (Start Recording) and a chevron that
+/// reveals secondary actions (Upload File…). Reads as a single pill: the two
+/// halves share the accent fill, divided by a hairline.
+struct SplitCapsuleButton<MenuContent: View>: View {
+    let title: String
+    var systemImage: String? = nil
+    var tint: Color = .accentColor
+    var isDisabled: Bool = false
+    let action: () -> Void
+    @ViewBuilder var menu: () -> MenuContent
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Button(action: action) {
+                HStack(spacing: 7) {
+                    if let systemImage {
+                        Image(systemName: systemImage)
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    Text(title)
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .padding(.leading, 18)
+                .padding(.trailing, 14)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Rectangle()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 1, height: 20)
+
+            Menu {
+                menu()
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 11, weight: .bold))
+                    .padding(.horizontal, 11)
+                    .padding(.vertical, 10)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.plain)
+            .fixedSize()
+        }
+        .foregroundStyle(.white)
+        .background(Capsule().fill(tint))
+        .clipShape(Capsule())
+        .fixedSize()
+        .disabled(isDisabled)
+        .opacity(isDisabled ? 0.5 : 1)
+    }
+}
 
 /// Filled or tinted capsule button in the iOS style — the primary affordance on
 /// the Conversations record card (Start, Stop & Transcribe, Cancel).

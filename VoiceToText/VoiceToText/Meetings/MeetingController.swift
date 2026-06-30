@@ -15,10 +15,23 @@ final class MeetingController {
         case idle
         case recording
         case transcribing
+        /// Importing an uploaded audio/video file: first decode its audio, then
+        /// transcribe it. The sub-phase is carried in `importStage`.
+        case importing
         case error(String)
     }
 
+    /// Sub-phase of the `.importing` state. Kept out of `State` (and out of the
+    /// `.animation(value: state)` the pane uses) so the frequent extraction
+    /// progress ticks update the progress bar without re-animating the card.
+    enum ImportStage: Equatable {
+        case extracting(Double)
+        case transcribing
+    }
+
     private(set) var state: State = .idle
+    /// Only meaningful while `state == .importing`.
+    private(set) var importStage: ImportStage = .extracting(0)
     /// Wall-clock seconds since recording began (drives the timer in the UI).
     private(set) var elapsed: TimeInterval = 0
     /// Live mic+system level, 0…1, for the recording indicator.
@@ -47,7 +60,7 @@ final class MeetingController {
     var isBusy: Bool {
         if transitioning { return true }
         switch state {
-        case .recording, .transcribing: return true
+        case .recording, .transcribing, .importing: return true
         case .idle, .error: return false
         }
     }
@@ -97,9 +110,11 @@ final class MeetingController {
         transitioning = true
         defer { transitioning = false }
         stopElapsedTicker()
+        resetLevels()
+        // Clear any chunk counts from a prior transcription before showing the
+        // card, so the brief stopCapture teardown can't flash a stale "3/3".
         transcribedChunks = 0
         totalChunks = 0
-        resetLevels()
         state = .transcribing
 
         guard let result = await recorder.stop(), result.duration >= 1.0 else {
@@ -108,11 +123,74 @@ final class MeetingController {
             return
         }
         // The recorder finalized the file at the same working URL.
-        let url = result.url
-        let duration = result.duration
+        let (issue, summary) = await transcribeAndArchive(url: result.url, duration: result.duration)
+        workingURL = nil
+        finish(issue: issue, summary: summary)
+    }
 
-        // Transcribe with the active model; on any failure still keep the audio
-        // (a long recording must not be lost over a transcription hiccup).
+    // MARK: - Import a file
+
+    /// Transcribes an uploaded audio or video file and archives it to History as
+    /// a conversation. Decodes the file's audio into a working WAV first (so a
+    /// video is treated exactly like a recorded conversation), then runs the same
+    /// transcribe-and-save path as `stop()`.
+    func importMedia(url: URL) async {
+        guard !isBusy else { return }
+        transitioning = true
+        defer { transitioning = false }
+        lastSavedSummary = nil
+
+        let working = Self.makeWorkingURL()
+        workingURL = working
+        importStage = .extracting(0)
+        state = .importing
+
+        do {
+            try await AudioFileExtractor.extractToWAV(
+                source: url,
+                destination: working,
+                onProgress: { fraction in
+                    Task { @MainActor [weak self] in
+                        // Ignore a late progress hop that lands after we've moved
+                        // on to the transcribe stage (or finished entirely).
+                        guard let self,
+                              case .importing = self.state,
+                              case .extracting = self.importStage else { return }
+                        self.importStage = .extracting(fraction)
+                    }
+                }
+            )
+        } catch {
+            discardWorkingFile()
+            state = .error(error.localizedDescription)
+            return
+        }
+
+        let duration = Self.wavDuration(at: working)
+        guard duration >= 1.0 else {
+            discardWorkingFile()
+            state = .error("That file was too short to transcribe.")
+            return
+        }
+
+        importStage = .transcribing
+        let (issue, summary) = await transcribeAndArchive(url: working, duration: duration)
+        workingURL = nil
+        finish(issue: issue, summary: summary)
+    }
+
+    // MARK: - Transcribe & archive (shared by stop & import)
+
+    /// Transcribes the WAV at `url` with the active model and files it into
+    /// History as a conversation. Never throws — on any failure the audio is
+    /// still archived (with a placeholder/notice) so a long recording is never
+    /// lost over a transcription hiccup. Returns a user-facing `issue` message
+    /// (nil = clean) and a success `summary`. Drives `transcribedChunks` /
+    /// `totalChunks` as it goes.
+    private func transcribeAndArchive(url: URL, duration: Double) async -> (issue: String?, summary: String?) {
+        transcribedChunks = 0
+        totalChunks = 0
+
         let transcript: String
         let model: ModelDescriptor?
         var issue: String?
@@ -145,11 +223,16 @@ final class MeetingController {
         }
 
         saveToHistory(url: url, transcript: transcript, duration: duration, model: model)
-        workingURL = nil
+        let summary = issue == nil ? "Saved a \(duration.formattedClock) recording to History." : nil
+        return (issue, summary)
+    }
+
+    /// Settles the state machine after a stop or import finishes.
+    private func finish(issue: String?, summary: String?) {
         if let issue {
             state = .error(issue)
         } else {
-            lastSavedSummary = "Saved a \(duration.formattedClock) recording to History."
+            lastSavedSummary = summary
             state = .idle
         }
     }
@@ -162,6 +245,14 @@ final class MeetingController {
             model: model,
             source: .meeting
         )
+    }
+
+    /// Duration of a finalized mono 16-bit WAV from its byte length — avoids
+    /// re-decoding just to learn how long the extracted audio is.
+    private static func wavDuration(at url: URL) -> Double {
+        let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        let sampleBytes = max(0, size - WAVEncoder.headerSize)
+        return Double(sampleBytes / 2) / AudioConfig.targetSampleRate
     }
 
     // MARK: - Cancel / errors

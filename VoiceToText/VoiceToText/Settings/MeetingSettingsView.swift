@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings pane for meeting recording: capture a long conversation (mic +
 /// system audio) in the background, then transcribe it on stop and save it to
@@ -9,10 +10,19 @@ struct MeetingsPane: View {
     @Bindable private var store = RecordingHistoryStore.shared
     @Bindable private var player = HistoryAudioPlayer.shared
     @State private var screenGranted = ScreenCapturePermission.isGranted
+    @State private var favoritesOnly = false
 
     /// Saved conversation recordings, newest first.
     private var conversations: [RecordingHistoryEntry] {
         store.entries.filter { $0.source == .meeting }
+    }
+
+    private var hasFavoriteConversations: Bool { conversations.contains { $0.isFavorited } }
+
+    /// Conversations to show: all, or just favorites when the filter is on. The
+    /// filter self-disables when nothing is favorited.
+    private var visibleConversations: [RecordingHistoryEntry] {
+        (favoritesOnly && hasFavoriteConversations) ? conversations.filter(\.isFavorited) : conversations
     }
 
     var body: some View {
@@ -45,6 +55,11 @@ struct MeetingsPane: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             screenGranted = ScreenCapturePermission.isGranted
         }
+        // Clear the favorites filter once no conversation is favorited, so it
+        // can't sit stranded-on behind a hidden toggle.
+        .onChange(of: hasFavoriteConversations) { _, has in
+            if !has { favoritesOnly = false }
+        }
         // Don't strand a stale error message, or keep a clip playing, when the
         // user navigates away (dismissError is a no-op while busy).
         .onDisappear {
@@ -59,11 +74,13 @@ struct MeetingsPane: View {
     private var conversationsList: some View {
         if !conversations.isEmpty {
             VStack(alignment: .leading, spacing: 8) {
-                GroupCaption(conversations.count == 1
-                             ? "1 recorded conversation"
-                             : "\(conversations.count) recorded conversations")
+                GroupCaption(text: conversationsCaption) {
+                    if hasFavoriteConversations {
+                        FavoritesFilterButton(isOn: $favoritesOnly)
+                    }
+                }
                 RecordingsList(
-                    entries: conversations,
+                    entries: visibleConversations,
                     showsTypeBadge: false,
                     isPlaying: { player.playingID == $0.id },
                     onPlay: { entry in
@@ -72,10 +89,21 @@ struct MeetingsPane: View {
                     onDelete: { entry in
                         if player.playingID == entry.id { player.stop() }
                         store.delete(id: entry.id)
-                    }
+                    },
+                    onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) }
                 )
             }
         }
+    }
+
+    private var conversationsCaption: String {
+        if favoritesOnly && hasFavoriteConversations {
+            let count = visibleConversations.count
+            return count == 1 ? "1 favorite" : "\(count) favorites"
+        }
+        return conversations.count == 1
+            ? "1 recorded conversation"
+            : "\(conversations.count) recorded conversations"
     }
 
     // MARK: - Permission
@@ -117,6 +145,8 @@ struct MeetingsPane: View {
             recordingCard
         case .transcribing:
             transcribingCard
+        case .importing:
+            importingCard
         }
     }
 
@@ -152,16 +182,37 @@ struct MeetingsPane: View {
                     }
                 }
                 Spacer(minLength: 12)
-                CapsuleActionButton(
+                SplitCapsuleButton(
                     title: "Start Recording",
                     systemImage: "record.circle",
                     isDisabled: controller.isBusy
                 ) {
                     Task { await controller.start() }
+                } menu: {
+                    Button {
+                        chooseAndImportFile()
+                    } label: {
+                        Label("Upload File…", systemImage: "square.and.arrow.up")
+                    }
                 }
             }
             .padding(18)
         }
+    }
+
+    /// Lets the user pick an audio or video file, then transcribes it into the
+    /// conversation list. The sandbox is off, so a plain open panel can read the
+    /// chosen file directly.
+    private func chooseAndImportFile() {
+        let panel = NSOpenPanel()
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowedContentTypes = [.audiovisualContent, .audio, .movie]
+        panel.message = "Choose an audio or video file to transcribe."
+        panel.prompt = "Transcribe"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { await controller.importMedia(url: url) }
     }
 
     private var recordingCard: some View {
@@ -234,6 +285,64 @@ struct MeetingsPane: View {
         return "Turning the recording into text."
     }
 
+    // MARK: - Importing an uploaded file
+
+    @ViewBuilder
+    private var importingCard: some View {
+        InsetCard {
+            HStack(spacing: 16) {
+                ProgressView()
+                    .controlSize(.small)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(importTitle)
+                        .font(.system(size: 14, weight: .medium))
+                    Text(importDetail)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                    if case .extracting(let fraction) = controller.importStage {
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 280)
+                            .padding(.top, 2)
+                    }
+                }
+                Spacer()
+                importTrailingLabel
+            }
+            .padding(18)
+        }
+    }
+
+    private var importTitle: String {
+        switch controller.importStage {
+        case .extracting: return "Extracting audio…"
+        case .transcribing: return "Transcribing…"
+        }
+    }
+
+    private var importDetail: String {
+        switch controller.importStage {
+        case .extracting: return "Reading the audio from your file."
+        case .transcribing: return transcribingDetail
+        }
+    }
+
+    @ViewBuilder
+    private var importTrailingLabel: some View {
+        switch controller.importStage {
+        case .extracting(let fraction):
+            Text("\(Int((fraction * 100).rounded()))%")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(.tertiary)
+        case .transcribing:
+            if controller.totalChunks > 1 {
+                Text("\(controller.transcribedChunks)/\(controller.totalChunks)")
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+    }
+
     private func savedBanner(_ summary: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "checkmark.circle.fill")
@@ -258,7 +367,7 @@ struct MeetingsPane: View {
     }
 
     private var infoNote: some View {
-        Text("Recordings and transcripts are saved on this Mac in History. Long conversations are transcribed in segments with the model you picked in Models.")
+        Text("Record a conversation or upload an existing audio or video file — either way the audio and transcript are saved on this Mac in History. Long recordings are transcribed in segments with the model you picked in Models.")
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)

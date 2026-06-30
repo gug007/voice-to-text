@@ -87,3 +87,12 @@ swiftc -parse-as-library \
   Tests/StreamingWAVWriterHarness.swift \
   -o "$TMPDIR/streaming-wav-writer-harness"
 "$TMPDIR/streaming-wav-writer-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
+  VoiceToText/VoiceToText/Audio/StreamingWAVWriter.swift \
+  VoiceToText/VoiceToText/Support/AppConstants.swift \
+  VoiceToText/VoiceToText/Audio/AudioFileExtractor.swift \
+  Tests/AudioFileExtractorHarness.swift \
+  -o "$TMPDIR/audio-file-extractor-harness"
+"$TMPDIR/audio-file-extractor-harness"

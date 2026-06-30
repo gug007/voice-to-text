@@ -154,6 +154,48 @@ final class RecordingHistoryStore {
         refreshDiskUsage()
     }
 
+    /// Flips the starred state of one entry in place (order preserved) and
+    /// persists the index. No audio is touched. Survives relaunch via index.json.
+    func toggleFavorite(id: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let old = entries[index]
+        entries[index] = RecordingHistoryEntry(
+            id: old.id,
+            createdAt: old.createdAt,
+            transcript: old.transcript,
+            audioFileName: old.audioFileName,
+            durationSeconds: old.durationSeconds,
+            sampleRate: old.sampleRate,
+            modelId: old.modelId,
+            modelName: old.modelName,
+            source: old.source,
+            isFavorite: !old.isFavorited
+        )
+        persistIndex()
+    }
+
+    /// Replaces one entry's transcript and the model that produced it (e.g. after
+    /// re-transcribing the stored audio with a different model). Order preserved,
+    /// audio untouched; no-op on a blank transcript or unknown id.
+    func updateTranscript(id: UUID, transcript: String, model: ModelDescriptor?) {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, let index = entries.firstIndex(where: { $0.id == id }) else { return }
+        let old = entries[index]
+        entries[index] = RecordingHistoryEntry(
+            id: old.id,
+            createdAt: old.createdAt,
+            transcript: trimmed,
+            audioFileName: old.audioFileName,
+            durationSeconds: old.durationSeconds,
+            sampleRate: old.sampleRate,
+            modelId: model?.id ?? old.modelId,
+            modelName: model?.displayName ?? old.modelName,
+            source: old.source,
+            isFavorite: old.isFavorite
+        )
+        persistIndex()
+    }
+
     func clearAll() {
         guard !entries.isEmpty else { return }
         let files = entries.map(\.audioFileName)

@@ -31,6 +31,7 @@ struct RecordingHistoryHarness {
         try pruneWithNonPositiveMaxRemovesEverything()
         try pruneUnderCapKeepsAll()
         try codableRoundTrips()
+        try favoriteFieldRoundTrips()
         try decodesIndexMissingOptionalModelFields()
         try joinsMeetingPiecesDroppingEmpties()
         try joinTrimsEachPiece()
@@ -94,6 +95,34 @@ struct RecordingHistoryHarness {
         let data = try encoder.encode([entry])
         let decoded = try decoder.decode([RecordingHistoryEntry].self, from: data)
         try expect(decoded == [entry], "Codable round-trips with iso8601 dates")
+    }
+
+    private static func favoriteFieldRoundTrips() throws {
+        let favorited = RecordingHistoryEntry(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 7),
+            transcript: "starred",
+            audioFileName: "x.wav",
+            durationSeconds: 1.0,
+            sampleRate: 16_000,
+            modelId: nil,
+            modelName: nil,
+            source: .meeting,
+            isFavorite: true
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let round = try decoder.decode([RecordingHistoryEntry].self, from: encoder.encode([favorited]))
+        try expect(round.first?.isFavorited == true, "isFavorite=true round-trips")
+
+        // An index written before favorites existed must decode as not-favorited.
+        let legacy = """
+        [{"id":"\(UUID().uuidString)","createdAt":"2026-01-01T00:00:00Z","transcript":"t","audioFileName":"a.wav","durationSeconds":1,"sampleRate":16000}]
+        """
+        let decoded = try decoder.decode([RecordingHistoryEntry].self, from: Data(legacy.utf8))
+        try expect(decoded.first?.isFavorited == false, "missing isFavorite decodes as not favorited")
     }
 
     private static func decodesIndexMissingOptionalModelFields() throws {

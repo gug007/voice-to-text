@@ -12,7 +12,7 @@ enum AppURLScheme {
     static let scheme = "voicetotext"
 }
 
-enum AudioConfig {
+nonisolated enum AudioConfig {
     static let targetSampleRate: Double = 16_000
     // 1024 frames @ 16 kHz = 64 ms — small enough for responsive live updates
     // while still giving AVAudioEngine's input thread headroom.

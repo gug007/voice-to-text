@@ -13,12 +13,16 @@ struct RecordingRow: View {
     var showsTypeBadge: Bool = true
     let onPlay: () -> Void
     let onDelete: () -> Void
+    let onToggleFavorite: () -> Void
 
+    @Bindable private var regenerator = TranscriptRegenerator.shared
     @State private var overflowHeight: CGFloat = 0
     @State private var clampedHeight: CGFloat = 0
     @State private var expanded = false
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
+
+    private var isRegenerating: Bool { regenerator.activeID == entry.id }
 
     /// Lines shown before the transcript is clamped and a "Show more" appears.
     private static let collapsedLineLimit = 4
@@ -49,6 +53,13 @@ struct RecordingRow: View {
 
                 Spacer(minLength: 12)
 
+                iconButton(
+                    systemName: entry.isFavorited ? "star.fill" : "star",
+                    help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
+                    tint: entry.isFavorited ? .yellow : .secondary,
+                    action: onToggleFavorite
+                )
+                regenerateControl
                 iconButton(
                     systemName: copied ? "checkmark" : "doc.on.doc",
                     help: "Copy transcript",
@@ -86,6 +97,19 @@ struct RecordingRow: View {
                 .buttonStyle(.plain)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundStyle(.tint)
+            }
+
+            if let failure = regenerator.failure, failure.id == entry.id {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(failure.message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Dismiss") { regenerator.dismissFailure() }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tint)
+                }
             }
         }
         .padding(16)
@@ -141,6 +165,54 @@ struct RecordingRow: View {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
             copied = false
+        }
+    }
+
+    /// Either a spinner+chunk count while this row is regenerating, or a model
+    /// picker menu ("Regenerate with …") that re-transcribes the stored audio.
+    @ViewBuilder
+    private var regenerateControl: some View {
+        if isRegenerating {
+            HStack(spacing: 5) {
+                ProgressView()
+                    .controlSize(.small)
+                    .scaleEffect(0.7)
+                if regenerator.totalChunks > 1 {
+                    Text("\(regenerator.transcribedChunks)/\(regenerator.totalChunks)")
+                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+            .frame(minWidth: 24, minHeight: 24)
+            .help("Regenerating transcript…")
+        } else {
+            Menu {
+                Section("Regenerate with") {
+                    ForEach(ModelCatalog.all) { model in
+                        Button {
+                            Task { await regenerator.regenerate(entry: entry, modelId: model.id) }
+                        } label: {
+                            if model.id == entry.modelId {
+                                Label(model.displayName, systemImage: "checkmark")
+                            } else {
+                                Text(model.displayName)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .disabled(regenerator.isRunning)
+            .help("Regenerate transcript with another model")
         }
     }
 

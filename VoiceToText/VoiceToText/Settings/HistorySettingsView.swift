@@ -9,6 +9,16 @@ struct HistoryPane: View {
     @Bindable private var store = RecordingHistoryStore.shared
     @Bindable private var player = HistoryAudioPlayer.shared
     @State private var confirmingClear = false
+    @State private var favoritesOnly = false
+
+    private var hasFavorites: Bool { store.entries.contains { $0.isFavorited } }
+
+    /// Recordings to show: all, or just favorites when the filter is on. The
+    /// filter self-disables when nothing is favorited, so it can't strand an
+    /// empty list.
+    private var visibleEntries: [RecordingHistoryEntry] {
+        (favoritesOnly && hasFavorites) ? store.entries.filter(\.isFavorited) : store.entries
+    }
 
     var body: some View {
         ScrollView {
@@ -30,6 +40,11 @@ struct HistoryPane: View {
             .animation(.easeInOut(duration: 0.18), value: store.entries)
         }
         .onAppear { store.refreshDiskUsage() }
+        // Clear the favorites filter once nothing is favorited, so it can't sit
+        // stranded-on behind a hidden toggle and silently re-collapse the list.
+        .onChange(of: hasFavorites) { _, has in
+            if !has { favoritesOnly = false }
+        }
         // Bind playback to the pane's lifetime: leaving History (or closing
         // Settings) shouldn't leave a clip playing with no visible control.
         .onDisappear { player.stop() }
@@ -76,6 +91,9 @@ struct HistoryPane: View {
         VStack(alignment: .leading, spacing: 8) {
             GroupCaption(text: countLabel) {
                 HStack(spacing: 12) {
+                    if hasFavorites {
+                        FavoritesFilterButton(isOn: $favoritesOnly)
+                    }
                     if store.totalDiskUsageBytes > 0 {
                         Text("\(store.totalDiskUsageBytes.formattedDiskSize) on disk")
                             .font(.system(size: 11, weight: .medium))
@@ -88,7 +106,7 @@ struct HistoryPane: View {
                 }
             }
             RecordingsList(
-                entries: store.entries,
+                entries: visibleEntries,
                 isPlaying: { player.playingID == $0.id },
                 onPlay: { entry in
                     player.toggle(url: store.audioURL(for: entry), id: entry.id)
@@ -96,12 +114,17 @@ struct HistoryPane: View {
                 onDelete: { entry in
                     if player.playingID == entry.id { player.stop() }
                     store.delete(id: entry.id)
-                }
+                },
+                onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) }
             )
         }
     }
 
     private var countLabel: String {
+        if favoritesOnly && hasFavorites {
+            let count = visibleEntries.count
+            return count == 1 ? "1 favorite" : "\(count) favorites"
+        }
         let count = store.entries.count
         return count == 1 ? "1 recording" : "\(count) recordings"
     }

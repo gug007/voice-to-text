@@ -29,7 +29,7 @@ export const softwareApplicationJsonLd = {
     url: AUTHOR_URL,
     sameAs: AUTHOR_URL,
   },
-  image: `${SITE_URL}/og-image.png`,
+  image: `${SITE_URL}/opengraph-image`,
   featureList: [
     "Voice to text on Mac with a push-to-talk global hotkey (Option+Space, customizable)",
     "Speech to text that runs offline on-device (no internet required)",
@@ -37,6 +37,11 @@ export const softwareApplicationJsonLd = {
     "WhisperKit and FluidAudio (Parakeet) speech recognition engines",
     "Optional OpenAI cloud models (GPT-4o Transcribe, GPT-4o Mini Transcribe, Whisper-1)",
     "Types transcribed text into any focused macOS app",
+    "Record meetings and conversations — captures your microphone plus system audio in the background via ScreenCaptureKit",
+    "On-device meeting transcription, saved to a searchable recording history",
+    "Recording history with audio playback, search, and favorites for every dictation and meeting",
+    "Regenerate any transcript with a different model and keep both versions side by side to compare",
+    "Import existing audio or video files and transcribe them on-device",
     "Menu bar app, native SwiftUI for Mac",
   ],
 } as const;
@@ -95,6 +100,16 @@ const faqEntries: FaqEntry[] = [
       "Yes. VoiceToText types into whatever app has focus — Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, any terminal, any editor. Hold the hotkey, speak your prompt, release. No switching windows, no copy-paste.",
   },
   {
+    question: "Can VoiceToText record and transcribe meetings?",
+    answer:
+      "Yes. Alongside push-to-talk dictation, VoiceToText can record a full meeting or conversation — capturing your microphone and your Mac's system audio (the other participants in Zoom, Google Meet, Microsoft Teams, FaceTime, and any other app) in the background while you keep working. When you stop, it transcribes the recording on-device and saves the audio and transcript to your history. Recording system audio uses Apple's ScreenCaptureKit and requires Screen Recording permission.",
+  },
+  {
+    question: "Where are my recordings and transcripts stored?",
+    answer:
+      "Locally on your Mac, in Application Support — never uploaded. Every dictation and meeting is saved with its audio and transcript to a searchable history you can play back, copy, favorite, or delete. You can re-transcribe any recording with a different model and keep both versions to compare. With a local model, nothing ever leaves the Mac.",
+  },
+  {
     question: "Do you collect any usage data or telemetry?",
     answer:
       "No. No accounts, no analytics, no first-party servers. The app makes zero network calls with a local model. If you opt in to a cloud model, audio goes directly from your Mac to OpenAI — VoiceToText is never in that path. The repo is public; verify it yourself or watch traffic with Little Snitch.",
@@ -117,6 +132,110 @@ export const personJsonLd = {
   name: "Gurgen Abagyan",
   url: AUTHOR_URL,
   sameAs: [AUTHOR_URL],
+} as const;
+
+/* ---------- Meeting recording page ---------- */
+
+export const MEETING_PATH = "/meeting-recording";
+export const MEETING_URL = `${SITE_URL}${MEETING_PATH}`;
+
+export const meetingFaqEntries: FaqEntry[] = [
+  {
+    question: "Can I record and transcribe meetings on my Mac for free?",
+    answer:
+      "Yes. VoiceToText is free and open source. It records a meeting or conversation on your Mac and transcribes it on-device — no subscription, no account, and no per-minute fees. The same app also does push-to-talk dictation into any text field.",
+  },
+  {
+    question: "Does it record the other participants, or just my microphone?",
+    answer:
+      "Both. VoiceToText captures your microphone and your Mac's system audio at the same time, so the people on the other end of a Zoom, Google Meet, Microsoft Teams, FaceTime, Webex, or Discord call are recorded along with you. System-audio capture uses Apple's ScreenCaptureKit, so it works with any app that plays sound — no meeting-specific plugin or bot in the call.",
+  },
+  {
+    question: "Is meeting recording private? Does my audio stay on my Mac?",
+    answer:
+      "Yes. With a local model (Whisper or Parakeet on the Apple Neural Engine) the recording is transcribed entirely on-device and never leaves your Mac. The audio file and transcript are saved to a local history under Application Support. Cloud transcription is strictly opt-in: only if you choose an OpenAI model is audio sent — directly to OpenAI under your own API key.",
+  },
+  {
+    question: "Which permissions does meeting recording need?",
+    answer:
+      "Two: Microphone (to record your voice) and Screen Recording (which is how macOS exposes system audio through ScreenCaptureKit). Accessibility is only used by the dictation feature to type at the cursor and is not needed to record meetings. You grant these once in System Settings and can revoke them anytime.",
+  },
+  {
+    question: "Can I transcribe an existing audio or video file?",
+    answer:
+      "Yes. Open Conversations and choose Upload File to drop in an existing recording — audio or video, in any common format. VoiceToText extracts the audio track, transcribes it on-device, and saves it to your history alongside your live recordings.",
+  },
+  {
+    question: "Can I re-transcribe a recording with a more accurate model?",
+    answer:
+      "Yes. Every recording keeps its audio, so you can regenerate the transcript with a different engine — for example switch from fast on-device Parakeet to OpenAI GPT-4o Transcribe for a tricky recording. The new transcript becomes active and the previous one is kept as an alternate, so you can compare both and remove whichever you don't want.",
+  },
+];
+
+export const meetingFaqPageJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: meetingFaqEntries.map(({ question, answer }) => ({
+    "@type": "Question",
+    name: question,
+    acceptedAnswer: { "@type": "Answer", text: answer },
+  })),
+} as const;
+
+export const meetingApplicationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  name: "VoiceToText — Meeting Recorder & Transcription for Mac",
+  alternateName: [
+    "Mac Meeting Recorder",
+    "Meeting Transcription for Mac",
+    "Record Meetings on Mac",
+  ],
+  description:
+    "Free, open-source meeting recorder for Mac. Records your microphone and system audio together (Zoom, Google Meet, Teams, FaceTime) and transcribes the conversation on-device on the Apple Neural Engine — no bot in the call, no subscription.",
+  keywords:
+    "record meetings mac, meeting transcription mac, transcribe meetings, record system audio mac, meeting recorder mac free, zoom transcription mac",
+  url: MEETING_URL,
+  downloadUrl: DMG_URL,
+  applicationCategory: "BusinessApplication",
+  applicationSubCategory: "Meeting Transcription",
+  operatingSystem: "macOS 15.0",
+  processorRequirements: "Apple Silicon (M1 or newer)",
+  permissions: "Microphone, Screen Recording",
+  offers: {
+    "@type": "Offer",
+    price: "0",
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+  },
+  license: LICENSE_URL,
+  isAccessibleForFree: true,
+  author: {
+    "@type": "Person",
+    name: "Gurgen Abagyan",
+    url: AUTHOR_URL,
+    sameAs: AUTHOR_URL,
+  },
+  image: `${MEETING_URL}/opengraph-image`,
+  featureList: [
+    "Records microphone and system audio together via ScreenCaptureKit",
+    "On-device meeting transcription on the Apple Neural Engine",
+    "Works with Zoom, Google Meet, Microsoft Teams, FaceTime, Webex, and any app",
+    "Records in the background while you keep working",
+    "Searchable recording history with audio playback and favorites",
+    "Regenerate a transcript with a different model and compare both versions",
+    "Import existing audio or video files and transcribe them",
+    "No meeting bot, no account, no subscription",
+  ],
+} as const;
+
+export const meetingBreadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+    { "@type": "ListItem", position: 2, name: "Meeting recording", item: MEETING_URL },
+  ],
 } as const;
 
 export const themeInitScript = `(function () {

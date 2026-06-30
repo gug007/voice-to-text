@@ -613,6 +613,7 @@ button { font-family: inherit; }
               background var(--duration-fast) var(--ease-standard);
 }
 .nav__links a:hover { color: var(--text-primary); background: var(--surface-elevated); }
+.nav__links a[aria-current="page"] { color: var(--text-primary); }
 
 @media (max-width: 720px) {
   .nav__links { display: none; }

@@ -4,12 +4,7 @@ import Script from "next/script";
 
 import { IconSprite } from "@/components/icon-sprite";
 import { GA_MEASUREMENT_ID, SITE_URL } from "@/lib/constants";
-import {
-  faqPageJsonLd,
-  personJsonLd,
-  softwareApplicationJsonLd,
-  themeInitScript,
-} from "@/lib/seo";
+import { themeInitScript } from "@/lib/seo";
 
 import "./globals.css";
 
@@ -87,15 +82,6 @@ export const viewport: Viewport = {
   colorScheme: "dark light",
 };
 
-function JsonLdScript({ data }: { data: object }) {
-  return (
-    <script
-      type="application/ld+json"
-      dangerouslySetInnerHTML={{ __html: JSON.stringify(data) }}
-    />
-  );
-}
-
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
@@ -104,9 +90,6 @@ export default function RootLayout({
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        <JsonLdScript data={softwareApplicationJsonLd} />
-        <JsonLdScript data={faqPageJsonLd} />
-        <JsonLdScript data={personJsonLd} />
       </head>
       <body>
         <Script

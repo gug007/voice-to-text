@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
@@ -81,6 +82,23 @@ const FAQS: Faq[] = [
     question: "Can I dictate into Claude Code, Cursor, or other AI coding tools?",
     answer:
       "Yes. VoiceToText types into whatever app has focus — Claude Code, Codex CLI, Cursor, Copilot Chat, ChatGPT, any terminal, any editor. Hold the hotkey, speak your prompt, release. No switching windows, no copy-paste.",
+  },
+  {
+    question: "Can VoiceToText record and transcribe meetings?",
+    answer: (
+      <>
+        Yes. Alongside push-to-talk dictation, VoiceToText can record a full meeting or conversation —
+        capturing your microphone and your Mac’s system audio (the other participants in Zoom, Google Meet,
+        Microsoft Teams, FaceTime, and any other app) in the background while you keep working. When you stop,
+        it transcribes the recording on-device and saves the audio and transcript to your history.{" "}
+        <Link className="link" href="/meeting-recording">See how meeting recording works.</Link>
+      </>
+    ),
+  },
+  {
+    question: "Where are my recordings and transcripts stored?",
+    answer:
+      "Locally on your Mac, in Application Support — never uploaded. Every dictation and meeting is saved with its audio and transcript to a searchable history you can play back, copy, favorite, or delete. You can re-transcribe any recording with a different model and keep both versions to compare. With a local model, nothing ever leaves the Mac.",
   },
   {
     question: "Do you collect any usage data or telemetry?",

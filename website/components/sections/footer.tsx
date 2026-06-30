@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 
 import {
   AUTHOR_URL,
@@ -9,24 +10,26 @@ import {
 } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 
-type Link =
-  | { kind: "internal"; href: string; label: string }
+type FooterLink =
+  | { kind: "hash"; href: string; label: string }
+  | { kind: "route"; href: string; label: string }
   | { kind: "external"; href: string; label: string };
 
 type FooterColumn = {
   title: string;
-  links: Link[];
+  links: FooterLink[];
 };
 
 const COLUMNS: FooterColumn[] = [
   {
     title: "Product",
     links: [
-      { kind: "internal", href: "#features", label: "Features" },
-      { kind: "internal", href: "#cloud", label: "Cloud" },
-      { kind: "internal", href: "#compare", label: "Compare" },
-      { kind: "internal", href: "#faq", label: "FAQ" },
-      { kind: "internal", href: "#download", label: "Download the app" },
+      { kind: "hash", href: "#features", label: "Features" },
+      { kind: "hash", href: "#cloud", label: "Cloud" },
+      { kind: "route", href: "/meeting-recording", label: "Record meetings" },
+      { kind: "hash", href: "#compare", label: "Compare" },
+      { kind: "hash", href: "#faq", label: "FAQ" },
+      { kind: "hash", href: "#download", label: "Download the app" },
     ],
   },
   {
@@ -41,7 +44,7 @@ const COLUMNS: FooterColumn[] = [
   {
     title: "Trust",
     links: [
-      { kind: "internal", href: "#faq", label: "Privacy answers" },
+      { kind: "hash", href: "#faq", label: "Privacy answers" },
       { kind: "external", href: REPO_URL, label: "Audit the source code" },
       { kind: "external", href: LICENSE_URL, label: "MIT license" },
       { kind: "external", href: RELEASES_URL, label: "All releases" },
@@ -50,20 +53,28 @@ const COLUMNS: FooterColumn[] = [
   },
 ];
 
-function FooterLink({ link }: { link: Link }) {
+function FooterLinkView({ link, linkPrefix }: { link: FooterLink; linkPrefix: string }) {
   if (link.kind === "external") {
     return <ExternalLink href={link.href}>{link.label}</ExternalLink>;
   }
-  return <a href={link.href}>{link.label}</a>;
+  if (link.kind === "route") {
+    return <Link href={link.href}>{link.label}</Link>;
+  }
+  return <a href={`${linkPrefix}${link.href}`}>{link.label}</a>;
 }
 
-export function Footer() {
+type FooterProps = {
+  /** Prefix applied to in-page hash links; "/" on sub-pages, "" on the home page. */
+  linkPrefix?: string;
+};
+
+export function Footer({ linkPrefix = "" }: FooterProps) {
   return (
     <footer className="footer" id="footer" aria-labelledby="footer-title">
       <div className="container footer__inner">
         <h2 id="footer-title" className="sr-only">Site footer</h2>
         <div className="footer__brand-block">
-          <a className="footer__brand" href="#top" aria-label="VoiceToText home">
+          <a className="footer__brand" href={`${linkPrefix}#top`} aria-label="VoiceToText home">
             <Image className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
             <span>VoiceToText</span>
           </a>
@@ -85,7 +96,7 @@ export function Footer() {
               <ul role="list">
                 {column.links.map((link) => (
                   <li key={`${column.title}-${link.label}`}>
-                    <FooterLink link={link} />
+                    <FooterLinkView link={link} linkPrefix={linkPrefix} />
                   </li>
                 ))}
               </ul>

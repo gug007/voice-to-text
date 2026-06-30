@@ -70,6 +70,13 @@ struct RecordingRow: View {
                     .lineLimit(expanded ? nil : Self.collapsedLineLimit)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    // A selectable Text on macOS paints its full content height
+                    // when clicked, even while layout still reserves only the
+                    // line-limit clamp — without this it spills over "Show more"
+                    // and the footer. Clip it to its laid-out bounds; expanded
+                    // (line-limit nil) makes the frame full height, so this is a
+                    // no-op there.
+                    .clipped()
                     .background(truncationProbe)
 
                 if isTruncated || expanded {

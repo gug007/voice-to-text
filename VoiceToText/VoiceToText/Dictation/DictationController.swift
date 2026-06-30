@@ -408,7 +408,9 @@ final class DictationController {
     /// the user discards the dictation instead of keeping it.
     private func discardPendingHistory() {
         for id in pendingHistoryIDs {
-            RecordingHistoryStore.shared.delete(id: id)
+            // Retract at once (no undo toast): discarding an uncommitted review
+            // take is itself an explicit cancel.
+            RecordingHistoryStore.shared.retract(id: id)
         }
         pendingHistoryIDs.removeAll()
     }

@@ -61,6 +61,8 @@ struct HistoryPane: View {
         } message: {
             Text("This permanently removes every saved recording and its transcript from this Mac.")
         }
+        // Floating Undo toast for the few-seconds grace window after a delete.
+        .overlay { UndoDeletionBar(store: store) }
     }
 
     // MARK: - Save toggle

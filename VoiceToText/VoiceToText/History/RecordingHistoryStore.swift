@@ -33,6 +33,30 @@ final class RecordingHistoryStore {
     /// loader can read it.
     nonisolated static let maxEntries = 200
 
+    /// How long a deleted recording stays recoverable before the deletion is
+    /// committed and its audio removed from disk. The Undo toast is shown for
+    /// this long; 5s mirrors Gmail's "Undo Send" default — long enough to catch
+    /// a misclick, short enough not to overstay.
+    nonisolated static let undoGraceSeconds: Double = 5
+
+    /// A just-deleted recording (or a batch, for Clear All) held in a brief
+    /// recoverable state. The entry and its audio are kept fully intact until the
+    /// grace window elapses; `undoPendingDeletion()` restores it, the window's
+    /// timer commits it. At most one is ever active — starting a new deletion
+    /// flushes the previous one, matching the one-toast-at-a-time Undo affordance.
+    struct PendingDeletion: Sendable {
+        let entries: [RecordingHistoryEntry]
+    }
+
+    /// The recording(s) currently inside the undo window, or nil. Observed by the
+    /// Undo toast in the History / Conversations panes.
+    private(set) var pendingDeletion: PendingDeletion?
+
+    /// Fires after `undoGraceSeconds` to commit the pending deletion. Kept out of
+    /// observation (and off `PendingDeletion`) so the toast re-renders on the
+    /// shown value, not when the timer handle is stored.
+    @ObservationIgnored private var pendingDeletionTask: Task<Void, Never>?
+
     private enum Keys {
         static let enabled = "history.saveEnabled"
     }
@@ -49,7 +73,9 @@ final class RecordingHistoryStore {
             isEnabled = UserDefaults.standard.bool(forKey: Keys.enabled)
         }
         entries = Self.loadIndex()
-        refreshDiskUsage()
+        // One launch-time directory scan both totals disk usage and sweeps orphan
+        // WAVs no surviving entry references (see `computeDiskUsage`).
+        refreshDiskUsage(reapingUnreferenced: Set(entries.map(\.audioFileName)))
     }
 
     // MARK: - Locations
@@ -131,10 +157,9 @@ final class RecordingHistoryStore {
         enqueueIO { dir in
             Self.ensureDirectoryExists(dir)
             landAudio(dir.appendingPathComponent(fileName, isDirectory: false))
-            for file in prunedFiles {
-                try? FileManager.default.removeItem(at: dir.appendingPathComponent(file, isDirectory: false))
-            }
         }
+        // Serial IO queue: this lands after the write above, preserving order.
+        removeAudioFiles(prunedFiles)
         persistIndex()
         refreshDiskUsage()
         return entry.id
@@ -142,16 +167,106 @@ final class RecordingHistoryStore {
 
     // MARK: - Mutation
 
+    /// Removes one recording, *deferred*: the row disappears immediately but the
+    /// audio stays on disk for `undoGraceSeconds` so the user can undo from the
+    /// toast; only then is the file removed and the index rewritten.
     func delete(id: UUID) {
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let removed = entries.remove(at: index)
-        enqueueIO { dir in
-            try? FileManager.default.removeItem(
-                at: dir.appendingPathComponent(removed.audioFileName, isDirectory: false)
-            )
+        guard let removed = removeEntry(id: id) else { return }
+        beginPendingDeletion([removed])
+    }
+
+    /// Removes one recording at once, with no undo window — used to retract an
+    /// uncommitted dictation review take on Cancel, which is its own explicit
+    /// discard and shouldn't raise a confusing "undo the cancel" toast.
+    func retract(id: UUID) {
+        guard let removed = removeEntry(id: id) else { return }
+        commitRemoval([removed])
+    }
+
+    /// Pulls one entry out of the visible list, returning it, or nil if unknown.
+    private func removeEntry(id: UUID) -> RecordingHistoryEntry? {
+        guard let index = entries.firstIndex(where: { $0.id == id }) else { return nil }
+        return entries.remove(at: index)
+    }
+
+    // MARK: - Deferred (undoable) deletion
+
+    /// Moves `removed` into the brief recoverable state and starts the commit
+    /// timer. Any deletion still in its window is superseded (committed now) so
+    /// only one undo toast is ever live — deleting B finalizes A. The new pending
+    /// is established *before* the superseded one's index write, so the index
+    /// never momentarily drops B (which would lose it on a crash mid-window).
+    private func beginPendingDeletion(_ removed: [RecordingHistoryEntry]) {
+        guard !removed.isEmpty else { return }
+        let superseded = pendingDeletion?.entries ?? []
+        pendingDeletionTask?.cancel()
+        pendingDeletion = PendingDeletion(entries: removed)
+        // Commit the superseded deletion now that the new pending is in place (a
+        // no-op when nothing was superseded — the on-disk index already lists
+        // these entries, since persistIndex writes the union of visible + pending,
+        // so a quit inside the window just restores them on the next launch).
+        commitRemoval(superseded)
+        let ids = removed.map(\.id)
+        pendingDeletionTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(Self.undoGraceSeconds))
+            guard !Task.isCancelled else { return }
+            self?.finalizePendingDeletion(expecting: ids)
         }
+    }
+
+    /// Timer hand-off: commit the pending deletion once the window elapses, but
+    /// only if it's still the same one (a later delete may have replaced it; that
+    /// also cancels this task, so the id check is a backstop).
+    private func finalizePendingDeletion(expecting ids: [UUID]) {
+        guard let pending = pendingDeletion, pending.entries.map(\.id) == ids else { return }
+        pendingDeletion = nil
+        pendingDeletionTask = nil
+        commitRemoval(pending.entries)
+    }
+
+    /// Restores the recording(s) inside the undo window, back in their original
+    /// order; no audio was ever removed, so this is a pure re-insert. No-op once
+    /// the window has already committed.
+    func undoPendingDeletion() {
+        guard let pending = pendingDeletion else { return }
+        pendingDeletionTask?.cancel()
+        pendingDeletionTask = nil
+        pendingDeletion = nil
+        // Restoring can push the count past the cap if new recordings landed
+        // during the window. Reserve room for the restored entries first and prune
+        // only the *existing* visible list, so Undo always brings its recording
+        // back — the entry being restored can never be the one evicted (which
+        // would delete the very file the user asked to keep). Only the genuinely
+        // oldest non-restored recordings are dropped, their audio removed to avoid
+        // orphans, mirroring `insert`.
+        let keepFromExisting = max(0, Self.maxEntries - pending.entries.count)
+        let trimmed = RecordingHistoryPruner.prune(entries, maxCount: keepFromExisting)
+        entries = RecordingHistoryPruner.prune(
+            trimmed.kept + pending.entries,
+            maxCount: Self.maxEntries
+        ).kept
+        removeAudioFiles(trimmed.removed.map(\.audioFileName))
         persistIndex()
         refreshDiskUsage()
+    }
+
+    /// Finalizes a deletion: removes the audio from disk and rewrites the index
+    /// without these entries. Idempotent — an already-missing file is success.
+    private func commitRemoval(_ removed: [RecordingHistoryEntry]) {
+        guard !removed.isEmpty else { return }
+        removeAudioFiles(removed.map(\.audioFileName))
+        persistIndex()
+        refreshDiskUsage()
+    }
+
+    /// Best-effort delete of history WAVs by file name, on the serial IO queue.
+    private func removeAudioFiles(_ fileNames: [String]) {
+        guard !fileNames.isEmpty else { return }
+        enqueueIO { dir in
+            for file in fileNames {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent(file, isDirectory: false))
+            }
+        }
     }
 
     /// Flips the starred state of one entry in place (order preserved) and
@@ -203,17 +318,14 @@ final class RecordingHistoryStore {
         persistIndex()
     }
 
+    /// Removes every saved recording, deferred behind the undo window like a
+    /// single delete (the pane still confirms first). Audio is removed from disk
+    /// only when the window commits, so an accidental Clear All is recoverable.
     func clearAll() {
         guard !entries.isEmpty else { return }
-        let files = entries.map(\.audioFileName)
+        let removed = entries
         entries = []
-        totalDiskUsageBytes = 0
-        enqueueIO { dir in
-            for file in files {
-                try? FileManager.default.removeItem(at: dir.appendingPathComponent(file, isDirectory: false))
-            }
-        }
-        persistIndex()
+        beginPendingDeletion(removed)
     }
 
     /// Saves an already-recorded audio file (e.g. a meeting captured to disk by
@@ -255,7 +367,14 @@ final class RecordingHistoryStore {
     // MARK: - Persistence
 
     private func persistIndex() {
-        let snapshot = entries
+        // Persist the visible entries plus anything inside the undo window, so a
+        // recording that's mid-undo stays in the on-disk index and reappears
+        // (rather than being lost) if the app is quit before the window commits.
+        // Committing clears `pendingDeletion`, which drops the entries here and
+        // makes the deletion permanent. No need to sort/cap here — `entries` is
+        // already newest-first and ≤ maxEntries, and `loadIndex` re-sorts and
+        // re-caps on launch, so the on-disk order is just a cache.
+        let snapshot = entries + (pendingDeletion?.entries ?? [])
         enqueueIO { dir in
             Self.ensureDirectoryExists(dir)
             let encoder = JSONEncoder()
@@ -284,9 +403,12 @@ final class RecordingHistoryStore {
         return RecordingHistoryPruner.prune(present, maxCount: maxEntries).kept
     }
 
-    func refreshDiskUsage() {
+    /// Recomputes saved-audio disk usage. When `referenced` is supplied (only at
+    /// launch), the same directory pass also sweeps orphan WAVs — see
+    /// `computeDiskUsage`.
+    func refreshDiskUsage(reapingUnreferenced referenced: Set<String>? = nil) {
         enqueueIO { dir in
-            let bytes = Self.computeDiskUsage(dir)
+            let bytes = Self.computeDiskUsage(dir, reapingUnreferenced: referenced)
             // Reference the singleton rather than capturing `self` across the
             // queue → Task hop, which Swift 6 flags as a concurrent capture.
             Task { @MainActor in RecordingHistoryStore.shared.totalDiskUsageBytes = bytes }
@@ -305,7 +427,18 @@ final class RecordingHistoryStore {
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     }
 
-    private nonisolated static func computeDiskUsage(_ dir: URL) -> Int64 {
+    /// Sums the allocated size of every history WAV. When `referenced` is given
+    /// (launch only), WAVs no surviving entry references are deleted in the same
+    /// pass instead of counted: orphans accrue when an entry is pruned by the cap
+    /// or when the app is quit during a delete's undo window (the on-disk index
+    /// can briefly list more than the cap, so loading trims it and strands the
+    /// dropped entry's audio). At launch there's no in-flight recording or pending
+    /// deletion, so any unreferenced WAV is a true orphan, and this runs on the
+    /// serial IO queue, ahead of any later write — self-healing a crash mid-window.
+    private nonisolated static func computeDiskUsage(
+        _ dir: URL,
+        reapingUnreferenced referenced: Set<String>?
+    ) -> Int64 {
         guard let enumerator = FileManager.default.enumerator(
             at: dir,
             includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
@@ -313,6 +446,10 @@ final class RecordingHistoryStore {
         ) else { return 0 }
         var total: Int64 = 0
         for case let fileURL as URL in enumerator where fileURL.pathExtension == "wav" {
+            if let referenced, !referenced.contains(fileURL.lastPathComponent) {
+                try? FileManager.default.removeItem(at: fileURL)
+                continue
+            }
             let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
             total += Int64(values?.totalFileAllocatedSize ?? 0)
         }

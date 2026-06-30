@@ -66,6 +66,8 @@ struct MeetingsPane: View {
             controller.dismissError()
             player.stop()
         }
+        // Floating Undo toast for the few-seconds grace window after a delete.
+        .overlay { UndoDeletionBar(store: store) }
     }
 
     // MARK: - Recorded conversations

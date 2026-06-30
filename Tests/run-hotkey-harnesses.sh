@@ -73,3 +73,17 @@ swiftc -parse-as-library \
   Tests/ActionRunnerHarness.swift \
   -o "$TMPDIR/action-runner-harness"
 "$TMPDIR/action-runner-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/Meetings/MeetingTranscriptJoiner.swift \
+  Tests/RecordingHistoryHarness.swift \
+  -o "$TMPDIR/recording-history-harness"
+"$TMPDIR/recording-history-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
+  VoiceToText/VoiceToText/Audio/StreamingWAVWriter.swift \
+  Tests/StreamingWAVWriterHarness.swift \
+  -o "$TMPDIR/streaming-wav-writer-harness"
+"$TMPDIR/streaming-wav-writer-harness"

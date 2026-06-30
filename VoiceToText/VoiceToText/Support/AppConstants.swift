@@ -29,3 +29,16 @@ enum DictationConfig {
     static let vadVoicedRatio: Float = 0.30
     static let sileroVoicedRatio: Float = 0.25
 }
+
+extension TimeInterval {
+    /// Clock-style duration for the UI: "1:02:33" past an hour, "12:05" under it.
+    var formattedClock: String {
+        let total = max(0, Int(rounded()))
+        let hours = total / 3600
+        let minutes = (total % 3600) / 60
+        let seconds = total % 60
+        return hours > 0
+            ? String(format: "%d:%02d:%02d", hours, minutes, seconds)
+            : String(format: "%d:%02d", minutes, seconds)
+    }
+}

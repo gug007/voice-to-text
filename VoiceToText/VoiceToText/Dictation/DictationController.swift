@@ -97,6 +97,20 @@ final class DictationController {
     @ObservationIgnored
     private var streamingEngine: (any StreamingTranscriptionEngine)?
 
+    /// The model that owns the active streaming session, captured at recording
+    /// start. Used for History attribution because a streaming transcript is
+    /// produced by the already-open session, not by whatever model is active at
+    /// stop time (the user can switch models mid-recording).
+    @ObservationIgnored
+    private var streamingModel: ModelDescriptor?
+
+    /// History entry ids for the current review session's takes that haven't
+    /// been committed yet. Each successful take is saved immediately (so audio
+    /// and transcript stay paired), but if the user discards the review the
+    /// entries are retracted — a Cancel must not leave the audio on disk.
+    @ObservationIgnored
+    private var pendingHistoryIDs: [UUID] = []
+
     /// Snapshot of the review text taken when the user clicks Resume.
     /// Splits the text at the caret so the next transcription can be
     /// spliced into the same position when recording finishes.
@@ -358,6 +372,7 @@ final class DictationController {
     /// Used on every recording exit path that isn't a normal finish.
     private func cancelStreamingSession() {
         recorder.onAudioChunk = nil
+        streamingModel = nil
         guard let streaming = streamingEngine else { return }
         streamingEngine = nil
         Task { await streaming.cancelStream() }
@@ -378,8 +393,24 @@ final class DictationController {
         cancelReviewAction()
         removeReviewEscMonitor()
         lastFailedSamples = nil
+        // The user discarded this dictation — pull its takes back out of History.
+        discardPendingHistory()
         LiveHUDPanel.shared.hide()
         state = .idle
+    }
+
+    /// Keeps the current review session's saved takes in History.
+    private func commitPendingHistory() {
+        pendingHistoryIDs.removeAll()
+    }
+
+    /// Retracts (deletes) the current review session's saved takes, for when
+    /// the user discards the dictation instead of keeping it.
+    private func discardPendingHistory() {
+        for id in pendingHistoryIDs {
+            RecordingHistoryStore.shared.delete(id: id)
+        }
+        pendingHistoryIDs.removeAll()
     }
 
     private func dismissFailure() {
@@ -387,6 +418,8 @@ final class DictationController {
         AppLog.dictation.info("Failure HUD dismissed")
         removeFailureEscMonitor()
         lastFailedSamples = nil
+        // Safety net: a discarded session shouldn't leave takes behind.
+        discardPendingHistory()
         LiveHUDPanel.shared.hide()
         state = .idle
     }
@@ -597,6 +630,10 @@ final class DictationController {
         guard recordingStartGate.accepts(startID) else { return }
         removeFailureEscMonitor()
         lastFailedSamples = nil
+        // A fresh dictation (not a Resume) starts a new review session: forget
+        // any uncommitted history ids left over from a prior session so they
+        // aren't retracted by this one's Cancel. (Resume keeps accumulating.)
+        if resumeContext == nil { pendingHistoryIDs.removeAll() }
         AppLog.dictation.info("startRecording: requesting mic permission (current=\(String(describing: MicPermission.status.rawValue)))")
         let granted = await MicPermission.request()
         AppLog.dictation.info("startRecording: mic permission granted=\(granted)")
@@ -639,6 +676,7 @@ final class DictationController {
             // captured so partial transcripts show in the HUD while recording.
             // If the session can't open (auth/network), fall back to buffered.
             streamingEngine = nil
+            streamingModel = nil
             recorder.onAudioChunk = nil
             if let streaming = engine as? any StreamingTranscriptionEngine {
                 do {
@@ -650,6 +688,7 @@ final class DictationController {
                         return
                     }
                     streamingEngine = streaming
+                    streamingModel = descriptor
                     recorder.onAudioChunk = { samples in
                         streaming.feedAudio(samples)
                     }
@@ -868,15 +907,22 @@ final class DictationController {
         // Pick how the final transcript is produced: flush the live stream if
         // one is active, otherwise transcribe the buffered samples (local
         // engines, or a retry of a failed stream). Both share one error path.
+        // The model that actually produces this transcript — for History
+        // attribution. A streaming transcript comes from the session opened at
+        // recording start (its model captured then), not whatever is active now.
+        let recordedModel: ModelDescriptor
         let produce: () async throws -> String
         if let streaming = streamingEngine {
             // The audio source is done, so stop feeding it. finishStream tears
             // the socket down itself — this isn't a cancelStreamingSession case.
             streamingEngine = nil
+            recordedModel = streamingModel ?? descriptor
+            streamingModel = nil
             recorder.onAudioChunk = nil
             AppLog.dictation.info("Finishing live stream transcription")
             produce = { try await streaming.finishStream() }
         } else {
+            recordedModel = descriptor
             guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
                 enterFailureHUD(
                     message: "Failed to prepare model for transcription.",
@@ -926,6 +972,19 @@ final class DictationController {
 
         lastFailedSamples = nil
 
+        // Save the finished recording + transcript to History. Each take is its
+        // own entry, so its audio matches its transcript exactly (Resume splices
+        // text in the review buffer, but the saved audio is only this take).
+        // Held as "pending" until the user keeps it (paste/deliver) so a review
+        // Cancel can retract it — discarded dictation must not stay on disk.
+        if let id = RecordingHistoryStore.shared.record(
+            samples: samples,
+            transcript: processed,
+            model: recordedModel
+        ) {
+            pendingHistoryIDs.append(id)
+        }
+
         // Resume always returns to review with the new transcript spliced at
         // the original caret; otherwise honor the user's review preference.
         if let resume = resumeContext {
@@ -935,6 +994,8 @@ final class DictationController {
         } else if reviewBeforePaste {
             enterReview(text: processed)
         } else {
+            // No review step: the text is delivered and kept right away.
+            commitPendingHistory()
             LiveHUDPanel.shared.hide()
             deliver(text: processed)
         }
@@ -1152,6 +1213,8 @@ final class DictationController {
         guard case .reviewing = state else { return }
         cancelReviewAction()
         lastFailedSamples = nil
+        // The user kept this dictation — its takes stay in History.
+        commitPendingHistory()
         let edited = LiveHUDPanel.shared.currentReviewText
         removeReviewEscMonitor()
         LiveHUDPanel.shared.hide()

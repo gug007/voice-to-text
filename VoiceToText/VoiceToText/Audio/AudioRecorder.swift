@@ -183,7 +183,7 @@ final class AudioRecorder: @unchecked Sendable {
             let nowNs = DispatchTime.now().uptimeNanoseconds
             if nowNs &- lastLevelEmitNs >= Self.minLevelIntervalNs {
                 lastLevelEmitNs = nowNs
-                levelToEmit = Self.perceptualLevel(samples)
+                levelToEmit = AudioLevel.perceptual(samples)
             } else {
                 levelToEmit = nil
             }
@@ -206,21 +206,6 @@ final class AudioRecorder: @unchecked Sendable {
         }
     }
 
-    /// RMS of a sample window mapped to a perceptual 0...1 scale.
-    /// Noise-gated under -50 dBFS, mapped from -50 (silent) to -22 dBFS
-    /// (normal speech) with a gamma curve that pushes mid-range values up so
-    /// the HUD ribbon swings more dramatically for typical dictation volume.
-    private static func perceptualLevel(_ samples: [Float]) -> Double {
-        guard !samples.isEmpty else { return 0 }
-        var sumSquares: Float = 0
-        for s in samples { sumSquares += s * s }
-        let rms = sqrt(sumSquares / Float(samples.count))
-        let db = 20 * log10(max(rms, 1e-7))
-        if db < -50 { return 0 }
-        let norm = (Double(db) + 50) / 28
-        let clamped = max(0, min(1, norm))
-        return pow(clamped, 0.7)
-    }
 }
 
 enum AudioRecorderError: LocalizedError {

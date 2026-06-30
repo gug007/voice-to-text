@@ -8,13 +8,15 @@ struct SettingsView: View {
     @State private var selection: Section = .general
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, hotkey, models, actions, cloud, updates
+        case general, meetings, history, hotkey, models, actions, cloud, updates
         var id: String { rawValue }
         var title: String {
             switch self {
             case .models: return "Models"
             case .hotkey: return "Shortcut"
             case .actions: return "Actions"
+            case .meetings: return "Conversations"
+            case .history: return "History"
             case .cloud: return "Cloud"
             case .general: return "General"
             case .updates: return "Updates"
@@ -25,6 +27,8 @@ struct SettingsView: View {
             case .models: return "waveform"
             case .hotkey: return "command"
             case .actions: return "wand.and.stars"
+            case .meetings: return "person.2.wave.2"
+            case .history: return "clock.arrow.circlepath"
             case .cloud: return "cloud"
             case .general: return "slider.horizontal.3"
             case .updates: return "arrow.down.circle"
@@ -43,6 +47,10 @@ struct SettingsView: View {
         } detail: {
             detailView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                // With the transparent title bar (hiddenTitleBar), pull the pane
+                // up so its header sits at the very top of the content area. The
+                // detail has no window controls, so nothing is obscured.
+                .ignoresSafeArea(.container, edges: .top)
         }
         .navigationTitle("")
         .frame(minWidth: 760, minHeight: 560)
@@ -54,6 +62,8 @@ struct SettingsView: View {
         case .models: ModelsPane(registry: registry, onShowCloudSettings: { selection = .cloud })
         case .hotkey: HotkeyPane()
         case .actions: ActionsPane(onShowCloudSettings: { selection = .cloud })
+        case .meetings: MeetingsPane()
+        case .history: HistoryPane()
         case .cloud: CloudPane()
         case .general: GeneralPane()
         case .updates: UpdatesPane()

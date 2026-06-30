@@ -21,6 +21,9 @@ struct VoiceToTextApp: App {
         }
         .defaultSize(width: 820, height: 600)
         .windowResizability(.contentMinSize)
+        // Transparent, full-height title bar so each pane's header sits at the
+        // very top of the content area instead of below an empty title-bar band.
+        .windowStyle(.hiddenTitleBar)
     }
 }
 
@@ -71,6 +74,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         launchedAt = Date()
+        // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
+        MeetingController.recoverOrphanedTempFiles()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
             appleEvent: NSAppleEventManager.shared().currentAppleEvent,
             launchUserInfo: notification.userInfo

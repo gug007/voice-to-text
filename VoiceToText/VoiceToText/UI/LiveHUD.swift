@@ -1187,9 +1187,13 @@ private struct ReviewKeyButton: View {
 
 /// Mirrored capsule bars, oldest → newest left → right. Each bar springs to
 /// its level independently so the strip feels alive even on a steady signal.
-/// A small floor keeps silent bars visible as a thin baseline.
-private struct LevelBars: View {
+/// A small floor keeps silent bars visible as a thin baseline. Shared by the
+/// dictation HUD and the Conversations recording card.
+struct LevelBars: View {
     let samples: [Double]
+    /// Bar color. White on the dark dictation HUD; `.primary` adapts on the
+    /// Conversations card.
+    var tint: Color = .white
 
     private static let barCount = 56
     private static let barSpacing: CGFloat = 3
@@ -1205,7 +1209,7 @@ private struct LevelBars: View {
                 ForEach(0..<Self.barCount, id: \.self) { index in
                     let level = level(at: index)
                     Capsule()
-                        .fill(Color.white.opacity(opacity(at: index)))
+                        .fill(tint.opacity(opacity(at: index)))
                         .frame(width: barWidth, height: barHeight(level: level, max: maxHeight))
                         .animation(.spring(response: 0.18, dampingFraction: 0.75), value: level)
                 }

@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 /// Settings pane listing past recordings — dictations and conversations alike —
-/// each with its transcript and play / copy / delete. Mirrors the card-based
-/// layout of the other panes: a single controls card, a slim list header, then
-/// the recordings.
+/// each with its transcript and play / copy / delete. Styled as an iOS
+/// inset-grouped list: a large title, a grouped toggle section, then the
+/// recordings in a single hairline-separated card.
 struct HistoryPane: View {
     @Bindable private var store = RecordingHistoryStore.shared
     @Bindable private var player = HistoryAudioPlayer.shared
@@ -12,33 +12,18 @@ struct HistoryPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
+            VStack(alignment: .leading, spacing: 28) {
+                LargeTitleHeader(
                     title: "History",
                     subtitle: "Your past recordings and transcriptions, saved on this Mac."
                 )
 
-                saveToggleCard
+                saveToggleSection
 
                 if store.entries.isEmpty {
                     emptyState
                 } else {
-                    listHeader
-                    LazyVStack(spacing: 8) {
-                        ForEach(store.entries) { entry in
-                            RecordingRow(
-                                entry: entry,
-                                isPlaying: player.playingID == entry.id,
-                                onPlay: {
-                                    player.toggle(url: store.audioURL(for: entry), id: entry.id)
-                                },
-                                onDelete: {
-                                    if player.playingID == entry.id { player.stop() }
-                                    store.delete(id: entry.id)
-                                }
-                            )
-                        }
-                    }
+                    recordingsSection
                 }
             }
             .padding(32)
@@ -65,46 +50,55 @@ struct HistoryPane: View {
 
     // MARK: - Save toggle
 
-    private var saveToggleCard: some View {
-        RowCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
+    private var saveToggleSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            InsetCard {
+                HStack {
                     Text("Save recordings")
                         .font(.system(size: 14, weight: .medium))
-                    Text(store.isEnabled
-                         ? "New dictations are saved here automatically."
-                         : "New dictations won't be saved. Existing history is kept until you clear it.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Toggle("", isOn: $store.isEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
                 }
-                Spacer()
-                Toggle("", isOn: $store.isEnabled)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 14)
             }
-            .padding(18)
+            GroupFooter(text: store.isEnabled
+                        ? "New dictations are saved here automatically."
+                        : "New dictations won't be saved. Existing history is kept until you clear it.")
         }
     }
 
-    // MARK: - List header
+    // MARK: - Recordings
 
-    private var listHeader: some View {
-        HStack(spacing: 8) {
-            Text(countLabel)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Spacer()
-            if store.totalDiskUsageBytes > 0 {
-                Text("\(store.totalDiskUsageBytes.formattedDiskSize) on disk")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tertiary)
+    private var recordingsSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            GroupCaption(text: countLabel) {
+                HStack(spacing: 12) {
+                    if store.totalDiskUsageBytes > 0 {
+                        Text("\(store.totalDiskUsageBytes.formattedDiskSize) on disk")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Button("Clear All") { confirmingClear = true }
+                        .buttonStyle(.plain)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.red)
+                }
             }
-            Button("Clear All") { confirmingClear = true }
-                .buttonStyle(.plain)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.red)
+            RecordingsList(
+                entries: store.entries,
+                isPlaying: { player.playingID == $0.id },
+                onPlay: { entry in
+                    player.toggle(url: store.audioURL(for: entry), id: entry.id)
+                },
+                onDelete: { entry in
+                    if player.playingID == entry.id { player.stop() }
+                    store.delete(id: entry.id)
+                }
+            )
         }
-        .padding(.horizontal, 2)
     }
 
     private var countLabel: String {
@@ -115,18 +109,20 @@ struct HistoryPane: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "waveform")
-                .font(.system(size: 30, weight: .light))
-                .foregroundStyle(.tertiary)
-            Text("No recordings yet")
-                .font(.system(size: 14, weight: .medium))
-            Text("Your dictations and conversations will appear here.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+        InsetCard {
+            VStack(spacing: 10) {
+                Image(systemName: "waveform")
+                    .font(.system(size: 30, weight: .light))
+                    .foregroundStyle(.tertiary)
+                Text("No recordings yet")
+                    .font(.system(size: 14, weight: .medium))
+                Text("Your dictations and conversations will appear here.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 56)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 56)
     }
 }

@@ -17,8 +17,8 @@ struct MeetingsPane: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
+            VStack(alignment: .leading, spacing: 28) {
+                LargeTitleHeader(
                     title: "Conversations",
                     subtitle: "Record a long conversation in the background — your mic and everyone you hear — then get a transcript."
                 )
@@ -58,27 +58,22 @@ struct MeetingsPane: View {
     @ViewBuilder
     private var conversationsList: some View {
         if !conversations.isEmpty {
-            VStack(alignment: .leading, spacing: 10) {
-                Text(conversations.count == 1 ? "1 recorded conversation" : "\(conversations.count) recorded conversations")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 2)
-                LazyVStack(spacing: 8) {
-                    ForEach(conversations) { entry in
-                        RecordingRow(
-                            entry: entry,
-                            isPlaying: player.playingID == entry.id,
-                            showsTypeBadge: false,
-                            onPlay: {
-                                player.toggle(url: store.audioURL(for: entry), id: entry.id)
-                            },
-                            onDelete: {
-                                if player.playingID == entry.id { player.stop() }
-                                store.delete(id: entry.id)
-                            }
-                        )
+            VStack(alignment: .leading, spacing: 8) {
+                GroupCaption(conversations.count == 1
+                             ? "1 recorded conversation"
+                             : "\(conversations.count) recorded conversations")
+                RecordingsList(
+                    entries: conversations,
+                    showsTypeBadge: false,
+                    isPlaying: { player.playingID == $0.id },
+                    onPlay: { entry in
+                        player.toggle(url: store.audioURL(for: entry), id: entry.id)
+                    },
+                    onDelete: { entry in
+                        if player.playingID == entry.id { player.stop() }
+                        store.delete(id: entry.id)
                     }
-                }
+                )
             }
         }
     }
@@ -86,7 +81,7 @@ struct MeetingsPane: View {
     // MARK: - Permission
 
     private var permissionCard: some View {
-        RowCard {
+        InsetCard {
             HStack(spacing: 12) {
                 Image(systemName: "rectangle.inset.filled.badge.record")
                     .font(.system(size: 14, weight: .semibold))
@@ -126,12 +121,18 @@ struct MeetingsPane: View {
     }
 
     private var idleCard: some View {
-        RowCard {
+        InsetCard {
             HStack(spacing: 16) {
-                ProviderIconTile(symbol: "mic.fill", tint: .accentColor)
+                ZStack {
+                    Circle().fill(Color.accentColor.opacity(0.14))
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .frame(width: 44, height: 44)
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Record a conversation")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .semibold))
                     Text("Captures your mic and system audio. Keeps recording while you work in other apps; saved to History when you stop.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
@@ -151,29 +152,28 @@ struct MeetingsPane: View {
                     }
                 }
                 Spacer(minLength: 12)
-                Button {
+                CapsuleActionButton(
+                    title: "Start Recording",
+                    systemImage: "record.circle",
+                    isDisabled: controller.isBusy
+                ) {
                     Task { await controller.start() }
-                } label: {
-                    Label("Start Recording", systemImage: "record.circle")
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(controller.isBusy)
             }
             .padding(18)
         }
     }
 
     private var recordingCard: some View {
-        RowCard {
+        InsetCard {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 12) {
                     RecordingDot()
                     Text("Recording")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 14, weight: .semibold))
                     Spacer()
                     Text(controller.elapsed.formattedClock)
-                        .font(.system(size: 20, weight: .medium, design: .monospaced))
+                        .font(.system(size: 22, weight: .semibold, design: .monospaced))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                 }
@@ -182,19 +182,20 @@ struct MeetingsPane: View {
                     .frame(height: 56)
 
                 HStack(spacing: 10) {
-                    Button {
+                    CapsuleActionButton(
+                        title: "Stop & Transcribe",
+                        systemImage: "stop.fill"
+                    ) {
                         Task { await controller.stop() }
-                    } label: {
-                        Label("Stop & Transcribe", systemImage: "stop.fill")
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
 
-                    Button("Cancel") {
+                    CapsuleActionButton(
+                        title: "Cancel",
+                        style: .secondary,
+                        tint: .primary
+                    ) {
                         Task { await controller.cancel() }
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.large)
 
                     Spacer()
                 }
@@ -204,7 +205,7 @@ struct MeetingsPane: View {
     }
 
     private var transcribingCard: some View {
-        RowCard {
+        InsetCard {
             HStack(spacing: 16) {
                 ProgressView()
                     .controlSize(.small)

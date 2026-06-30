@@ -3,8 +3,9 @@ import SwiftUI
 
 /// A single saved-recording row: leading play tile, timestamp + metadata, copy
 /// and delete controls, and the transcript below (selectable, expandable).
-/// Shared by the History pane (all recordings) and the Conversations pane
-/// (conversations only).
+/// Chrome-less — the enclosing `RecordingsList` draws the grouped card and the
+/// hairline separators between rows. Shared by the History pane (all recordings)
+/// and the Conversations pane (conversations only).
 struct RecordingRow: View {
     let entry: RecordingHistoryEntry
     let isPlaying: Bool
@@ -29,67 +30,67 @@ struct RecordingRow: View {
     private var isTruncated: Bool { overflowHeight > clampedHeight + 1 }
 
     var body: some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(alignment: .center, spacing: 14) {
-                    PlayTile(isPlaying: isPlaying, action: onPlay)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .center, spacing: 14) {
+                PlayTile(isPlaying: isPlaying, action: onPlay)
 
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(Self.dateFormatter.string(from: entry.createdAt))
-                            .font(.system(size: 13, weight: .medium))
-                        HStack(spacing: 6) {
-                            if showsTypeBadge {
-                                RecordingTypeBadge(source: entry.source)
-                            }
-                            Text(metaLine)
-                                .font(.system(size: 11, weight: .regular))
-                                .foregroundStyle(.tertiary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(Self.dateFormatter.string(from: entry.createdAt))
+                        .font(.system(size: 13, weight: .semibold))
+                    HStack(spacing: 6) {
+                        if showsTypeBadge {
+                            RecordingTypeBadge(source: entry.source)
                         }
+                        Text(metaLine)
+                            .font(.system(size: 11, weight: .regular))
+                            .foregroundStyle(.tertiary)
                     }
-
-                    Spacer(minLength: 12)
-
-                    iconButton(
-                        systemName: copied ? "checkmark" : "doc.on.doc",
-                        help: "Copy transcript",
-                        tint: copied ? .green : .secondary,
-                        action: copyTranscript
-                    )
-                    iconButton(
-                        systemName: "trash",
-                        help: "Delete recording",
-                        tint: .secondary,
-                        action: onDelete
-                    )
                 }
 
-                Text(entry.transcript)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary.opacity(0.9))
-                    .textSelection(.enabled)
-                    .lineLimit(expanded ? nil : Self.collapsedLineLimit)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    // A selectable Text on macOS paints its full content height
-                    // when clicked, even while layout still reserves only the
-                    // line-limit clamp — without this it spills over "Show more"
-                    // and the footer. Clip it to its laid-out bounds; expanded
-                    // (line-limit nil) makes the frame full height, so this is a
-                    // no-op there.
-                    .clipped()
-                    .background(truncationProbe)
+                Spacer(minLength: 12)
 
-                if isTruncated || expanded {
-                    Button(expanded ? "Show less" : "Show more") {
-                        withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.tint)
-                }
+                iconButton(
+                    systemName: copied ? "checkmark" : "doc.on.doc",
+                    help: "Copy transcript",
+                    tint: copied ? .green : .secondary,
+                    action: copyTranscript
+                )
+                iconButton(
+                    systemName: "trash",
+                    help: "Delete recording",
+                    tint: .secondary,
+                    action: onDelete
+                )
             }
-            .padding(16)
+
+            Text(entry.transcript)
+                .font(.system(size: 13))
+                .foregroundStyle(.primary.opacity(0.9))
+                .textSelection(.enabled)
+                .lineLimit(expanded ? nil : Self.collapsedLineLimit)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                // A selectable Text on macOS paints its full content height
+                // when clicked, even while layout still reserves only the
+                // line-limit clamp — without this it spills over "Show more"
+                // and the footer. Clip it to its laid-out bounds; expanded
+                // (line-limit nil) makes the frame full height, so this is a
+                // no-op there.
+                .clipped()
+                .background(truncationProbe)
+
+            if isTruncated || expanded {
+                Button(expanded ? "Show less" : "Show more") {
+                    withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+                }
+                .buttonStyle(.plain)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.tint)
+            }
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
         .onDisappear { copyResetTask?.cancel() }
     }
 
@@ -194,8 +195,8 @@ struct RecordingTypeBadge: View {
     }
 }
 
-/// 34×34 rounded play/stop control, styled like `ProviderIconTile` so rows
-/// share the app's visual rhythm. Filled accent while playing.
+/// 36-pt circular play/stop control — the iOS media affordance. Filled accent
+/// while playing, a soft accent wash at rest.
 struct PlayTile: View {
     let isPlaying: Bool
     let action: () -> Void
@@ -203,22 +204,18 @@ struct PlayTile: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                Circle()
                     .fill(
                         isPlaying
                         ? AnyShapeStyle(Color.accentColor)
-                        : AnyShapeStyle(LinearGradient(
-                            colors: [Color.accentColor.opacity(0.22), Color.accentColor.opacity(0.08)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ))
+                        : AnyShapeStyle(Color.accentColor.opacity(0.14))
                     )
                 Image(systemName: isPlaying ? "stop.fill" : "play.fill")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(isPlaying ? Color.white : Color.accentColor)
             }
-            .frame(width: 34, height: 34)
-            .contentShape(Rectangle())
+            .frame(width: 36, height: 36)
+            .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .help(isPlaying ? "Stop" : "Play recording")

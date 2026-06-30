@@ -1,5 +1,20 @@
 import Foundation
 
+/// A previous transcript kept alongside the active one after a regeneration, so
+/// the user can compare both and drop the one they don't want. The active
+/// transcript lives in `RecordingHistoryEntry`'s own fields; these are the
+/// older alternates, newest first.
+///
+/// `nonisolated` for the same cross-actor reasons as `RecordingHistoryEntry`.
+nonisolated struct TranscriptVariant: Codable, Identifiable, Hashable, Sendable {
+    let id: UUID
+    let text: String
+    /// Catalog id / human name of the model that produced this version (either
+    /// may be nil for very old entries that predate model metadata).
+    let modelId: String?
+    let modelName: String?
+}
+
 /// One saved dictation: the recorded audio (a WAV on disk) plus the transcript
 /// it produced. Persisted as JSON in the history index; the audio lives beside
 /// the index keyed by `audioFileName`.
@@ -31,8 +46,24 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// before favorites existed still decode (absent ⇒ not favorited).
     let isFavorite: Bool?
 
+    /// Previous transcripts kept after a regeneration, newest first. Optional so
+    /// indexes written before regenerate-keep existed still decode (absent ⇒ no
+    /// alternates). The active transcript is always this entry's own `transcript`.
+    let alternates: [TranscriptVariant]?
+
     /// Non-optional view of `isFavorite` for call sites.
     var isFavorited: Bool { isFavorite ?? false }
+
+    /// True when this recording has more than one transcript to show.
+    var hasAlternateTranscripts: Bool { !(alternates ?? []).isEmpty }
+
+    /// Every transcript for this recording, newest (active) first. The active one
+    /// reuses the entry's own id so the UI can target it for removal; alternates
+    /// carry their own ids.
+    var transcriptVariants: [TranscriptVariant] {
+        let active = TranscriptVariant(id: id, text: transcript, modelId: modelId, modelName: modelName)
+        return [active] + (alternates ?? [])
+    }
 
     /// `meeting` is the long mic+system-audio capture (shown to users as
     /// "Conversation"); the rawValue is kept stable for stored indexes.
@@ -66,7 +97,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         modelId: String?,
         modelName: String?,
         source: Source? = nil,
-        isFavorite: Bool? = nil
+        isFavorite: Bool? = nil,
+        alternates: [TranscriptVariant]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -78,6 +110,83 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.modelName = modelName
         self.source = source
         self.isFavorite = isFavorite
+        self.alternates = alternates
+    }
+
+    /// Returns a copy with the active transcript/model and the alternates list
+    /// replaced; all other fields (id, audio, timing, favorite, source) are kept.
+    func updatingTranscripts(
+        transcript: String,
+        modelId: String?,
+        modelName: String?,
+        alternates: [TranscriptVariant]?
+    ) -> RecordingHistoryEntry {
+        RecordingHistoryEntry(
+            id: id,
+            createdAt: createdAt,
+            transcript: transcript,
+            audioFileName: audioFileName,
+            durationSeconds: durationSeconds,
+            sampleRate: sampleRate,
+            modelId: modelId,
+            modelName: modelName,
+            source: source,
+            isFavorite: isFavorite,
+            alternates: alternates
+        )
+    }
+}
+
+/// Pure transcript-versioning logic for an entry — kept separate from the store
+/// so it can be unit-tested without the filesystem or the main actor.
+nonisolated enum TranscriptEditor {
+    /// Result of regenerating: `transcript` becomes the active version and the
+    /// previously active one is preserved as the newest alternate. `newAlternateID`
+    /// is the id assigned to the demoted version (passed in so this stays pure).
+    static func addingRegeneration(
+        to entry: RecordingHistoryEntry,
+        transcript: String,
+        modelId: String?,
+        modelName: String?,
+        newAlternateID: UUID
+    ) -> RecordingHistoryEntry {
+        let demoted = TranscriptVariant(
+            id: newAlternateID,
+            text: entry.transcript,
+            modelId: entry.modelId,
+            modelName: entry.modelName
+        )
+        return entry.updatingTranscripts(
+            transcript: transcript,
+            modelId: modelId ?? entry.modelId,
+            modelName: modelName ?? entry.modelName,
+            alternates: [demoted] + (entry.alternates ?? [])
+        )
+    }
+
+    /// Removes one transcript version. Removing the active one promotes the newest
+    /// alternate into its place. Returns the entry unchanged when `variantID` isn't
+    /// found, or when it's the only transcript left (a recording keeps at least one).
+    static func removing(variantID: UUID, from entry: RecordingHistoryEntry) -> RecordingHistoryEntry {
+        let alternates = entry.alternates ?? []
+        if variantID == entry.id {
+            guard let promoted = alternates.first else { return entry }
+            let rest = Array(alternates.dropFirst())
+            return entry.updatingTranscripts(
+                transcript: promoted.text,
+                modelId: promoted.modelId,
+                modelName: promoted.modelName,
+                alternates: rest.isEmpty ? nil : rest
+            )
+        }
+        let filtered = alternates.filter { $0.id != variantID }
+        guard filtered.count != alternates.count else { return entry }
+        return entry.updatingTranscripts(
+            transcript: entry.transcript,
+            modelId: entry.modelId,
+            modelName: entry.modelName,
+            alternates: filtered.isEmpty ? nil : filtered
+        )
     }
 }
 

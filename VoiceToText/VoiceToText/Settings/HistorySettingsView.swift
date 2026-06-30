@@ -115,7 +115,10 @@ struct HistoryPane: View {
                     if player.playingID == entry.id { player.stop() }
                     store.delete(id: entry.id)
                 },
-                onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) }
+                onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) },
+                onRemoveTranscript: { entry, variantID in
+                    store.removeTranscriptVariant(entryID: entry.id, variantID: variantID)
+                }
             )
         }
     }

@@ -32,6 +32,11 @@ struct RecordingHistoryHarness {
         try pruneUnderCapKeepsAll()
         try codableRoundTrips()
         try favoriteFieldRoundTrips()
+        try alternatesRoundTripAndDefaultEmpty()
+        try regenerationKeepsPreviousTranscript()
+        try removingActivePromotesNewestAlternate()
+        try removingAlternateDropsItOnly()
+        try removingOnlyTranscriptIsNoOp()
         try decodesIndexMissingOptionalModelFields()
         try joinsMeetingPiecesDroppingEmpties()
         try joinTrimsEachPiece()
@@ -123,6 +128,87 @@ struct RecordingHistoryHarness {
         """
         let decoded = try decoder.decode([RecordingHistoryEntry].self, from: Data(legacy.utf8))
         try expect(decoded.first?.isFavorited == false, "missing isFavorite decodes as not favorited")
+    }
+
+    private static func alternatesRoundTripAndDefaultEmpty() throws {
+        let entry = RecordingHistoryEntry(
+            id: UUID(),
+            createdAt: Date(timeIntervalSinceReferenceDate: 11),
+            transcript: "active",
+            audioFileName: "a.wav",
+            durationSeconds: 1.0,
+            sampleRate: 16_000,
+            modelId: "gpt4o",
+            modelName: "GPT-4o",
+            source: .meeting,
+            alternates: [TranscriptVariant(id: UUID(), text: "older", modelId: "parakeet", modelName: "Parakeet")]
+        )
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let round = try decoder.decode([RecordingHistoryEntry].self, from: encoder.encode([entry])).first
+        try expect(round == entry, "alternates round-trip through Codable")
+        try expect(round?.transcriptVariants.count == 2, "active + one alternate = two variants")
+        try expect(round?.transcriptVariants.first?.text == "active", "active variant is first")
+
+        // A legacy index with no alternates key decodes as a single transcript.
+        let legacy = """
+        [{"id":"\(UUID().uuidString)","createdAt":"2026-01-01T00:00:00Z","transcript":"t","audioFileName":"a.wav","durationSeconds":1,"sampleRate":16000}]
+        """
+        let decoded = try decoder.decode([RecordingHistoryEntry].self, from: Data(legacy.utf8)).first
+        try expect(decoded?.hasAlternateTranscripts == false, "missing alternates decodes as none")
+        try expect(decoded?.transcriptVariants.count == 1, "legacy entry has exactly one transcript")
+    }
+
+    private static func regenerationKeepsPreviousTranscript() throws {
+        let entry = makeEntry(offset: 5, transcript: "first")
+        let altID = UUID()
+        let after = TranscriptEditor.addingRegeneration(
+            to: entry, transcript: "second", modelId: "gpt4o", modelName: "GPT-4o", newAlternateID: altID
+        )
+        try expect(after.transcript == "second", "new transcript becomes active")
+        try expect(after.modelName == "GPT-4o", "active model updated")
+        try expect(after.alternates?.count == 1, "previous transcript preserved as one alternate")
+        try expect(after.alternates?.first?.text == "first", "alternate carries the old text")
+        try expect(after.alternates?.first?.id == altID, "alternate uses the supplied id")
+        try expect(after.transcriptVariants.map(\.text) == ["second", "first"], "newest (active) first")
+    }
+
+    private static func removingActivePromotesNewestAlternate() throws {
+        let entry = makeEntry(offset: 5, transcript: "first")
+        let mid = TranscriptEditor.addingRegeneration(
+            to: entry, transcript: "second", modelId: "gpt4o", modelName: "GPT-4o", newAlternateID: UUID()
+        )
+        // Removing the active ("second") should promote "first" back to active.
+        let after = TranscriptEditor.removing(variantID: mid.id, from: mid)
+        try expect(after.transcript == "first", "newest alternate promoted to active")
+        try expect(after.modelName == "Parakeet", "promoted model restored")
+        try expect(after.hasAlternateTranscripts == false, "no alternates remain")
+        try expect(after.id == entry.id, "entry identity (and audio) preserved")
+    }
+
+    private static func removingAlternateDropsItOnly() throws {
+        let entry = makeEntry(offset: 5, transcript: "first")
+        let mid = TranscriptEditor.addingRegeneration(
+            to: entry, transcript: "second", modelId: "gpt4o", modelName: "GPT-4o", newAlternateID: UUID()
+        )
+        let altID = mid.alternates![0].id
+        let after = TranscriptEditor.removing(variantID: altID, from: mid)
+        try expect(after.transcript == "second", "active is untouched when an alternate is removed")
+        try expect(after.hasAlternateTranscripts == false, "the one alternate is gone")
+    }
+
+    private static func removingOnlyTranscriptIsNoOp() throws {
+        let entry = makeEntry(offset: 5, transcript: "only")
+        let after = TranscriptEditor.removing(variantID: entry.id, from: entry)
+        try expect(after == entry, "can't remove the sole transcript")
+
+        // An unknown variant id leaves the entry unchanged too.
+        let mid = TranscriptEditor.addingRegeneration(
+            to: entry, transcript: "second", modelId: nil, modelName: nil, newAlternateID: UUID()
+        )
+        try expect(TranscriptEditor.removing(variantID: UUID(), from: mid) == mid, "unknown id is a no-op")
     }
 
     private static func decodesIndexMissingOptionalModelFields() throws {

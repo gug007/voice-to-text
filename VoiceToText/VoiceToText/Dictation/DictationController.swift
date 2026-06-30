@@ -709,7 +709,9 @@ final class DictationController {
                 LiveHUDPanel.shared.showResumeRecording(
                     prefix: resume.prefix,
                     suffix: resume.suffix,
-                    showsLiveText: streamingEngine != nil
+                    showsLiveText: streamingEngine != nil,
+                    onStop: { [weak self] in Task { await self?.stopAndTranscribe() } },
+                    onCancel: { [weak self] in self?.cancelRecording() }
                 )
             } else {
                 LiveHUDPanel.shared.show(

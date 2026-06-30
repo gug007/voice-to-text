@@ -169,30 +169,37 @@ final class RecordingHistoryStore {
             modelId: old.modelId,
             modelName: old.modelName,
             source: old.source,
-            isFavorite: !old.isFavorited
+            isFavorite: !old.isFavorited,
+            alternates: old.alternates
         )
         persistIndex()
     }
 
-    /// Replaces one entry's transcript and the model that produced it (e.g. after
-    /// re-transcribing the stored audio with a different model). Order preserved,
-    /// audio untouched; no-op on a blank transcript or unknown id.
-    func updateTranscript(id: UUID, transcript: String, model: ModelDescriptor?) {
+    /// Records a re-transcription: the freshly generated text becomes the active
+    /// transcript and the previously active one is kept as the newest alternate,
+    /// so the user can compare both and drop the one they don't want. Order
+    /// preserved, audio untouched; no-op on a blank transcript or unknown id.
+    func addRegeneratedTranscript(id: UUID, transcript: String, model: ModelDescriptor?) {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let old = entries[index]
-        entries[index] = RecordingHistoryEntry(
-            id: old.id,
-            createdAt: old.createdAt,
+        entries[index] = TranscriptEditor.addingRegeneration(
+            to: entries[index],
             transcript: trimmed,
-            audioFileName: old.audioFileName,
-            durationSeconds: old.durationSeconds,
-            sampleRate: old.sampleRate,
-            modelId: model?.id ?? old.modelId,
-            modelName: model?.displayName ?? old.modelName,
-            source: old.source,
-            isFavorite: old.isFavorite
+            modelId: model?.id,
+            modelName: model?.displayName,
+            newAlternateID: UUID()
         )
+        persistIndex()
+    }
+
+    /// Removes one transcript version from an entry. Removing the active one
+    /// promotes the newest alternate into its place; a recording always keeps at
+    /// least one transcript. No-op if nothing changed (only one left, or no match).
+    func removeTranscriptVariant(entryID: UUID, variantID: UUID) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        let updated = TranscriptEditor.removing(variantID: variantID, from: entries[index])
+        guard updated != entries[index] else { return }
+        entries[index] = updated
         persistIndex()
     }
 

@@ -76,7 +76,7 @@ final class TranscriptRegenerator {
                 failure = (entry.id, "No speech was detected with \(descriptor.displayName).")
                 return
             }
-            RecordingHistoryStore.shared.updateTranscript(id: entry.id, transcript: trimmed, model: descriptor)
+            RecordingHistoryStore.shared.addRegeneratedTranscript(id: entry.id, transcript: trimmed, model: descriptor)
         } catch {
             failure = (entry.id, "Couldn't regenerate: \(error.localizedDescription)")
         }

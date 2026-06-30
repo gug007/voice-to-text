@@ -186,7 +186,13 @@ final class LiveHUDPanel {
     /// there's no jump) and renders the resume-recording layout: the prior
     /// transcript, split at the caret, stays visible while new speech streams
     /// in at the insertion point.
-    func showResumeRecording(prefix: String, suffix: String, showsLiveText: Bool) {
+    func showResumeRecording(
+        prefix: String,
+        suffix: String,
+        showsLiveText: Bool,
+        onStop: (@MainActor () -> Void)? = nil,
+        onCancel: (@MainActor () -> Void)? = nil
+    ) {
         recordingPanel?.orderOut(nil)
 
         state.mode = .resumeRecording
@@ -200,6 +206,10 @@ final class LiveHUDPanel {
         state.recordingSuffix = suffix
         state.reviewBanner = nil
         state.runningActionId = nil
+        // Drive the resume HUD's Finish/Cancel buttons; without these the
+        // leftover review-session callbacks (Paste/Resume) would still be bound.
+        state.onStop = onStop
+        state.onCancel = onCancel
 
         // Reuse the review panel at its current size so the transcript doesn't
         // shift when recording starts.
@@ -556,7 +566,7 @@ private struct RecordingView: View {
 /// Recording resumed from a review session. The transcript the user was
 /// reviewing stays on screen (read-only); for streaming engines the new words
 /// appear in accent color at the caret, while a compact level meter, elapsed
-/// timer, and finish/cancel hint sit underneath.
+/// timer, and Cancel / Finish buttons sit underneath.
 private struct ResumeRecordingView: View {
     @Bindable var state: LiveHUDState
 
@@ -593,11 +603,21 @@ private struct ResumeRecordingView: View {
                     .monospacedDigit()
             }
 
-            Text(recordingHint)
-                .font(.system(size: 12, weight: .medium))
-                .tracking(0.1)
-                .foregroundStyle(.white.opacity(0.42))
-                .frame(maxWidth: .infinity, alignment: .center)
+            HStack(spacing: 8) {
+                Spacer()
+
+                ReviewKeyButton(
+                    title: "Cancel",
+                    hint: "esc",
+                    emphasis: .secondary
+                ) { state.onCancel?() }
+
+                ReviewKeyButton(
+                    title: "Finish",
+                    hint: finishHint,
+                    emphasis: .primary
+                ) { state.onStop?() }
+            }
         }
     }
 
@@ -631,10 +651,13 @@ private struct ResumeRecordingView: View {
         return String(format: "%d:%02d", total / 60, total % 60)
     }
 
-    private var recordingHint: String {
+    // Mirror the fresh-recording HUD: toggle mode finishes on the same hotkey,
+    // so surface it on the button; hold mode finishes on release, which has no
+    // key to show, so the button stands alone.
+    private var finishHint: String? {
         switch HotkeyStore.shared.mode {
-        case .hold: return "Release to finish · Esc cancels"
-        case .toggle: return "Press again to finish · Esc cancels"
+        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
+        case .hold: return nil
         }
     }
 }

@@ -101,6 +101,7 @@ struct RecordingsList: View {
     let onPlay: (RecordingHistoryEntry) -> Void
     let onDelete: (RecordingHistoryEntry) -> Void
     let onToggleFavorite: (RecordingHistoryEntry) -> Void
+    let onRemoveTranscript: (RecordingHistoryEntry, UUID) -> Void
 
     var body: some View {
         InsetCard {
@@ -120,7 +121,8 @@ struct RecordingsList: View {
                         showsTypeBadge: showsTypeBadge,
                         onPlay: { onPlay(entry) },
                         onDelete: { onDelete(entry) },
-                        onToggleFavorite: { onToggleFavorite(entry) }
+                        onToggleFavorite: { onToggleFavorite(entry) },
+                        onRemoveTranscript: { onRemoveTranscript(entry, $0) }
                     )
                 }
             }

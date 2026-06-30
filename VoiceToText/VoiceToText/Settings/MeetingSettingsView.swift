@@ -157,16 +157,26 @@ struct MeetingsPane: View {
         InsetCard {
             HStack(spacing: 16) {
                 ZStack {
-                    Circle().fill(Color.accentColor.opacity(0.14))
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.accentColor.opacity(0.26), Color.accentColor.opacity(0.12)],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                    Circle()
+                        .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
                     Image(systemName: "mic.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 19, weight: .semibold))
                         .foregroundStyle(Color.accentColor)
                 }
-                .frame(width: 44, height: 44)
-                VStack(alignment: .leading, spacing: 3) {
+                .frame(width: 50, height: 50)
+                .shadow(color: Color.accentColor.opacity(0.18), radius: 6, x: 0, y: 2)
+                VStack(alignment: .leading, spacing: 4) {
                     Text("Record a conversation")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Captures your mic and system audio. Keeps recording while you work in other apps; saved to History when you stop.")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Keeps recording in the background while you work in other apps.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -199,7 +209,7 @@ struct MeetingsPane: View {
                     }
                 }
             }
-            .padding(18)
+            .padding(20)
         }
     }
 

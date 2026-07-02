@@ -14,27 +14,27 @@ const FEATURES: Feature[] = [
   {
     icon: "lock",
     title: "Your audio never leaves the Mac",
-    body: "Local models run on-device by default. Zero network calls. No accounts, no servers, no telemetry.",
+    body: "Local models run on-device by default — your voice never touches the network. No accounts, no servers, no telemetry. The app only connects to fetch models and check for updates.",
   },
   {
     icon: "keyboard",
-    title: "Hold to talk. Release to insert.",
-    body: <>Press <HotkeyCombo />, speak, let go. Text appears at the cursor. No toggles, no accidental cutoffs, no mode to escape.</>,
+    title: "Tap to talk — or hold",
+    body: <>Press <HotkeyCombo /> to start, again to stop — or switch to hold-to-record push-to-talk. Esc cancels. Rebind to any shortcut, even Right Control alone.</>,
   },
   {
     icon: "bolt",
-    title: "Instant start, minimal battery",
-    body: "Pure SwiftUI, menu-bar only. Cold-starts in under a second and barely registers in Activity Monitor — no Electron overhead.",
+    title: "Native speed, minimal battery",
+    body: "Pure SwiftUI with no Electron overhead — quick to launch, light in Activity Monitor, kind to your battery.",
   },
   {
     icon: "agent",
     title: "Faster than typing — in any app",
-    body: "A long Slack reply, a thoughtful email, a meeting note, a search query, an AI prompt — talking is faster than typing. Hold, speak, release.",
+    body: "A long Slack reply, a thoughtful email, a meeting note, a search query, an AI prompt — talking is faster than typing. Press, speak, paste.",
   },
   {
     icon: "box",
     title: "Switch engines without switching apps",
-    body: "Parakeet and Whisper run on-device by default. Add an OpenAI key to unlock cloud models. One setting, no reinstall.",
+    body: "Six local models run on-device by default. Add an OpenAI or ElevenLabs key to unlock cloud accuracy and live streaming. One setting, no reinstall.",
   },
   {
     icon: "apps",

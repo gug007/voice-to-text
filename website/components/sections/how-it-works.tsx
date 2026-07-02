@@ -14,20 +14,20 @@ const STEPS: Step[] = [
   {
     index: "01",
     icon: "keyboard",
-    title: <>Hold <HotkeyCombo /></>,
-    body: <>Hold <HotkeyCombo />, speak, release — words appear at the cursor. Nothing leaves the Mac.</>,
+    title: <>Press <HotkeyCombo /></>,
+    body: <>A floating HUD with a live waveform appears — from any app, no window switch. Esc cancels anytime. Prefer push-to-talk? Switch to hold-to-record in Settings.</>,
   },
   {
     index: "02",
     icon: "mic",
     title: "Speak naturally",
-    body: "Full sentences, paragraphs, casual or technical. Punctuation is inferred; you can add it yourself if you prefer.",
+    body: "Full sentences, paragraphs, casual or technical. Punctuation is inferred; with a streaming model the words appear live as you speak.",
   },
   {
     index: "03",
     icon: "arrow-right",
-    title: "Release — words are typed",
-    body: "Let go of the keys. Your text is typed straight into the focused app at the cursor.",
+    title: "Press again — review, paste",
+    body: "The transcript pops up for a quick edit — hit Return and it lands at the cursor of the focused app. Turn review off and it pastes instantly.",
   },
 ];
 

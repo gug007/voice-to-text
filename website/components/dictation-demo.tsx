@@ -125,9 +125,9 @@ export function DictationDemo() {
         await sleep(900);
         if (myToken !== cycleTokenRef.current) break;
 
-        // Hold the hotkey: HUD appears, the level bars come alive. The field
-        // stays empty while speaking — words only land on release, just like
-        // the app's hold-to-talk dictation.
+        // Press the hotkey: HUD appears, the level bars come alive. The field
+        // stays empty while speaking — with a buffered model, words only land
+        // once dictation stops, just like the app.
         setState("recording");
         hud.classList.add("is-visible");
         startBars();
@@ -142,7 +142,7 @@ export function DictationDemo() {
         clearInterval(timerHandle);
         if (myToken !== cycleTokenRef.current) break;
 
-        // Release: the whole transcript pastes into the field at once and
+        // Stop: the whole transcript pastes into the field at once and
         // flashes, the HUD dismisses.
         setText(prompt);
         setPasteFlash(true);
@@ -237,7 +237,7 @@ export function DictationDemo() {
         </span>
         <span className="demo-field__content">
           <span className="demo-field__placeholder">
-            Hold <HotkeyCombo /> to dictate
+            Press <HotkeyCombo /> to dictate
           </span>
           <span className="demo-field__text">{text}</span>
           <span className="demo-field__caret" aria-hidden="true"></span>
@@ -261,12 +261,12 @@ export function DictationDemo() {
         </div>
         <div className="demo-hud__meta">
           <span className="demo-hud__timer">{timer}</span>
-          <span className="demo-hud__hint">Release to finish · Esc cancels</span>
+          <span className="demo-hud__hint">Press again to finish · Esc cancels</span>
         </div>
       </div>
 
       <figcaption className="demo-card__caption">
-        Hold <HotkeyCombo />, speak, release — words appear at the cursor. Nothing leaves the Mac.
+        Press <HotkeyCombo />, speak, press again — words appear at the cursor. Nothing leaves the Mac.
       </figcaption>
     </figure>
   );

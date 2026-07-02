@@ -1,6 +1,6 @@
 import { ImageResponse } from "next/og";
 
-export const alt = "VoiceToText — free voice to text for Mac, push-to-talk dictation that types into any app";
+export const alt = "VoiceToText — free voice to text for Mac, hotkey dictation that types into any app";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -86,8 +86,8 @@ export default function OpengraphImage() {
               maxWidth: 920,
             }}
           >
-            Hold Option+Space, speak, release &mdash; your words type at the
-            cursor in Slack, Notes, Mail, ChatGPT, or any Mac app.
+            Press Option+Space, speak &mdash; your words type at the cursor
+            in Slack, Notes, Mail, ChatGPT, or any Mac app.
           </div>
         </div>
 

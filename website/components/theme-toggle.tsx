@@ -45,14 +45,12 @@ export function ThemeToggle() {
     }
   }, []);
 
-  const label = theme === "dark" ? "Switch to light theme" : "Switch to dark theme";
-
   return (
     <button
       type="button"
       className="theme-toggle"
       onClick={handleToggle}
-      aria-label={label}
+      aria-label="Dark theme"
       aria-pressed={theme === "dark"}
     >
       <svg className="theme-toggle__sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">

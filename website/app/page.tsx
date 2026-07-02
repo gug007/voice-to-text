@@ -1,3 +1,5 @@
+import type { Metadata } from "next";
+
 import { JsonLd } from "@/components/json-ld";
 import { ScrollEffects } from "@/components/scroll-effects";
 import { Cloud } from "@/components/sections/cloud";
@@ -13,18 +15,27 @@ import { Meetings } from "@/components/sections/meetings";
 import { Nav } from "@/components/sections/nav";
 import { Proof } from "@/components/sections/proof";
 import { Realtime } from "@/components/sections/realtime";
+import { Review } from "@/components/sections/review";
 import { UseCases } from "@/components/sections/use-cases";
 import { StickyCta } from "@/components/sticky-cta";
 import {
   faqPageJsonLd,
   personJsonLd,
   softwareApplicationJsonLd,
+  websiteJsonLd,
 } from "@/lib/seo";
+
+// Canonical lives here, not in the root layout, so it isn't inherited by
+// routes that must not claim it (e.g. the 404 page).
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 export default function Home() {
   return (
     <>
       <JsonLd data={softwareApplicationJsonLd} />
+      <JsonLd data={websiteJsonLd} />
       <JsonLd data={faqPageJsonLd} />
       <JsonLd data={personJsonLd} />
       <Nav />
@@ -34,6 +45,7 @@ export default function Home() {
         <Demo />
         <HowItWorks />
         <Features />
+        <Review />
         <Cloud />
         <Realtime />
         <UseCases />

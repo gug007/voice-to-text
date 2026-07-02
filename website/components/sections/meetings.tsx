@@ -17,8 +17,8 @@ const CAPABILITIES: Capability[] = [
   },
   {
     icon: "apps",
-    title: "A searchable history",
-    body: "Every dictation and meeting is saved on-device with its audio and transcript. Play it back, search it, copy it, favorite it, or delete it.",
+    title: "A history you can replay",
+    body: "Dictations and meetings are saved on-device with audio and transcript — a rolling history of your 200 most recent recordings. Play back, copy, favorite — deletes come with a 5-second undo.",
   },
   {
     icon: "sparkle",
@@ -37,8 +37,9 @@ export function Meetings() {
         </h2>
         <p className="section__deck">
           The same app that types your voice into any field can also record a full meeting. Capture both sides
-          of the call, keep working while it runs, and get an on-device transcript saved to a searchable
-          history. You can even import an existing audio or video file to transcribe.
+          of the call, keep working while it runs, and get an on-device transcript saved to your history —
+          long calls are transcribed in segments, and even a crash can&rsquo;t lose the audio. You can even
+          import an existing audio or video file to transcribe.
         </p>
         <ul className="features__grid" role="list">
           {CAPABILITIES.map(({ icon, title, body }) => (

@@ -17,15 +17,15 @@ const STEPS: Step[] = [
   },
   {
     title: "Launch the app",
-    body: "It lives in the menu bar.",
+    body: "The default local model (Parakeet TDT v3) downloads itself — no setup, no account.",
   },
   {
     title: "Grant Microphone and Accessibility",
     body: "One-time prompt — mic hears you, accessibility types into whatever app you’re in. Revoke anytime in System Settings.",
   },
   {
-    title: <>Hold <HotkeyCombo />, speak, release.</>,
-    body: "Your words are typed at the cursor.",
+    title: <>Press <HotkeyCombo />, speak, press again.</>,
+    body: "Review the transcript, hit Return — it lands at the cursor. Prefer hold-to-talk? One switch in Settings.",
   },
 ];
 
@@ -38,10 +38,10 @@ export function Download() {
           Download VoiceToText — voice to text for macOS.
         </h2>
         <p className="section__deck">
-          One DMG. Drag to Applications. Grant Microphone and Accessibility. Hold <HotkeyCombo /> and speak.
+          One DMG. Drag to Applications. Grant Microphone and Accessibility. Press <HotkeyCombo /> and speak.
         </p>
         <div className="download__ctas">
-          <a className="btn btn--primary btn--lg" href={DMG_URL} download>
+          <a className="btn btn--primary btn--lg" href={DMG_URL}>
             <Icon name="download" />
             <span>Get it free — download the DMG</span>
           </a>
@@ -50,7 +50,7 @@ export function Download() {
             <span>See all releases on GitHub</span>
           </ExternalLink>
         </div>
-        <p className="download__meta t-mono">Free · Open source · macOS 14+ · Apple Silicon</p>
+        <p className="download__meta t-mono">Free · Open source · macOS 26.4+ · Apple Silicon</p>
         <ol className="download__steps">
           {STEPS.map(({ title, body }, i) => (
             <li key={i} className="download__step">
@@ -67,7 +67,8 @@ export function Download() {
           into whatever app you’re in. Both stay on-device. Revoke anytime in System Settings.
         </p>
         <p className="download__reqs t-caption">
-          <strong>Requirements:</strong> macOS 14 Sonoma or later · Apple Silicon (M1 or newer).
+          <strong>Requirements:</strong> macOS 26.4 or later · Apple Silicon (M1 or newer). Updates are
+          built in — the app checks GitHub Releases and installs new versions in place.
         </p>
       </div>
     </section>

@@ -1,4 +1,4 @@
-import { LICENSE_URL, REPO_URL } from "@/lib/constants";
+import { REPO_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
 import { StatusDot, type StatusKind } from "@/components/ui/status-dot";
@@ -38,7 +38,7 @@ const ROWS: CompareRow[] = [
   },
   {
     label: "Push-to-talk (hold key)",
-    cells: ["Hold ⌥ Space", "Customizable hold", "Customizable hold", "Pro (Global mode)", "Toggle only"],
+    cells: ["⌥ Space — hold or toggle", "Customizable hold", "Customizable hold", "Pro (Global mode)", "Toggle only"],
     status: ["ok", "ok", "ok", "partial", "no"],
   },
   {
@@ -59,7 +59,7 @@ const ROWS: CompareRow[] = [
   },
   {
     label: "Choice of local speech engine",
-    cells: ["Whisper + Parakeet + optional OpenAI cloud", "Single proprietary cloud model", "Multiple Whisper model sizes", "Multiple Whisper sizes (Pro)", "Apple model only"],
+    cells: ["Whisper + Parakeet local · optional OpenAI/ElevenLabs cloud", "Single proprietary cloud model", "Multiple Whisper model sizes", "Multiple Whisper sizes (Pro)", "Apple model only"],
     status: ["ok", "no", "ok", "partial", "no"],
     footnotes: { 3: 5 },
   },
@@ -153,6 +153,7 @@ export function Compare() {
   return (
     <section className="section compare reveal" id="compare" aria-labelledby="compare-title">
       <div className="container">
+        <p className="section__eyebrow">Compare</p>
         <h2 id="compare-title" className="section__title">
           VoiceToText vs. Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
         </h2>
@@ -172,14 +173,18 @@ export function Compare() {
             </li>
           ))}
         </ol>
+        <p className="compare__footnotes t-caption">
+          Competitor details as of July 2026 — verify current pricing and capabilities on each
+          vendor&rsquo;s site.
+        </p>
 
         <p className="compare__links t-caption">
           <ExternalLink href={REPO_URL}>
             Audit the source code <Icon name="arrow-right" size="sm" />
           </ExternalLink>
           <span className="compare__sep">·</span>
-          <ExternalLink href={LICENSE_URL}>
-            MIT license <Icon name="arrow-right" size="sm" />
+          <ExternalLink href={REPO_URL}>
+            Free &amp; open source <Icon name="arrow-right" size="sm" />
           </ExternalLink>
         </p>
       </div>

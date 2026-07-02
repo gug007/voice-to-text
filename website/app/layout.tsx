@@ -22,9 +22,9 @@ const mono = Geist_Mono({
 
 const TITLE = "Voice to Text for Mac — Free, Offline · VoiceToText";
 const DESCRIPTION =
-  "Free voice to text for Mac. Hold a hotkey in any app — Slack, Notes, Mail, ChatGPT — and your words type at the cursor. Offline. No account. Free download.";
+  "Free voice to text for Mac. Press a hotkey in any app — Slack, Notes, ChatGPT — speak, and your words type at the cursor. Offline. No account. Free download.";
 const TWITTER_DESCRIPTION =
-  "Free push-to-talk voice to text for Mac. Words type at the cursor in Slack, Notes, Mail, ChatGPT, or any app. Offline on the Apple Neural Engine.";
+  "Free voice to text for Mac. Words type at the cursor in Slack, Notes, Mail, ChatGPT, or any app. Offline on the Apple Neural Engine.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -39,8 +39,13 @@ export const metadata: Metadata = {
     "speak to text app for mac",
     "free speech to text mac",
     "mac dictation",
+    "dictation app for mac",
     "offline speech recognition mac",
     "push to talk dictation",
+    "real-time transcription mac",
+    "whisper mac app",
+    "wispr flow alternative",
+    "superwhisper alternative",
   ],
   authors: [{ name: "Gurgen Abagyan", url: "https://github.com/gug007" }],
   robots: {
@@ -48,7 +53,6 @@ export const metadata: Metadata = {
     follow: true,
     googleBot: { index: true, follow: true, "max-image-preview": "large" },
   },
-  alternates: { canonical: "/" },
   openGraph: {
     type: "website",
     siteName: "VoiceToText",
@@ -64,6 +68,7 @@ export const metadata: Metadata = {
   },
   icons: {
     icon: [
+      { url: "/favicon.svg", type: "image/svg+xml" },
       { url: "/icon-64.png", sizes: "64x64", type: "image/png" },
       { url: "/app-icon.png", sizes: "512x512", type: "image/png" },
     ],
@@ -90,6 +95,10 @@ export default function RootLayout({
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Scroll-reveal animations require JS; without it, show content immediately. */}
+        <noscript>
+          <style>{`.reveal, .reveal-child { opacity: 1 !important; transform: none !important; }`}</style>
+        </noscript>
       </head>
       <body>
         <Script

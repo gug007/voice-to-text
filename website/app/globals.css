@@ -27,10 +27,12 @@
   --border: #1C1E22;
   --border-strong: #292C32;
 
-  /* Text — high-contrast primary, restrained secondary/muted. */
+  /* Text — high-contrast primary, restrained secondary/muted.
+     Muted must keep ≥4.5:1 (WCAG AA) on --bg AND --surface-elevated —
+     it's used at caption sizes on both. */
   --text-primary: #F5F6F7;
   --text-secondary: #A0A4AB;
-  --text-muted: #6A6F77;
+  --text-muted: #7F858E;
 
   /* Accent — pure white in dark mode for crisp CTAs. */
   --accent: #F5F6F7;
@@ -109,7 +111,7 @@
   --hud-bg: #1A1C1F;
   --hud-shadow: 0 24px 60px -16px rgba(0, 0, 0, .6);
   --hud-timer-color: rgba(255, 255, 255, .52);
-  --hud-hint-color: rgba(255, 255, 255, .42);
+  --hud-hint-color: rgba(255, 255, 255, .52);
 
   /* Button + cards. */
   --btn-primary-hover-shadow: 0 14px 30px -12px rgba(0, 0, 0, .5), 0 2px 6px -2px rgba(0, 0, 0, .25);
@@ -152,7 +154,7 @@
     --border-strong: #D8DADE;
     --text-primary: #0B0C0E;
     --text-secondary: #5A5F66;
-    --text-muted: #8B9098;
+    --text-muted: #696D73;
     --accent: #0B0C0E;
     --accent-solid: #0B0C0E;
     --accent-hover: #22252A;
@@ -189,7 +191,7 @@
   --border-strong: #D8DADE;
   --text-primary: #0B0C0E;
   --text-secondary: #5A5F66;
-  --text-muted: #8B9098;
+  --text-muted: #696D73;
   --accent: #0B0C0E;
   --accent-solid: #0B0C0E;
   --accent-hover: #22252A;
@@ -569,6 +571,7 @@ button { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 34px;
   height: 34px;
   border-radius: var(--radius-full);
@@ -615,9 +618,11 @@ button { font-family: inherit; }
 .nav__links a:hover { color: var(--text-primary); background: var(--surface-elevated); }
 .nav__links a[aria-current="page"] { color: var(--text-primary); }
 
-@media (max-width: 720px) {
-  .nav__links { display: none; }
-  .theme-toggle { margin-left: auto; }
+@media (max-width: 880px) {
+  /* Collapse the in-page anchors but keep real routes (Meetings) reachable —
+     otherwise phones have no path to /meeting-recording from the header.
+     880px (not 720) because the full nav overflows on iPad-portrait widths. */
+  .nav__link--hash { display: none; }
   .nav__inner > .btn { display: none; }
 }
 @media (max-width: 480px) {
@@ -1062,8 +1067,8 @@ button { font-family: inherit; }
 .rt-hud__shimmer {
   font-size: 13px;
   font-weight: 500;
-  color: rgba(255, 255, 255, .45);
-  background: linear-gradient(100deg, rgba(255,255,255,.45) 0%, rgba(255,255,255,.45) 42%, #fff 50%, rgba(255,255,255,.45) 58%, rgba(255,255,255,.45) 100%);
+  color: rgba(255, 255, 255, .5);
+  background: linear-gradient(100deg, rgba(255,255,255,.5) 0%, rgba(255,255,255,.5) 42%, #fff 50%, rgba(255,255,255,.5) 58%, rgba(255,255,255,.5) 100%);
   background-size: 220% 100%;
   -webkit-background-clip: text;
   background-clip: text;
@@ -1297,6 +1302,42 @@ button { font-family: inherit; }
 }
 .ai__cta { display: flex; justify-content: center; margin-top: var(--space-12); }
 @media (max-width: 900px) { .ai__grid { grid-template-columns: 1fr; gap: var(--space-10); } }
+
+/* ---------- Review panel mock (home #review section) ---------- */
+.review-panel__text {
+  margin: 0;
+  padding: var(--space-6);
+  background: var(--surface-sunken);
+  font-size: var(--fs-body-md);
+  line-height: var(--lh-body);
+  color: var(--text-primary);
+}
+.review-panel__keys {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-3) var(--space-6);
+  background: var(--surface-sunken);
+  border-top: 1px solid var(--border);
+}
+.review-panel__key {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-caption);
+  color: var(--text-secondary);
+}
+.review-panel__key--primary {
+  margin-left: auto;
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+.review-chip__hint {
+  font-family: var(--font-mono-tokens);
+  font-size: 11px;
+  color: var(--text-muted);
+}
 
 /* ---------- Compare table ---------- */
 .compare .section__title, .compare .section__deck { margin-inline: auto; text-align: center; }
@@ -1713,7 +1754,6 @@ button { font-family: inherit; }
                 transform var(--duration-base) var(--ease-enter);
   }
   .sticky-cta.is-visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
-  .sticky-cta.is-dismissed { display: none; }
   .sticky-cta__btn { flex: 1 1 auto; min-width: 0; }
   .sticky-cta__close {
     flex-shrink: 0;

@@ -3,8 +3,8 @@ import Link from "next/link";
 
 import {
   AUTHOR_URL,
+  INTEGRATION_URL,
   ISSUES_URL,
-  LICENSE_URL,
   RELEASES_URL,
   REPO_URL,
 } from "@/lib/constants";
@@ -37,7 +37,7 @@ const COLUMNS: FooterColumn[] = [
     links: [
       { kind: "external", href: REPO_URL, label: "Source on GitHub" },
       { kind: "external", href: RELEASES_URL, label: "Release history" },
-      { kind: "external", href: LICENSE_URL, label: "MIT license" },
+      { kind: "external", href: INTEGRATION_URL, label: "Automation guide" },
       { kind: "external", href: ISSUES_URL, label: "Report an issue" },
     ],
   },
@@ -46,7 +46,6 @@ const COLUMNS: FooterColumn[] = [
     links: [
       { kind: "hash", href: "#faq", label: "Privacy answers" },
       { kind: "external", href: REPO_URL, label: "Audit the source code" },
-      { kind: "external", href: LICENSE_URL, label: "MIT license" },
       { kind: "external", href: RELEASES_URL, label: "All releases" },
       { kind: "external", href: ISSUES_URL, label: "Report an issue" },
     ],
@@ -79,13 +78,13 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
             <span>VoiceToText</span>
           </a>
           <p className="footer__tagline">
-            Free, local-first dictation for Mac. Open source on GitHub. MIT licensed.
+            Free, local-first dictation and meeting transcription for Mac. Open source on GitHub.
           </p>
           <p className="footer__attribution t-caption">
             Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>.
           </p>
           <p className="footer__privacy t-caption">
-            No telemetry. No account. No network calls in local mode.{" "}
+            No telemetry. No account. Your audio stays on the Mac in local mode.{" "}
             <ExternalLink className="link" href={REPO_URL}>Audit the source on GitHub →</ExternalLink>
           </p>
         </div>

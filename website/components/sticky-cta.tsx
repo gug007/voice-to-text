@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const DMG_URL = "https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg";
+import { DMG_URL } from "@/lib/constants";
 
 export function StickyCta() {
   const [visible, setVisible] = useState(false);
@@ -47,7 +47,6 @@ export function StickyCta() {
       <a
         className="sticky-cta__btn btn btn--primary"
         href={DMG_URL}
-        download
         tabIndex={interactiveTabIndex}
         aria-hidden={ariaHidden}
       >

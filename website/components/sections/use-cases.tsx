@@ -1,4 +1,5 @@
-import { DMG_URL } from "@/lib/constants";
+import { DMG_URL, INTEGRATION_URL } from "@/lib/constants";
+import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
 import { TrafficLights } from "@/components/ui/traffic-lights";
 
@@ -44,8 +45,13 @@ export function UseCases() {
           <div className="ai__body">
             <p className="ai__para">
               A long Slack thread, a meeting note in Apple Notes, a draft in Notion, a Gmail reply, a search
-              in your browser, a ChatGPT question, a Cursor refactor — same gesture every time. Hold to talk,
-              release to insert. Your voice never leaves the Mac in local mode.
+              in your browser, a ChatGPT question, a Cursor refactor — same gesture every time. Press, speak,
+              paste. Your voice never leaves the Mac in local mode. Building your own tool? Any app can
+              trigger dictation through the{" "}
+              <ExternalLink className="link" href={INTEGRATION_URL}>
+                <code className="code-inline">voicetotext://</code> URL scheme
+              </ExternalLink>
+              .
             </p>
             <ul className="ai__apps" role="list" aria-label="Apps people use VoiceToText with">
               {APPS.map((name) => (
@@ -69,7 +75,7 @@ export function UseCases() {
           </figure>
         </div>
         <div className="ai__cta">
-          <a className="btn btn--primary" href={DMG_URL} download>
+          <a className="btn btn--primary" href={DMG_URL}>
             <Icon name="download" />
             <span>Get it free — download for Mac</span>
           </a>

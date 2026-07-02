@@ -35,7 +35,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
         <nav className="nav__primary" aria-label="Primary" style={{ display: "contents" }}>
           <ul className="nav__links" role="list">
             {HASH_LINKS.map(({ href, label }) => (
-              <li key={href}><a href={`${linkPrefix}${href}`}>{label}</a></li>
+              <li key={href} className="nav__link--hash"><a href={`${linkPrefix}${href}`}>{label}</a></li>
             ))}
             <li>
               <Link

@@ -1,23 +1,8 @@
-import type { CSSProperties } from "react";
-
 import { DMG_URL, REPO_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
-
-const WAVE_BAR_COUNT = 64;
-
-function WaveBars() {
-  return (
-    <div className="dictation-wave" aria-hidden="true">
-      <div className="bars">
-        {Array.from({ length: WAVE_BAR_COUNT }, (_, i) => (
-          <i key={i} style={{ "--i": i } as CSSProperties & Record<"--i", number>} />
-        ))}
-      </div>
-    </div>
-  );
-}
+import { WaveBars } from "@/components/ui/wave-bars";
 
 const META = ["Free", "Open source", "No account", "No subscription"];
 
@@ -36,14 +21,15 @@ export function Hero() {
           <span className="hero__title-accent">Free. Offline.</span>
         </h1>
         <p className="hero__lead">
-          Push-to-talk dictation that types straight into any Mac app — on-device, no account, no subscription.
+          Hotkey dictation that types straight into any Mac app — on-device, no account, no subscription.
         </p>
         <p className="hero__subcopy">
-          Hold <HotkeyCombo />, speak, release — your words land at the cursor in Notes, Slack, Mail,
-          Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine.
+          Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,
+          Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine. Prefer
+          push-to-talk? Switch to hold-to-record in Settings.
         </p>
         <div className="hero__ctas">
-          <a className="btn btn--primary btn--lg" href={DMG_URL} download>
+          <a className="btn btn--primary btn--lg" href={DMG_URL}>
             <Icon name="download" />
             <span>Get it free — download for Mac</span>
           </a>
@@ -61,7 +47,7 @@ export function Hero() {
           ))}
         </p>
         <p className="hero__meta-sub t-caption">
-          Requires macOS 14 Sonoma+ · Apple Silicon only (M1+) · Intel Macs not supported.
+          Requires macOS 26.4+ · Apple Silicon only (M1+) · Intel Macs not supported.
         </p>
       </div>
     </section>

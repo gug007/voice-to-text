@@ -20,6 +20,7 @@ import { UseCases } from "@/components/sections/use-cases";
 import { StickyCta } from "@/components/sticky-cta";
 import {
   faqPageJsonLd,
+  homePageJsonLd,
   personJsonLd,
   softwareApplicationJsonLd,
   websiteJsonLd,
@@ -29,6 +30,17 @@ import {
 // routes that must not claim it (e.g. the 404 page).
 export const metadata: Metadata = {
   alternates: { canonical: "/" },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
 };
 
 export default function Home() {
@@ -36,6 +48,7 @@ export default function Home() {
     <>
       <JsonLd data={softwareApplicationJsonLd} />
       <JsonLd data={websiteJsonLd} />
+      <JsonLd data={homePageJsonLd} />
       <JsonLd data={faqPageJsonLd} />
       <JsonLd data={personJsonLd} />
       <Nav />
@@ -44,13 +57,13 @@ export default function Home() {
         <Proof />
         <Demo />
         <HowItWorks />
+        <UseCases />
         <Features />
+        <Compare />
         <Review />
         <Cloud />
         <Realtime />
-        <UseCases />
         <Meetings />
-        <Compare />
         <Faq />
         <Download />
       </main>

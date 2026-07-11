@@ -41,9 +41,14 @@ export function Download() {
           One DMG. Drag to Applications. Grant Microphone and Accessibility. Press <HotkeyCombo /> and speak.
         </p>
         <div className="download__ctas">
-          <a className="btn btn--primary btn--lg" href={DMG_URL}>
+          <a
+            className="btn btn--primary btn--lg"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="home_footer"
+          >
             <Icon name="download" />
-            <span>Get it free — download the DMG</span>
+            <span>Download for Mac — free</span>
           </a>
           <ExternalLink className="btn btn--secondary btn--lg" href={RELEASES_URL}>
             <Icon name="github" />

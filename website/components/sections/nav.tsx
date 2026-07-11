@@ -1,7 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { DMG_URL, REPO_URL } from "@/lib/constants";
+import { DMG_URL, GUIDE_PATH, REPO_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
 import { MobileNav } from "@/components/mobile-nav";
@@ -9,8 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const HASH_LINKS = [
   { href: "#features", label: "Features" },
-  { href: "#cloud", label: "Cloud" },
-  { href: "#realtime", label: "Real-time" },
+  { href: "#demo", label: "Demo" },
   { href: "#compare", label: "Compare" },
   { href: "#faq", label: "FAQ" },
 ] as const;
@@ -39,6 +38,11 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
               <li key={href} className="nav__link--hash"><a href={`${linkPrefix}${href}`}>{label}</a></li>
             ))}
             <li>
+              <Link href={GUIDE_PATH} aria-current={current === GUIDE_PATH ? "page" : undefined}>
+                Guide
+              </Link>
+            </li>
+            <li>
               <Link
                 href="/meeting-recording"
                 aria-current={current === "/meeting-recording" ? "page" : undefined}
@@ -46,18 +50,39 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
                 Meetings
               </Link>
             </li>
+            <li>
+              <ExternalLink
+                href={REPO_URL}
+                data-analytics-event="github_outbound"
+                data-analytics-placement="desktop_nav"
+              >
+                Source
+              </ExternalLink>
+            </li>
           </ul>
         </nav>
         <MobileNav current={current} links={HASH_LINKS} linkPrefix={linkPrefix} />
         <nav className="nav__fallback" aria-label="Quick links">
           <Link href="/meeting-recording">Meetings</Link>
-          <a className="btn btn--primary btn--sm" href={DMG_URL}>Download free</a>
+          <a
+            className="btn btn--primary btn--sm"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="nav_fallback"
+          >
+            Download free
+          </a>
         </nav>
         <ThemeToggle />
-        <ExternalLink className="btn btn--secondary btn--sm" href={REPO_URL}>
-          <Icon name="github" />
-          <span>View source on GitHub</span>
-        </ExternalLink>
+        <a
+          className="btn btn--primary btn--sm"
+          href={DMG_URL}
+          data-analytics-event="download_click"
+          data-analytics-placement="desktop_nav"
+        >
+          <Icon name="download" />
+          <span>Download free</span>
+        </a>
       </div>
     </header>
   );

@@ -1,10 +1,9 @@
-import { DMG_URL, REPO_URL } from "@/lib/constants";
-import { ExternalLink } from "@/components/ui/external-link";
+import { DMG_URL } from "@/lib/constants";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
 import { WaveBars } from "@/components/ui/wave-bars";
 
-const META = ["Free", "Open source", "No account", "No subscription"];
+const META = ["Signed & notarized", "Direct DMG", "No app telemetry"];
 
 export function Hero() {
   return (
@@ -24,14 +23,19 @@ export function Hero() {
           Hotkey dictation that types straight into any Mac app — on-device, no account, no subscription.
         </p>
         <div className="hero__ctas">
-          <a className="btn btn--primary btn--lg" href={DMG_URL}>
+          <a
+            className="btn btn--primary btn--lg"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="home_hero"
+          >
             <Icon name="download" />
-            <span>Get it free — download for Mac</span>
+            <span>Download for Mac — free</span>
           </a>
-          <ExternalLink className="btn btn--secondary btn--lg" href={REPO_URL}>
-            <Icon name="github" />
-            <span>View source on GitHub</span>
-          </ExternalLink>
+          <a className="btn btn--secondary btn--lg" href="#demo">
+            <span>Watch the demo</span>
+            <Icon name="arrow-right" />
+          </a>
         </div>
         <p className="hero__meta">
           {META.map((item, i) => (
@@ -42,7 +46,7 @@ export function Hero() {
           ))}
         </p>
         <p className="hero__meta-sub t-caption">
-          Requires macOS 26.4+ · Apple Silicon only (M1+) · Intel Macs not supported.
+          Built for Apple Silicon (M1 or newer) · Requires macOS 26.4 or later.
         </p>
         <p className="hero__subcopy">
           Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,

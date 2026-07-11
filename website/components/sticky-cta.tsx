@@ -49,6 +49,8 @@ export function StickyCta() {
         href={DMG_URL}
         tabIndex={interactiveTabIndex}
         aria-hidden={ariaHidden}
+        data-analytics-event="download_click"
+        data-analytics-placement="mobile_sticky"
       >
         <svg className="icon" aria-hidden="true">
           <use href="#i-download" />

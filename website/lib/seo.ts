@@ -1,33 +1,48 @@
-import { AUTHOR_URL, DMG_URL, SITE_URL } from "./constants";
+import {
+  AUTHOR_URL,
+  DMG_URL,
+  GUIDE_URL,
+  REPO_URL,
+  SITE_URL,
+} from "./constants";
 
+export const SOFTWARE_ID = `${SITE_URL}/#software`;
+export const WEBSITE_ID = `${SITE_URL}/#website`;
+export const PERSON_ID = `${SITE_URL}/#creator`;
+export const HOME_PAGE_ID = `${SITE_URL}/#webpage`;
+
+// This describes the product entity. Do not add aggregateRating/review until
+// a genuine review is visible on the page and can be represented faithfully.
 export const softwareApplicationJsonLd = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
+  "@id": SOFTWARE_ID,
   name: "VoiceToText",
-  alternateName: ["Voice to Text Mac", "Speech to Text Mac", "Voice to Text for Mac"],
+  alternateName: "VoiceToText for Mac",
   description:
     "Free, open-source voice to text and speech to text app for Mac. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording.",
   keywords:
     "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, real-time transcription mac, whisper mac app",
   url: `${SITE_URL}/`,
+  sameAs: REPO_URL,
   downloadUrl: DMG_URL,
-  applicationCategory: "ProductivityApplication",
+  installUrl: DMG_URL,
+  softwareHelp: { "@id": `${GUIDE_URL}#webpage` },
+  applicationCategory: "UtilitiesApplication",
   applicationSubCategory: "Speech to Text",
   operatingSystem: "macOS 26.4 or later",
   processorRequirements: "Apple Silicon (M1 or newer)",
   offers: {
     "@type": "Offer",
-    price: "0",
+    price: 0,
     priceCurrency: "USD",
     availability: "https://schema.org/InStock",
   },
   isAccessibleForFree: true,
   author: {
-    "@type": "Person",
-    name: "Gurgen Abagyan",
-    url: AUTHOR_URL,
-    sameAs: AUTHOR_URL,
+    "@id": PERSON_ID,
   },
+  mainEntityOfPage: { "@id": HOME_PAGE_ID },
   image: `${SITE_URL}/opengraph-image`,
   featureList: [
     "Voice to text on Mac with a global hotkey (Option+Space by default) — press to toggle or hold to record, fully customizable including Right Control",
@@ -53,8 +68,32 @@ export const softwareApplicationJsonLd = {
 export const websiteJsonLd = {
   "@context": "https://schema.org",
   "@type": "WebSite",
+  "@id": WEBSITE_ID,
   name: "VoiceToText",
+  alternateName: "voicetotext.cc",
   url: `${SITE_URL}/`,
+  inLanguage: "en",
+  publisher: { "@id": PERSON_ID },
+  about: { "@id": SOFTWARE_ID },
+} as const;
+
+export const homePageJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": HOME_PAGE_ID,
+  url: `${SITE_URL}/`,
+  name: "Voice to Text for Mac — Free, Offline",
+  description:
+    "Free voice to text for Mac that types into any app from a hotkey, runs offline on Apple Silicon, needs no account, and is open source.",
+  isPartOf: { "@id": WEBSITE_ID },
+  mainEntity: { "@id": SOFTWARE_ID },
+  primaryImageOfPage: {
+    "@type": "ImageObject",
+    url: `${SITE_URL}/opengraph-image`,
+    width: 1200,
+    height: 630,
+  },
+  inLanguage: "en",
 } as const;
 
 type FaqEntry = { question: string; answer: string };
@@ -147,6 +186,9 @@ const faqEntries: FaqEntry[] = [
 export const faqPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
+  "@id": `${SITE_URL}/#faq-page`,
+  url: `${SITE_URL}/#faq`,
+  isPartOf: { "@id": HOME_PAGE_ID },
   mainEntity: faqEntries.map(({ question, answer }) => ({
     "@type": "Question",
     name: question,
@@ -157,6 +199,7 @@ export const faqPageJsonLd = {
 export const personJsonLd = {
   "@context": "https://schema.org",
   "@type": "Person",
+  "@id": PERSON_ID,
   name: "Gurgen Abagyan",
   url: AUTHOR_URL,
   sameAs: [AUTHOR_URL],
@@ -208,6 +251,9 @@ export const meetingFaqEntries: FaqEntry[] = [
 export const meetingFaqPageJsonLd = {
   "@context": "https://schema.org",
   "@type": "FAQPage",
+  "@id": `${MEETING_URL}#faq-page`,
+  url: `${MEETING_URL}#faq`,
+  isPartOf: { "@id": `${MEETING_URL}#webpage` },
   mainEntity: meetingFaqEntries.map(({ question, answer }) => ({
     "@type": "Question",
     name: question,
@@ -215,59 +261,90 @@ export const meetingFaqPageJsonLd = {
   })),
 } as const;
 
-export const meetingApplicationJsonLd = {
+export const meetingPageJsonLd = {
   "@context": "https://schema.org",
-  "@type": "SoftwareApplication",
-  name: "VoiceToText",
-  alternateName: [
-    "Mac Meeting Recorder",
-    "Meeting Transcription for Mac",
-    "Record Meetings on Mac",
-  ],
+  "@type": "WebPage",
+  "@id": `${MEETING_URL}#webpage`,
+  name: "Record and transcribe meetings on Mac",
   description:
     "Free, open-source meeting recorder for Mac. Records your microphone and system audio together (Zoom, Google Meet, Teams, FaceTime) and transcribes the conversation on-device on the Apple Neural Engine — no bot in the call, no subscription.",
-  keywords:
-    "record meetings mac, meeting transcription mac, transcribe meetings, record system audio mac, meeting recorder mac free, zoom transcription mac",
   url: MEETING_URL,
-  downloadUrl: DMG_URL,
-  applicationCategory: "BusinessApplication",
-  applicationSubCategory: "Meeting Transcription",
-  operatingSystem: "macOS 26.4 or later",
-  processorRequirements: "Apple Silicon (M1 or newer)",
-  permissions: "Microphone, Screen Recording",
-  offers: {
-    "@type": "Offer",
-    price: "0",
-    priceCurrency: "USD",
-    availability: "https://schema.org/InStock",
-  },
-  isAccessibleForFree: true,
+  isPartOf: { "@id": WEBSITE_ID },
+  about: { "@id": SOFTWARE_ID },
+  mainEntity: { "@id": SOFTWARE_ID },
   author: {
-    "@type": "Person",
-    name: "Gurgen Abagyan",
-    url: AUTHOR_URL,
-    sameAs: AUTHOR_URL,
+    "@id": PERSON_ID,
   },
-  image: `${MEETING_URL}/opengraph-image`,
-  featureList: [
-    "Records microphone and system audio together via ScreenCaptureKit",
-    "On-device meeting transcription on the Apple Neural Engine",
-    "Works with Zoom, Google Meet, Microsoft Teams, FaceTime, Webex, and any app",
-    "Records in the background while you keep working — audio streams straight to disk",
-    "Long recordings transcribed in segments; interrupted recordings recovered on next launch",
-    "Rolling on-device recording history (200 most recent) with audio playback and favorites — deletes come with an undo",
-    "Regenerate a transcript with a different model and compare both versions",
-    "Import existing audio or video files and transcribe them",
-    "No meeting bot, no account, no subscription",
-  ],
+  breadcrumb: { "@id": `${MEETING_URL}#breadcrumb` },
+  primaryImageOfPage: {
+    "@type": "ImageObject",
+    url: `${MEETING_URL}/opengraph-image`,
+    width: 1200,
+    height: 630,
+  },
+  inLanguage: "en",
 } as const;
 
 export const meetingBreadcrumbJsonLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
+  "@id": `${MEETING_URL}#breadcrumb`,
   itemListElement: [
     { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
     { "@type": "ListItem", position: 2, name: "Meeting recording", item: MEETING_URL },
+  ],
+} as const;
+
+/* ---------- Mac voice-to-text guide ---------- */
+
+export const GUIDE_PUBLISHED = "2026-07-11";
+
+export const guideArticleJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "@id": `${GUIDE_URL}#article`,
+  headline: "How to use voice to text on Mac — in any app, offline",
+  description:
+    "A practical guide to setting up voice typing on a Mac, choosing a shortcut and local model, reviewing transcripts, and dictating into any app.",
+  url: GUIDE_URL,
+  mainEntityOfPage: { "@id": `${GUIDE_URL}#webpage` },
+  image: {
+    "@type": "ImageObject",
+    url: `${GUIDE_URL}/opengraph-image`,
+    width: 1200,
+    height: 630,
+  },
+  datePublished: GUIDE_PUBLISHED,
+  dateModified: GUIDE_PUBLISHED,
+  author: { "@id": PERSON_ID },
+  publisher: { "@id": PERSON_ID },
+  about: { "@id": SOFTWARE_ID },
+  articleSection: "Mac dictation",
+  inLanguage: "en",
+} as const;
+
+export const guidePageJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@id": `${GUIDE_URL}#webpage`,
+  url: GUIDE_URL,
+  name: "How to use voice to text on Mac",
+  description:
+    "Set up voice to text on a Mac in minutes and dictate into any app with a global hotkey.",
+  isPartOf: { "@id": WEBSITE_ID },
+  mainEntity: { "@id": `${GUIDE_URL}#article` },
+  about: { "@id": SOFTWARE_ID },
+  breadcrumb: { "@id": `${GUIDE_URL}#breadcrumb` },
+  inLanguage: "en",
+} as const;
+
+export const guideBreadcrumbJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "@id": `${GUIDE_URL}#breadcrumb`,
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+    { "@type": "ListItem", position: 2, name: "Mac voice-to-text guide", item: GUIDE_URL },
   ],
 } as const;
 

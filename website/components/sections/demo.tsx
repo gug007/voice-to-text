@@ -1,4 +1,8 @@
+import Link from "next/link";
+
 import { DictationDemo } from "@/components/dictation-demo";
+import { Icon } from "@/components/ui/icon";
+import { DMG_URL, GUIDE_PATH } from "@/lib/constants";
 
 export function Demo() {
   return (
@@ -12,6 +16,21 @@ export function Demo() {
           without ever leaving your Mac.
         </p>
         <DictationDemo />
+        <div className="demo__actions">
+          <a
+            className="btn btn--primary"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="primary_demo"
+          >
+            <Icon name="download" />
+            <span>Try it free on your Mac</span>
+          </a>
+          <Link className="btn btn--secondary" href={GUIDE_PATH}>
+            <span>Read the 5-minute setup guide</span>
+            <Icon name="arrow-right" />
+          </Link>
+        </div>
       </div>
     </section>
   );

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import { DMG_URL } from "@/lib/constants";
+import { DMG_URL, GUIDE_PATH } from "@/lib/constants";
 import { Icon } from "@/components/ui/icon";
 
 type MobileNavLink = {
@@ -121,6 +121,16 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
             ))}
             <li>
               <Link
+                href={GUIDE_PATH}
+                aria-current={current === GUIDE_PATH ? "page" : undefined}
+                tabIndex={open ? 0 : -1}
+                onClick={close}
+              >
+                Setup guide
+              </Link>
+            </li>
+            <li>
+              <Link
                 href="/meeting-recording"
                 aria-current={current === "/meeting-recording" ? "page" : undefined}
                 tabIndex={open ? 0 : -1}
@@ -135,6 +145,8 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
             href={DMG_URL}
             tabIndex={open ? 0 : -1}
             onClick={close}
+            data-analytics-event="download_click"
+            data-analytics-placement="mobile_nav"
           >
             <Icon name="download" />
             <span>Download free</span>

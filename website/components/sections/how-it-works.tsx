@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
+import Link from "next/link";
 
+import { GUIDE_PATH } from "@/lib/constants";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon, type IconName } from "@/components/ui/icon";
 
@@ -37,7 +39,7 @@ export function HowItWorks() {
       <div className="container">
         <p className="section__eyebrow">Three steps</p>
         <h2 id="how-title" className="section__title">
-          How to use voice to text on Mac and MacBook.
+          Start dictating in any Mac app in three steps.
         </h2>
         <ul className="how__steps" role="list">
           {STEPS.map(({ index, icon, title, body }) => (
@@ -49,6 +51,12 @@ export function HowItWorks() {
             </li>
           ))}
         </ul>
+        <div className="how__footer">
+          <Link className="btn btn--secondary" href={GUIDE_PATH}>
+            <span>Read the complete Mac setup guide</span>
+            <Icon name="arrow-right" />
+          </Link>
+        </div>
       </div>
     </section>
   );

@@ -11,14 +11,14 @@ import { FeatureCard } from "@/components/ui/feature-card";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { TrafficLights } from "@/components/ui/traffic-lights";
 import { WaveBars } from "@/components/ui/wave-bars";
-import { DMG_URL, REPO_URL, RELEASES_URL } from "@/lib/constants";
+import { DMG_URL, RELEASES_URL } from "@/lib/constants";
 import {
   MEETING_PATH,
   MEETING_URL,
-  meetingApplicationJsonLd,
   meetingBreadcrumbJsonLd,
   meetingFaqEntries,
   meetingFaqPageJsonLd,
+  meetingPageJsonLd,
   personJsonLd,
 } from "@/lib/seo";
 
@@ -29,19 +29,18 @@ const DESCRIPTION =
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
-  keywords: [
-    "record meetings mac",
-    "meeting transcription mac",
-    "transcribe meetings on mac",
-    "record system audio mac",
-    "meeting recorder mac free",
-    "zoom meeting transcription mac",
-    "google meet transcription mac",
-    "record teams meeting on mac",
-    "free meeting notes mac",
-    "record a call on mac",
-  ],
   alternates: { canonical: MEETING_PATH },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
   openGraph: {
     type: "website",
     siteName: "VoiceToText",
@@ -76,7 +75,7 @@ const TRANSCRIPT = `00:00  Let's kick off the weekly sync.
 00:19  None on my side. I'll send notes
        right after this call.`;
 
-const HERO_META = ["Free", "Open source", "No meeting bot", "On-device"];
+const HERO_META = ["Signed & notarized", "Mic + system audio", "On-device by default"];
 
 type Step = {
   index: string;
@@ -155,7 +154,7 @@ const PRIVACY_BULLETS = [
 export default function MeetingRecordingPage() {
   return (
     <>
-      <JsonLd data={meetingApplicationJsonLd} />
+      <JsonLd data={meetingPageJsonLd} />
       <JsonLd data={meetingFaqPageJsonLd} />
       <JsonLd data={meetingBreadcrumbJsonLd} />
       <JsonLd data={personJsonLd} />
@@ -166,6 +165,12 @@ export default function MeetingRecordingPage() {
         <section className="section hero" id="top" aria-labelledby="mr-hero-title">
           <WaveBars />
           <div className="container hero__inner">
+            <nav className="breadcrumb" aria-label="Breadcrumb">
+              <ol role="list">
+                <li><Link href="/">Home</Link></li>
+                <li aria-current="page">Meeting recording</li>
+              </ol>
+            </nav>
             <p className="hero__eyebrow">
               <span className="hero__eyebrow-dot" aria-hidden="true" />
               Meeting recording · macOS
@@ -180,14 +185,19 @@ export default function MeetingRecordingPage() {
               No bot in the meeting.
             </p>
             <div className="hero__ctas">
-              <a className="btn btn--primary btn--lg" href={DMG_URL}>
+              <a
+                className="btn btn--primary btn--lg"
+                href={DMG_URL}
+                data-analytics-event="download_click"
+                data-analytics-placement="meeting_hero"
+              >
                 <Icon name="download" />
-                <span>Get it free — download for Mac</span>
+                <span>Download for Mac — free</span>
               </a>
-              <ExternalLink className="btn btn--secondary btn--lg" href={REPO_URL}>
-                <Icon name="github" />
-                <span>View source on GitHub</span>
-              </ExternalLink>
+              <a className="btn btn--secondary btn--lg" href="#how-it-captures">
+                <span>See how recording works</span>
+                <Icon name="arrow-right" />
+              </a>
             </div>
             <p className="hero__meta">
               {HERO_META.map((item, i) => (
@@ -338,9 +348,14 @@ export default function MeetingRecordingPage() {
               get an on-device transcript.
             </p>
             <div className="download__ctas">
-              <a className="btn btn--primary btn--lg" href={DMG_URL}>
+              <a
+                className="btn btn--primary btn--lg"
+                href={DMG_URL}
+                data-analytics-event="download_click"
+                data-analytics-placement="meeting_footer"
+              >
                 <Icon name="download" />
-                <span>Get it free — download the DMG</span>
+                <span>Download for Mac — free</span>
               </a>
               <ExternalLink className="btn btn--secondary btn--lg" href={RELEASES_URL}>
                 <Icon name="github" />

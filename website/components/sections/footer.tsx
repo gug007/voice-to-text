@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import {
   AUTHOR_URL,
+  GUIDE_PATH,
   INTEGRATION_URL,
   ISSUES_URL,
   RELEASES_URL,
@@ -24,6 +25,7 @@ const COLUMNS: FooterColumn[] = [
   {
     title: "Product",
     links: [
+      { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text guide" },
       { kind: "hash", href: "#features", label: "Features" },
       { kind: "hash", href: "#cloud", label: "Cloud" },
       { kind: "route", href: "/meeting-recording", label: "Record meetings" },

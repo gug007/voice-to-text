@@ -75,9 +75,14 @@ export function UseCases() {
           </figure>
         </div>
         <div className="ai__cta">
-          <a className="btn btn--primary" href={DMG_URL}>
+          <a
+            className="btn btn--primary"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="use_cases"
+          >
             <Icon name="download" />
-            <span>Get it free — download for Mac</span>
+            <span>Download for Mac — free</span>
           </a>
         </div>
       </div>

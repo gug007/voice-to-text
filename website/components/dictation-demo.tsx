@@ -2,12 +2,13 @@
 
 import { useEffect, useRef, useState } from "react";
 
+import { trackAnalyticsEvent } from "@/components/analytics-events";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 
 const PROMPTS = [
-  "refactor this function so it streams tokens instead of buffering, keep the type signature",
-  "add a dark-mode toggle to the settings sheet and persist the choice",
-  "write a quick benchmark comparing parakeet vs whisper-large",
+  "I'll send the revised proposal before lunch, then we can review it together tomorrow.",
+  "running five minutes late to the call — please start without me and I'll catch up",
+  "refactor this function so it streams tokens instead of buffering, but keep the public type signature",
 ];
 
 // DOM level bars matching the app's LevelBars (LiveHUD.swift): 56 centered
@@ -19,16 +20,19 @@ const MIN_BAR_PCT = 6;
 const MAX_BAR_PCT = 100;
 const SAMPLE_INTERVAL = 0.07; // seconds between pushed levels
 
-type DictationState = "idle" | "recording";
+type DictationState = "idle" | "preparing" | "recording" | "finishing";
+type DemoSource = "auto" | "manual" | "replay";
 
 export function DictationDemo() {
   const fieldRef = useRef<HTMLDivElement>(null);
   const hudRef = useRef<HTMLDivElement>(null);
   const barsRef = useRef<HTMLDivElement>(null);
+  const replayRef = useRef<(source: DemoSource) => void>(() => {});
   const [state, setState] = useState<DictationState>("idle");
   const [text, setText] = useState("");
   const [pasteFlash, setPasteFlash] = useState(false);
   const [timer, setTimer] = useState("0:00");
+  const [demoComplete, setDemoComplete] = useState(false);
 
   // Mutating refs that drive the bar animation without re-rendering. phaseRef
   // is seeded inside the effect (Math.random would be impure during render).
@@ -42,6 +46,7 @@ export function DictationDemo() {
   const lastTickRef = useRef(0);
   const cycleTokenRef = useRef(0);
   const cycleIndexRef = useRef(0);
+  const autoRunRef = useRef(false);
 
   useEffect(() => {
     const field = fieldRef.current;
@@ -117,16 +122,19 @@ export function DictationDemo() {
       timerRef.current = null;
     };
 
-    const runCycle = async () => {
+    const runCycle = async (source: DemoSource) => {
       const myToken = ++cycleTokenRef.current;
       const prompt = PROMPTS[cycleIndexRef.current % PROMPTS.length];
       cycleIndexRef.current++;
 
+      trackAnalyticsEvent("demo_start", { placement: "primary_demo", source });
+
       // Reset to an empty field, ready to dictate.
       setText("");
       setPasteFlash(false);
+      setDemoComplete(false);
       setTimer("0:00");
-      setState("idle");
+      setState("preparing");
       await sleep(900);
       if (myToken !== cycleTokenRef.current) return;
 
@@ -151,10 +159,15 @@ export function DictationDemo() {
       setText(prompt);
       setPasteFlash(true);
       hud.classList.remove("is-visible");
-      setState("idle");
+      setState("finishing");
       stopBars();
       await sleep(700);
-      if (myToken === cycleTokenRef.current) setPasteFlash(false);
+      if (myToken === cycleTokenRef.current) {
+        setPasteFlash(false);
+        setDemoComplete(true);
+        setState("idle");
+        trackAnalyticsEvent("demo_complete", { placement: "primary_demo", source });
+      }
     };
 
     const stopCycle = () => {
@@ -166,37 +179,54 @@ export function DictationDemo() {
     };
 
     if (reducedMotion.matches) {
-      // One-shot: render a believable static snapshot of the demo so users
-      // with reduced motion still see what the app does — mid-recording, field
-      // empty, level bars frozen. React batches these into a single render
-      // (effect runs once, deps are empty).
+      // Show the outcome immediately. Replays switch to another completed
+      // example without animating, so reduced-motion users get the same proof
+      // and controls without a simulated recording sequence.
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setTimer("0:05");
-      setState("recording");
-      hud.classList.add("is-visible");
-      for (let i = 0; i < BAR_COUNT; i++) {
-        const t = i / BAR_COUNT;
-        historyRef.current[i] = Math.max(0, 0.32 + 0.3 * Math.sin(t * 13) + 0.14 * Math.sin(t * 31));
-      }
-      paintBars();
-      return;
+      setText(PROMPTS[cycleIndexRef.current++]);
+      setDemoComplete(true);
+      replayRef.current = (source) => {
+        const prompt = PROMPTS[cycleIndexRef.current % PROMPTS.length];
+        cycleIndexRef.current++;
+        trackAnalyticsEvent("demo_start", { placement: "primary_demo", source });
+        setText(prompt);
+        trackAnalyticsEvent("demo_complete", { placement: "primary_demo", source });
+      };
+      return () => {
+        replayRef.current = () => {};
+      };
     }
 
+    replayRef.current = (source) => { void runCycle(source); };
+
+    const runAutoOnce = () => {
+      if (autoRunRef.current) return;
+      autoRunRef.current = true;
+      void runCycle("auto");
+    };
+
     if (!("IntersectionObserver" in window)) {
-      runCycle();
-      return () => stopCycle();
+      runAutoOnce();
+      return () => {
+        replayRef.current = () => {};
+        stopCycle();
+      };
     }
 
     const card = field.closest(".demo-card");
     if (!card) {
-      runCycle();
-      return () => stopCycle();
+      runAutoOnce();
+      return () => {
+        replayRef.current = () => {};
+        stopCycle();
+      };
     }
 
     const io = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) runCycle();
+          if (entry.isIntersecting) runAutoOnce();
           else stopCycle();
         }
       },
@@ -208,12 +238,13 @@ export function DictationDemo() {
       if (document.hidden) stopCycle();
       else {
         const rect = card.getBoundingClientRect();
-        if (rect.top < window.innerHeight && rect.bottom > 0) runCycle();
+        if (rect.top < window.innerHeight && rect.bottom > 0) runAutoOnce();
       }
     };
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
+      replayRef.current = () => {};
       io.disconnect();
       document.removeEventListener("visibilitychange", onVis);
       stopCycle();
@@ -270,7 +301,16 @@ export function DictationDemo() {
       </div>
 
       <figcaption className="demo-card__caption">
-        Press <HotkeyCombo />, speak, press again — words appear at the cursor. Nothing leaves the Mac.
+        <span>Press <HotkeyCombo />, speak, press again — words appear at the cursor. Nothing leaves the Mac.</span>
+        <button
+          type="button"
+          className="demo-replay"
+          disabled={state !== "idle"}
+          onClick={() => replayRef.current(demoComplete ? "replay" : "manual")}
+        >
+          <span aria-hidden="true">↻</span>
+          {state !== "idle" ? "Demo playing…" : demoComplete ? "Replay demo" : "Play demo"}
+        </button>
       </figcaption>
     </figure>
   );

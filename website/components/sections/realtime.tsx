@@ -4,7 +4,7 @@ export function Realtime() {
   return (
     <section className="section realtime reveal" id="realtime" aria-labelledby="realtime-title">
       <div className="container">
-        <p className="section__eyebrow">Real-time</p>
+        <p className="section__eyebrow">Optional cloud mode</p>
         <h2 id="realtime-title" className="section__title">Watch your words appear as you speak.</h2>
         <p className="section__deck">
           Pick a streaming engine — <strong>Scribe v2 Realtime</strong> (ElevenLabs) or{" "}

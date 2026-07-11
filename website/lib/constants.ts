@@ -1,4 +1,6 @@
 export const SITE_URL = "https://voicetotext.cc";
+export const GUIDE_PATH = "/how-to-use-voice-to-text-on-mac";
+export const GUIDE_URL = `${SITE_URL}${GUIDE_PATH}`;
 export const REPO_URL = "https://github.com/gug007/voice-to-text";
 export const RELEASES_URL = `${REPO_URL}/releases`;
 export const INTEGRATION_URL = `${REPO_URL}/blob/main/INTEGRATION.md`;

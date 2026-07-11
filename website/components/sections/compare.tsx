@@ -1,4 +1,6 @@
-import { REPO_URL } from "@/lib/constants";
+import Link from "next/link";
+
+import { DMG_URL, GUIDE_PATH, REPO_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
 import { StatusDot, type StatusKind } from "@/components/ui/status-dot";
@@ -123,6 +125,9 @@ function MobileCards() {
           key={col}
           className={`compare__card${colIdx === 0 ? " compare__card--ours" : ""}`}
           open={colIdx === 0}
+          data-analytics-toggle="compare_toggle"
+          data-analytics-placement="mobile_compare"
+          data-analytics-label={col}
         >
           <summary className="compare__card-head">
             <span className="compare__card-title">
@@ -190,13 +195,25 @@ export function Compare() {
           vendor&rsquo;s site.
         </p>
 
+        <div className="compare__actions">
+          <a
+            className="btn btn--primary"
+            href={DMG_URL}
+            data-analytics-event="download_click"
+            data-analytics-placement="comparison"
+          >
+            <Icon name="download" />
+            <span>Download for Mac — free</span>
+          </a>
+          <Link className="btn btn--secondary" href={GUIDE_PATH}>
+            <span>Read the setup guide</span>
+            <Icon name="arrow-right" />
+          </Link>
+        </div>
+
         <p className="compare__links t-caption">
           <ExternalLink href={REPO_URL}>
             Audit the source code <Icon name="arrow-right" size="sm" />
-          </ExternalLink>
-          <span className="compare__sep">·</span>
-          <ExternalLink href={REPO_URL}>
-            Free &amp; open source <Icon name="arrow-right" size="sm" />
           </ExternalLink>
         </p>
       </div>

@@ -2,8 +2,9 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 
+import { AnalyticsEvents } from "@/components/analytics-events";
 import { IconSprite } from "@/components/icon-sprite";
-import { GA_MEASUREMENT_ID, SITE_URL } from "@/lib/constants";
+import { AUTHOR_URL, GA_MEASUREMENT_ID, SITE_URL } from "@/lib/constants";
 import { themeInitScript } from "@/lib/seo";
 
 import "./globals.css";
@@ -20,39 +21,22 @@ const mono = Geist_Mono({
   variable: "--font-mono",
 });
 
-const TITLE = "Voice to Text for Mac — Free, Offline · VoiceToText";
+const TITLE = "Voice to Text for Mac — Free, Offline | VoiceToText";
 const DESCRIPTION =
-  "Free voice to text for Mac. Press a hotkey in any app — Slack, Notes, ChatGPT — speak, and your words type at the cursor. Offline. No account. Free download.";
+  "Turn speech into text in any Mac app with a hotkey. VoiceToText runs offline on Apple Silicon, costs nothing, needs no account, and is open source.";
 const TWITTER_DESCRIPTION =
-  "Free voice to text for Mac. Words type at the cursor in Slack, Notes, Mail, ChatGPT, or any app. Offline on the Apple Neural Engine.";
+  "Free voice to text for Mac that types into any app from a hotkey. Offline on Apple Silicon, no account, and open source.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: TITLE,
   description: DESCRIPTION,
-  keywords: [
-    "voice to text mac",
-    "speech to text mac",
-    "voice to text macbook",
-    "how to use voice to text on mac",
-    "voice to text app for mac",
-    "speak to text app for mac",
-    "free speech to text mac",
-    "mac dictation",
-    "dictation app for mac",
-    "offline speech recognition mac",
-    "push to talk dictation",
-    "real-time transcription mac",
-    "whisper mac app",
-    "wispr flow alternative",
-    "superwhisper alternative",
-  ],
-  authors: [{ name: "Gurgen Abagyan", url: "https://github.com/gug007" }],
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: { index: true, follow: true, "max-image-preview": "large" },
-  },
+  applicationName: "VoiceToText",
+  authors: [{ name: "Gurgen Abagyan", url: AUTHOR_URL }],
+  creator: "Gurgen Abagyan",
+  publisher: "Gurgen Abagyan",
+  category: "productivity",
+  referrer: "origin-when-cross-origin",
   openGraph: {
     type: "website",
     siteName: "VoiceToText",
@@ -118,6 +102,7 @@ export default function RootLayout({
           gtag('js', new Date());
           gtag('config', '${GA_MEASUREMENT_ID}');
         `}</Script>
+        <AnalyticsEvents />
 
         <IconSprite />
         <a className="skip-link" href="#main">Skip to main content</a>

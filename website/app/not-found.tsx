@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { Footer } from "@/components/sections/footer";
 import { Nav } from "@/components/sections/nav";
+import { ScrollEffects } from "@/components/scroll-effects";
 import { Icon } from "@/components/ui/icon";
 
 export default function NotFound() {
@@ -35,6 +36,7 @@ export default function NotFound() {
         </section>
       </main>
       <Footer linkPrefix="/" />
+      <ScrollEffects />
     </>
   );
 }

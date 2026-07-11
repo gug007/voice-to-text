@@ -1,9 +1,10 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { REPO_URL } from "@/lib/constants";
+import { DMG_URL, REPO_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
+import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const HASH_LINKS = [
@@ -32,7 +33,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
           <Image className="brand-mark" src="/app-icon.png" width={26} height={26} alt="" priority />
           <span>VoiceToText</span>
         </a>
-        <nav className="nav__primary" aria-label="Primary" style={{ display: "contents" }}>
+        <nav className="nav__primary" aria-label="Primary">
           <ul className="nav__links" role="list">
             {HASH_LINKS.map(({ href, label }) => (
               <li key={href} className="nav__link--hash"><a href={`${linkPrefix}${href}`}>{label}</a></li>
@@ -46,6 +47,11 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
               </Link>
             </li>
           </ul>
+        </nav>
+        <MobileNav current={current} links={HASH_LINKS} linkPrefix={linkPrefix} />
+        <nav className="nav__fallback" aria-label="Quick links">
+          <Link href="/meeting-recording">Meetings</Link>
+          <a className="btn btn--primary btn--sm" href={DMG_URL}>Download free</a>
         </nav>
         <ThemeToggle />
         <ExternalLink className="btn btn--secondary btn--sm" href={REPO_URL}>

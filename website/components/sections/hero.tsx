@@ -8,7 +8,7 @@ const META = ["Free", "Open source", "No account", "No subscription"];
 
 export function Hero() {
   return (
-    <section className="section hero reveal" id="top" aria-labelledby="hero-title">
+    <section className="section hero" id="top" aria-labelledby="hero-title">
       <WaveBars />
       <div className="container hero__inner">
         <p className="hero__eyebrow">
@@ -22,11 +22,6 @@ export function Hero() {
         </h1>
         <p className="hero__lead">
           Hotkey dictation that types straight into any Mac app — on-device, no account, no subscription.
-        </p>
-        <p className="hero__subcopy">
-          Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,
-          Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine. Prefer
-          push-to-talk? Switch to hold-to-record in Settings.
         </p>
         <div className="hero__ctas">
           <a className="btn btn--primary btn--lg" href={DMG_URL}>
@@ -48,6 +43,11 @@ export function Hero() {
         </p>
         <p className="hero__meta-sub t-caption">
           Requires macOS 26.4+ · Apple Silicon only (M1+) · Intel Macs not supported.
+        </p>
+        <p className="hero__subcopy">
+          Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,
+          Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine. Prefer
+          push-to-talk? Switch to hold-to-record in Settings.
         </p>
       </div>
     </section>

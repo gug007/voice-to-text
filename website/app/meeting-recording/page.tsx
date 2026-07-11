@@ -163,7 +163,7 @@ export default function MeetingRecordingPage() {
       <Nav linkPrefix="/" current="/meeting-recording" />
       <main id="main" tabIndex={-1}>
         {/* Hero */}
-        <section className="section hero reveal" id="top" aria-labelledby="mr-hero-title">
+        <section className="section hero" id="top" aria-labelledby="mr-hero-title">
           <WaveBars />
           <div className="container hero__inner">
             <p className="hero__eyebrow">
@@ -178,11 +178,6 @@ export default function MeetingRecordingPage() {
             <p className="hero__lead">
               Capture your mic and the call’s system audio together — then get an on-device transcript.
               No bot in the meeting.
-            </p>
-            <p className="hero__subcopy">
-              VoiceToText records Zoom, Google Meet, Microsoft Teams, FaceTime, or any call playing through
-              your Mac, keeps running in the background while you work, and transcribes everything locally on
-              the Apple Neural Engine by default — saved to your on-device history.
             </p>
             <div className="hero__ctas">
               <a className="btn btn--primary btn--lg" href={DMG_URL}>
@@ -204,6 +199,11 @@ export default function MeetingRecordingPage() {
             </p>
             <p className="hero__meta-sub t-caption">
               macOS 26.4+ · Apple Silicon (M1+) · Microphone and Screen Recording permission required.
+            </p>
+            <p className="hero__subcopy">
+              VoiceToText records Zoom, Google Meet, Microsoft Teams, FaceTime, or any call playing through
+              your Mac, keeps running in the background while you work, and transcribes everything locally on
+              the Apple Neural Engine by default — saved to your on-device history.
             </p>
           </div>
         </section>

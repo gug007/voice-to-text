@@ -119,31 +119,43 @@ function MobileCards() {
   return (
     <div className="compare__mobile">
       {COLUMNS.map((col, colIdx) => (
-        <article
+        <details
           key={col}
           className={`compare__card${colIdx === 0 ? " compare__card--ours" : ""}`}
+          open={colIdx === 0}
         >
-          <header className="compare__card-head">
-            <h3>{col}</h3>
+          <summary className="compare__card-head">
+            <span className="compare__card-title">
+              <Icon name="chevron-down" className="compare__card-chevron" />
+              <strong>{col}</strong>
+            </span>
             {colIdx === 0 ? (
               <span className="chip chip--accent">
                 <span className="chip__dot" aria-hidden="true" />
                 Free &amp; open source
               </span>
             ) : null}
-          </header>
+          </summary>
           <dl>
-            {ROWS.map((row) => (
-              <div key={row.label} style={{ display: "contents" }}>
-                <dt>{row.label}</dt>
-                <dd>
-                  <StatusDot kind={row.status[colIdx]} />
-                  {row.cells[colIdx]}
-                </dd>
-              </div>
-            ))}
+            {ROWS.map((row) => {
+              const fnId = row.footnotes?.[colIdx as ColumnIndex];
+              return (
+                <div key={row.label} className="compare__card-row">
+                  <dt>{row.label}</dt>
+                  <dd>
+                    <StatusDot kind={row.status[colIdx]} />
+                    {row.cells[colIdx]}
+                    {fnId ? (
+                      <sup>
+                        <a href={`#fn-${fnId}`} aria-describedby="compare-footnotes-title">{fnId}</a>
+                      </sup>
+                    ) : null}
+                  </dd>
+                </div>
+              );
+            })}
           </dl>
-        </article>
+        </details>
       ))}
     </div>
   );
@@ -166,7 +178,7 @@ export function Compare() {
         <MobileCards />
 
         <h3 id="compare-footnotes-title" className="sr-only">Comparison table footnotes</h3>
-        <ol className="compare__footnotes t-caption">
+        <ol className="compare__footnotes t-caption" role="list">
           {FOOTNOTES.map((text, i) => (
             <li key={i} id={`fn-${i + 1}`}>
               <sup>{i + 1}</sup> {text}

@@ -51,7 +51,7 @@ export function Download() {
           </ExternalLink>
         </div>
         <p className="download__meta t-mono">Free · Open source · macOS 26.4+ · Apple Silicon</p>
-        <ol className="download__steps">
+        <ol className="download__steps" role="list">
           {STEPS.map(({ title, body }, i) => (
             <li key={i} className="download__step">
               <span className="download__step-num">{i + 1}</span>

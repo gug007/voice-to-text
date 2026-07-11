@@ -39,8 +39,10 @@ export function RealtimeDemo() {
   const accumRef = useRef(0);
   const activeRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
   const cycleTokenRef = useRef(0);
+  const cycleIndexRef = useRef(0);
 
   useEffect(() => {
     const field = fieldRef.current;
@@ -110,75 +112,75 @@ export function RealtimeDemo() {
       return `${m}:${s.toString().padStart(2, "0")}`;
     };
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const stopTimer = () => {
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
 
     const runCycle = async () => {
       const myToken = ++cycleTokenRef.current;
-      let i = 0;
-      while (myToken === cycleTokenRef.current) {
-        const sentence = SENTENCES[i % SENTENCES.length];
+      const sentence = SENTENCES[cycleIndexRef.current % SENTENCES.length];
+      cycleIndexRef.current++;
 
-        // Reset to an empty field, ready to dictate.
-        setPasted("");
-        setPartial("");
-        setPasteFlash(false);
-        setTimer("0:00");
-        setState("idle");
-        await sleep(900);
-        if (myToken !== cycleTokenRef.current) break;
+      // Reset to an empty field, ready to dictate.
+      setPasted("");
+      setPartial("");
+      setPasteFlash(false);
+      setTimer("0:00");
+      setState("idle");
+      await sleep(900);
+      if (myToken !== cycleTokenRef.current) return;
 
-        // Start recording: HUD appears, bars come alive, "Listening".
-        setState("recording");
-        hud.classList.add("is-visible");
-        startBars();
-        const startedAt = performance.now();
-        const timerHandle = window.setInterval(() => {
-          setTimer(formatTime((performance.now() - startedAt) / 1000));
-        }, 100);
+      // Start recording: HUD appears, bars come alive, "Listening".
+      setState("recording");
+      hud.classList.add("is-visible");
+      startBars();
+      const startedAt = performance.now();
+      timerRef.current = window.setInterval(() => {
+        setTimer(formatTime((performance.now() - startedAt) / 1000));
+      }, 100);
 
-        // Beat of pure "Listening" before the first words land.
-        await sleep(750);
-        if (myToken !== cycleTokenRef.current) {
-          clearInterval(timerHandle);
-          break;
-        }
-
-        // Stream the transcript word by word — the real-time payoff.
-        const words = sentence.split(" ");
-        let acc = "";
-        for (let w = 0; w < words.length; w++) {
-          if (myToken !== cycleTokenRef.current) break;
-          acc += (acc ? " " : "") + words[w];
-          setPartial(acc);
-          await sleep(150 + Math.random() * 130);
-        }
-        if (myToken !== cycleTokenRef.current) {
-          clearInterval(timerHandle);
-          break;
-        }
-
-        await sleep(550);
-        clearInterval(timerHandle);
-        if (myToken !== cycleTokenRef.current) break;
-
-        // Finish: text pastes into the field, HUD dismisses.
-        setPasted(sentence);
-        setPasteFlash(true);
-        hud.classList.remove("is-visible");
-        setState("idle");
-        setPartial("");
-        stopBars();
-        await sleep(700);
-        setPasteFlash(false);
-
-        await sleep(2000);
-        i++;
+      // Beat of pure "Listening" before the first words land.
+      await sleep(750);
+      if (myToken !== cycleTokenRef.current) {
+        stopTimer();
+        return;
       }
+
+      // Stream the transcript word by word — the real-time payoff.
+      const words = sentence.split(" ");
+      let acc = "";
+      for (let w = 0; w < words.length; w++) {
+        if (myToken !== cycleTokenRef.current) break;
+        acc += (acc ? " " : "") + words[w];
+        setPartial(acc);
+        await sleep(150 + Math.random() * 130);
+      }
+      if (myToken !== cycleTokenRef.current) {
+        stopTimer();
+        return;
+      }
+
+      await sleep(550);
+      stopTimer();
+      if (myToken !== cycleTokenRef.current) return;
+
+      // Finish on the completed transcript instead of looping forever.
+      setPasted(sentence);
+      setPasteFlash(true);
+      hud.classList.remove("is-visible");
+      setState("idle");
+      setPartial("");
+      stopBars();
+      await sleep(700);
+      if (myToken === cycleTokenRef.current) setPasteFlash(false);
     };
 
     const stopCycle = () => {
       cycleTokenRef.current++;
       hud.classList.remove("is-visible");
       setState("idle");
+      stopTimer();
       stopBars();
     };
 
@@ -222,7 +224,10 @@ export function RealtimeDemo() {
 
     const onVis = () => {
       if (document.hidden) stopCycle();
-      else if (card.getBoundingClientRect().top < window.innerHeight) runCycle();
+      else {
+        const rect = card.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) runCycle();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
 

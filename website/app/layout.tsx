@@ -95,9 +95,16 @@ export default function RootLayout({
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
-        {/* Scroll-reveal animations require JS; without it, show content immediately. */}
+        {/* Keep content and the compact navigation usable before/without JavaScript. */}
         <noscript>
-          <style>{`.reveal, .reveal-child { opacity: 1 !important; transform: none !important; }`}</style>
+          <style>{`
+            .reveal, .reveal-child { opacity: 1 !important; transform: none !important; }
+            .theme-toggle { display: none !important; }
+            @media (max-width: 960px) {
+              .nav__primary, .nav__mobile, .nav__inner > .btn { display: none !important; }
+              .nav__fallback { display: flex !important; }
+            }
+          `}</style>
         </noscript>
       </head>
       <body>

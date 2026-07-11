@@ -50,8 +50,7 @@ export function ThemeToggle() {
       type="button"
       className="theme-toggle"
       onClick={handleToggle}
-      aria-label="Dark theme"
-      aria-pressed={theme === "dark"}
+      aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
     >
       <svg className="theme-toggle__sun" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <circle cx="10" cy="10" r="3.5" />

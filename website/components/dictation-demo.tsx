@@ -38,8 +38,10 @@ export function DictationDemo() {
   const accumRef = useRef(0);
   const activeRef = useRef(false);
   const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<number | null>(null);
   const lastTickRef = useRef(0);
   const cycleTokenRef = useRef(0);
+  const cycleIndexRef = useRef(0);
 
   useEffect(() => {
     const field = fieldRef.current;
@@ -110,57 +112,56 @@ export function DictationDemo() {
       return `${m}:${s.toString().padStart(2, "0")}`;
     };
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const stopTimer = () => {
+      if (timerRef.current !== null) window.clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
 
     const runCycle = async () => {
       const myToken = ++cycleTokenRef.current;
-      let i = 0;
-      while (myToken === cycleTokenRef.current) {
-        const prompt = PROMPTS[i % PROMPTS.length];
+      const prompt = PROMPTS[cycleIndexRef.current % PROMPTS.length];
+      cycleIndexRef.current++;
 
-        // Reset to an empty field, ready to dictate.
-        setText("");
-        setPasteFlash(false);
-        setTimer("0:00");
-        setState("idle");
-        await sleep(900);
-        if (myToken !== cycleTokenRef.current) break;
+      // Reset to an empty field, ready to dictate.
+      setText("");
+      setPasteFlash(false);
+      setTimer("0:00");
+      setState("idle");
+      await sleep(900);
+      if (myToken !== cycleTokenRef.current) return;
 
-        // Press the hotkey: HUD appears, the level bars come alive. The field
-        // stays empty while speaking — with a buffered model, words only land
-        // once dictation stops, just like the app.
-        setState("recording");
-        hud.classList.add("is-visible");
-        startBars();
-        const startedAt = performance.now();
-        const timerHandle = window.setInterval(() => {
-          setTimer(formatTime((performance.now() - startedAt) / 1000));
-        }, 100);
+      // Press the hotkey: HUD appears, the level bars come alive. The field
+      // stays empty while speaking — with a buffered model, words only land
+      // once dictation stops, just like the app.
+      setState("recording");
+      hud.classList.add("is-visible");
+      startBars();
+      const startedAt = performance.now();
+      timerRef.current = window.setInterval(() => {
+        setTimer(formatTime((performance.now() - startedAt) / 1000));
+      }, 100);
 
-        // Speak for a beat that scales with the sentence length.
-        const speakMs = Math.min(5200, 1500 + prompt.length * 30);
-        await sleep(speakMs);
-        clearInterval(timerHandle);
-        if (myToken !== cycleTokenRef.current) break;
+      // Speak for a beat that scales with the sentence length.
+      const speakMs = Math.min(3600, 1000 + prompt.length * 22);
+      await sleep(speakMs);
+      stopTimer();
+      if (myToken !== cycleTokenRef.current) return;
 
-        // Stop: the whole transcript pastes into the field at once and
-        // flashes, the HUD dismisses.
-        setText(prompt);
-        setPasteFlash(true);
-        hud.classList.remove("is-visible");
-        setState("idle");
-        stopBars();
-        await sleep(700);
-        setPasteFlash(false);
-
-        await sleep(1700);
-        i++;
-      }
+      // Finish on the completed transcript instead of looping forever.
+      setText(prompt);
+      setPasteFlash(true);
+      hud.classList.remove("is-visible");
+      setState("idle");
+      stopBars();
+      await sleep(700);
+      if (myToken === cycleTokenRef.current) setPasteFlash(false);
     };
 
     const stopCycle = () => {
       cycleTokenRef.current++;
       hud.classList.remove("is-visible");
       setState("idle");
+      stopTimer();
       stopBars();
     };
 
@@ -205,7 +206,10 @@ export function DictationDemo() {
 
     const onVis = () => {
       if (document.hidden) stopCycle();
-      else if (card.getBoundingClientRect().top < window.innerHeight) runCycle();
+      else {
+        const rect = card.getBoundingClientRect();
+        if (rect.top < window.innerHeight && rect.bottom > 0) runCycle();
+      }
     };
     document.addEventListener("visibilitychange", onVis);
 

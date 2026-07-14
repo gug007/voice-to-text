@@ -18,6 +18,15 @@ private final class KeyAcceptingPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 }
 
+/// Hosting view that responds to the very first click even when our app isn't
+/// the active one. The HUD panels are nonactivating, so without this the first
+/// click on a HUD button while another app is frontmost is consumed to bring the
+/// panel forward instead of firing the button — leaving the buttons dead until a
+/// second click. Applies to both HUD panels.
+private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
+
 enum LiveHUDMode {
     case recording
     /// Recording resumed from a review session: the prior transcript stays on
@@ -436,7 +445,7 @@ final class LiveHUDPanel {
     }
 
     private func attachHosting(_ p: NSPanel, rect: NSRect) {
-        let hosting = NSHostingView(rootView: LiveHUDView(state: state))
+        let hosting = FirstMouseHostingView(rootView: LiveHUDView(state: state))
         hosting.frame = rect
         hosting.autoresizingMask = [.width, .height]
         p.contentView = hosting

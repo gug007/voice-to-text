@@ -24,6 +24,26 @@ private final class RecordingEscapeEventTapContext {
     }
 }
 
+/// Backs the global Escape fallback for the review and failure HUDs. Those
+/// panels are nonactivating, so when another app is frontmost their local key
+/// monitors never fire and Esc is dead — this session-level tap catches Esc and
+/// routes it to the right dismissal. `target` picks which HUD is showing (they
+/// never overlap), so the same tap serves both.
+private final class HUDEscapeEventTapContext {
+    enum Target {
+        case review
+        case failure
+    }
+
+    weak var controller: DictationController?
+    let target: Target
+
+    init(controller: DictationController, target: Target) {
+        self.controller = controller
+        self.target = target
+    }
+}
+
 @Observable
 @MainActor
 final class DictationController {
@@ -68,6 +88,12 @@ final class DictationController {
     private var recordingEscEventTap: CFMachPort?
     private var recordingEscRunLoopSource: CFRunLoopSource?
     private var recordingEscEventTapContext: RecordingEscapeEventTapContext?
+    /// Global Escape fallback shared by the review and failure HUDs. Only one of
+    /// those HUDs shows at a time, so a single tap serves both; each install tears
+    /// down the prior tap first, and each HUD's monitor teardown removes it.
+    private var hudEscEventTap: CFMachPort?
+    private var hudEscRunLoopSource: CFRunLoopSource?
+    private var hudEscEventTapContext: HUDEscapeEventTapContext?
     @ObservationIgnored
     private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
@@ -592,6 +618,11 @@ final class DictationController {
             }
             return event
         }
+        // Global fallback: the local monitor above only fires while our app is
+        // active. When the user has switched to another app, this session-level
+        // tap keeps Esc-to-cancel working. ⌘R / ⌘1–9 stay local-only on purpose
+        // (they must never fire from another app's keystrokes).
+        installHUDEscapeEventTap(target: .review)
     }
 
     private func removeReviewEscMonitor() {
@@ -599,6 +630,7 @@ final class DictationController {
             NSEvent.removeMonitor(reviewEscMonitor)
             self.reviewEscMonitor = nil
         }
+        removeHUDEscapeEventTap()
     }
 
     /// Failure HUD shares the key-accepting review panel, so Esc and Return
@@ -617,12 +649,105 @@ final class DictationController {
             }
             return event
         }
+        // Global fallback for Esc-to-dismiss when another app is frontmost (see
+        // installReviewEscMonitor). Return-to-retry stays local-only: pressing
+        // Return in another app must not fire a retry.
+        installHUDEscapeEventTap(target: .failure)
     }
 
     private func removeFailureEscMonitor() {
         if let failureEscMonitor {
             NSEvent.removeMonitor(failureEscMonitor)
             self.failureEscMonitor = nil
+        }
+        removeHUDEscapeEventTap()
+    }
+
+    /// Installs the session-level Escape tap that backs the review/failure HUDs
+    /// when our app is inactive. Mirrors the recording-Escape tap's lifecycle but
+    /// stays deliberately narrow: it swallows only the Escape key (both edges, so
+    /// no stray key-up leaks to the frontmost app) and acts on key-down; every
+    /// other key passes straight through untouched. Non-fatal on failure — the
+    /// local monitor still covers the app-active case, so unlike the recording
+    /// tap a creation failure doesn't tear the HUD down.
+    private func installHUDEscapeEventTap(target: HUDEscapeEventTapContext.Target) {
+        removeHUDEscapeEventTap()
+
+        let context = HUDEscapeEventTapContext(controller: self, target: target)
+        hudEscEventTapContext = context
+        let contextPtr = Unmanaged.passUnretained(context).toOpaque()
+        let mask = CGEventMask(
+            (1 << CGEventType.keyDown.rawValue)
+            | (1 << CGEventType.keyUp.rawValue)
+        )
+        guard let tap = CGEvent.tapCreate(
+            tap: .cgSessionEventTap,
+            place: .headInsertEventTap,
+            options: .defaultTap,
+            eventsOfInterest: mask,
+            callback: { _, type, event, userData in
+                guard let userData else { return Unmanaged.passUnretained(event) }
+                let context = Unmanaged<HUDEscapeEventTapContext>.fromOpaque(userData).takeUnretainedValue()
+                guard let controller = context.controller else { return Unmanaged.passUnretained(event) }
+
+                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                    DispatchQueue.main.async { controller.enableHUDEscapeEventTap() }
+                    return Unmanaged.passUnretained(event)
+                }
+
+                let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+                guard RecordingEscapePolicy.isEscape(keyCode: keyCode) else {
+                    return Unmanaged.passUnretained(event)
+                }
+                // Escape belongs to the HUD while this tap is alive (it only lives
+                // while the HUD shows): swallow both edges, dismiss on key-down.
+                if type == .keyDown {
+                    DispatchQueue.main.async {
+                        controller.handleHUDEscape(target: context.target)
+                    }
+                }
+                return nil
+            },
+            userInfo: contextPtr
+        ) else {
+            AppLog.dictation.error("HUD Escape event tap creation failed")
+            hudEscEventTapContext = nil
+            return
+        }
+
+        let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
+        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
+        hudEscEventTap = tap
+        hudEscRunLoopSource = source
+        enableHUDEscapeEventTap()
+    }
+
+    private func enableHUDEscapeEventTap() {
+        guard let hudEscEventTap else { return }
+        CGEvent.tapEnable(tap: hudEscEventTap, enable: true)
+    }
+
+    private func removeHUDEscapeEventTap() {
+        if let hudEscRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), hudEscRunLoopSource, .commonModes)
+            self.hudEscRunLoopSource = nil
+        }
+        if let hudEscEventTap {
+            CFMachPortInvalidate(hudEscEventTap)
+            self.hudEscEventTap = nil
+        }
+        hudEscEventTapContext = nil
+    }
+
+    /// Routes a global-tap Escape to the dismissal for whichever HUD is showing.
+    /// Both dismissals guard their own state and tear the tap down, so a late
+    /// Escape after the HUD already closed is a harmless no-op.
+    private func handleHUDEscape(target: HUDEscapeEventTapContext.Target) {
+        switch target {
+        case .review:
+            cancelReview()
+        case .failure:
+            dismissFailure()
         }
     }
 

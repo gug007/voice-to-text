@@ -115,8 +115,12 @@ final class AudioRecorder: @unchecked Sendable {
     }()
 
     private func handleConfigurationChange() {
-        _ = stop()
+        // Capture the callback before stop(): stop() clears onConfigurationChange,
+        // so reading it afterward always yields nil and the controller never learns
+        // the device changed — leaving the app wedged in .recording over a dead
+        // engine. Grabbing it first lets handleAudioConfigurationChange() fire.
         let cb = onConfigurationChange
+        _ = stop()
         Task { @MainActor in cb?() }
     }
 

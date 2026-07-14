@@ -55,7 +55,7 @@ export function Download() {
             <span>See all releases on GitHub</span>
           </ExternalLink>
         </div>
-        <p className="download__meta t-mono">Free · Open source · macOS 26.4+ · Apple Silicon</p>
+        <p className="download__meta t-mono">Free · Open source · macOS 15.0+ · Apple Silicon</p>
         <ol className="download__steps" role="list">
           {STEPS.map(({ title, body }, i) => (
             <li key={i} className="download__step">
@@ -72,7 +72,7 @@ export function Download() {
           into whatever app you’re in. Both stay on-device. Revoke anytime in System Settings.
         </p>
         <p className="download__reqs t-caption">
-          <strong>Requirements:</strong> macOS 26.4 or later · Apple Silicon (M1 or newer). Updates are
+          <strong>Requirements:</strong> macOS 15.0 or later · Apple Silicon (M1 or newer). Updates are
           built in — the app checks GitHub Releases and installs new versions in place.
         </p>
       </div>

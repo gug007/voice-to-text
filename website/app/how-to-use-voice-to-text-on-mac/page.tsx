@@ -214,7 +214,7 @@ export default function VoiceToTextGuidePage() {
                 <Icon name="bolt" size="lg" />
                 <div>
                   <strong>Before you install</strong>
-                  <p>Current builds require macOS 26.4 or later and an Apple Silicon Mac (M1 or newer).</p>
+                  <p>Current builds require macOS 15.0 or later and an Apple Silicon Mac (M1 or newer).</p>
                 </div>
               </aside>
             </div>

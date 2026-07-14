@@ -208,7 +208,7 @@ export default function MeetingRecordingPage() {
               ))}
             </p>
             <p className="hero__meta-sub t-caption">
-              macOS 26.4+ · Apple Silicon (M1+) · Microphone and Screen Recording permission required.
+              macOS 15.0+ · Apple Silicon (M1+) · Microphone and Screen Recording permission required.
             </p>
             <p className="hero__subcopy">
               VoiceToText records Zoom, Google Meet, Microsoft Teams, FaceTime, or any call playing through
@@ -362,7 +362,7 @@ export default function MeetingRecordingPage() {
                 <span>See all releases on GitHub</span>
               </ExternalLink>
             </div>
-            <p className="download__meta t-mono">Free · Open source · macOS 26.4+ · Apple Silicon</p>
+            <p className="download__meta t-mono">Free · Open source · macOS 15.0+ · Apple Silicon</p>
             <p className="download__reqs t-caption">
               The same app also does hotkey dictation into any text field.{" "}
               <Link className="link" href="/#features">See everything VoiceToText does →</Link>

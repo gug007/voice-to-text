@@ -46,7 +46,7 @@ export function Hero() {
           ))}
         </p>
         <p className="hero__meta-sub t-caption">
-          Built for Apple Silicon (M1 or newer) · Requires macOS 26.4 or later.
+          Built for Apple Silicon (M1 or newer) · Requires macOS 15.0 or later.
         </p>
         <p className="hero__subcopy">
           Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,

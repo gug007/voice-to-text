@@ -30,7 +30,7 @@ export const softwareApplicationJsonLd = {
   softwareHelp: { "@id": `${GUIDE_URL}#webpage` },
   applicationCategory: "UtilitiesApplication",
   applicationSubCategory: "Speech to Text",
-  operatingSystem: "macOS 26.4 or later",
+  operatingSystem: "macOS 15.0 or later",
   processorRequirements: "Apple Silicon (M1 or newer)",
   offers: {
     "@type": "Offer",
@@ -134,7 +134,7 @@ const faqEntries: FaqEntry[] = [
   {
     question: "What are the system requirements?",
     answer:
-      "The current builds require macOS 26.4 or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because the local models rely on the Apple Neural Engine. Cloud models work on any supported Mac with an internet connection.",
+      "The current builds require macOS 15.0 or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because the local models rely on the Apple Neural Engine. Cloud models work on any supported Mac with an internet connection.",
   },
   {
     question: "How accurate is it? Which models does it use?",

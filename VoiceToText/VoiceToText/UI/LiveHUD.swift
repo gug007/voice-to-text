@@ -23,7 +23,11 @@ private final class KeyAcceptingPanel: NSPanel {
 /// click on a HUD button while another app is frontmost is consumed to bring the
 /// panel forward instead of firing the button — leaving the buttons dead until a
 /// second click. Applies to both HUD panels.
-private final class FirstMouseHostingView<Content: View>: NSHostingView<Content> {
+///
+/// Concrete (non-generic) on purpose: a generic `NSHostingView<Content>`
+/// subclass crashes the Swift 6.3 optimizer (EarlyPerfInliner segfault on the
+/// synthesized deinit) in Release builds.
+private final class FirstMouseHostingView: NSHostingView<LiveHUDView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 

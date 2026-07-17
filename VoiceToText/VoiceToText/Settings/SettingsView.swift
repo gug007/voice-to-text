@@ -61,7 +61,7 @@ struct SettingsView: View {
     }
 
     private var sidebarContentInset: CGFloat {
-        if #available(macOS 26.0, *) { return 24 }
+        if #available(macOS 26.0, *) { return 14 }
         return 0
     }
 

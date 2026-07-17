@@ -103,3 +103,9 @@ swiftc -parse-as-library \
   Tests/DiarizedTranscriptHarness.swift \
   -o "$TMPDIR/diarized-transcript-harness"
 "$TMPDIR/diarized-transcript-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/SpeakerRelabeler.swift \
+  Tests/SpeakerRelabelerHarness.swift \
+  -o "$TMPDIR/speaker-relabeler-harness"
+"$TMPDIR/speaker-relabeler-harness"

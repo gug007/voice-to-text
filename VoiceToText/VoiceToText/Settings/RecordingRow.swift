@@ -18,16 +18,32 @@ struct RecordingRow: View {
     let onToggleFavorite: () -> Void
     /// Removes one transcript version (by variant id) from this recording.
     let onRemoveTranscript: (UUID) -> Void
+    /// Persists the canonical-label → name mapping for this recording.
+    let onRenameSpeakers: ([String: String]) -> Void
 
     @Bindable private var regenerator = TranscriptRegenerator.shared
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var showRegenerateMenu = false
+    @State private var showRenameSpeakers = false
+    /// Draft names shown in the rename popover, seeded from the entry on open and
+    /// committed to the store when the popover closes.
+    @State private var speakerNameDrafts: [String: String] = [:]
     /// Row action icons stay hidden until the pointer is over the row — the list
     /// reads calm at rest and reveals its controls on demand.
     @State private var isHovering = false
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
+
+    /// Canonical speaker labels present in the stored transcript. The rename
+    /// control only appears when this is non-empty (i.e. a diarized recording).
+    private var speakerLabels: [String] { SpeakerRelabeler.speakerLabels(in: entry.transcript) }
+
+    /// Applies the entry's speaker-name mapping to any transcript variant for
+    /// display and copy — the stored string keeps its canonical "Speaker N" labels.
+    private func displayText(_ text: String) -> String {
+        SpeakerRelabeler.apply(names: entry.speakerNames ?? [:], to: text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -95,7 +111,13 @@ struct RecordingRow: View {
                     action: onToggleFavorite
                 )
             }
-            if isHovering || isRegenerating {
+            // Popover-open states keep the anchor buttons mounted after the
+            // pointer leaves the row — an anchor that unmounts (hover ends when
+            // the cursor enters the popover) tears its popover down with it.
+            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu {
+                if !speakerLabels.isEmpty {
+                    renameSpeakersControl
+                }
                 regenerateControl
                 iconButton(
                     systemName: copied ? "checkmark" : "doc.on.doc",
@@ -121,7 +143,7 @@ struct RecordingRow: View {
             VStack(alignment: .leading, spacing: 10) {
                 ForEach(entry.transcriptVariants) { variant in
                     TranscriptBlockView(
-                        text: variant.text,
+                        text: displayText(variant.text),
                         header: TranscriptBlockView.Header(
                             label: modelLabel(for: variant),
                             isActive: variant.id == entry.id,
@@ -131,7 +153,7 @@ struct RecordingRow: View {
                 }
             }
         } else {
-            TranscriptBlockView(text: entry.transcript, header: nil)
+            TranscriptBlockView(text: displayText(entry.transcript), header: nil)
         }
     }
 
@@ -150,7 +172,7 @@ struct RecordingRow: View {
     private func copyActiveTranscript() {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
-        pasteboard.setString(entry.transcript, forType: .string)
+        pasteboard.setString(displayText(entry.transcript), forType: .string)
         copied = true
         copyResetTask?.cancel()
         copyResetTask = Task { @MainActor in
@@ -158,6 +180,68 @@ struct RecordingRow: View {
             guard !Task.isCancelled else { return }
             copied = false
         }
+    }
+
+    /// Hover control that opens the "Name speakers" popover for a diarized
+    /// recording. Names are drafted locally and committed to the store when the
+    /// popover content disappears, so typing never persists mid-edit. The commit
+    /// lives on the popover *content* (not an `onChange` on this button): closing
+    /// the popover can unmount this hover-gated button in the same transaction,
+    /// and a modifier on a view being removed never fires.
+    private var renameSpeakersControl: some View {
+        Button {
+            speakerNameDrafts = entry.speakerNames ?? [:]
+            showRenameSpeakers.toggle()
+        } label: {
+            Image(systemName: "person.crop.circle")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Name speakers")
+        .popover(isPresented: $showRenameSpeakers, arrowEdge: .bottom) {
+            speakerNamePopover
+                .onDisappear { onRenameSpeakers(speakerNameDrafts) }
+        }
+    }
+
+    /// One labeled text field per canonical speaker. Clearing a field reverts that
+    /// speaker to its "Speaker N" label; giving two the same name merges them.
+    private var speakerNamePopover: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Name speakers")
+                .font(.system(size: 13, weight: .semibold))
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(speakerLabels, id: \.self) { label in
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(label)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        TextField(label, text: speakerNameBinding(for: label))
+                            .textFieldStyle(.roundedBorder)
+                            .font(.system(size: 12))
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button("Done") { showRenameSpeakers = false }
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.tint)
+            }
+        }
+        .padding(14)
+        .frame(width: 220)
+    }
+
+    private func speakerNameBinding(for label: String) -> Binding<String> {
+        Binding(
+            get: { speakerNameDrafts[label] ?? "" },
+            set: { speakerNameDrafts[label] = $0 }
+        )
     }
 
     /// Either a spinner+chunk count while this row is regenerating, or a model

@@ -124,6 +124,9 @@ struct MeetingsPane: View {
                     onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) },
                     onRemoveTranscript: { entry, variantID in
                         store.removeTranscriptVariant(entryID: entry.id, variantID: variantID)
+                    },
+                    onRenameSpeakers: { entry, names in
+                        store.setSpeakerNames(entryID: entry.id, names: names)
                     }
                 )
             }

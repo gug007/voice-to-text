@@ -51,6 +51,10 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// alternates). The active transcript is always this entry's own `transcript`.
     let alternates: [TranscriptVariant]?
 
+    /// User-assigned display names per canonical speaker label
+    /// ("Speaker 1" → "Kara"). Optional so older indexes decode (absent ⇒ none).
+    let speakerNames: [String: String]?
+
     /// Non-optional view of `isFavorite` for call sites.
     var isFavorited: Bool { isFavorite ?? false }
 
@@ -98,7 +102,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         modelName: String?,
         source: Source? = nil,
         isFavorite: Bool? = nil,
-        alternates: [TranscriptVariant]? = nil
+        alternates: [TranscriptVariant]? = nil,
+        speakerNames: [String: String]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -111,10 +116,13 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.source = source
         self.isFavorite = isFavorite
         self.alternates = alternates
+        self.speakerNames = speakerNames
     }
 
     /// Returns a copy with the active transcript/model and the alternates list
-    /// replaced; all other fields (id, audio, timing, favorite, source) are kept.
+    /// replaced; all other fields (id, audio, timing, favorite, source,
+    /// speaker names) are kept. Speaker names survive a regeneration because the
+    /// canonical numbering is first-appearance order, so it usually matches.
     func updatingTranscripts(
         transcript: String,
         modelId: String?,
@@ -132,7 +140,27 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             modelName: modelName,
             source: source,
             isFavorite: isFavorite,
-            alternates: alternates
+            alternates: alternates,
+            speakerNames: speakerNames
+        )
+    }
+
+    /// Returns a copy with the speaker-name mapping replaced; everything else is
+    /// kept. `nil` clears all assigned names (speakers revert to "Speaker N").
+    func updatingSpeakerNames(_ speakerNames: [String: String]?) -> RecordingHistoryEntry {
+        RecordingHistoryEntry(
+            id: id,
+            createdAt: createdAt,
+            transcript: transcript,
+            audioFileName: audioFileName,
+            durationSeconds: durationSeconds,
+            sampleRate: sampleRate,
+            modelId: modelId,
+            modelName: modelName,
+            source: source,
+            isFavorite: isFavorite,
+            alternates: alternates,
+            speakerNames: speakerNames
         )
     }
 }

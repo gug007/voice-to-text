@@ -285,8 +285,25 @@ final class RecordingHistoryStore {
             modelName: old.modelName,
             source: old.source,
             isFavorite: !old.isFavorited,
-            alternates: old.alternates
+            alternates: old.alternates,
+            speakerNames: old.speakerNames
         )
+        persistIndex()
+    }
+
+    /// Assigns display names to an entry's canonical speaker labels (persisted, no
+    /// audio touched). Names are trimmed and empty ones dropped; an all-empty map
+    /// is stored as `nil` so the speakers revert to "Speaker N". No-op on an
+    /// unknown id. Giving two labels the same name merges them in the displayed
+    /// transcript — see `SpeakerRelabeler.apply`.
+    func setSpeakerNames(entryID: UUID, names: [String: String]) {
+        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
+        var normalized: [String: String] = [:]
+        for (label, name) in names {
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { normalized[label] = trimmed }
+        }
+        entries[index] = entries[index].updatingSpeakerNames(normalized.isEmpty ? nil : normalized)
         persistIndex()
     }
 

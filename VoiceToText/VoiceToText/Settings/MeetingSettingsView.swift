@@ -201,15 +201,11 @@ struct MeetingsPane: View {
                     Text("Transcription model")
                         .font(.system(size: 13))
                     Spacer(minLength: 12)
-                    Picker("", selection: conversationModelBinding) {
-                        Text(sameAsDictationLabel).tag(String?.none)
-                        ForEach(selectableConversationModels) { model in
-                            Text(model.displayName).tag(String?.some(model.id))
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .fixedSize()
+                    MinimalDropdown(
+                        selection: conversationModelBinding,
+                        sections: conversationModelSections,
+                        popupWidth: 300
+                    )
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 10)
@@ -224,13 +220,41 @@ struct MeetingsPane: View {
         ModelCatalog.all.filter { !$0.isRealtime }
     }
 
-    /// "Same as dictation (<current dictation model>)" so the follow option
-    /// shows what it currently resolves to.
-    private var sameAsDictationLabel: String {
-        if let active = registry.activeModel {
-            return "Same as dictation (\(active.displayName))"
+    /// Rows for the transcription-model dropdown: a lead "Same as dictation"
+    /// option (its resolved dictation model shown as the quiet secondary line),
+    /// then the selectable models grouped "On this Mac" / by cloud provider.
+    /// Provider suffixes are stripped for presentation under their headers.
+    private var conversationModelSections: [DropdownSection<String?>] {
+        var sections: [DropdownSection<String?>] = [
+            DropdownSection(items: [
+                DropdownItem<String?>(
+                    value: nil,
+                    title: "Same as dictation",
+                    detail: registry.activeModel?.sectionedDisplayName
+                )
+            ])
+        ]
+        let models = selectableConversationModels
+        let local = models.filter { !$0.isCloud }
+        if !local.isEmpty {
+            sections.append(DropdownSection(
+                header: "On this Mac",
+                items: local.map {
+                    DropdownItem<String?>(value: $0.id, title: $0.sectionedDisplayName)
+                }
+            ))
         }
-        return "Same as dictation"
+        for provider in [CloudProvider.openAI, .elevenLabs] {
+            let group = models.filter { $0.backend.cloudProvider == provider }
+            guard !group.isEmpty else { continue }
+            sections.append(DropdownSection(
+                header: provider.displayName,
+                items: group.map {
+                    DropdownItem<String?>(value: $0.id, title: $0.sectionedDisplayName)
+                }
+            ))
+        }
+        return sections
     }
 
     private var conversationModelBinding: Binding<String?> {

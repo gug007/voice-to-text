@@ -22,6 +22,7 @@ struct RecordingRow: View {
     @Bindable private var regenerator = TranscriptRegenerator.shared
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var showRegenerateMenu = false
     /// Row action icons stay hidden until the pointer is over the row — the list
     /// reads calm at rest and reveals its controls on demand.
     @State private var isHovering = false
@@ -46,6 +47,8 @@ struct RecordingRow: View {
                         Text(metaLine)
                             .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
 
@@ -175,20 +178,8 @@ struct RecordingRow: View {
             .frame(minWidth: 24, minHeight: 24)
             .help("Regenerating transcript…")
         } else {
-            Menu {
-                Section("Regenerate with") {
-                    ForEach(ModelCatalog.all) { model in
-                        Button {
-                            Task { await regenerator.regenerate(entry: entry, modelId: model.id) }
-                        } label: {
-                            if model.id == entry.modelId {
-                                Label(model.displayName, systemImage: "checkmark")
-                            } else {
-                                Text(model.displayName)
-                            }
-                        }
-                    }
-                }
+            Button {
+                showRegenerateMenu.toggle()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
                     .font(.system(size: 12))
@@ -196,13 +187,44 @@ struct RecordingRow: View {
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
-            .menuStyle(.button)
             .buttonStyle(.plain)
-            .menuIndicator(.hidden)
-            .fixedSize()
             .disabled(regenerator.isRunning)
             .help("Regenerate transcript with another model")
+            .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
+                DropdownPopup(
+                    sections: regenerateModelSections,
+                    selected: entry.modelId,
+                    width: 260
+                ) { modelId in
+                    showRegenerateMenu = false
+                    Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
+                }
+            }
         }
+    }
+
+    /// Every catalog model, grouped "On this Mac" / by cloud provider, with the
+    /// entry's current model checkmarked — the "Regenerate with" list restyled to
+    /// the shared dropdown language.
+    private var regenerateModelSections: [DropdownSection<String>] {
+        var sections: [DropdownSection<String>] = []
+        let all = ModelCatalog.all
+        let local = all.filter { !$0.isCloud }
+        if !local.isEmpty {
+            sections.append(DropdownSection(
+                header: "On this Mac",
+                items: local.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
+            ))
+        }
+        for provider in [CloudProvider.openAI, .elevenLabs] {
+            let group = all.filter { $0.backend.cloudProvider == provider }
+            guard !group.isEmpty else { continue }
+            sections.append(DropdownSection(
+                header: provider.displayName,
+                items: group.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
+            ))
+        }
+        return sections
     }
 
     private func iconButton(

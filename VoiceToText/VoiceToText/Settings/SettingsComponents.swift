@@ -10,16 +10,12 @@ struct ProviderIconTile: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [tint.opacity(0.22), tint.opacity(0.08)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                .fill(tint.opacity(0.10))
+            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                .strokeBorder(tint.opacity(0.18), lineWidth: 1)
             Image(systemName: symbol)
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(tint)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(tint.gradient)
         }
         .frame(width: 34, height: 34)
         .help(tooltip ?? "")
@@ -34,8 +30,8 @@ extension ProviderIconTile {
             symbol: isCloud ? "cloud.fill" : "laptopcomputer",
             tint: isCloud ? .blue : .green,
             tooltip: isCloud
-                ? "Cloud — runs on the provider's servers"
-                : "Local — runs on this Mac"
+                ? "Cloud — audio is sent to the provider's servers"
+                : "Local — audio never leaves this Mac"
         )
     }
 }

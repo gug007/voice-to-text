@@ -40,10 +40,14 @@ struct SettingsView: View {
         NavigationSplitView {
             List(Section.allCases, selection: $selection) { section in
                 Label(section.title, systemImage: section.icon)
+                    // macOS 26's floating sidebar panel clips the row's leading
+                    // icon gutter (known NavigationSplitView issue; safe-area
+                    // padding shifts the panel, not the rows). Indent the row
+                    // content itself back into the visible panel.
+                    .padding(.leading, sidebarContentInset)
                     .tag(section)
             }
             .listStyle(.sidebar)
-            .navigationSplitViewColumnWidth(min: 180, ideal: 200, max: 220)
         } detail: {
             detailView
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -53,7 +57,12 @@ struct SettingsView: View {
                 .ignoresSafeArea(.container, edges: .top)
         }
         .navigationTitle("")
-        .frame(minWidth: 760, minHeight: 560)
+        .frame(minWidth: 880, minHeight: 560)
+    }
+
+    private var sidebarContentInset: CGFloat {
+        if #available(macOS 26.0, *) { return 24 }
+        return 0
     }
 
     @ViewBuilder
@@ -82,275 +91,6 @@ struct PaneHeader: View {
             Text(subtitle)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
-        }
-    }
-}
-
-struct ModelsPane: View {
-    @Bindable var registry: ModelRegistry
-    var onShowCloudSettings: () -> Void = {}
-
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                HStack(alignment: .firstTextBaseline) {
-                    PaneHeader(
-                        title: "Models",
-                        subtitle: "Pick the model you want to use for dictation."
-                    )
-                    Spacer()
-                    if registry.totalDiskUsageBytes > 0 {
-                        Text("\(registry.totalDiskUsageBytes.formattedDiskSize) on disk")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-
-                VStack(spacing: 8) {
-                    ForEach(ModelCatalog.all) { model in
-                        ModelRow(
-                            model: model,
-                            registry: registry,
-                            onShowCloudSettings: onShowCloudSettings
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { registry.setActive(model.id) }
-                    }
-                }
-            }
-            .padding(.horizontal, 36)
-            .padding(.vertical, 36)
-        }
-        .onAppear { registry.refreshInstalledState() }
-    }
-}
-
-private struct StatDots: View {
-    let label: String
-    let value: Int
-
-    private static let dotCount = 10
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.tertiary)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-            HStack(spacing: 3) {
-                ForEach(0..<Self.dotCount, id: \.self) { i in
-                    Circle()
-                        .fill(i < value
-                              ? Color.primary.opacity(0.65)
-                              : Color.primary.opacity(0.10))
-                        .frame(width: 4, height: 4)
-                }
-            }
-        }
-        .fixedSize()
-    }
-}
-
-private struct ModelRow: View {
-    let model: ModelDescriptor
-    @Bindable var registry: ModelRegistry
-    let onShowCloudSettings: () -> Void
-    @Bindable private var keyStore = OpenAIAPIKeyStore.shared
-
-    private var isActive: Bool { registry.activeModelId == model.id }
-
-    var body: some View {
-        HStack(alignment: .center, spacing: 16) {
-            ProviderIconTile(isCloud: model.isCloud)
-
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 8) {
-                    Text(model.displayName)
-                        .font(.system(size: 14, weight: .semibold))
-                    if model.isRealtime { RealtimeBadge() }
-                    if isActive { activeBadge }
-                }
-                Text(model.notes)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 16) {
-                    StatDots(label: "Quality", value: model.quality)
-                    StatDots(label: "Speed", value: model.speed)
-                }
-                .padding(.top, 2)
-            }
-
-            Spacer(minLength: 12)
-
-            VStack(alignment: .trailing, spacing: 6) {
-                readinessControl
-                if let size = displaySize {
-                    Text(size)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(isActive
-                      ? Color.accentColor.opacity(0.10)
-                      : Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(isActive
-                              ? Color.accentColor.opacity(0.35)
-                              : Color.primary.opacity(0.06))
-        )
-    }
-
-    private var activeBadge: some View {
-        HStack(spacing: 3) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 9, weight: .bold))
-            Text("Active")
-                .font(.system(size: 10, weight: .semibold))
-        }
-        .foregroundStyle(Color.accentColor)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.accentColor.opacity(0.15))
-        )
-    }
-
-    /// Marks a real-time streaming model (text appears as you speak). A softly
-    /// pulsing dot + "LIVE", styled to match `activeBadge`.
-    private struct RealtimeBadge: View {
-        @State private var pulsing = false
-
-        var body: some View {
-            HStack(spacing: 4) {
-                Circle()
-                    .fill(Color.orange)
-                    .frame(width: 5, height: 5)
-                    .opacity(pulsing ? 1.0 : 0.35)
-                Text("LIVE")
-                    .font(.system(size: 10, weight: .semibold))
-                    .tracking(0.4)
-            }
-            .foregroundStyle(Color.orange)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(Color.orange.opacity(0.15))
-            )
-            .onAppear {
-                withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                    pulsing = true
-                }
-            }
-        }
-    }
-
-    private var displaySize: String? {
-        if model.isCloud { return nil }
-        if case .installed(let bytes) = registry.readiness(for: model.id) {
-            return bytes.formattedDiskSize
-        }
-        let approx = Int64(model.approxSizeMB) * 1_000_000
-        return "~\(approx.formattedDiskSize)"
-    }
-
-    // MARK: Readiness controls (right)
-
-    @ViewBuilder
-    private var readinessControl: some View {
-        if model.isCloud {
-            cloudReadinessControl
-        } else {
-            localReadinessControl
-        }
-    }
-
-    @ViewBuilder
-    private var cloudReadinessControl: some View {
-        if keyStore.hasKey {
-            StatusDot(color: .green, label: "Connected")
-        } else {
-            Button {
-                onShowCloudSettings()
-            } label: {
-                HStack(spacing: 3) {
-                    Text("Add API key")
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 8, weight: .bold))
-                }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.orange)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.orange.opacity(0.12))
-                )
-            }
-            .buttonStyle(.plain)
-            .help("Open Cloud settings to add your API key")
-        }
-    }
-
-    @ViewBuilder
-    private var localReadinessControl: some View {
-        switch registry.readiness(for: model.id) {
-        case .notInstalled:
-            Button("Download") {
-                Task { await registry.prepareModel(id: model.id) }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-        case .preparing(let fraction, let message):
-            VStack(alignment: .trailing, spacing: 4) {
-                ProgressView(value: fraction)
-                    .progressViewStyle(.linear)
-                    .frame(width: 120)
-                HStack(spacing: 6) {
-                    Text(message)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                    Text("\(Int(fraction * 100))%")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-        case .installed:
-            HStack(spacing: 8) {
-                StatusDot(color: .green, label: "Installed")
-                Button {
-                    registry.deleteModel(id: model.id)
-                } label: {
-                    Image(systemName: "trash")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-                .help("Delete model from disk")
-            }
-
-        case .failed:
-            Button("Retry") {
-                Task { await registry.prepareModel(id: model.id) }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .tint(.red)
         }
     }
 }

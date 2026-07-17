@@ -19,7 +19,7 @@ struct VoiceToTextApp: App {
         Window("VoiceToText", id: WindowID.main) {
             MainWindowView(registry: registry)
         }
-        .defaultSize(width: 820, height: 600)
+        .defaultSize(width: 880, height: 600)
         .windowResizability(.contentMinSize)
         // Transparent, full-height title bar so each pane's header sits at the
         // very top of the content area instead of below an empty title-bar band.

@@ -31,7 +31,7 @@ struct ModelsPane: View {
         }
     }
 
-    @State private var sort: ModelSort = .featured
+    @State private var sort: ModelSort = .quality
 
     enum ModelSort: String, CaseIterable, Identifiable {
         case featured, quality, speed, name
@@ -65,7 +65,15 @@ struct ModelsPane: View {
         case .featured:
             return models
         case .quality:
-            return models.sorted { $0.quality > $1.quality }
+            // `quality` is recalibrated to match WER ordering, so it's the
+            // primary key; the benchmark WER (lower is better) breaks ties into
+            // a total, consistent order when both models have leaderboard data.
+            return models.sorted {
+                if $0.quality != $1.quality { return $0.quality > $1.quality }
+                let l = $0.benchmarkWER ?? .greatestFiniteMagnitude
+                let r = $1.benchmarkWER ?? .greatestFiniteMagnitude
+                return l < r
+            }
         case .speed:
             return models.sorted { $0.speed > $1.speed }
         case .name:
@@ -81,7 +89,7 @@ struct ModelsPane: View {
             VStack(alignment: .leading, spacing: 28) {
                 header
 
-                HStack {
+                HStack(spacing: 12) {
                     ScopePicker(scope: $scope)
                     Spacer()
                     HStack(spacing: 8) {
@@ -216,7 +224,14 @@ private struct ModelRow: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 HStack(spacing: 12) {
-                    CapsuleGauge(label: "Quality", value: model.quality, tint: .accentColor)
+                    CapsuleGauge(
+                        label: "Quality",
+                        value: model.quality,
+                        tint: .accentColor,
+                        annotation: werAnnotation,
+                        annotationHelp: werAnnotation == nil ? nil
+                            : "Word error rate — Open ASR Leaderboard (English average). Lower is better."
+                    )
                     CapsuleGauge(label: "Speed", value: model.speed, tint: .teal)
                     languagesChip
                 }
@@ -323,6 +338,13 @@ private struct ModelRow: View {
         .fixedSize()
     }
 
+    /// "6.3% WER" for models with leaderboard data, else nil.
+    private var werAnnotation: String? {
+        guard let wer = model.benchmarkWER else { return nil }
+        return String(format: "%.1f%% WER", wer)
+    }
+
+
     private var displaySize: String? {
         if model.isCloud { return nil }
         if case .installed(let bytes) = registry.readiness(for: model.id) {
@@ -425,10 +447,17 @@ private struct ModelRow: View {
 
 /// A small labeled capsule bar showing a 1–10 rating as a fill fraction. Track
 /// uses an opacity-based tint so it reads in both light and dark mode.
+///
+/// The bar fill always reflects the static `value` (visual continuity). Two
+/// optional overlays surface benchmark data without disturbing the bar:
+/// `valueText` replaces the numeric readout (e.g. a measured "28×"), and
+/// `annotation` appends a quieter trailing note (e.g. "6.3% WER").
 private struct CapsuleGauge: View {
     let label: String
     let value: Int
     let tint: Color
+    var annotation: String? = nil
+    var annotationHelp: String? = nil
 
     private var fraction: Double { Double(min(max(value, 0), 10)) / 10.0 }
 
@@ -449,6 +478,12 @@ private struct CapsuleGauge: View {
             Text("\(value)")
                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(.secondary)
+            if let annotation {
+                Text(annotation)
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+                    .help(annotationHelp ?? "")
+            }
         }
         .fixedSize()
     }
@@ -579,11 +614,15 @@ private struct RealtimeBadge: View {
 /// from the static catalog. Kept in the Settings layer so `ModelRegistry`
 /// stays free of UI concerns.
 private enum ModelBadges {
-    /// The highest-quality local model, used for the "Most accurate" chip.
-    /// `max(by:)` keeps the first of equal maxima, matching catalog order.
+    /// The most accurate local model by benchmark WER (lower is better). When
+    /// this is also the Recommended model (as with parakeet, which leads on
+    /// WER), the "at most one chip" priority in `editorial(_:)` shows only
+    /// "Recommended" — so no separate local "Most accurate" chip appears, which
+    /// is the honest outcome rather than double-labelling the same model.
     static let mostAccurateLocalId: String? = ModelCatalog.all
-        .filter { !$0.isCloud }
-        .max { $0.quality < $1.quality }?.id
+        .filter { !$0.isCloud && $0.benchmarkWER != nil }
+        .min { ($0.benchmarkWER ?? .greatestFiniteMagnitude) < ($1.benchmarkWER ?? .greatestFiniteMagnitude) }?
+        .id
 
     /// The highest-quality cloud model, used for the "Most accurate" chip.
     static let mostAccurateCloudId: String? = ModelCatalog.all

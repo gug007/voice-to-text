@@ -51,6 +51,10 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// 1...10 subjective rating surfaced in the Models list.
     let quality: Int
     let speed: Int
+    /// Measured word error rate for LOCAL models, from the Hugging Face Open ASR
+    /// Leaderboard English average (mid-2026). `nil` for cloud models, which have
+    /// no comparable public leaderboard, and keep their curated `quality` rating.
+    let benchmarkWER: Double?
 
     var isCloud: Bool { backend.isCloud }
     var isRealtime: Bool { backend.isStreaming }
@@ -66,8 +70,9 @@ enum ModelCatalog {
             approxSizeMB: 470,
             languages: "25 European + JA",
             notes: "Fastest on your Mac. Best for English and major European languages.",
-            quality: 8,
-            speed: 10
+            quality: 9,
+            speed: 10,
+            benchmarkWER: 6.32
         ),
         ModelDescriptor(
             id: "whisper-large-v3-turbo",
@@ -77,8 +82,9 @@ enum ModelCatalog {
             approxSizeMB: 632,
             languages: "99",
             notes: "Excellent accuracy in 99 languages. A great all-rounder.",
-            quality: 9,
-            speed: 7
+            quality: 8,
+            speed: 7,
+            benchmarkWER: 7.75
         ),
         ModelDescriptor(
             id: "whisper-large-v3",
@@ -87,9 +93,10 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-large-v3-v20240930",
             approxSizeMB: 626,
             languages: "99",
-            notes: "Most accurate offline option. Noticeably slower than Turbo.",
-            quality: 10,
-            speed: 3
+            notes: "Extremely accurate offline. Noticeably slower than Turbo.",
+            quality: 8,
+            speed: 3,
+            benchmarkWER: 7.44
         ),
         ModelDescriptor(
             id: "whisper-small",
@@ -100,7 +107,8 @@ enum ModelCatalog {
             languages: "99",
             notes: "Smaller and faster, but makes more mistakes.",
             quality: 5,
-            speed: 8
+            speed: 8,
+            benchmarkWER: 8.59
         ),
         ModelDescriptor(
             id: "whisper-base",
@@ -111,7 +119,8 @@ enum ModelCatalog {
             languages: "99",
             notes: "Very small. Quite a few mistakes — only worth it on slow Macs.",
             quality: 3,
-            speed: 9
+            speed: 9,
+            benchmarkWER: 10.32
         ),
         ModelDescriptor(
             id: "whisper-tiny",
@@ -122,7 +131,8 @@ enum ModelCatalog {
             languages: "99",
             notes: "Smallest. Lots of mistakes — mainly useful for testing.",
             quality: 2,
-            speed: 10
+            speed: 10,
+            benchmarkWER: 12.81
         ),
         ModelDescriptor(
             id: "elevenlabs-scribe-v2-realtime",
@@ -133,7 +143,8 @@ enum ModelCatalog {
             languages: "90+",
             notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
             quality: 9,
-            speed: 10
+            speed: 10,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-gpt-realtime-whisper",
@@ -144,7 +155,8 @@ enum ModelCatalog {
             languages: "99+",
             notes: "OpenAI's newest live streaming model, built for the lowest latency. Audio goes to OpenAI.",
             quality: 9,
-            speed: 10
+            speed: 10,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-realtime",
@@ -155,7 +167,8 @@ enum ModelCatalog {
             languages: "99+",
             notes: "Live streaming — words appear as you speak. Audio goes to OpenAI.",
             quality: 9,
-            speed: 9
+            speed: 9,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe",
@@ -166,7 +179,8 @@ enum ModelCatalog {
             languages: "99+",
             notes: "The most accurate option overall. Audio goes to OpenAI.",
             quality: 10,
-            speed: 5
+            speed: 5,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-diarize",
@@ -177,7 +191,8 @@ enum ModelCatalog {
             languages: "99+",
             notes: "Labels who said what — best for meetings. Audio goes to OpenAI.",
             quality: 10,
-            speed: 4
+            speed: 4,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-mini-transcribe",
@@ -188,7 +203,8 @@ enum ModelCatalog {
             languages: "99+",
             notes: "Nearly as accurate as GPT-4o Transcribe and cheaper to run.",
             quality: 9,
-            speed: 7
+            speed: 7,
+            benchmarkWER: nil
         ),
         ModelDescriptor(
             id: "openai-whisper-1",
@@ -199,7 +215,8 @@ enum ModelCatalog {
             languages: "99",
             notes: "OpenAI's older online model. Cheapest, but less accurate than GPT-4o.",
             quality: 8,
-            speed: 6
+            speed: 6,
+            benchmarkWER: nil
         ),
     ]
 

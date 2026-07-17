@@ -8,6 +8,28 @@ import SwiftUI
 struct ModelsPane: View {
     @Bindable var registry: ModelRegistry
     var onShowCloudSettings: () -> Void = {}
+    @State private var scope: ModelScope = .all
+
+    enum ModelScope: String, CaseIterable, Identifiable {
+        case all, local, cloud
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .all: return "All"
+            case .local: return "On this Mac"
+            case .cloud: return "Cloud"
+            }
+        }
+
+        var symbol: String? {
+            switch self {
+            case .all: return nil
+            case .local: return "laptopcomputer"
+            case .cloud: return "cloud.fill"
+            }
+        }
+    }
 
     private var localModels: [ModelDescriptor] { ModelCatalog.all.filter { !$0.isCloud } }
     private var cloudModels: [ModelDescriptor] { ModelCatalog.all.filter { $0.isCloud } }
@@ -17,19 +39,25 @@ struct ModelsPane: View {
             VStack(alignment: .leading, spacing: 28) {
                 header
 
-                section(
-                    title: "On this Mac",
-                    caption: "Private — audio never leaves your Mac",
-                    symbol: "laptopcomputer",
-                    models: localModels
-                )
+                ScopePicker(scope: $scope)
 
-                section(
-                    title: "Cloud",
-                    caption: "Requires an API key — audio is sent to the provider",
-                    symbol: "cloud.fill",
-                    models: cloudModels
-                )
+                if scope != .cloud {
+                    section(
+                        title: "On this Mac",
+                        caption: "Private — audio never leaves your Mac",
+                        symbol: "laptopcomputer",
+                        models: localModels
+                    )
+                }
+
+                if scope != .local {
+                    section(
+                        title: "Cloud",
+                        caption: "Requires an API key — audio is sent to the provider",
+                        symbol: "cloud.fill",
+                        models: cloudModels
+                    )
+                }
             }
             .padding(.horizontal, 36)
             .padding(.vertical, 36)
@@ -87,6 +115,46 @@ struct ModelsPane: View {
                 }
             }
         }
+    }
+}
+
+/// Minimal capsule filter for the model list: All / On this Mac / Cloud.
+private struct ScopePicker: View {
+    @Binding var scope: ModelsPane.ModelScope
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(ModelsPane.ModelScope.allCases) { item in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        scope = item
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        if let symbol = item.symbol {
+                            Image(systemName: symbol)
+                                .font(.system(size: 10, weight: .medium))
+                        }
+                        Text(item.title)
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .foregroundStyle(scope == item ? Color.primary : Color.secondary)
+                    .background(
+                        Capsule().fill(scope == item
+                                       ? Color.primary.opacity(0.09)
+                                       : Color.clear)
+                    )
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            Capsule().strokeBorder(Color.primary.opacity(0.08))
+        )
     }
 }
 

@@ -31,32 +31,85 @@ struct ModelsPane: View {
         }
     }
 
-    private var localModels: [ModelDescriptor] { ModelCatalog.all.filter { !$0.isCloud } }
-    private var cloudModels: [ModelDescriptor] { ModelCatalog.all.filter { $0.isCloud } }
+    @State private var sort: ModelSort = .featured
+
+    enum ModelSort: String, CaseIterable, Identifiable {
+        case featured, quality, speed, name
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .featured: return "Featured"
+            case .quality: return "Quality"
+            case .speed: return "Speed"
+            case .name: return "Name"
+            }
+        }
+    }
+
+    /// One mixed list — the scope filter and sort control the order; the tile
+    /// icon (laptop vs cloud) carries the local/cloud distinction per row.
+    private var visibleModels: [ModelDescriptor] {
+        let filtered: [ModelDescriptor]
+        switch scope {
+        case .all: filtered = ModelCatalog.all
+        case .local: filtered = ModelCatalog.all.filter { !$0.isCloud }
+        case .cloud: filtered = ModelCatalog.all.filter { $0.isCloud }
+        }
+        return sorted(filtered)
+    }
+
+    /// Swift's `sorted(by:)` is stable, so ties keep their curated catalog order.
+    private func sorted(_ models: [ModelDescriptor]) -> [ModelDescriptor] {
+        switch sort {
+        case .featured:
+            return models
+        case .quality:
+            return models.sorted { $0.quality > $1.quality }
+        case .speed:
+            return models.sorted { $0.speed > $1.speed }
+        case .name:
+            return models.sorted {
+                $0.sectionedDisplayName.localizedCaseInsensitiveCompare($1.sectionedDisplayName)
+                    == .orderedAscending
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 28) {
                 header
 
-                ScopePicker(scope: $scope)
-
-                if scope != .cloud {
-                    section(
-                        title: "On this Mac",
-                        caption: "Private — audio never leaves your Mac",
-                        symbol: "laptopcomputer",
-                        models: localModels
-                    )
+                HStack {
+                    ScopePicker(scope: $scope)
+                    Spacer()
+                    HStack(spacing: 8) {
+                        Text("Sort by")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                        MinimalDropdown(
+                            selection: $sort,
+                            sections: [
+                                DropdownSection(items: ModelSort.allCases.map {
+                                    DropdownItem(value: $0, title: $0.title)
+                                })
+                            ],
+                            popupWidth: 150
+                        )
+                    }
                 }
 
-                if scope != .local {
-                    section(
-                        title: "Cloud",
-                        caption: "Requires an API key — audio is sent to the provider",
-                        symbol: "cloud.fill",
-                        models: cloudModels
-                    )
+                VStack(spacing: 8) {
+                    ForEach(visibleModels) { model in
+                        ModelRow(
+                            model: model,
+                            registry: registry,
+                            onShowCloudSettings: onShowCloudSettings
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture { registry.setActive(model.id) }
+                    }
                 }
             }
             .padding(.horizontal, 36)
@@ -94,28 +147,6 @@ struct ModelsPane: View {
         .background(Capsule().fill(Color.primary.opacity(0.06)))
     }
 
-    @ViewBuilder
-    private func section(
-        title: String,
-        caption: String,
-        symbol: String,
-        models: [ModelDescriptor]
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            SectionHeader(title: title, caption: caption, symbol: symbol)
-            VStack(spacing: 8) {
-                ForEach(models) { model in
-                    ModelRow(
-                        model: model,
-                        registry: registry,
-                        onShowCloudSettings: onShowCloudSettings
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { registry.setActive(model.id) }
-                }
-            }
-        }
-    }
 }
 
 /// Minimal capsule filter for the model list: All / On this Mac / Cloud.
@@ -155,29 +186,6 @@ private struct ScopePicker: View {
         .background(
             Capsule().strokeBorder(Color.primary.opacity(0.08))
         )
-    }
-}
-
-private struct SectionHeader: View {
-    let title: String
-    let caption: String
-    let symbol: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 6) {
-                Image(systemName: symbol)
-                    .font(.system(size: 10, weight: .semibold))
-                Text(title.uppercased())
-                    .font(.system(size: 11, weight: .semibold))
-                    .tracking(0.6)
-            }
-            .foregroundStyle(.secondary)
-            Text(caption)
-                .font(.system(size: 11))
-                .foregroundStyle(.tertiary)
-        }
-        .padding(.leading, 2)
     }
 }
 
@@ -272,7 +280,7 @@ private struct ModelRow: View {
     }
 
     private var titleText: some View {
-        Text(ModelBadges.shortName(model.displayName))
+        Text(model.sectionedDisplayName)
             .font(.system(size: 14, weight: .semibold))
             .lineLimit(1)
     }
@@ -595,17 +603,6 @@ private enum ModelBadges {
             return ("Fastest", "bolt.fill", .orange)
         }
         return nil
-    }
-
-    /// Catalog display names carry the provider as a suffix — "GPT-4o
-    /// Transcribe (OpenAI)". The row shows the provider separately ("via
-    /// OpenAI"), so strip the suffix to keep titles on one line.
-    static func shortName(_ displayName: String) -> String {
-        displayName.replacingOccurrences(
-            of: #"\s*\([^)]*\)$"#,
-            with: "",
-            options: .regularExpression
-        )
     }
 
     /// The `languages` field is a free string ("99", "90+", "25 European + JA").

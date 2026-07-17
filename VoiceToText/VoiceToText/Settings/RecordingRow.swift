@@ -22,48 +22,36 @@ struct RecordingRow: View {
     @Bindable private var regenerator = TranscriptRegenerator.shared
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
+    /// Row action icons stay hidden until the pointer is over the row — the list
+    /// reads calm at rest and reveals its controls on demand.
+    @State private var isHovering = false
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .center, spacing: 14) {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center, spacing: 12) {
                 PlayTile(isPlaying: isPlaying, action: onPlay)
 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(Self.dateFormatter.string(from: entry.createdAt))
-                        .font(.system(size: 13, weight: .semibold))
-                    HStack(spacing: 6) {
+                        .font(.system(size: 13, weight: .medium))
+                    HStack(spacing: 5) {
                         if showsTypeBadge {
                             RecordingTypeBadge(source: entry.source)
+                            Text("·")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.quaternary)
                         }
                         Text(metaLine)
-                            .font(.system(size: 11, weight: .regular))
+                            .font(.system(size: 11))
                             .foregroundStyle(.tertiary)
                     }
                 }
 
                 Spacer(minLength: 12)
 
-                iconButton(
-                    systemName: entry.isFavorited ? "star.fill" : "star",
-                    help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                    tint: entry.isFavorited ? .yellow : .secondary,
-                    action: onToggleFavorite
-                )
-                regenerateControl
-                iconButton(
-                    systemName: copied ? "checkmark" : "doc.on.doc",
-                    help: "Copy transcript",
-                    tint: copied ? .green : .secondary,
-                    action: copyActiveTranscript
-                )
-                iconButton(
-                    systemName: "trash",
-                    help: "Delete recording",
-                    tint: .secondary,
-                    action: onDelete
-                )
+                actionButtons
             }
 
             transcriptSection
@@ -84,7 +72,42 @@ struct RecordingRow: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.12)) { isHovering = hovering }
+        }
         .onDisappear { copyResetTask?.cancel() }
+    }
+
+    /// Favorite / regenerate / copy / delete. Quiet by default: only the star
+    /// shows when a recording is favorited; the full set appears on hover (and
+    /// the regenerate spinner stays put while a regeneration is in flight).
+    @ViewBuilder
+    private var actionButtons: some View {
+        HStack(spacing: 2) {
+            if entry.isFavorited || isHovering {
+                iconButton(
+                    systemName: entry.isFavorited ? "star.fill" : "star",
+                    help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
+                    tint: entry.isFavorited ? .yellow : .secondary,
+                    action: onToggleFavorite
+                )
+            }
+            if isHovering || isRegenerating {
+                regenerateControl
+                iconButton(
+                    systemName: copied ? "checkmark" : "doc.on.doc",
+                    help: "Copy transcript",
+                    tint: copied ? .green : .secondary,
+                    action: copyActiveTranscript
+                )
+                iconButton(
+                    systemName: "trash",
+                    help: "Delete recording",
+                    tint: .secondary,
+                    action: onDelete
+                )
+            }
+        }
     }
 
     /// One plain transcript, or — when the recording has alternate versions — a
@@ -230,7 +253,13 @@ struct TranscriptBlockView: View {
     @State private var copyResetTask: Task<Void, Never>?
 
     /// Lines shown before the transcript is clamped and a "Show more" appears.
-    private static let collapsedLineLimit = 4
+    /// Kept short so a collapsed row scans as a preview, not a wall of text.
+    private static let collapsedLineLimit = 3
+
+    /// One source of truth for the transcript type, shared by the visible body
+    /// and the hidden measuring probes so truncation is measured against exactly
+    /// what's drawn.
+    private static let transcriptFont = Font.system(size: 12)
 
     /// Truncated when one extra line would make the transcript taller — i.e. it
     /// overflows the collapsed clamp. Derived from stable, expand-independent
@@ -295,8 +324,8 @@ struct TranscriptBlockView: View {
     @ViewBuilder
     private var transcriptBody: some View {
         Text(text)
-            .font(.system(size: 13))
-            .foregroundStyle(.primary.opacity(0.9))
+            .font(Self.transcriptFont)
+            .foregroundStyle(.secondary)
             .textSelection(.enabled)
             .lineLimit(expanded ? nil : Self.collapsedLineLimit)
             .fixedSize(horizontal: false, vertical: true)
@@ -334,7 +363,7 @@ struct TranscriptBlockView: View {
 
     private func measuringText(lineLimit: Int?, onHeight: @escaping (CGFloat) -> Void) -> some View {
         Text(text)
-            .font(.system(size: 13))
+            .font(Self.transcriptFont)
             .lineLimit(lineLimit)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,33 +407,26 @@ struct TranscriptBlockView: View {
     }
 }
 
-/// Small chip marking how a recording was made — "Dictation" (hotkey flow) or
-/// "Conversation" (long mic+system capture). Accent-tinted for conversations,
-/// neutral otherwise.
+/// Quiet inline tag marking how a recording was made — "Dictation" (hotkey flow)
+/// or "Conversation" (long mic+system capture). A small icon + label in tertiary
+/// ink; no fill, so it sits in the metadata line rather than shouting as a chip.
 struct RecordingTypeBadge: View {
     let source: RecordingHistoryEntry.Source?
 
     var body: some View {
         let resolved = source ?? .dictation
-        let isConversation = (resolved == .meeting)
         HStack(spacing: 3) {
             Image(systemName: resolved.symbolName)
-                .font(.system(size: 8.5, weight: .semibold))
+                .font(.system(size: 9, weight: .medium))
             Text(resolved.displayName)
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: 11))
         }
-        .foregroundStyle(isConversation ? Color.accentColor : Color(nsColor: .secondaryLabelColor))
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(isConversation ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.08))
-        )
+        .foregroundStyle(.tertiary)
     }
 }
 
-/// 36-pt circular play/stop control — the iOS media affordance. Filled accent
-/// while playing, a soft accent wash at rest.
+/// Compact 28-pt circular play/stop control. Filled accent while playing, a
+/// subtle neutral wash at rest so it stays quiet until the row is in use.
 struct PlayTile: View {
     let isPlaying: Bool
     let action: () -> Void
@@ -416,13 +438,13 @@ struct PlayTile: View {
                     .fill(
                         isPlaying
                         ? AnyShapeStyle(Color.accentColor)
-                        : AnyShapeStyle(Color.accentColor.opacity(0.14))
+                        : AnyShapeStyle(Color.primary.opacity(0.06))
                     )
                 Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(isPlaying ? Color.white : Color.accentColor)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(isPlaying ? Color.white : Color.secondary)
             }
-            .frame(width: 36, height: 36)
+            .frame(width: 28, height: 28)
             .contentShape(Circle())
         }
         .buttonStyle(.plain)

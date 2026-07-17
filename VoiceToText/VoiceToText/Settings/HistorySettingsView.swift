@@ -69,18 +69,15 @@ struct HistoryPane: View {
 
     private var saveToggleSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            InsetCard {
-                HStack {
-                    Text("Save recordings")
-                        .font(.system(size: 14, weight: .medium))
-                    Spacer()
-                    Toggle("", isOn: $store.isEnabled)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                }
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
+            HStack {
+                Text("Save recordings")
+                    .font(.system(size: 13, weight: .medium))
+                Spacer()
+                Toggle("", isOn: $store.isEnabled)
+                    .labelsHidden()
+                    .toggleStyle(.switch)
             }
+            .padding(.horizontal, 6)
             GroupFooter(text: store.isEnabled
                         ? "New dictations are saved here automatically."
                         : "New dictations won't be saved. Existing history is kept until you clear it.")
@@ -137,20 +134,18 @@ struct HistoryPane: View {
     // MARK: - Empty state
 
     private var emptyState: some View {
-        InsetCard {
-            VStack(spacing: 10) {
-                Image(systemName: "waveform")
-                    .font(.system(size: 30, weight: .light))
-                    .foregroundStyle(.tertiary)
-                Text("No recordings yet")
-                    .font(.system(size: 14, weight: .medium))
-                Text("Your dictations and conversations will appear here.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 56)
+        VStack(spacing: 10) {
+            Image(systemName: "waveform")
+                .font(.system(size: 32, weight: .light))
+                .foregroundStyle(.tertiary)
+            Text("No recordings yet")
+                .font(.system(size: 14, weight: .medium))
+            Text("Your dictations and conversations will appear here.")
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 72)
     }
 }

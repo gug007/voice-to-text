@@ -16,10 +16,13 @@ struct MeetingsPane: View {
     /// visible drop affordance when the controller is idle (see `isDropActive`).
     @State private var isDropTargeted = false
 
-    /// Content types a dropped file must conform to — the same family the
-    /// "Upload File…" open panel accepts. Restricting the drop registration to
-    /// these means a hovering non-media drag never lights up the overlay.
-    private let acceptedDropTypes: [UTType] = [.audiovisualContent, .audio, .movie]
+    /// Types the drop is registered for. A Finder drag arrives as a plain
+    /// `public.file-url` provider that does *not* conform to the media content
+    /// types, so `.fileURL` must be present or the pane never becomes a drop
+    /// target. The media types are kept so promised-content drags from other
+    /// apps still register. The file's actual kind is validated on drop, not
+    /// here — so the overlay can light up for any file (see `handleDrop`).
+    private let acceptedDropTypes: [UTType] = [.fileURL, .audiovisualContent, .audio, .movie]
 
     /// Show the drop overlay only when a valid drag is hovering *and* we're free
     /// to take it. While busy the drop is inert, so no overlay.
@@ -66,9 +69,10 @@ struct MeetingsPane: View {
             .animation(.easeInOut(duration: 0.2), value: controller.state)
             .animation(.easeInOut(duration: 0.18), value: conversations)
         }
-        // The whole pane is a drop target for a single audio/video file. The
-        // registration is scoped to media types, so `isDropTargeted` only flips
-        // for a plausible file — invalid drags never trigger the overlay.
+        // The whole pane is a drop target for a single audio/video file.
+        // Because Finder drags register as `public.file-url`, the overlay flips
+        // for any file hover; a non-media file is silently rejected by the
+        // handler's revalidation rather than being filtered out up front.
         .onDrop(of: acceptedDropTypes, isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -139,29 +143,31 @@ struct MeetingsPane: View {
     // MARK: - Permission
 
     private var permissionCard: some View {
-        InsetCard {
-            HStack(spacing: 12) {
-                Image(systemName: "rectangle.inset.filled.badge.record")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Screen Recording permission needed")
-                        .font(.system(size: 13, weight: .medium))
-                    Text("Capturing other participants' audio uses Screen Recording. VoiceToText never records the screen — only the audio.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: 12)
-                Button("Open Settings…") {
-                    ScreenCapturePermission.request()
-                    ScreenCapturePermission.openSystemSettings()
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+        HStack(spacing: 12) {
+            Image(systemName: "rectangle.inset.filled.badge.record")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Screen Recording permission needed")
+                    .font(.system(size: 13, weight: .medium))
+                Text("Capturing other participants' audio uses Screen Recording. VoiceToText never records the screen — only the audio.")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            .padding(16)
+            Spacer(minLength: 12)
+            Button("Open Settings…") {
+                ScreenCapturePermission.request()
+                ScreenCapturePermission.openSystemSettings()
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
         }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(Color.orange.opacity(0.08))
+        )
     }
 
     // MARK: - State-driven card
@@ -189,15 +195,11 @@ struct MeetingsPane: View {
     @ViewBuilder
     private var transcriptionModelCard: some View {
         if !controller.isBusy {
-            InsetCard {
+            VStack(alignment: .leading, spacing: 0) {
+                Divider().opacity(0.5)
                 HStack(spacing: 12) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Transcription model")
-                            .font(.system(size: 13, weight: .medium))
-                        Text("Used for conversations and uploaded files.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
+                    Text("Transcription model")
+                        .font(.system(size: 13))
                     Spacer(minLength: 12)
                     Picker("", selection: conversationModelBinding) {
                         Text(sameAsDictationLabel).tag(String?.none)
@@ -209,7 +211,9 @@ struct MeetingsPane: View {
                     .pickerStyle(.menu)
                     .fixedSize()
                 }
-                .padding(16)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 10)
+                Divider().opacity(0.5)
             }
         }
     }
@@ -244,28 +248,16 @@ struct MeetingsPane: View {
 
     private var idleCard: some View {
         InsetCard {
-            HStack(spacing: 16) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.accentColor.opacity(0.26), Color.accentColor.opacity(0.12)],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                    Circle()
-                        .strokeBorder(Color.accentColor.opacity(0.35), lineWidth: 1)
-                    Image(systemName: "mic.fill")
-                        .font(.system(size: 19, weight: .semibold))
-                        .foregroundStyle(Color.accentColor)
-                }
-                .frame(width: 50, height: 50)
-                .shadow(color: Color.accentColor.opacity(0.18), radius: 6, x: 0, y: 2)
+            HStack(spacing: 14) {
+                Image(systemName: "mic.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color.accentColor)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.accentColor.opacity(0.12)))
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Record a conversation")
-                        .font(.system(size: 15, weight: .semibold))
-                    Text("Keeps recording in the background while you work in other apps — or drop an audio or video file here to transcribe it.")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Keeps recording in the background while you work — or drop an audio or video file here.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -353,8 +345,10 @@ struct MeetingsPane: View {
     }
 
     /// Loads the first dropped file URL off the (arbitrary-queue) item provider,
-    /// hops to the main actor, revalidates, and hands it to the controller. Rejects
-    /// the drop outright while busy or when nothing loadable is present.
+    /// hops to the main actor, revalidates, and hands it to the controller.
+    /// `isSupportedMedia` is the *only* media gate — the drop registration
+    /// accepts any file URL — so a dropped non-media file is dropped on the
+    /// floor here. Rejects the drop while busy or when nothing loadable is present.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         guard !controller.isBusy else { return false }
         guard let provider = providers.first(where: { $0.canLoadObject(ofClass: URL.self) }) else {
@@ -365,7 +359,7 @@ struct MeetingsPane: View {
             Task { @MainActor in
                 let controller = MeetingController.shared
                 // Re-check on the main actor: state may have changed since the
-                // drop, and the extension is a cheap guard against a stray type.
+                // drop, and this rejects any non-media file the overlay let through.
                 guard !controller.isBusy, Self.isSupportedMedia(url) else { return }
                 await controller.importMedia(url: url)
             }
@@ -522,15 +516,11 @@ struct MeetingsPane: View {
                 .foregroundStyle(.secondary)
             Spacer()
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .fill(Color.green.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.green.opacity(0.22))
         )
         .transition(.opacity)
     }

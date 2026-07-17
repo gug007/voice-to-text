@@ -12,11 +12,26 @@ import OSLog
 /// via `AVAudioConverter` before sending. Reuses the OpenAI API key from
 /// `OpenAIAPIKey` (no separate credential).
 ///
+/// Two commit modes, keyed off the model (`usesManualCommit`):
+/// - Server-VAD models (e.g. `gpt-4o-transcribe`) get a `server_vad`
+///   `turn_detection` block; the server auto-commits each utterance as the user
+///   speaks, so at finish at most the trailing utterance is still pending.
+/// - `gpt-realtime-whisper` does NOT support VAD turn detection: the config must
+///   omit `turn_detection`, and audio is only transcribed after an explicit
+///   `input_audio_buffer.commit`. Nothing auto-commits, so at finish the engine
+///   always commits and waits for the final `completed` event.
+///
 /// Also implements buffered `transcribe(samples:)` as a one-shot session for the
-/// retry path and non-streaming callers.
+/// retry path and non-streaming callers (always a manual commit at finish).
 actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     let modelId: String
     private let session: URLSession
+
+    /// `gpt-realtime-whisper` does not support VAD turn detection: its config
+    /// must omit `turn_detection`, and audio only transcribes after an explicit
+    /// `input_audio_buffer.commit`. Every other realtime model here uses
+    /// `server_vad` auto-commit.
+    private var usesManualCommit: Bool { modelId == "gpt-realtime-whisper" }
 
     // 16 kHz mono Float32 (recorder) → 24 kHz mono Int16 (OpenAI requirement).
     private let inputFormat: AVAudioFormat
@@ -163,11 +178,18 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
                 try? await Task.sleep(for: .milliseconds(Self.finishPollMs))
                 waitedMs += Self.finishPollMs
             }
-        } else if !currentPartial.isEmpty {
-            // Live session: server VAD has been auto-committing utterances as
-            // the user spoke, so at most the trailing one is pending. Nudge a
-            // commit and wait briefly for its final transcript; if nothing is
-            // pending, everything is already committed.
+        } else if usesManualCommit || !currentPartial.isEmpty {
+            // Live session. Two reasons to commit-and-wait here:
+            //  - Server VAD (`!currentPartial.isEmpty`) has been auto-committing
+            //    utterances as the user spoke, so at most the trailing one is
+            //    pending; if nothing is pending everything is already committed.
+            //  - Manual commit (`usesManualCommit`) never auto-commits, so the
+            //    whole utterance's `completed` is still owed even when no partial
+            //    has surfaced yet — always flush, regardless of `currentPartial`.
+            // Either way, wait on `finishSignaled` up to the grace cap for the
+            // final transcript. Silence that gets its commit rejected produces no
+            // `completed`, but the cap (and a socket close, which signals finish)
+            // still terminate the wait.
             finishing = true
             finishSignaled = false
             await sendCommit()
@@ -215,22 +237,25 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     private func sendSessionConfig() async {
         guard let task else { return }
+        // Manual-commit models reject a `turn_detection` block — omit the key
+        // entirely so the server transcribes only on explicit commits.
+        var input: [String: Any] = [
+            "format": ["type": "audio/pcm", "rate": 24_000],
+            "transcription": ["model": modelId],
+        ]
+        if !usesManualCommit {
+            input["turn_detection"] = [
+                "type": "server_vad",
+                "threshold": 0.5,
+                "prefix_padding_ms": 300,
+                "silence_duration_ms": 500,
+            ]
+        }
         let payload: [String: Any] = [
             "type": "session.update",
             "session": [
                 "type": "transcription",
-                "audio": [
-                    "input": [
-                        "format": ["type": "audio/pcm", "rate": 24_000],
-                        "transcription": ["model": modelId],
-                        "turn_detection": [
-                            "type": "server_vad",
-                            "threshold": 0.5,
-                            "prefix_padding_ms": 300,
-                            "silence_duration_ms": 500,
-                        ],
-                    ],
-                ],
+                "audio": ["input": input],
             ],
         ]
         guard let json = Self.encode(payload) else { return }

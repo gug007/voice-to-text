@@ -1,23 +1,23 @@
 import SwiftUI
 
-/// iOS-style building blocks for the History and Conversations panes: a bold
-/// large title, inset-grouped cards, section captions/footers, capsule buttons,
-/// and a hairline-separated list of recordings. These two screens read as the
-/// app's "library" (browsing saved content) versus the utilitarian Settings
-/// panes, so they lean on the iOS grouped-list visual language.
+/// Shared building blocks for the History and Conversations panes: a large
+/// title, a single soft container for the recordings list, quiet section
+/// captions/footers, and the capsule buttons the record card uses. These two
+/// screens read as the app's "library" (browsing saved content); they aim for a
+/// calm, minimal look — hairlines and whitespace over heavy chrome.
 
 // MARK: - Header
 
-/// Large navigation-style title + subtitle, bolder and bigger than `PaneHeader`
-/// to anchor the inset-grouped layout the way an iOS large title does.
+/// Large navigation-style title + subtitle that anchors each pane. Bigger than
+/// `PaneHeader`, but semibold rather than heavy so it reads as quiet emphasis.
 struct LargeTitleHeader: View {
     let title: String
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 5) {
             Text(title)
-                .font(.system(size: 30, weight: .bold))
+                .font(.system(size: 27, weight: .bold))
             Text(subtitle)
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
@@ -28,12 +28,13 @@ struct LargeTitleHeader: View {
 
 // MARK: - Grouped containers
 
-/// A single rounded, inset card — the iOS "grouped section" surface. Holds one
-/// control (a toggle row, the record card) or, with `RecordingsList`, a stack of
-/// hairline-separated rows. Content manages its own padding so a list of rows
-/// can run edge-to-edge with separators between them.
+/// A single soft container — the one bit of surface the panes lean on, used for
+/// the recordings list and the state-driven cards. No stroke; a barely-there
+/// fill so it separates from the pane without reading as a boxy card. Content
+/// manages its own padding so a list of rows can run edge-to-edge with hairline
+/// separators between them.
 struct InsetCard<Content: View>: View {
-    private static var cornerRadius: CGFloat { 16 }
+    private static var cornerRadius: CGFloat { 12 }
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -41,11 +42,7 @@ struct InsetCard<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.07))
+                    .fill(Color.primary.opacity(0.035))
             )
             .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
     }
@@ -112,8 +109,9 @@ struct RecordingsList: View {
                 ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                     if index > 0 {
                         Rectangle()
-                            .fill(Color.primary.opacity(0.08))
+                            .fill(Color.primary.opacity(0.06))
                             .frame(height: 1)
+                            .padding(.leading, 16)
                     }
                     RecordingRow(
                         entry: entry,

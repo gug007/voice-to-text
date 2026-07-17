@@ -6,23 +6,24 @@ import { MEETING_URL } from "@/lib/seo";
 export default function sitemap(): MetadataRoute.Sitemap {
   // Bump when page content meaningfully changes; a per-build timestamp would
   // fake freshness to crawlers.
-  const lastModified = "2026-07-11";
+  const homeLastModified = "2026-07-17";
+  const contentPageLastModified = "2026-07-11";
   return [
     {
       url: `${SITE_URL}/`,
-      lastModified,
+      lastModified: homeLastModified,
       changeFrequency: "monthly",
       priority: 1.0,
     },
     {
       url: GUIDE_URL,
-      lastModified,
+      lastModified: contentPageLastModified,
       changeFrequency: "monthly",
       priority: 0.9,
     },
     {
       url: MEETING_URL,
-      lastModified,
+      lastModified: contentPageLastModified,
       changeFrequency: "monthly",
       priority: 0.8,
     },

@@ -9,8 +9,21 @@ struct MeetingsPane: View {
     @Bindable private var controller = MeetingController.shared
     @Bindable private var store = RecordingHistoryStore.shared
     @Bindable private var player = HistoryAudioPlayer.shared
+    @Bindable private var registry = ModelRegistry.shared
     @State private var screenGranted = ScreenCapturePermission.isGranted
     @State private var favoritesOnly = false
+    /// True while a drag from Finder is hovering over the pane. Only turns into a
+    /// visible drop affordance when the controller is idle (see `isDropActive`).
+    @State private var isDropTargeted = false
+
+    /// Content types a dropped file must conform to — the same family the
+    /// "Upload File…" open panel accepts. Restricting the drop registration to
+    /// these means a hovering non-media drag never lights up the overlay.
+    private let acceptedDropTypes: [UTType] = [.audiovisualContent, .audio, .movie]
+
+    /// Show the drop overlay only when a valid drag is hovering *and* we're free
+    /// to take it. While busy the drop is inert, so no overlay.
+    private var isDropActive: Bool { isDropTargeted && !controller.isBusy }
 
     /// Saved conversation recordings, newest first.
     private var conversations: [RecordingHistoryEntry] {
@@ -39,6 +52,8 @@ struct MeetingsPane: View {
 
                 stateCard
 
+                transcriptionModelCard
+
                 if controller.state == .idle, let summary = controller.lastSavedSummary {
                     savedBanner(summary)
                 }
@@ -50,6 +65,16 @@ struct MeetingsPane: View {
             .padding(32)
             .animation(.easeInOut(duration: 0.2), value: controller.state)
             .animation(.easeInOut(duration: 0.18), value: conversations)
+        }
+        // The whole pane is a drop target for a single audio/video file. The
+        // registration is scoped to media types, so `isDropTargeted` only flips
+        // for a plausible file — invalid drags never trigger the overlay.
+        .onDrop(of: acceptedDropTypes, isTargeted: $isDropTargeted) { providers in
+            handleDrop(providers)
+        }
+        .overlay {
+            dropOverlay
+                .animation(.easeInOut(duration: 0.18), value: isDropActive)
         }
         .onAppear { screenGranted = ScreenCapturePermission.isGranted }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
@@ -155,6 +180,68 @@ struct MeetingsPane: View {
         }
     }
 
+    // MARK: - Transcription model selector
+
+    /// Lets the user pick a transcription model for conversations independently
+    /// of the dictation model. Only shown while idle — it has no bearing on an
+    /// in-flight recording/transcription. Streaming models are excluded: they're
+    /// built for live mic input, not archived-file transcription.
+    @ViewBuilder
+    private var transcriptionModelCard: some View {
+        if !controller.isBusy {
+            InsetCard {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Transcription model")
+                            .font(.system(size: 13, weight: .medium))
+                        Text("Used for conversations and uploaded files.")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 12)
+                    Picker("", selection: conversationModelBinding) {
+                        Text(sameAsDictationLabel).tag(String?.none)
+                        ForEach(selectableConversationModels) { model in
+                            Text(model.displayName).tag(String?.some(model.id))
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .fixedSize()
+                }
+                .padding(16)
+            }
+        }
+    }
+
+    /// The catalog minus streaming/realtime engines, which don't apply to
+    /// buffered file transcription.
+    private var selectableConversationModels: [ModelDescriptor] {
+        ModelCatalog.all.filter { !$0.isRealtime }
+    }
+
+    /// "Same as dictation (<current dictation model>)" so the follow option
+    /// shows what it currently resolves to.
+    private var sameAsDictationLabel: String {
+        if let active = registry.activeModel {
+            return "Same as dictation (\(active.displayName))"
+        }
+        return "Same as dictation"
+    }
+
+    private var conversationModelBinding: Binding<String?> {
+        Binding(
+            // A stored id no longer in the catalog resolves as "same as
+            // dictation" — surface that instead of a selection no tag matches.
+            get: {
+                guard let id = registry.conversationModelId,
+                      ModelCatalog.model(for: id) != nil else { return nil }
+                return id
+            },
+            set: { registry.setConversationModel($0) }
+        )
+    }
+
     private var idleCard: some View {
         InsetCard {
             HStack(spacing: 16) {
@@ -178,7 +265,7 @@ struct MeetingsPane: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Record a conversation")
                         .font(.system(size: 15, weight: .semibold))
-                    Text("Keeps recording in the background while you work in other apps.")
+                    Text("Keeps recording in the background while you work in other apps — or drop an audio or video file here to transcribe it.")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -228,6 +315,73 @@ struct MeetingsPane: View {
         panel.prompt = "Transcribe"
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { await controller.importMedia(url: url) }
+    }
+
+    // MARK: - Drag-and-drop import
+
+    /// Minimal drop affordance shown while a valid file hovers the pane: a
+    /// material-dimmed, dashed accent border with an icon and two lines of copy.
+    /// Non-interactive so it can never swallow the drag itself.
+    @ViewBuilder
+    private var dropOverlay: some View {
+        if isDropActive {
+            ZStack {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(
+                        Color.accentColor,
+                        style: StrokeStyle(lineWidth: 2, dash: [8, 6])
+                    )
+                VStack(spacing: 10) {
+                    Image(systemName: "waveform.badge.plus")
+                        .font(.system(size: 38, weight: .semibold))
+                        .foregroundStyle(Color.accentColor)
+                    VStack(spacing: 3) {
+                        Text("Drop to transcribe")
+                            .font(.system(size: 16, weight: .semibold))
+                        Text("Audio or video file")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+            .padding(20)
+            .allowsHitTesting(false)
+            .transition(.opacity)
+        }
+    }
+
+    /// Loads the first dropped file URL off the (arbitrary-queue) item provider,
+    /// hops to the main actor, revalidates, and hands it to the controller. Rejects
+    /// the drop outright while busy or when nothing loadable is present.
+    private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
+        guard !controller.isBusy else { return false }
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: URL.self) }) else {
+            return false
+        }
+        _ = provider.loadObject(ofClass: URL.self) { url, _ in
+            guard let url else { return }
+            Task { @MainActor in
+                let controller = MeetingController.shared
+                // Re-check on the main actor: state may have changed since the
+                // drop, and the extension is a cheap guard against a stray type.
+                guard !controller.isBusy, Self.isSupportedMedia(url) else { return }
+                await controller.importMedia(url: url)
+            }
+        }
+        return true
+    }
+
+    /// Whether a URL points at audio or video we can import — mirrors the open
+    /// panel's accepted content types.
+    private static func isSupportedMedia(_ url: URL) -> Bool {
+        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
+            ?? UTType(filenameExtension: url.pathExtension)
+        guard let type else { return false }
+        return type.conforms(to: .audio)
+            || type.conforms(to: .movie)
+            || type.conforms(to: .audiovisualContent)
     }
 
     private var recordingCard: some View {
@@ -382,7 +536,7 @@ struct MeetingsPane: View {
     }
 
     private var infoNote: some View {
-        Text("Record a conversation or upload an existing audio or video file — either way the audio and transcript are saved on this Mac in History. Long recordings are transcribed in segments with the model you picked in Models.")
+        Text("Record a conversation or upload an existing audio or video file — either way the audio and transcript are saved on this Mac in History. Long recordings are transcribed in segments with the transcription model chosen above.")
             .font(.system(size: 11))
             .foregroundStyle(.tertiary)
             .fixedSize(horizontal: false, vertical: true)

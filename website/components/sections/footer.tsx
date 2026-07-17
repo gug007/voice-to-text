@@ -26,10 +26,9 @@ const COLUMNS: FooterColumn[] = [
     title: "Product",
     links: [
       { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text guide" },
+      { kind: "hash", href: "#use-cases", label: "Use cases" },
       { kind: "hash", href: "#features", label: "Features" },
-      { kind: "hash", href: "#cloud", label: "Cloud" },
       { kind: "route", href: "/meeting-recording", label: "Record meetings" },
-      { kind: "hash", href: "#compare", label: "Compare" },
       { kind: "hash", href: "#faq", label: "FAQ" },
       { kind: "hash", href: "#download", label: "Download the app" },
     ],
@@ -86,7 +85,7 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
             Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>.
           </p>
           <p className="footer__privacy t-caption">
-            No telemetry. No account. Your audio stays on the Mac in local mode.{" "}
+            No app telemetry. No account. Your audio stays on the Mac in local mode.{" "}
             <ExternalLink className="link" href={REPO_URL}>Audit the source on GitHub →</ExternalLink>
           </p>
         </div>

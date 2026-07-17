@@ -129,16 +129,6 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
                 Setup guide
               </Link>
             </li>
-            <li>
-              <Link
-                href="/meeting-recording"
-                aria-current={current === "/meeting-recording" ? "page" : undefined}
-                tabIndex={open ? 0 : -1}
-                onClick={close}
-              >
-                Meetings
-              </Link>
-            </li>
           </ul>
           <a
             className="btn btn--primary nav__menu-download"

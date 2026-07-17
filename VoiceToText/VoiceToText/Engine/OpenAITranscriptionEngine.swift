@@ -52,6 +52,14 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         get async { OpenAIAPIKey.read() != nil }
     }
 
+    /// All OpenAI models here split over-long input via `AudioChunker` and
+    /// carry their own cross-request context, so callers must not pre-chunk.
+    nonisolated var chunksInternally: Bool { true }
+
+    /// Speaker-diarizing model — a different `response_format`, no `prompt`
+    /// support, and cross-request speaker pinning (see `transcribeDiarize`).
+    private var isDiarize: Bool { modelId == "gpt-4o-transcribe-diarize" }
+
     func prepare(progress: PrepareProgress?) async throws {
         progress?(0.5, "Checking API key…")
         guard OpenAIAPIKey.read() != nil else {
@@ -69,6 +77,10 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     ) async throws -> String {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw TranscriptionEngineError.notReady
+        }
+
+        if isDiarize {
+            return try await transcribeDiarize(samples: samples, apiKey: apiKey, progress: progress)
         }
 
         let chunks = AudioChunker.split(samples: samples, sampleRate: sampleRate)
@@ -150,6 +162,127 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         }
     }
 
+    /// Diarizing path for `gpt-4o-transcribe-diarize`. This model has no
+    /// `prompt`, so cross-request continuity for a long recording is instead
+    /// carried by pinning speakers: after each chunk we pick a short reference
+    /// clip per canonical speaker and pass them into the next chunk as
+    /// `known_speaker_names[]` / `known_speaker_references[]`, so "Speaker N"
+    /// stays the same person across the whole call. All state is local to this
+    /// call. `contextPrompt` is ignored (unsupported).
+    private func transcribeDiarize(
+        samples: [Float],
+        apiKey: String,
+        progress: TranscribeProgress?
+    ) async throws -> String {
+        let chunks = AudioChunker.split(samples: samples, sampleRate: sampleRate)
+        guard !chunks.isEmpty else { return "" }
+
+        let language = TranscriptionDecoderOptions.current.language
+        var allSegments: [DiarizedTranscript.Segment] = []
+        var labelMap = DiarizedTranscript.SpeakerLabelMap()
+        var references: [String: [Float]] = [:]
+
+        for (index, chunk) in chunks.enumerated() {
+            let (names, refs) = knownSpeakerFields(references: references, order: labelMap.order)
+            let rawSegments = try await transcribeDiarizeChunk(
+                samples: chunk,
+                apiKey: apiKey,
+                language: language,
+                knownSpeakerNames: names,
+                knownSpeakerReferences: refs
+            )
+            // Rewrite this response's raw labels to canonical names *before*
+            // they touch shared state — raw letters recur across responses, so
+            // scoping the assignment per chunk keeps distinct speakers distinct.
+            let segments = DiarizedTranscript.canonicalize(
+                segments: rawSegments,
+                chunk: index,
+                labelMap: &labelMap
+            )
+            references = DiarizedTranscript.referenceClips(
+                fromChunk: chunk,
+                segments: segments,
+                sampleRate: sampleRate,
+                labelMap: &labelMap,
+                previous: references
+            )
+            allSegments.append(contentsOf: segments)
+            progress?(index + 1, chunks.count)
+        }
+
+        return DiarizedTranscript.format(segments: allSegments)
+    }
+
+    private func transcribeDiarizeChunk(
+        samples: [Float],
+        apiKey: String,
+        language: String?,
+        knownSpeakerNames: [String],
+        knownSpeakerReferences: [String]
+    ) async throws -> [DiarizedTranscript.Segment] {
+        let wav = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
+
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var request = Self.authorizedRequest(url: OpenAIEndpoint.transcriptions, apiKey: apiKey)
+        request.httpMethod = "POST"
+        request.timeoutInterval = Self.requestTimeout(
+            forAudioSeconds: Double(samples.count) / Double(sampleRate)
+        )
+        request.setValue(
+            "multipart/form-data; boundary=\(boundary)",
+            forHTTPHeaderField: "Content-Type"
+        )
+        request.httpBody = Self.makeMultipartBody(
+            boundary: boundary,
+            modelId: modelId,
+            wav: wav,
+            language: language,
+            prompt: nil,
+            responseFormat: "diarized_json",
+            chunkingStrategy: "auto",
+            knownSpeakerNames: knownSpeakerNames,
+            knownSpeakerReferences: knownSpeakerReferences
+        )
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await send(request)
+        } catch {
+            throw TranscriptionEngineError.transcriptionFailed(
+                "Network error: \(error.localizedDescription)"
+            )
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let summary = Self.errorMessage(from: data) ?? "HTTP \(http.statusCode)"
+            throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
+        }
+
+        return try DiarizedTranscript.parse(data)
+    }
+
+    /// Builds the parallel `known_speaker_names[]` / `known_speaker_references[]`
+    /// fields (max 4, in canonical order) from the reference clips captured so
+    /// far. References are WAV-encoded and base64'd into `data:` URLs.
+    private func knownSpeakerFields(
+        references: [String: [Float]],
+        order: [String]
+    ) -> (names: [String], references: [String]) {
+        var names: [String] = []
+        var refs: [String] = []
+        for name in order.prefix(4) {
+            guard let clip = references[name] else { continue }
+            let wav = WAVEncoder.encode(samples: clip, sampleRate: sampleRate)
+            names.append(name)
+            refs.append("data:audio/wav;base64,\(wav.base64EncodedString())")
+        }
+        return (names, refs)
+    }
+
     /// One transparent retry for transport errors that typically mean the
     /// pooled keep-alive connection died while the app sat idle between takes
     /// (NAT/VPN mappings expire silently, and URLSession won't re-send a POST
@@ -219,7 +352,11 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         modelId: String,
         wav: Data,
         language: String?,
-        prompt: String?
+        prompt: String?,
+        responseFormat: String = "json",
+        chunkingStrategy: String? = nil,
+        knownSpeakerNames: [String] = [],
+        knownSpeakerReferences: [String] = []
     ) -> Data {
         var body = Data()
 
@@ -231,12 +368,21 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         }
 
         appendField("model", modelId)
-        appendField("response_format", "json")
+        appendField("response_format", responseFormat)
+        if let chunkingStrategy, !chunkingStrategy.isEmpty {
+            appendField("chunking_strategy", chunkingStrategy)
+        }
         if let language, !language.isEmpty {
             appendField("language", language)
         }
         if let prompt, !prompt.isEmpty {
             appendField("prompt", prompt)
+        }
+        for name in knownSpeakerNames {
+            appendField("known_speaker_names[]", name)
+        }
+        for reference in knownSpeakerReferences {
+            appendField("known_speaker_references[]", reference)
         }
 
         body.append(Data("--\(boundary)\r\n".utf8))

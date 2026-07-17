@@ -23,18 +23,8 @@ const FEATURES: Feature[] = [
   },
   {
     icon: "bolt",
-    title: "Native speed, minimal battery",
-    body: "Pure SwiftUI with no Electron overhead — quick to launch, light in Activity Monitor, kind to your battery.",
-  },
-  {
-    icon: "agent",
-    title: "Faster than typing — in any app",
-    body: "A long Slack reply, a thoughtful email, a meeting note, a search query, an AI prompt — talking is faster than typing. Press, speak, paste.",
-  },
-  {
-    icon: "box",
-    title: "Switch engines without switching apps",
-    body: "Six local models run on-device by default. Add an OpenAI or ElevenLabs key to unlock cloud accuracy and live streaming. One setting, no reinstall.",
+    title: "Native Mac speed",
+    body: "Pure SwiftUI with no Electron overhead — quick to launch, light in Activity Monitor, and built for Apple Silicon.",
   },
   {
     icon: "apps",
@@ -48,10 +38,10 @@ export function Features() {
     <section className="section features reveal" id="features" aria-labelledby="features-title">
       <div className="container">
         <p className="section__eyebrow">What you get</p>
-        <h2 id="features-title" className="section__title">Why VoiceToText for Mac speech to text?</h2>
+        <h2 id="features-title" className="section__title">Private dictation, designed for the Mac.</h2>
         <p className="section__deck">
-          Everything dictation should be on a Mac — and nothing it shouldn&rsquo;t. Free, offline by default,
-          no account, no telemetry.
+          The essentials stay simple. Local transcription is the default; cloud models and AI actions are
+          optional when you explicitly add your own provider key.
         </p>
         <ul className="features__grid" role="list">
           {FEATURES.map(({ icon, title, body }, i) => (

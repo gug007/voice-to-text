@@ -8,10 +8,9 @@ import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 const HASH_LINKS = [
-  { href: "#features", label: "Features" },
   { href: "#demo", label: "Demo" },
-  { href: "#compare", label: "Compare" },
-  { href: "#faq", label: "FAQ" },
+  { href: "#use-cases", label: "Use cases" },
+  { href: "#features", label: "Privacy" },
 ] as const;
 
 type NavProps = {
@@ -43,14 +42,6 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
               </Link>
             </li>
             <li>
-              <Link
-                href="/meeting-recording"
-                aria-current={current === "/meeting-recording" ? "page" : undefined}
-              >
-                Meetings
-              </Link>
-            </li>
-            <li>
               <ExternalLink
                 href={REPO_URL}
                 data-analytics-event="github_outbound"
@@ -63,7 +54,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
         </nav>
         <MobileNav current={current} links={HASH_LINKS} linkPrefix={linkPrefix} />
         <nav className="nav__fallback" aria-label="Quick links">
-          <Link href="/meeting-recording">Meetings</Link>
+          <Link href={GUIDE_PATH}>Guide</Link>
           <a
             className="btn btn--primary btn--sm"
             href={DMG_URL}

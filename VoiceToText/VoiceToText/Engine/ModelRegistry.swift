@@ -136,6 +136,17 @@ enum ModelCatalog {
             speed: 10
         ),
         ModelDescriptor(
+            id: "openai-gpt-realtime-whisper",
+            displayName: "GPT Realtime Whisper (OpenAI)",
+            backend: .openAIRealtime,
+            backendModelId: "gpt-realtime-whisper",
+            approxSizeMB: 0,
+            languages: "99+",
+            notes: "OpenAI's newest live streaming model, built for the lowest latency. Audio goes to OpenAI.",
+            quality: 9,
+            speed: 10
+        ),
+        ModelDescriptor(
             id: "openai-gpt-4o-transcribe-realtime",
             displayName: "GPT-4o Transcribe Realtime (OpenAI)",
             backend: .openAIRealtime,
@@ -156,6 +167,17 @@ enum ModelCatalog {
             notes: "The most accurate option overall. Audio goes to OpenAI.",
             quality: 10,
             speed: 5
+        ),
+        ModelDescriptor(
+            id: "openai-gpt-4o-transcribe-diarize",
+            displayName: "GPT-4o Transcribe Diarize (OpenAI)",
+            backend: .openAI,
+            backendModelId: "gpt-4o-transcribe-diarize",
+            approxSizeMB: 0,
+            languages: "99+",
+            notes: "Labels who said what — best for meetings. Audio goes to OpenAI.",
+            quality: 10,
+            speed: 4
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-mini-transcribe",
@@ -203,11 +225,16 @@ enum ModelReadiness: Equatable {
 final class ModelRegistry {
     private enum Keys {
         static let activeModelId = "activeModelId"
+        static let conversationModelId = "conversationModelId"
     }
 
     static let shared = ModelRegistry()
 
     private(set) var activeModelId: String
+
+    /// Explicit model for conversations/meetings, independent of dictation.
+    /// `nil` means "follow the dictation model" (`activeModel`).
+    private(set) var conversationModelId: String?
     private(set) var readiness: [String: ModelReadiness] = [:]
 
     @ObservationIgnored
@@ -228,6 +255,7 @@ final class ModelRegistry {
     private init() {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             ?? "parakeet-tdt-v3"
+        self.conversationModelId = UserDefaults.standard.string(forKey: Keys.conversationModelId)
         refreshInstalledState()
         NotificationCenter.default.addObserver(
             forName: OpenAIAPIKeyStore.didChangeNotification,
@@ -307,10 +335,31 @@ final class ModelRegistry {
         ModelCatalog.model(for: activeModelId)
     }
 
+    /// Model used to transcribe conversations/meetings: the explicitly chosen
+    /// one when set and still present in the catalog (a stale stored id falls
+    /// back), otherwise the dictation model.
+    var conversationModel: ModelDescriptor? {
+        if let id = conversationModelId, let explicit = ModelCatalog.model(for: id) {
+            return explicit
+        }
+        return activeModel
+    }
+
     func setActive(_ modelId: String) {
         guard ModelCatalog.model(for: modelId) != nil else { return }
         activeModelId = modelId
         UserDefaults.standard.set(modelId, forKey: Keys.activeModelId)
+    }
+
+    /// Sets the conversation model. Pass `nil` to follow the dictation model
+    /// (this clears the stored preference).
+    func setConversationModel(_ modelId: String?) {
+        conversationModelId = modelId
+        if let modelId {
+            UserDefaults.standard.set(modelId, forKey: Keys.conversationModelId)
+        } else {
+            UserDefaults.standard.removeObject(forKey: Keys.conversationModelId)
+        }
     }
 
     func readiness(for modelId: String) -> ModelReadiness {

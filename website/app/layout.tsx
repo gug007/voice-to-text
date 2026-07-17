@@ -21,11 +21,11 @@ const mono = Geist_Mono({
   variable: "--font-mono",
 });
 
-const TITLE = "Voice to Text for Mac — Free, Offline | VoiceToText";
+const TITLE = "Voice to Text for Mac — Free, Offline Dictation";
 const DESCRIPTION =
-  "Turn speech into text in any Mac app with a hotkey. VoiceToText runs offline on Apple Silicon, costs nothing, needs no account, and is open source.";
+  "Free voice to text for Mac that types into any app from a hotkey. Runs offline on Apple Silicon, needs no account, and is open source.";
 const TWITTER_DESCRIPTION =
-  "Free voice to text for Mac that types into any app from a hotkey. Offline on Apple Silicon, no account, and open source.";
+  "Press a hotkey, speak, and type into any Mac app. Free, offline on Apple Silicon, no account, and open source.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

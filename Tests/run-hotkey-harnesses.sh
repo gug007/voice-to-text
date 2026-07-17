@@ -96,3 +96,10 @@ swiftc -parse-as-library \
   Tests/AudioFileExtractorHarness.swift \
   -o "$TMPDIR/audio-file-extractor-harness"
 "$TMPDIR/audio-file-extractor-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionEngine.swift \
+  VoiceToText/VoiceToText/Engine/DiarizedTranscript.swift \
+  Tests/DiarizedTranscriptHarness.swift \
+  -o "$TMPDIR/diarized-transcript-harness"
+"$TMPDIR/diarized-transcript-harness"

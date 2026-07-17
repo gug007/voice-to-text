@@ -10,6 +10,17 @@ enum TranscriptPostProcessor {
         return cased.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Like `process`, but preserves line structure: each `\n`-separated line is
+    /// processed independently and empty results are dropped. Used for diarized
+    /// transcripts where each `Speaker N: …` turn is its own line. Identity-
+    /// equivalent to `process` for single-line input.
+    static func processPreservingLines(_ text: String) -> String {
+        text.split(separator: "\n", omittingEmptySubsequences: false)
+            .map { process(String($0)) }
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
+
     private static let whitespaceRun = compileRegex("\\s+")
     private static let spaceBeforePunct = compileRegex("\\s+([,.!?;:])")
     private static let missingSpaceAfterPunct = compileRegex("([,.!?;:])([A-Za-z])")

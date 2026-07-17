@@ -19,9 +19,17 @@ protocol TranscriptionEngine: AnyObject, Sendable {
         contextPrompt: String?,
         progress: TranscribeProgress?
     ) async throws -> String
+    /// True when the engine splits an over-long input into model-sized requests
+    /// itself (and carries its own cross-request context). Callers that would
+    /// otherwise pre-chunk — like `MeetingTranscriber` — must hand such engines
+    /// the whole buffer so per-request state (rolling prompt, speaker numbering)
+    /// isn't reset at every local cut.
+    var chunksInternally: Bool { get }
 }
 
 extension TranscriptionEngine {
+    var chunksInternally: Bool { false }
+
     func transcribe(samples: [Float]) async throws -> String {
         try await transcribe(samples: samples, contextPrompt: nil, progress: nil)
     }

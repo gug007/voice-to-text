@@ -1,4 +1,3 @@
-import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { TrafficLights } from "@/components/ui/traffic-lights";
 
 const ACTIONS = [
@@ -54,7 +53,7 @@ export function Review() {
               <span className="review-panel__key">Cancel <kbd className="keycap keycap--inline">esc</kbd></span>
               <span className="review-panel__key">Resume <kbd className="keycap keycap--inline">⌘R</kbd></span>
               <span className="review-panel__key review-panel__key--primary">
-                Paste <HotkeyCombo />
+                Paste <kbd className="keycap keycap--inline">Return</kbd>
               </span>
             </div>
             <figcaption className="ai__transcript-caption">

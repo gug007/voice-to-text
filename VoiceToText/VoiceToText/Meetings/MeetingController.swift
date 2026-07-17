@@ -194,7 +194,7 @@ final class MeetingController {
         let transcript: String
         let model: ModelDescriptor?
         var issue: String?
-        if let descriptor = ModelRegistry.shared.activeModel,
+        if let descriptor = ModelRegistry.shared.conversationModel,
            let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
             model = descriptor
             do {

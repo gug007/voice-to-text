@@ -295,8 +295,8 @@ export default function VoiceToTextGuidePage() {
                   <Icon name="download" />
                   <span>Download for Mac — free</span>
                 </a>
-                <Link className="btn btn--secondary btn--lg" href="/#compare">
-                  <span>Compare dictation apps</span>
+                <Link className="btn btn--secondary btn--lg" href="/#features">
+                  <span>Explore key features</span>
                   <Icon name="arrow-right" />
                 </Link>
               </div>

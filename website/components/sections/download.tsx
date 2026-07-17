@@ -55,7 +55,9 @@ export function Download() {
             <span>See all releases on GitHub</span>
           </ExternalLink>
         </div>
-        <p className="download__meta t-mono">Free · Open source · macOS 15.0+ · Apple Silicon</p>
+        <p className="download__meta t-mono">
+          Free · Signed &amp; notarized · Direct from GitHub · macOS 15.0+ · Apple Silicon
+        </p>
         <ol className="download__steps" role="list">
           {STEPS.map(({ title, body }, i) => (
             <li key={i} className="download__step">

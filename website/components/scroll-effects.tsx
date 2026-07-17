@@ -6,6 +6,15 @@ export function ScrollEffects() {
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
+    if (reducedMotion.matches) {
+      document
+        .querySelectorAll<HTMLVideoElement>("video[data-respect-reduced-motion]")
+        .forEach((video) => {
+          video.pause();
+          video.currentTime = 0;
+        });
+    }
+
     const nav = document.querySelector<HTMLElement>(".nav");
     const syncScrolled = () => {
       if (!nav) return;

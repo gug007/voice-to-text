@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 
 import { JsonLd } from "@/components/json-ld";
 import { ScrollEffects } from "@/components/scroll-effects";
-import { Cloud } from "@/components/sections/cloud";
-import { Compare } from "@/components/sections/compare";
 import { Demo } from "@/components/sections/demo";
 import { Download } from "@/components/sections/download";
 import { Faq } from "@/components/sections/faq";
@@ -11,18 +9,16 @@ import { Features } from "@/components/sections/features";
 import { Footer } from "@/components/sections/footer";
 import { Hero } from "@/components/sections/hero";
 import { HowItWorks } from "@/components/sections/how-it-works";
-import { Meetings } from "@/components/sections/meetings";
 import { Nav } from "@/components/sections/nav";
 import { Proof } from "@/components/sections/proof";
-import { Realtime } from "@/components/sections/realtime";
-import { Review } from "@/components/sections/review";
-import { UseCases } from "@/components/sections/use-cases";
 import { StickyCta } from "@/components/sticky-cta";
+import { UseCaseExplorer } from "@/components/use-case-explorer";
 import {
   faqPageJsonLd,
   homePageJsonLd,
   personJsonLd,
   softwareApplicationJsonLd,
+  videoObjectJsonLd,
   websiteJsonLd,
 } from "@/lib/seo";
 
@@ -49,6 +45,7 @@ export default function Home() {
       <JsonLd data={softwareApplicationJsonLd} />
       <JsonLd data={websiteJsonLd} />
       <JsonLd data={homePageJsonLd} />
+      <JsonLd data={videoObjectJsonLd} />
       <JsonLd data={faqPageJsonLd} />
       <JsonLd data={personJsonLd} />
       <Nav />
@@ -57,13 +54,8 @@ export default function Home() {
         <Proof />
         <Demo />
         <HowItWorks />
-        <UseCases />
+        <UseCaseExplorer />
         <Features />
-        <Compare />
-        <Review />
-        <Cloud />
-        <Realtime />
-        <Meetings />
         <Faq />
         <Download />
       </main>

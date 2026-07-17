@@ -17,10 +17,11 @@ export function Hero() {
         <h1 id="hero-title" className="hero__title">
           Voice to text for Mac.
           <br />
-          <span className="hero__title-accent">Free. Offline.</span>
+          <span className="hero__title-accent">Speak. It types. Anywhere.</span>
         </h1>
         <p className="hero__lead">
-          Hotkey dictation that types straight into any Mac app — on-device, no account, no subscription.
+          Press <HotkeyCombo /> to dictate into any app. Runs locally on Apple Silicon — free, open source,
+          and no account required.
         </p>
         <div className="hero__ctas">
           <a
@@ -33,7 +34,7 @@ export function Hero() {
             <span>Download for Mac — free</span>
           </a>
           <a className="btn btn--secondary btn--lg" href="#demo">
-            <span>Watch the demo</span>
+            <span>See it in action</span>
             <Icon name="arrow-right" />
           </a>
         </div>
@@ -49,9 +50,8 @@ export function Hero() {
           Built for Apple Silicon (M1 or newer) · Requires macOS 15.0 or later.
         </p>
         <p className="hero__subcopy">
-          Press <HotkeyCombo />, speak, press again — your words land at the cursor in Notes, Slack, Mail,
-          Notion, ChatGPT, or any Mac app, transcribed offline on the Apple Neural Engine. Prefer
-          push-to-talk? Switch to hold-to-record in Settings.
+          Speak in Notes, Slack, Mail, Notion, ChatGPT, a terminal, or any other text field. Review the
+          result before it types, or turn on instant paste.
         </p>
       </div>
     </section>

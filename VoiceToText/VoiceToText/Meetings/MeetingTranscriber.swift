@@ -9,12 +9,28 @@ enum MeetingTranscriber {
     static func transcribe(
         url: URL,
         engine: TranscriptionEngine,
-        onProgress: @MainActor (Int, Int) -> Void
+        onProgress: @escaping @MainActor (Int, Int) -> Void
     ) async throws -> String {
         let sampleRate = Int(AudioConfig.targetSampleRate)
         let samples = try await Task.detached(priority: .userInitiated) {
             try loadSamples(url: url)
         }.value
+
+        // Engines that chunk internally (and carry their own cross-request
+        // context or speaker numbering) must see the whole buffer — pre-chunking
+        // here would reset that state at every cut. Hand them the full samples
+        // and bridge their `@Sendable` progress callback to `onProgress`.
+        if engine.chunksInternally {
+            onProgress(0, 1)
+            let raw = try await engine.transcribe(
+                samples: samples,
+                contextPrompt: nil,
+                progress: { current, total in
+                    Task { @MainActor in onProgress(current, total) }
+                }
+            )
+            return TranscriptPostProcessor.processPreservingLines(raw)
+        }
 
         let chunks = AudioChunker.split(samples: samples, sampleRate: sampleRate)
         guard !chunks.isEmpty else { return "" }
@@ -26,7 +42,7 @@ enum MeetingTranscriber {
             // punctuation and proper nouns stay consistent across the cut.
             let context = pieces.last.map { String($0.suffix(200)) }
             let raw = try await engine.transcribe(samples: chunk, contextPrompt: context, progress: nil)
-            pieces.append(TranscriptPostProcessor.process(raw))
+            pieces.append(TranscriptPostProcessor.processPreservingLines(raw))
             onProgress(index + 1, chunks.count)
         }
         return MeetingTranscriptJoiner.join(pieces)

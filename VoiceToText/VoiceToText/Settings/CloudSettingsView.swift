@@ -54,7 +54,7 @@ struct CloudPane: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("OpenAI")
                         .font(.system(size: 16, weight: .semibold))
-                    Text("Whisper-1, GPT-4o Transcribe, GPT-4o Mini Transcribe")
+                    Text("GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

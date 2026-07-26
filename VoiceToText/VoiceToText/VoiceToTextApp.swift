@@ -95,6 +95,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         launchedAt = Date()
+        LoginItemController.shared.applyDefaultIfNeeded()
         AppPresenceController.shared.syncMenuBarItem()
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()

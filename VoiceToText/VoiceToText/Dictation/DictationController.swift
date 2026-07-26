@@ -68,6 +68,11 @@ final class DictationController {
     /// (a CoreML/VAD inference or network read that never returns). Without it
     /// the hotkey policy maps every press to `.none` and only relaunch recovers.
     private var transcribingWatchdog: Task<Void, Never>?
+    /// The same backstop for `.preparing`. Model preparation and the audio
+    /// engine each have their own timeouts, but this catches anything that slips
+    /// past them — `.preparing` maps every hotkey press to `.none`, so without it
+    /// a stuck start is indistinguishable from a dead app.
+    private var preparingWatchdog: Task<Void, Never>?
     /// Bumped on each entry into `.transcribing` and on watchdog recovery so a
     /// late-returning pipeline can't clobber a newer state after the watchdog
     /// (or a newer run) has already moved on.
@@ -82,6 +87,10 @@ final class DictationController {
     /// can't reset on liveness. Sized well beyond any realistic transcription so
     /// it only catches a genuine wedge; a false fire still preserves the audio.
     private static let transcribingWatchdogTimeout: Duration = .seconds(600)
+    /// Sized past a cold CoreML compile, which `ModelRegistry` deliberately
+    /// exempts from its own stall detection and which can legitimately run for
+    /// minutes. This only ever fires on a genuine wedge.
+    private static let preparingWatchdogTimeout: Duration = .seconds(300)
     private var reviewEscMonitor: Any?
     private var failureEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
@@ -189,6 +198,9 @@ final class DictationController {
         Task.detached(priority: .utility) {
             await VoiceActivityGate.shared.prewarm()
         }
+        // Build the audio engine now, in the background, so the first hotkey
+        // press doesn't pay for CoreAudio's device enumeration.
+        recorder.prewarm()
     }
 
     func installHotkey() {
@@ -388,7 +400,9 @@ final class DictationController {
         if !cancelledByEscape {
             removeRecordingEscMonitors()
         }
-        _ = recorder.stop()
+        // Fire and forget: the UI must return to idle immediately, and the
+        // engine teardown is blocking CoreAudio work with its own timeout.
+        Task { _ = await recorder.stop() }
         cancelStreamingSession()
         finishRecordingSession(fallbackTo: .idle)
     }
@@ -407,6 +421,7 @@ final class DictationController {
     private func cancelPendingRecording() {
         AppLog.dictation.info("Pending recording cancelled")
         standaloneModifierEventCoordinator.reset()
+        stopPreparingWatchdog()
         recordingStartGate.cancelActiveStart()
         if case .preparing = state {
             finishRecordingSession(fallbackTo: .idle)
@@ -781,6 +796,7 @@ final class DictationController {
         AppLog.dictation.info("startRecording: active model=\(descriptor.id)")
         guard recordingStartGate.accepts(startID) else { return }
         state = .preparing(modelDisplayName: descriptor.displayName)
+        armPreparingWatchdog(startID: startID)
         let preparedModel = await ModelRegistry.shared.prepareModel(id: descriptor.id)
         guard recordingStartGate.accepts(startID) else { return }
         guard let engine = preparedModel else {
@@ -824,8 +840,17 @@ final class DictationController {
                 }
             }
 
-            try recorder.start()
+            // Awaited, not called inline: the engine lifecycle is blocking
+            // CoreAudio IPC that used to freeze the main thread — and with it
+            // the global hotkey — for as long as the device took to answer.
+            try await recorder.start()
+            guard recordingStartGate.accepts(startID) else {
+                _ = await recorder.stop()
+                cancelStreamingSession()
+                return
+            }
             state = .recording
+            stopPreparingWatchdog()
             recordingStartGate.finish(startID)
             let start = Date()
             recordStart = start
@@ -848,7 +873,7 @@ final class DictationController {
                 )
             }
             guard installRecordingEscMonitors() else {
-                _ = recorder.stop()
+                _ = await recorder.stop()
                 cancelStreamingSession()
                 LiveHUDPanel.shared.hide()
                 state = .error("Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.")
@@ -858,6 +883,7 @@ final class DictationController {
             AppLog.dictation.info("startRecording: recording started")
         } catch {
             recordingStartGate.finish(startID)
+            stopPreparingWatchdog()
             cancelStreamingSession()
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             state = .error("Could not start recording: \(error.localizedDescription)")
@@ -891,6 +917,29 @@ final class DictationController {
         LiveHUDPanel.shared.showTranscribing()
         startTranscribingElapsedTicker(from: Date())
         armTranscribingWatchdog(runID: transcriptionRunID)
+    }
+
+    /// Fenced on the start ID rather than cancelled from every exit path: once
+    /// the gate has finished or cancelled this start, the timer is a no-op
+    /// wherever it fires from.
+    private func armPreparingWatchdog(startID: RecordingStartGate.StartID) {
+        preparingWatchdog?.cancel()
+        preparingWatchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.preparingWatchdogTimeout)
+            guard let self, !Task.isCancelled,
+                  case .preparing = self.state,
+                  self.recordingStartGate.accepts(startID) else { return }
+            AppLog.dictation.error("Preparing watchdog fired; forcing recovery")
+            self.recordingStartGate.cancelActiveStart()
+            self.enterFailureHUD(
+                message: "Could not start recording — the model or audio device didn't respond. Try again."
+            )
+        }
+    }
+
+    private func stopPreparingWatchdog() {
+        preparingWatchdog?.cancel()
+        preparingWatchdog = nil
     }
 
     private func armTranscribingWatchdog(runID: UInt64) {

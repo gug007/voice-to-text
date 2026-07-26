@@ -558,23 +558,3 @@ final class ModelRegistry {
         preparationGenerations[id] == generation
     }
 }
-
-/// One-shot resolution gate so a value/timeout race resumes its continuation
-/// exactly once. Both racers may run on the same actor, but the lock keeps it
-/// correct regardless of scheduling.
-private final class TimeoutGate: @unchecked Sendable {
-    private let lock = NSLock()
-    private var resolved = false
-
-    var isResolved: Bool {
-        lock.lock(); defer { lock.unlock() }
-        return resolved
-    }
-
-    func resolve() -> Bool {
-        lock.lock(); defer { lock.unlock() }
-        if resolved { return false }
-        resolved = true
-        return true
-    }
-}

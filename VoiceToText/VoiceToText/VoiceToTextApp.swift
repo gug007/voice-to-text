@@ -43,7 +43,7 @@ struct MainWindowView: View {
             }
         }
         .task {
-            WindowOpener.shared.openMain = { [openWindow] in
+            WindowOpener.shared.register { [openWindow] in
                 openWindow(id: WindowID.main)
                 NSApp.activate(ignoringOtherApps: true)
             }
@@ -55,11 +55,25 @@ struct MainWindowView: View {
     }
 }
 
+/// The one way to bring VoiceToText to the front — used by the reopen handler,
+/// the menu bar item, and the Dock-visibility switch, so none of them has to
+/// guess the open/activate ordering.
 @MainActor
 final class WindowOpener {
     static let shared = WindowOpener()
-    var openMain: (() -> Void)?
+    private var open: (() -> Void)?
     private init() {}
+
+    /// Registered by `MainWindowView`: SwiftUI's `openWindow` action is only
+    /// reachable from inside a view.
+    func register(open: @escaping () -> Void) {
+        self.open = open
+    }
+
+    /// Opens the main window and activates the app.
+    func showMain() {
+        open?()
+    }
 }
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -72,8 +86,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // a URL open can generate doesn't pop the UI.
     private var lastExternalCommandAt = Date.distantPast
 
+    // Earliest point where NSApp exists (it's still nil in VoiceToTextApp.init),
+    // and early enough that a Dock-hidden launch never flashes an icon into the
+    // Dock.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        AppPresenceController.shared.applyDockPolicy()
+    }
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         launchedAt = Date()
+        AppPresenceController.shared.syncMenuBarItem()
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
@@ -95,7 +117,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             return true
         }
         Task { @MainActor in
-            WindowOpener.shared.openMain?()
+            WindowOpener.shared.showMain()
         }
         return true
     }

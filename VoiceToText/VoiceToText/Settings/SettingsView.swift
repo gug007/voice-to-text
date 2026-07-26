@@ -270,6 +270,7 @@ struct GeneralPane: View {
     @State private var permissionAlert: PermissionAlert?
     @Bindable private var dictation = DictationController.shared
     @Bindable private var loginItem = LoginItemController.shared
+    @Bindable private var presence = AppPresenceController.shared
 
     enum PermissionAlert: Identifiable {
         case microphone
@@ -296,6 +297,8 @@ struct GeneralPane: View {
                 ReviewBeforePasteCard()
 
                 launchAtLoginCard
+
+                presenceCard
 
                 statusCard
 
@@ -419,19 +422,11 @@ struct GeneralPane: View {
     private var launchAtLoginCard: some View {
         RowCard {
             VStack(alignment: .leading, spacing: 8) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Launch at login")
-                            .font(.system(size: 14, weight: .medium))
-                        Text(launchAtLoginSubtitle)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Toggle("", isOn: launchAtLoginBinding)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                }
+                SettingsToggleRow(
+                    title: "Launch at login",
+                    subtitle: launchAtLoginSubtitle,
+                    isOn: launchAtLoginBinding
+                )
 
                 if loginItem.requiresApproval {
                     HStack(spacing: 8) {
@@ -466,6 +461,56 @@ struct GeneralPane: View {
             return "VoiceToText will start in the background when you sign in."
         }
         return "Start VoiceToText automatically in the background when you sign in."
+    }
+
+    /// Dock / menu bar presence. Both rows read as "Show …" so the switches
+    /// share one polarity. They're coupled: turning the Dock icon off switches
+    /// the app to an accessory (menu-bar-only) process, so the menu bar icon is
+    /// forced on and locked — otherwise there'd be no way back to this window.
+    @ViewBuilder
+    private var presenceCard: some View {
+        RowCard {
+            VStack(alignment: .leading, spacing: 14) {
+                SettingsToggleRow(
+                    title: "Show in Dock",
+                    subtitle: "Turn off to keep VoiceToText out of the Dock and the app switcher. It keeps running in the menu bar, and your shortcut still works everywhere.",
+                    isOn: dockIconBinding
+                )
+
+                Divider()
+
+                SettingsToggleRow(
+                    title: "Show in menu bar",
+                    subtitle: menuBarSubtitle,
+                    isOn: $presence.menuBarIconSetting,
+                    isLocked: presence.isMenuBarIconLocked
+                )
+            }
+            .padding(18)
+        }
+    }
+
+    /// Flipping the Dock icon changes the process's activation policy, which
+    /// drops the app's active status (and, going back into the Dock, its menu
+    /// bar). Re-activating so this window stays frontmost is a presentation
+    /// concern, so it lives here rather than in the model — and it deliberately
+    /// only activates: the window is already open, and re-opening the scene can
+    /// bounce an accessory app back into the Dock.
+    private var dockIconBinding: Binding<Bool> {
+        Binding(
+            get: { presence.showsDockIcon },
+            set: {
+                presence.showsDockIcon = $0
+                DispatchQueue.main.async { NSApp.activate(ignoringOtherApps: true) }
+            }
+        )
+    }
+
+    private var menuBarSubtitle: String {
+        if presence.isMenuBarIconLocked {
+            return "Required while VoiceToText is hidden from the Dock — it's how you reopen this window."
+        }
+        return "Adds a VoiceToText icon to the menu bar for starting dictation and reopening this window."
     }
 
     @ViewBuilder

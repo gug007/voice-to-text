@@ -10,20 +10,11 @@ struct ReviewBeforePasteCard: View {
     var body: some View {
         RowCard {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Review before pasting")
-                            .font(.system(size: 14, weight: .medium))
-                        Text("Edit, paste, or cancel — nothing types until you confirm.")
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 16)
-                    Toggle("", isOn: $reviewBeforePaste)
-                        .labelsHidden()
-                        .toggleStyle(.switch)
-                }
+                SettingsToggleRow(
+                    title: "Review before pasting",
+                    subtitle: "Edit, paste, or cancel — nothing types until you confirm.",
+                    isOn: $reviewBeforePaste
+                )
 
                 ReviewHUDPreview(
                     pasteHint: hotkeyStore.binding.displayKeys.joined(),

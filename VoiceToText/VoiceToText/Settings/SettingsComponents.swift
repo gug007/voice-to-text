@@ -36,6 +36,34 @@ extension ProviderIconTile {
     }
 }
 
+/// Title + subtitle on the left, a switch on the right — the standard row for
+/// a boolean setting inside a `RowCard`. `isLocked` dims the switch when one
+/// setting forces another on (see the General pane's Dock / menu bar pair).
+struct SettingsToggleRow: View {
+    let title: String
+    let subtitle: String
+    @Binding var isOn: Bool
+    var isLocked: Bool = false
+
+    var body: some View {
+        HStack(alignment: .center) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 14, weight: .medium))
+                Text(subtitle)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 16)
+            Toggle("", isOn: $isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(isLocked)
+        }
+    }
+}
+
 /// 6 px colored dot + 11 pt secondary label. Used wherever the UI shows
 /// a green/orange "online status" line: "Configured", "Connected",
 /// "Installed", "Not set", etc.

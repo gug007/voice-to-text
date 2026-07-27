@@ -13,8 +13,8 @@ type Feature = {
 const FEATURES: Feature[] = [
   {
     icon: "lock",
-    title: "Your audio never leaves the Mac",
-    body: "Local models run on-device by default — your voice never touches the network. No accounts, no servers, no telemetry. The app only connects to fetch models and check for updates.",
+    title: "Your audio stays local in local mode",
+    body: "Parakeet and Whisper run on-device, so those recordings are not sent to a speech provider. There is no VoiceToText account or app telemetry; model downloads, update checks, optional cloud engines, and AI actions use the network.",
   },
   {
     icon: "keyboard",

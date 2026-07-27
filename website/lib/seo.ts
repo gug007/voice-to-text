@@ -21,7 +21,7 @@ export const softwareApplicationJsonLd = {
   name: "VoiceToText",
   alternateName: "VoiceToText for Mac",
   description:
-    "Free, open-source voice to text and speech to text app for Mac. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording.",
+    "Free, open-source voice to text and speech to text app for Mac. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording with optional speaker diarization.",
   keywords:
     "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, real-time transcription mac, whisper mac app",
   url: `${SITE_URL}/`,
@@ -49,13 +49,14 @@ export const softwareApplicationJsonLd = {
     "Voice to text on Mac with a global hotkey (Option+Space by default) — press to toggle or hold to record, fully customizable including Right Control",
     "Speech to text that runs offline on-device after a one-time model download, accelerated by the Apple Neural Engine",
     "Six local models: Parakeet TDT v3 (FluidAudio) and Whisper Large v3 Turbo, Large v3, Small, Base, Tiny (WhisperKit)",
-    "Five optional cloud models across OpenAI (GPT-4o Transcribe, GPT-4o Transcribe Realtime, GPT-4o Mini Transcribe, Whisper-1) and ElevenLabs (Scribe v2 Realtime)",
-    "Real-time streaming transcription — words appear live as you speak with Scribe v2 Realtime or GPT-4o Transcribe Realtime",
+    "Seven optional cloud models across OpenAI (GPT Realtime Whisper, GPT-4o Transcribe, GPT-4o Transcribe Realtime, GPT-4o Transcribe Diarize, GPT-4o Mini Transcribe, Whisper-1) and ElevenLabs (Scribe v2 Realtime)",
+    "Real-time streaming transcription — words appear live as you speak with Scribe v2 Realtime, GPT Realtime Whisper, or GPT-4o Transcribe Realtime",
     "Review before pasting: edit the transcript in a floating panel, then confirm — or turn review off for instant paste",
     "One-click AI actions on the transcript: Clean transcript, To English, Improve prompt, Fix grammar, Summarize, Essentials only, plus your own custom actions",
     "Resume dictation at the caret to append to a take",
     "Types transcribed text into any focused macOS app",
     "Record meetings and conversations — captures your microphone plus system audio in the background via ScreenCaptureKit",
+    "Optional speaker diarization with GPT-4o Transcribe Diarize, with editable display names for detected speakers",
     "Long recordings transcribed in segments; interrupted recordings are recovered on next launch",
     "Rolling on-device recording history (200 most recent) with audio playback and favorites — deletes come with an undo",
     "Regenerate any transcript with a different model and keep both versions side by side to compare",
@@ -190,17 +191,24 @@ export const personJsonLd = {
 
 export const MEETING_PATH = "/meeting-recording";
 export const MEETING_URL = `${SITE_URL}${MEETING_PATH}`;
+export const MEETING_PUBLISHED = "2026-06-30";
+export const MEETING_UPDATED = "2026-07-27";
 
 export const meetingFaqEntries: FaqEntry[] = [
   {
     question: "Can I record and transcribe meetings on my Mac for free?",
     answer:
-      "Yes. VoiceToText is free and open source. It records a meeting or conversation on your Mac and transcribes it on-device — no subscription, no account, and no per-minute fees. The same app also does hotkey dictation into any text field.",
+      "Yes. VoiceToText is free and open source, with no app subscription or per-minute app fee. Local transcription has no provider charge; optional cloud models may charge usage under your own API key. The same app also does hotkey dictation into any text field.",
   },
   {
     question: "Does it record the other participants, or just my microphone?",
     answer:
       "Both. VoiceToText captures your microphone and your Mac's system audio at the same time, so the people on the other end of a Zoom, Google Meet, Microsoft Teams, FaceTime, Webex, or Discord call are recorded along with you. System-audio capture uses Apple's ScreenCaptureKit, so it works with any app that plays sound — no meeting-specific plugin or bot in the call.",
+  },
+  {
+    question: "Can VoiceToText identify and label different speakers?",
+    answer:
+      "Yes, with the optional GPT-4o Transcribe Diarize model. It separates the transcript into turns labeled Speaker 1, Speaker 2, and so on; you can rename those labels in the recording history, and the names are used when you view or copy the transcript. Diarization is a cloud-only OpenAI feature: it requires your own OpenAI API key and sends the recording directly to OpenAI. Local Whisper and Parakeet models do not separate speakers.",
   },
   {
     question: "Is meeting recording private? Does my audio stay on my Mac?",
@@ -248,8 +256,10 @@ export const meetingPageJsonLd = {
   "@id": `${MEETING_URL}#webpage`,
   name: "Record and transcribe meetings on Mac",
   description:
-    "Free, open-source meeting recorder for Mac. Records your microphone and system audio together (Zoom, Google Meet, Teams, FaceTime) and transcribes the conversation on-device on the Apple Neural Engine — no bot in the call, no subscription.",
+    "Free, open-source meeting recorder for Mac. Records microphone and system audio together, transcribes on-device by default, and offers optional cloud speaker diarization with editable speaker names.",
   url: MEETING_URL,
+  datePublished: MEETING_PUBLISHED,
+  dateModified: MEETING_UPDATED,
   isPartOf: { "@id": WEBSITE_ID },
   about: { "@id": SOFTWARE_ID },
   mainEntity: { "@id": SOFTWARE_ID },
@@ -279,6 +289,7 @@ export const meetingBreadcrumbJsonLd = {
 /* ---------- Mac voice-to-text guide ---------- */
 
 export const GUIDE_PUBLISHED = "2026-07-11";
+export const GUIDE_UPDATED = "2026-07-27";
 
 export const guideArticleJsonLd = {
   "@context": "https://schema.org",
@@ -296,7 +307,7 @@ export const guideArticleJsonLd = {
     height: 630,
   },
   datePublished: GUIDE_PUBLISHED,
-  dateModified: GUIDE_PUBLISHED,
+  dateModified: GUIDE_UPDATED,
   author: { "@id": PERSON_ID },
   publisher: { "@id": PERSON_ID },
   about: { "@id": SOFTWARE_ID },
@@ -311,7 +322,9 @@ export const guidePageJsonLd = {
   url: GUIDE_URL,
   name: "How to use voice to text on Mac",
   description:
-    "Set up voice to text on a Mac in minutes and dictate into any app with a global hotkey.",
+    "Set up voice to text on a Mac, grant the right permissions, choose an offline model and language, troubleshoot the shortcut, and dictate into any app.",
+  datePublished: GUIDE_PUBLISHED,
+  dateModified: GUIDE_UPDATED,
   isPartOf: { "@id": WEBSITE_ID },
   mainEntity: { "@id": `${GUIDE_URL}#article` },
   about: { "@id": SOFTWARE_ID },

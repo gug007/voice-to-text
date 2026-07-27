@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 
 import { JsonLd } from "@/components/json-ld";
 import { ScrollEffects } from "@/components/scroll-effects";
@@ -39,6 +40,24 @@ export const metadata: Metadata = {
   },
 };
 
+const TOPIC_GUIDES = [
+  {
+    href: "/offline-speech-to-text-mac",
+    title: "Offline speech to text on Mac",
+    body: "See how local Whisper and Parakeet models keep transcription on your Apple Silicon Mac after the one-time download.",
+  },
+  {
+    href: "/voice-to-text-for-coding",
+    title: "Voice to text for coding",
+    body: "Dictate prompts, implementation notes, and terminal commands into Cursor, Claude Code, ChatGPT, and other coding tools.",
+  },
+  {
+    href: "/meeting-recording",
+    title: "Record and transcribe meetings",
+    body: "Capture your microphone and system audio together, then transcribe calls locally by default—without a bot in the meeting.",
+  },
+] as const;
+
 export default function Home() {
   return (
     <>
@@ -55,6 +74,25 @@ export default function Home() {
         <Demo />
         <HowItWorks />
         <UseCaseExplorer />
+        <section className="section guide-section reveal" id="guides" aria-labelledby="guides-title">
+          <div className="container guide__container">
+            <p className="section__eyebrow">Mac speech-to-text guides</p>
+            <h2 id="guides-title" className="section__title">
+              Pick the voice workflow you want to improve.
+            </h2>
+            <p className="section__deck">
+              Practical guides for private dictation, faster coding, and meeting transcription on Mac.
+            </p>
+            <div className="guide__choices">
+              {TOPIC_GUIDES.map(({ href, title, body }) => (
+                <article key={href} className="guide__choice">
+                  <h3><Link className="link" href={href}>{title}</Link></h3>
+                  <p>{body}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
         <Features />
         <Faq />
         <Download />

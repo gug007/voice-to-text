@@ -14,6 +14,7 @@ import { WaveBars } from "@/components/ui/wave-bars";
 import { DMG_URL, RELEASES_URL } from "@/lib/constants";
 import {
   MEETING_PATH,
+  MEETING_UPDATED,
   MEETING_URL,
   meetingBreadcrumbJsonLd,
   meetingFaqEntries,
@@ -22,9 +23,9 @@ import {
   personJsonLd,
 } from "@/lib/seo";
 
-const TITLE = "Record & Transcribe Meetings on Mac — Free · VoiceToText";
+const TITLE = "Free Meeting Recorder for Mac — System Audio & Transcript";
 const DESCRIPTION =
-  "Free, open-source meeting recorder for Mac. Record your mic + system audio (Zoom, Meet, Teams, FaceTime) and transcribe the call on-device. No bot, no fees.";
+  "Record Zoom, Meet, Teams, and FaceTime on Mac with microphone + system audio. Transcribe locally by default; optional speaker labels use OpenAI.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -51,9 +52,8 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Record & transcribe meetings on Mac — free & on-device",
-    description:
-      "Record your mic and the call's system audio together, then transcribe on-device. No meeting bot, no subscription. Free & open source.",
+    title: TITLE,
+    description: DESCRIPTION,
   },
 };
 
@@ -68,12 +68,12 @@ const RECORD_FROM = [
   "Any audio",
 ] as const;
 
-const TRANSCRIPT = `00:00  Let's kick off the weekly sync.
-00:05  Launch status — design is signed
-       off, eng is on the last endpoint.
-00:14  Any blockers before Friday?
-00:19  None on my side. I'll send notes
-       right after this call.`;
+const TRANSCRIPT = `Speaker 1: Let's kick off the weekly sync.
+Speaker 2: Design is signed off, and
+the team is on the last endpoint.
+Speaker 1: Any blockers before Friday?
+Speaker 2: None. I'll send the notes
+right after this call.`;
 
 const HERO_META = ["Signed & notarized", "Mic + system audio", "On-device by default"];
 
@@ -139,17 +139,32 @@ const CAPABILITIES: Capability[] = [
   },
   {
     icon: "bolt",
-    title: "No bot, no subscription",
-    body: "Nothing joins your call and nobody is billed per minute. Free and open source, with the source on GitHub to audit.",
+    title: "No bot, no app subscription",
+    body: "Nothing joins your call, and VoiceToText does not charge by the minute. Local transcription has no provider fee; optional cloud providers may charge under your API key.",
   },
 ];
 
 const PRIVACY_BULLETS = [
   "Microphone records your voice; Screen Recording is how macOS exposes system audio through ScreenCaptureKit — VoiceToText never records the screen, only the audio. Accessibility is only used by dictation, not by meeting recording.",
   "With a local model (Whisper or Parakeet on the Apple Neural Engine), the recording is transcribed entirely on your Mac and never leaves the device.",
-  "Cloud transcription is opt-in: only if you pick an OpenAI or ElevenLabs model is audio sent — directly to that provider under your own API key. VoiceToText is never in that path.",
+  "Cloud transcription is opt-in: only if you pick an OpenAI or ElevenLabs model is audio sent — directly to that provider under your own API key. Speaker diarization specifically uses OpenAI GPT-4o Transcribe Diarize. VoiceToText is never in that path.",
   "Recordings and transcripts live in Application Support on your Mac. Delete any of them anytime, right from the history — with a 5-second undo if you slip.",
 ];
+
+const SPEAKER_WORKFLOW = [
+  {
+    title: "Choose the diarizing model",
+    body: "Select GPT-4o Transcribe Diarize and add your own OpenAI API key. This is an optional cloud model: the recording is sent directly to OpenAI for transcription.",
+  },
+  {
+    title: "See who said what",
+    body: "The transcript is split into turns labeled Speaker 1, Speaker 2, and so on, instead of one uninterrupted block of meeting text.",
+  },
+  {
+    title: "Replace labels with names",
+    body: "Open Name speakers on the saved recording and assign display names. Those names appear when you view or copy the transcript and persist across transcript versions.",
+  },
+] as const;
 
 export default function MeetingRecordingPage() {
   return (
@@ -181,8 +196,8 @@ export default function MeetingRecordingPage() {
               <span className="hero__title-accent">on your Mac. Free.</span>
             </h1>
             <p className="hero__lead">
-              Capture your mic and the call’s system audio together — then get an on-device transcript.
-              No bot in the meeting.
+              Capture your mic and the call’s system audio together. Transcribe locally by default, or choose
+              optional cloud speaker labels — without a bot joining the meeting.
             </p>
             <div className="hero__ctas">
               <a
@@ -208,7 +223,8 @@ export default function MeetingRecordingPage() {
               ))}
             </p>
             <p className="hero__meta-sub t-caption">
-              macOS 15.0+ · Apple Silicon (M1+) · Microphone and Screen Recording permission required.
+              macOS 15.0+ · Apple Silicon (M1+) · Microphone and Screen Recording permission required ·{" "}
+              <time dateTime={MEETING_UPDATED}>Updated July 27, 2026</time>.
             </p>
             <p className="hero__subcopy">
               VoiceToText records Zoom, Google Meet, Microsoft Teams, FaceTime, or any call playing through
@@ -250,10 +266,42 @@ export default function MeetingRecordingPage() {
                 </div>
                 <pre className="ai__transcript-body"><code>{TRANSCRIPT}</code></pre>
                 <figcaption className="ai__transcript-caption">
-                  <strong>Recorded and transcribed on-device.</strong> Mic + system audio, saved to history.
+                  <strong>Optional speaker-separated transcript.</strong> GPT-4o Transcribe Diarize sends audio
+                  directly to OpenAI under your API key; rename the detected speakers in history.
                 </figcaption>
               </figure>
             </div>
+          </div>
+        </section>
+
+        <section className="section how reveal" id="speaker-diarization" aria-labelledby="speaker-title">
+          <div className="container guide__container">
+            <p className="section__eyebrow">Speaker diarization</p>
+            <h2 id="speaker-title" className="section__title">
+              Separate speakers, then give the labels real names.
+            </h2>
+            <p className="section__deck">
+              Local Whisper and Parakeet models produce a standard transcript. When you need to distinguish
+              speakers, the optional GPT-4o Transcribe Diarize model adds labeled turns that you can rename.
+            </p>
+            <div className="guide__choices">
+              {SPEAKER_WORKFLOW.map(({ title, body }) => (
+                <article key={title} className="guide__choice">
+                  <h3>{title}</h3>
+                  <p>{body}</p>
+                </article>
+              ))}
+            </div>
+            <aside className="guide__note" aria-label="Speaker diarization privacy note">
+              <Icon name="cloud" size="lg" />
+              <div>
+                <strong>Diarization is cloud-only</strong>
+                <p>
+                  It requires an OpenAI API key and sends the recording directly to OpenAI. Keep a local Whisper
+                  or Parakeet model selected when the audio must remain entirely on your Mac.
+                </p>
+              </div>
+            </aside>
           </div>
         </section>
 
@@ -285,8 +333,8 @@ export default function MeetingRecordingPage() {
               A full meeting recorder, built into your dictation app.
             </h2>
             <p className="section__deck">
-              No second subscription, no plugin in the call, no audio shipped to someone else’s server. Just a
-              native Mac app that records, transcribes, and remembers — on your Mac.
+              No second app subscription and no plugin in the call. Choose a local model to keep transcription
+              on your Mac, or explicitly select a cloud provider when you want one of its features.
             </p>
             <ul className="features__grid" role="list">
               {CAPABILITIES.map(({ icon, title, body }) => (
@@ -301,7 +349,7 @@ export default function MeetingRecordingPage() {
           <div className="container">
             <p className="section__eyebrow">Permissions &amp; privacy</p>
             <h2 id="mr-privacy-title" className="section__title">
-              Your meetings stay on your Mac.
+              Local transcription keeps your meetings on your Mac.
             </h2>
             <p className="section__deck">
               Recording a conversation is sensitive, so VoiceToText keeps it local by default. Here is exactly
@@ -332,6 +380,39 @@ export default function MeetingRecordingPage() {
                   <div className="faq-item__a">{answer}</div>
                 </details>
               ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="section how reveal" id="related-guides" aria-labelledby="meeting-related-title">
+          <div className="container guide__container">
+            <p className="section__eyebrow">Related Mac guides</p>
+            <h2 id="meeting-related-title" className="section__title">Use the same app beyond meetings.</h2>
+            <div className="guide__choices">
+              <article className="guide__choice">
+                <h3>
+                  <Link className="link" href="/how-to-use-voice-to-text-on-mac">
+                    Set up voice to text on Mac
+                  </Link>
+                </h3>
+                <p>Grant the right permissions, choose a shortcut and model, and dictate into any text field.</p>
+              </article>
+              <article className="guide__choice">
+                <h3>
+                  <Link className="link" href="/offline-speech-to-text-mac">
+                    Keep transcription offline
+                  </Link>
+                </h3>
+                <p>Understand local model downloads, supported workflows, and when audio stays on your Mac.</p>
+              </article>
+              <article className="guide__choice">
+                <h3>
+                  <Link className="link" href="/voice-to-text-for-coding">
+                    Dictate into coding tools
+                  </Link>
+                </h3>
+                <p>Use the global shortcut for prompts and implementation notes in AI and development tools.</p>
+              </article>
             </div>
           </div>
         </section>

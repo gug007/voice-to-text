@@ -3,9 +3,10 @@ import Observation
 
 /// Saves every completed dictation — the recorded audio plus its transcript —
 /// and exposes the list to the History pane. Audio is written as a WAV beside
-/// a JSON index in Application Support; nothing leaves the Mac, matching the
-/// rest of the app. All filesystem work runs on a private serial queue so the
-/// main actor never blocks on disk and writes stay strictly ordered.
+/// a JSON index in Application Support. Stored history stays on this Mac;
+/// transcription-provider handling happens before this store receives a result.
+/// All filesystem work runs on a private serial queue so the main actor never
+/// blocks on disk and writes stay strictly ordered.
 @Observable
 @MainActor
 final class RecordingHistoryStore {

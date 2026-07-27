@@ -129,6 +129,36 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
                 Setup guide
               </Link>
             </li>
+            <li>
+              <Link
+                href="/meeting-recording"
+                aria-current={current === "/meeting-recording" ? "page" : undefined}
+                tabIndex={open ? 0 : -1}
+                onClick={close}
+              >
+                Meeting recorder
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/offline-speech-to-text-mac"
+                aria-current={current === "/offline-speech-to-text-mac" ? "page" : undefined}
+                tabIndex={open ? 0 : -1}
+                onClick={close}
+              >
+                Offline speech to text
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/voice-to-text-for-coding"
+                aria-current={current === "/voice-to-text-for-coding" ? "page" : undefined}
+                tabIndex={open ? 0 : -1}
+                onClick={close}
+              >
+                Voice to text for coding
+              </Link>
+            </li>
           </ul>
           <a
             className="btn btn--primary nav__menu-download"

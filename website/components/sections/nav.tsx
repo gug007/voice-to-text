@@ -13,6 +13,12 @@ const HASH_LINKS = [
   { href: "#features", label: "Privacy" },
 ] as const;
 
+const ROUTE_LINKS = [
+  { href: GUIDE_PATH, label: "Guide" },
+  { href: "/offline-speech-to-text-mac", label: "Offline" },
+  { href: "/meeting-recording", label: "Meetings" },
+] as const;
+
 type NavProps = {
   /**
    * Prefix applied to in-page hash links. Empty on the home page (so links stay
@@ -36,11 +42,13 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
             {HASH_LINKS.map(({ href, label }) => (
               <li key={href} className="nav__link--hash"><a href={`${linkPrefix}${href}`}>{label}</a></li>
             ))}
-            <li>
-              <Link href={GUIDE_PATH} aria-current={current === GUIDE_PATH ? "page" : undefined}>
-                Guide
-              </Link>
-            </li>
+            {ROUTE_LINKS.map(({ href, label }) => (
+              <li key={href}>
+                <Link href={href} aria-current={current === href ? "page" : undefined}>
+                  {label}
+                </Link>
+              </li>
+            ))}
             <li>
               <ExternalLink
                 href={REPO_URL}
@@ -55,6 +63,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
         <MobileNav current={current} links={HASH_LINKS} linkPrefix={linkPrefix} />
         <nav className="nav__fallback" aria-label="Quick links">
           <Link href={GUIDE_PATH}>Guide</Link>
+          <Link href="/meeting-recording">Meetings</Link>
           <a
             className="btn btn--primary btn--sm"
             href={DMG_URL}

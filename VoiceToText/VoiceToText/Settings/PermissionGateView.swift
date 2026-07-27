@@ -74,8 +74,8 @@ struct PermissionGateView: View {
     private var reasons: some View {
         VStack(alignment: .leading, spacing: 14) {
             ReasonRow(icon: "waveform", text: "To hear what you say while recording.")
-            ReasonRow(icon: "cpu", text: "Transcription runs locally — no cloud.")
-            ReasonRow(icon: "lock.fill", text: "Audio is held in memory and never stored.")
+            ReasonRow(icon: "cpu", text: "The default model transcribes locally on your Mac.")
+            ReasonRow(icon: "lock.fill", text: "History saves audio locally when enabled; you can turn it off.")
         }
         .frame(maxWidth: 360)
     }

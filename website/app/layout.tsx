@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist } from "next/font/google";
 import Script from "next/script";
 
 import { AnalyticsEvents } from "@/components/analytics-events";
@@ -15,17 +15,11 @@ const sans = Geist({
   variable: "--font-sans",
 });
 
-const mono = Geist_Mono({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-mono",
-});
-
-const TITLE = "Voice to Text for Mac — Free, Offline Dictation";
+const TITLE = "Free Voice-to-Text App for Mac — Offline & Open Source";
 const DESCRIPTION =
-  "Free voice to text for Mac that types into any app from a hotkey. Runs offline on Apple Silicon, needs no account, and is open source.";
+  "Press Option+Space and dictate into any Mac app. VoiceToText is free and open source on Apple Silicon, with offline models and no required account.";
 const TWITTER_DESCRIPTION =
-  "Press a hotkey, speak, and type into any Mac app. Free, offline on Apple Silicon, no account, and open source.";
+  "Press Option+Space, speak, and type into any Mac app. Free and open source, with offline models and no required account.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -75,7 +69,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+    <html lang="en" className={sans.variable} suppressHydrationWarning>
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

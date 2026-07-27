@@ -18,15 +18,15 @@ export function Demo() {
             <video
               className="product-demo__video"
               controls
-              autoPlay
               muted
               loop
               playsInline
               preload="metadata"
               poster="/product-demo-poster.png"
               data-respect-reduced-motion
-              data-analytics-event="demo_video_interaction"
+              data-analytics-event="demo_start"
               data-analytics-placement="home_demo"
+              data-analytics-label="product_video"
               aria-label="Silent 20-second screen recording of VoiceToText dictating into a coding workspace"
             >
               <source src="/product-demo.mp4" type="video/mp4" />
@@ -49,7 +49,7 @@ export function Demo() {
             <span>Try it free on your Mac</span>
           </a>
           <Link className="btn btn--secondary" href={GUIDE_PATH}>
-            <span>Read the 5-minute setup guide</span>
+            <span>Read the Mac setup guide</span>
             <Icon name="arrow-right" />
           </Link>
         </div>

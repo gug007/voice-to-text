@@ -44,7 +44,7 @@
 
   /* Typography — Geist via next/font, system fallback. */
   --font-sans-tokens: var(--font-sans), -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-mono-tokens: var(--font-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --font-mono-tokens: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 
   /* Type scale — tighter, more refined. */
   --fs-display-1: clamp(44px, 7vw, 84px);

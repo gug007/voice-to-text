@@ -57,7 +57,7 @@ export default function GuideOpengraphImage() {
         </div>
 
         <div style={{ display: "flex", gap: 16 }}>
-          {["About 5 minutes", "Works in any app", "Offline by default"].map((label) => (
+          {["About 8 minutes", "Works in any app", "Offline by default"].map((label) => (
             <div
               key={label}
               style={{

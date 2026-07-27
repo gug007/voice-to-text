@@ -25,10 +25,9 @@ const COLUMNS: FooterColumn[] = [
   {
     title: "Product",
     links: [
-      { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text guide" },
       { kind: "hash", href: "#use-cases", label: "Use cases" },
-      { kind: "hash", href: "#features", label: "Features" },
-      { kind: "route", href: "/meeting-recording", label: "Record meetings" },
+      { kind: "hash", href: "#features", label: "Privacy & features" },
+      { kind: "route", href: "/meeting-recording", label: "Meeting recorder for Mac" },
       { kind: "hash", href: "#faq", label: "FAQ" },
       { kind: "hash", href: "#download", label: "Download the app" },
     ],
@@ -43,12 +42,15 @@ const COLUMNS: FooterColumn[] = [
     ],
   },
   {
-    title: "Trust",
+    title: "Guides",
     links: [
-      { kind: "hash", href: "#faq", label: "Privacy answers" },
-      { kind: "external", href: REPO_URL, label: "Audit the source code" },
-      { kind: "external", href: RELEASES_URL, label: "All releases" },
-      { kind: "external", href: ISSUES_URL, label: "Report an issue" },
+      { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text setup" },
+      { kind: "route", href: "/offline-speech-to-text-mac", label: "Offline speech to text" },
+      { kind: "route", href: "/voice-to-text-for-coding", label: "Voice to text for coding" },
+      { kind: "route", href: "/apple-dictation-alternative", label: "Apple Dictation alternative" },
+      { kind: "route", href: "/whisper-vs-parakeet-mac", label: "Whisper vs. Parakeet" },
+      { kind: "route", href: "/superwhisper-alternative", label: "Superwhisper alternative" },
+      { kind: "route", href: "/wispr-flow-alternative", label: "Wispr Flow alternative" },
     ],
   },
 ];

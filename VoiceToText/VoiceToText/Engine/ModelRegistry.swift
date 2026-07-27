@@ -68,7 +68,7 @@ enum ModelCatalog {
             backend: .fluidAudio,
             backendModelId: "parakeet-tdt-v3",
             approxSizeMB: 470,
-            languages: "25 European + JA",
+            languages: "25 European",
             notes: "Fastest on your Mac. Best for English and major European languages.",
             quality: 9,
             speed: 10,

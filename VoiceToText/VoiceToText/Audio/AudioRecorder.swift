@@ -57,6 +57,32 @@ final class AudioRecorder: @unchecked Sendable {
     private var needsFreshEngine = true
     private var isRecording = false
 
+    // MARK: Prewarm scheduling
+
+    /// Owns the debounce timer only — the rebuild itself hops to `engineQueue`,
+    /// so nothing here can inherit a CoreAudio stall.
+    private let prewarmScheduler = DispatchQueue(label: "AudioRecorder.prewarm")
+    /// Guards the two fields below. Kept separate from `stateLock` so scheduling
+    /// never waits behind engine bookkeeping.
+    private let prewarmLock = NSLock()
+    private var pendingPrewarm: DispatchWorkItem?
+    private var lastPrewarmStartedAt: Date?
+
+    /// Collapses a burst of invalidations into a single rebuild. A route change,
+    /// a sleep/wake, or another app grabbing the input fires several
+    /// configuration changes back to back, and each rebuild is a multi-second
+    /// device enumeration.
+    private static let prewarmDebounce: DispatchTimeInterval = .milliseconds(1500)
+    /// Floor between two rebuilds. A Bluetooth mic renegotiates its profile
+    /// whenever anything touches the input, and every renegotiation posts a
+    /// configuration change — while the rebuild itself instantiates a fresh
+    /// input unit, which is another thing touching the input. Answering every
+    /// change with a rebuild therefore feeds itself and pins a core (measured:
+    /// `GetSubDevices` looping under AVAudioEngine's lock while the next change
+    /// queued up behind it). Past this floor we simply leave the engine stale;
+    /// `start()` rebuilds it, costing one slow press instead of a steady spin.
+    private static let prewarmMinInterval: TimeInterval = 30
+
     /// Generous relative to a healthy device (well under a second) and to a
     /// Bluetooth mic waking into handsfree mode (a few seconds), but short
     /// enough that a wedged coreaudiod surfaces as a retryable error instead of
@@ -113,7 +139,11 @@ final class AudioRecorder: @unchecked Sendable {
     /// Stops capture and returns everything captured. Never throws: if the
     /// engine teardown wedges we still hand back the audio, which lives on a
     /// separate queue and is reachable regardless.
-    func stop() async -> [Float] {
+    ///
+    /// `prewarming` is false only on the configuration-change path: rebuilding
+    /// the engine in direct response to a route change is what turns a single
+    /// Bluetooth renegotiation into a self-feeding storm of HAL enumerations.
+    func stop(prewarming: Bool = true) async -> [Float] {
         let samples: [Float]
         do {
             samples = try await runOnEngineQueue(timeout: Self.stopTimeout) { generation in
@@ -124,7 +154,7 @@ final class AudioRecorder: @unchecked Sendable {
             samples = drainBuffer()
         }
         onConfigurationChange = nil
-        prewarm()
+        if prewarming { prewarm() }
         return samples
     }
 
@@ -139,8 +169,31 @@ final class AudioRecorder: @unchecked Sendable {
 
     /// Pays the CoreAudio device-enumeration cost ahead of time, on the engine
     /// queue, so the next hotkey press doesn't have to wait for it. Fire and
-    /// forget; a no-op when the cached engine is already good.
+    /// forget; debounced and rate-limited, and a no-op when the cached engine is
+    /// already good.
     func prewarm() {
+        let item = DispatchWorkItem { [weak self] in self?.performPrewarm() }
+        let superseded: DispatchWorkItem? = prewarmLock.withLock {
+            let previous = pendingPrewarm
+            pendingPrewarm = item
+            return previous
+        }
+        superseded?.cancel()
+        prewarmScheduler.asyncAfter(deadline: .now() + Self.prewarmDebounce, execute: item)
+    }
+
+    private func performPrewarm() {
+        let withinFloor = prewarmLock.withLock { () -> Bool in
+            pendingPrewarm = nil
+            guard let last = lastPrewarmStartedAt else { return false }
+            return Date().timeIntervalSince(last) < Self.prewarmMinInterval
+        }
+        guard !withinFloor else {
+            // Leaving the engine stale is always safe: `start()` rebuilds it.
+            AppLog.audio.info("Skipping audio engine prewarm; rebuilt too recently")
+            return
+        }
+
         let (queue, generation) = stateLock.withLock { (engineQueue, engineGeneration) }
         queue.async {
             let shouldWarm = self.stateLock.withLock {
@@ -149,6 +202,9 @@ final class AudioRecorder: @unchecked Sendable {
                     && (self.needsFreshEngine || self.engine == nil)
             }
             guard shouldWarm else { return }
+            // Stamped only when a rebuild actually happens, so a run of no-op
+            // prewarms can't consume the floor and starve a real one.
+            self.prewarmLock.withLock { self.lastPrewarmStartedAt = Date() }
             do {
                 // Touching `inputNode` is what triggers the expensive HAL
                 // enumeration — the whole point of prewarming.
@@ -341,9 +397,27 @@ final class AudioRecorder: @unchecked Sendable {
         // the controller never learns the device changed — leaving the app
         // wedged in .recording over a dead engine.
         let cb = onConfigurationChange
-        stateLock.withLock { needsFreshEngine = true }
+        let wasRecording = stateLock.withLock { () -> Bool in
+            needsFreshEngine = true
+            return isRecording
+        }
+
+        // Idle: no recording to salvage and nobody to notify, so don't touch
+        // CoreAudio from here. A prewarmed app holds a live input unit, so it
+        // receives every route change the machine sees — and a Bluetooth mic
+        // renegotiates constantly. Tearing the engine down and rebuilding it on
+        // each one is what pinned a core: the rebuild's `GetSubDevices` held
+        // AVAudioEngine's lock for seconds while the next change queued behind
+        // it. Marking the engine stale is the whole obligation; the debounced
+        // prewarm rebuilds once the hardware settles, and `start()` rebuilds
+        // regardless if it hasn't.
+        guard wasRecording else {
+            prewarm()
+            return
+        }
+
         Task.detached { [weak self] in
-            _ = await self?.stop()
+            _ = await self?.stop(prewarming: false)
             await MainActor.run { cb?() }
         }
     }

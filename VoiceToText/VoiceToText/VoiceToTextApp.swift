@@ -32,8 +32,6 @@ struct MainWindowView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var micStatus = MicPermission.status
 
-    private let refreshTimer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
-
     var body: some View {
         Group {
             if micStatus == .authorized {
@@ -48,7 +46,21 @@ struct MainWindowView: View {
                 NSApp.activate(ignoringOtherApps: true)
             }
         }
-        .onReceive(refreshTimer) { _ in micStatus = MicPermission.status }
+        // Polling only earns its keep before the grant — it's what swaps the
+        // gate out for the settings pane the moment the user allows the mic in
+        // System Settings. macOS can't revoke access while the app runs, so
+        // once authorized this stops rather than waking the main run loop every
+        // second for the rest of the session.
+        .task(id: micStatus) {
+            guard micStatus != .authorized else { return }
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(1))
+                let current = MicPermission.status
+                guard current != micStatus else { continue }
+                micStatus = current
+                return
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             micStatus = MicPermission.status
         }

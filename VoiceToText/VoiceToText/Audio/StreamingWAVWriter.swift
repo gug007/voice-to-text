@@ -46,6 +46,12 @@ nonisolated final class StreamingWAVWriter {
                 samplesSinceHeaderSync = 0
                 try patchSizes()
                 try handle.seek(toOffset: UInt64(Self.headerSize + totalSamples * Self.bytesPerSample))
+                // Patching the header only makes the file *describe* the audio;
+                // until the pages reach the disk a panic or power cut can still
+                // take back minutes of a long conversation. Flush on the same
+                // tick so the header and the samples it accounts for become
+                // durable together — a few hundred KB every five seconds.
+                try handle.synchronize()
             }
         } catch {
             writeFailed = true

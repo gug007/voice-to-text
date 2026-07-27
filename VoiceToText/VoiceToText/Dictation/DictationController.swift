@@ -1071,7 +1071,15 @@ final class DictationController {
         enterTranscribing()
         let runID = transcriptionRunID
         inFlightTranscriptionSamples = samples
-        defer { stopTranscribingElapsedTicker() }
+        defer {
+            stopTranscribingElapsedTicker()
+            // Only the watchdog reads this, and the line above just cancelled it
+            // — holding on any longer would keep the last dictation's raw audio
+            // (megabytes per minute) alive for the rest of the session, even
+            // after the user cancelled the review and its History take was
+            // retracted. A newer run's samples are left alone.
+            if runID == transcriptionRunID { inFlightTranscriptionSamples = nil }
+        }
 
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
         guard runID == transcriptionRunID else { return }

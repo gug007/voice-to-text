@@ -109,3 +109,11 @@ swiftc -parse-as-library \
   Tests/SpeakerRelabelerHarness.swift \
   -o "$TMPDIR/speaker-relabeler-harness"
 "$TMPDIR/speaker-relabeler-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/AudioChunker.swift \
+  VoiceToText/VoiceToText/Audio/AudioChunkReader.swift \
+  VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
+  Tests/AudioChunkReaderHarness.swift \
+  -o "$TMPDIR/audio-chunk-reader-harness"
+"$TMPDIR/audio-chunk-reader-harness"

@@ -49,7 +49,11 @@ nonisolated enum AudioChunker {
         return chunks
     }
 
-    private static func quietestWindowEnd(
+    /// Index just past the quietest `windowSize`-sample window in
+    /// `start..<end` — i.e. the least destructive place to cut. Shared with
+    /// `AudioChunkReader`, which applies the same rule while streaming a file
+    /// off disk instead of slicing an in-memory buffer.
+    static func quietestWindowEnd(
         in samples: [Float],
         start: Int,
         end: Int,

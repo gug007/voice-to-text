@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 enum CloudProvider: String, Sendable, Hashable {
     case openAI
@@ -257,6 +258,20 @@ final class ModelRegistry {
     @ObservationIgnored
     private var engines: [String: TranscriptionEngine] = [:]
 
+    /// Ids of the resident **local** engines, least-recently-used first. A local
+    /// engine holds its CoreML model in memory for as long as it's referenced,
+    /// and nothing but `deleteModel` ever dropped one — so trying a few models
+    /// in one session kept every one of them resident until relaunch. Cloud
+    /// engines are a URLSession and a few fields, so they stay cached untracked.
+    @ObservationIgnored
+    private var residentLocalEngines: [String] = []
+
+    /// How many local engines stay warm. Two covers the common case — dictation
+    /// and conversations on different models — while switching models releases
+    /// the one that fell out instead of stacking it up. An evicted model simply
+    /// reloads on its next use; `prepareModel` already handles that path.
+    private static let maxResidentLocalEngines = 2
+
     @ObservationIgnored
     private var preparationTasks: [String: Task<TranscriptionEngine?, Never>] = [:]
 
@@ -388,6 +403,7 @@ final class ModelRegistry {
         guard let descriptor = ModelCatalog.model(for: id) else { return nil }
 
         if let existing = engines[id], readiness[id]?.isInstalled == true {
+            touchResidentEngine(descriptor)
             return existing
         }
 
@@ -415,6 +431,9 @@ final class ModelRegistry {
                 guard self.isCurrentPreparation(id: id, generation: generation),
                       !Task.isCancelled else { return nil }
                 self.engines[id] = engine
+                // Touch *before* evicting so the engine we're about to hand back
+                // is the newest entry and can never be the one dropped.
+                self.touchResidentEngine(descriptor)
                 self.readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
                 return engine
             } catch {
@@ -525,11 +544,30 @@ final class ModelRegistry {
         preparationTasks[id] = nil
         _ = nextPreparationGeneration(for: id)
         engines[id] = nil
+        residentLocalEngines.removeAll { $0 == id }
         do {
             try ModelStorage.delete(descriptor)
             readiness[id] = .notInstalled
         } catch {
             readiness[id] = .failed("Delete failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - Resident engine cache
+
+    /// Marks a local engine as most-recently-used and drops whatever falls past
+    /// `maxResidentLocalEngines`. Dropping the last reference here is what
+    /// actually frees the CoreML model — an engine still mid-transcription is
+    /// held by its caller and survives until that call returns, so eviction can
+    /// never pull the model out from under a running request.
+    private func touchResidentEngine(_ descriptor: ModelDescriptor) {
+        guard !descriptor.isCloud else { return }
+        residentLocalEngines.removeAll { $0 == descriptor.id }
+        residentLocalEngines.append(descriptor.id)
+        while residentLocalEngines.count > Self.maxResidentLocalEngines {
+            let evicted = residentLocalEngines.removeFirst()
+            engines[evicted] = nil
+            AppLog.engine.info("Released cached engine \(evicted, privacy: .public) to free its model")
         }
     }
 

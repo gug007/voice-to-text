@@ -16,8 +16,8 @@ const FAQS: Faq[] = [
     question: "Is VoiceToText free?",
     answer: (
       <>
-        Yes — completely free, forever. VoiceToText is free and open source, with the full source code on
-        GitHub. No paid tiers, no accounts, and no in-app purchases.{" "}
+        Yes — completely free, forever. VoiceToText has no paid tiers, accounts, or in-app purchases, and its
+        source is available on GitHub for inspection.{" "}
         <a className="link" href="#download">Download it free.</a>
       </>
     ),

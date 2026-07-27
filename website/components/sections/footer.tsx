@@ -81,7 +81,7 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
             <span>VoiceToText</span>
           </a>
           <p className="footer__tagline">
-            Free, local-first dictation and meeting transcription for Mac. Open source on GitHub.
+            Free, local-first dictation and meeting transcription for Mac. Source available on GitHub.
           </p>
           <p className="footer__attribution t-caption">
             Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>.
@@ -106,7 +106,7 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
           ))}
         </nav>
         <p className="footer__copyright t-caption">
-          © 2026 VoiceToText contributors. Open source on GitHub.
+          © 2026 VoiceToText contributors. Source available on GitHub.
         </p>
       </div>
     </footer>

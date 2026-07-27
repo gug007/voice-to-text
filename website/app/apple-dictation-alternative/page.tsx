@@ -30,7 +30,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Apple Dictation vs. VoiceToText for Mac",
     description:
-      "A balanced comparison of the built-in option and a free open-source alternative with reviewed paste and local model choice.",
+      "A balanced comparison of the built-in option and a free alternative with source on GitHub, reviewed paste, and local model choice.",
     images: ["/opengraph-image"],
   },
 };
@@ -38,4 +38,3 @@ export const metadata: Metadata = {
 export default function AppleDictationAlternativePage() {
   return <SeoLandingPage config={appleDictationAlternativeConfig} />;
 }
-

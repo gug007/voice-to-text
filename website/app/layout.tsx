@@ -5,7 +5,12 @@ import Script from "next/script";
 import { AnalyticsEvents } from "@/components/analytics-events";
 import { IconSprite } from "@/components/icon-sprite";
 import { AUTHOR_URL, GA_MEASUREMENT_ID, SITE_URL } from "@/lib/constants";
-import { themeInitScript } from "@/lib/seo";
+import {
+  HOME_DESCRIPTION,
+  HOME_TITLE,
+  HOME_TWITTER_DESCRIPTION,
+  themeInitScript,
+} from "@/lib/seo";
 
 import "./globals.css";
 
@@ -15,16 +20,10 @@ const sans = Geist({
   variable: "--font-sans",
 });
 
-const TITLE = "Free Voice-to-Text App for Mac — Offline & Open Source";
-const DESCRIPTION =
-  "Press Option+Space and dictate into any Mac app. VoiceToText is free and open source on Apple Silicon, with offline models and no required account.";
-const TWITTER_DESCRIPTION =
-  "Press Option+Space, speak, and type into any Mac app. Free and open source, with offline models and no required account.";
-
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: TITLE,
-  description: DESCRIPTION,
+  title: HOME_TITLE,
+  description: HOME_DESCRIPTION,
   applicationName: "VoiceToText",
   authors: [{ name: "Gurgen Abagyan", url: AUTHOR_URL }],
   creator: "Gurgen Abagyan",
@@ -35,14 +34,14 @@ export const metadata: Metadata = {
     type: "website",
     siteName: "VoiceToText",
     url: SITE_URL,
-    title: TITLE,
-    description: DESCRIPTION,
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     locale: "en_US",
   },
   twitter: {
     card: "summary_large_image",
-    title: TITLE,
-    description: TWITTER_DESCRIPTION,
+    title: HOME_TITLE,
+    description: HOME_TWITTER_DESCRIPTION,
   },
   icons: {
     icon: [

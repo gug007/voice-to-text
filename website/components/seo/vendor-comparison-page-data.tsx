@@ -2,7 +2,7 @@ import type { SeoLandingConfig } from "./seo-landing";
 
 export const superwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/superwhisper-alternative",
-  title: "Superwhisper Alternative for Mac — Free & Open Source",
+  title: "Superwhisper Alternative for Mac — Free & Local",
   description:
     "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, file workflows, source access, requirements, and who each app suits.",
   breadcrumb: "Superwhisper alternative",
@@ -10,7 +10,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
   readingTime: "10 min",
   h1: "A Superwhisper alternative for Mac users who prioritize free, inspectable, local-first software.",
   lead:
-    "Superwhisper is a mature, cross-platform voice product with local and cloud models, AI formatting, and a wider ecosystem. VoiceToText is a narrower Mac app: free, open source, local by default, and built around reviewed paste plus meeting capture.",
+    "Superwhisper is a mature, cross-platform voice product with local and cloud models, AI formatting, and a wider ecosystem. VoiceToText is a narrower Mac app: free, local by default, with source available on GitHub, and built around reviewed paste plus meeting capture.",
   heroPoints: [
     "Reviewed July 27, 2026",
     "No unverifiable prices",
@@ -22,9 +22,9 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     <>
       Choose Superwhisper when cross-platform availability, its Super Mode formatting, broad model catalog,
       iOS continuity, and an established commercial product matter. Choose VoiceToText when you want a
-      no-cost open-source Mac utility, no app account, a simple review-before-paste flow, and local meeting or
-      file transcription. Test both with your language and vocabulary; this page does not claim one model is
-      universally more accurate.
+      no-cost Mac utility with source available on GitHub, no app account, a simple review-before-paste flow,
+      and local meeting or file transcription. Test both with your language and vocabulary; this page does
+      not claim one model is universally more accurate.
     </>
   ),
   sections: [
@@ -59,7 +59,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "A smaller surface can be a feature when transparency and control come first.",
       cards: [
         {
-          title: "Free and open source",
+          title: "Free, with source on GitHub",
           body:
             "The application source is public and the release has no paid tier, account, or in-app subscription. You can inspect how audio, permissions, history, and paste behavior are implemented.",
         },
@@ -98,9 +98,10 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
           see and edit the raw result may prefer a simpler boundary.
         </>,
         <>
-          Open source is valuable for auditability and community modification, but it is not the same as a
-          support contract or security certification. Evaluate the maintenance model, release cadence, and
-          support expectations that apply to your organization.
+          Publicly viewable source is valuable for inspection, but visibility alone does not grant permission
+          to modify or redistribute and is not the same as a support contract or security certification.
+          Review the repository terms, maintenance model, release cadence, and support expectations that
+          apply to your organization.
         </>,
       ],
       note:
@@ -145,7 +146,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       },
       {
         label: "Source model",
-        cells: ["Open-source application on GitHub.", "Commercial proprietary application."],
+        cells: ["Application source is public on GitHub.", "Commercial proprietary application."],
       },
       {
         label: "Local transcription",
@@ -229,7 +230,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     {
       href: "/wispr-flow-alternative",
       title: "Wispr Flow alternative",
-      description: "Compare a local-first open-source Mac app with a cloud transcription product and its privacy controls.",
+      description: "Compare a local-first Mac app with source on GitHub against a cloud transcription product and its privacy controls.",
     },
     {
       href: "/offline-speech-to-text-mac",
@@ -250,7 +251,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
 
 export const wisprFlowAlternativeConfig: SeoLandingConfig = {
   path: "/wispr-flow-alternative",
-  title: "Wispr Flow Alternative for Mac — Local & Open Source",
+  title: "Wispr Flow Alternative for Mac — Local & Free",
   description:
     "Compare VoiceToText and Wispr Flow for Mac dictation: local versus cloud transcription, privacy controls, platforms, accounts, formatting, and tradeoffs.",
   breadcrumb: "Wispr Flow alternative",
@@ -258,7 +259,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
   readingTime: "11 min",
   h1: "A Wispr Flow alternative for Mac users who want transcription to run locally.",
   lead:
-    "Wispr Flow is a polished cross-platform cloud dictation product with AI editing, context, personalization, and enterprise controls. VoiceToText is a free open-source Mac app whose Parakeet and Whisper engines can transcribe without sending audio to a server.",
+    "Wispr Flow is a polished cross-platform cloud dictation product with AI editing, context, personalization, and enterprise controls. VoiceToText is a free Mac app with source available on GitHub whose Parakeet and Whisper engines can transcribe without sending audio to a server.",
   heroPoints: [
     "Reviewed July 27, 2026",
     "Current privacy docs",
@@ -397,9 +398,9 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
             "Evaluate Wispr’s current security documentation, agreements, admin controls, and Trust Center rather than inferring compliance from a local app.",
         },
         {
-          title: "Need transparent, hackable software?",
+          title: "Need inspectable software?",
           body:
-            "VoiceToText’s public repository and URL-scheme automation are the more direct fit, with the maintenance tradeoffs of an open-source project.",
+            "VoiceToText’s public repository and URL-scheme automation are the more direct fit, with the maintenance tradeoffs of a project that publishes its source.",
         },
       ],
     },
@@ -454,7 +455,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       {
         label: "Governance",
         cells: [
-          "Open-source application; no commercial support or compliance claim made here.",
+          "Application source is available on GitHub; no license, commercial support, or compliance claim is made here.",
           "Proprietary service with vendor-documented enterprise and security controls; verify current attestations in its Trust Center.",
         ],
       },

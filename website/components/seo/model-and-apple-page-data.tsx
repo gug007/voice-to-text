@@ -10,7 +10,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
   readingTime: "9 min",
   h1: "An Apple Dictation alternative for people who want review, model choice, and local meeting transcripts.",
   lead:
-    "Apple Dictation is already on every Mac and is often the right answer for quick text. VoiceToText adds an editable review step, selectable local engines, file and meeting transcription, and inspectable open-source code.",
+    "Apple Dictation is already on every Mac and is often the right answer for quick text. VoiceToText adds an editable review step, selectable local engines, file and meeting transcription, and inspectable source available on GitHub.",
   heroPoints: [
     "Reviewed July 27, 2026",
     "No pricing claims",
@@ -75,7 +75,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
         {
           title: "Inspect and automate",
           body:
-            "The app is open source on GitHub and exposes a URL scheme for integrations. That is useful when auditability or a programmable workflow matters.",
+            "The app publishes its source on GitHub and exposes a URL scheme for integrations. That is useful when auditability or a programmable workflow matters.",
         },
       ],
     },
@@ -92,8 +92,8 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
         <>
           To paste into another app, VoiceToText asks for Accessibility permission. Meeting recording also
           asks for Microphone and Screen Recording permission because macOS exposes system audio through that
-          route. Apple Dictation is a system feature and does not ask you to trust a separate open-source
-          application with the same cross-app workflow.
+          route. Apple Dictation is a system feature and does not ask you to trust a separate application
+          whose source is public on GitHub with the same cross-app workflow.
         </>,
         <>
           Local VoiceToText models take disk space and need an initial download. The project has no paid tier
@@ -173,7 +173,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
       },
       {
         label: "Price",
-        cells: ["Free and open source.", "Included with macOS."],
+        cells: ["Free; source available on GitHub.", "Included with macOS."],
       },
     ],
     note:

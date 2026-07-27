@@ -443,7 +443,7 @@ export default function MeetingRecordingPage() {
                 <span>See all releases on GitHub</span>
               </ExternalLink>
             </div>
-            <p className="download__meta t-mono">Free · Open source · macOS 15.0+ · Apple Silicon</p>
+            <p className="download__meta t-mono">Free · Source on GitHub · macOS 15.0+ · Apple Silicon</p>
             <p className="download__reqs t-caption">
               The same app also does hotkey dictation into any text field.{" "}
               <Link className="link" href="/#features">See everything VoiceToText does →</Link>

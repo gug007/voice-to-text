@@ -1,6 +1,6 @@
 # VoiceToText — Free Offline Dictation App for macOS
 
-**Free, open-source speech-to-text for Mac.** Use a global hotkey to record, then put the transcript into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, and more. Local transcription is the default and works offline after its speech model has been downloaded. Optional OpenAI and ElevenLabs engines are available when you explicitly select a cloud model and provide your own API key.
+**Free speech-to-text for Mac, with source available on GitHub.** Use a global hotkey to record, then put the transcript into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, and more. Local transcription is the default and works offline after its speech model has been downloaded. Optional OpenAI and ElevenLabs engines are available when you explicitly select a cloud model and provide your own API key.
 
 A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
@@ -10,7 +10,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
 ## Features
 
-- **Free and open source** — no app paywall, required VoiceToText account, or app telemetry
+- **Free with public source** — no app paywall, required VoiceToText account, or app telemetry; inspect the implementation on GitHub
 - **Local by default** — Parakeet runs on-device by default; local Whisper models are also available through WhisperKit
 - **Offline after setup** — downloaded local models can transcribe without sending audio to a speech provider
 - **Configurable recording shortcut** — press `⌥ Space` to toggle dictation, or switch to hold-to-record
@@ -53,4 +53,4 @@ The default local model downloads on first use. Meeting capture also needs Scree
 
 ## Keywords
 
-Free macOS dictation, offline speech-to-text Mac, voice-to-text Mac, Whisper Mac app, local speech recognition, push-to-talk dictation, Apple Neural Engine transcription, voice prompting for Claude Code, Codex CLI voice input, Cursor voice dictation, talk to AI coding agents, open-source Wispr Flow alternative, Superwhisper alternative, MacWhisper alternative.
+Free macOS dictation, offline speech-to-text Mac, voice-to-text Mac, Whisper Mac app, local speech recognition, push-to-talk dictation, Apple Neural Engine transcription, voice prompting for Claude Code, Codex CLI voice input, Cursor voice dictation, talk to AI coding agents, source-available Wispr Flow alternative, Superwhisper alternative, MacWhisper alternative.

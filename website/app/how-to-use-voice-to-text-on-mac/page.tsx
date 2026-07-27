@@ -422,7 +422,7 @@ export default function VoiceToTextGuidePage() {
               <p className="section__eyebrow">Ready to speak</p>
               <h2 id="guide-download-title" className="section__title">Try voice to text in the app you already use.</h2>
               <p className="section__deck">
-                Free, open source, and local by default. Download the DMG and dictate your first sentence in a few minutes.
+                Free, local by default, and source available on GitHub. Download the DMG and dictate your first sentence in a few minutes.
               </p>
               <div className="download__ctas">
                 <a

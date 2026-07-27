@@ -118,7 +118,7 @@ export default function OpengraphImage() {
               color: COLORS.textPrimary,
             }}
           >
-            <span style={{ fontWeight: 600 }}>Open source</span>
+            <span style={{ fontWeight: 600 }}>Source on GitHub</span>
           </div>
           <div
             style={{

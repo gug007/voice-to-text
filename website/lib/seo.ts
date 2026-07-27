@@ -12,6 +12,12 @@ export const PERSON_ID = `${SITE_URL}/#creator`;
 export const HOME_PAGE_ID = `${SITE_URL}/#webpage`;
 export const VIDEO_ID = `${SITE_URL}/#product-demo-video`;
 
+export const HOME_TITLE = "Free Voice-to-Text App for Mac — Offline & No Account";
+export const HOME_DESCRIPTION =
+  "Press Option+Space and dictate into any Mac app. VoiceToText is free, runs offline with local models, needs no account, and has source available on GitHub.";
+export const HOME_TWITTER_DESCRIPTION =
+  "Press Option+Space, speak, and type into any Mac app. Free, offline with local models, no required account, and source available on GitHub.";
+
 // This describes the product entity. Do not add aggregateRating/review until
 // a genuine review is visible on the page and can be represented faithfully.
 export const softwareApplicationJsonLd = {
@@ -21,7 +27,7 @@ export const softwareApplicationJsonLd = {
   name: "VoiceToText",
   alternateName: "VoiceToText for Mac",
   description:
-    "Free, open-source voice to text and speech to text app for Mac. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording with optional speaker diarization.",
+    "Free voice to text and speech to text app for Mac, with source available on GitHub. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording with optional speaker diarization.",
   keywords:
     "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, real-time transcription mac, whisper mac app",
   url: `${SITE_URL}/`,
@@ -84,9 +90,8 @@ export const homePageJsonLd = {
   "@type": "WebPage",
   "@id": HOME_PAGE_ID,
   url: `${SITE_URL}/`,
-  name: "Voice to Text for Mac — Free, Offline",
-  description:
-    "Free voice to text for Mac that types into any app from a hotkey, runs offline on Apple Silicon, needs no account, and is open source.",
+  name: HOME_TITLE,
+  description: HOME_DESCRIPTION,
   isPartOf: { "@id": WEBSITE_ID },
   mainEntity: { "@id": SOFTWARE_ID },
   primaryImageOfPage: {
@@ -126,7 +131,7 @@ const faqEntries: FaqEntry[] = [
   {
     question: "Is VoiceToText free?",
     answer:
-      "Yes — completely free, forever. VoiceToText is free and open source, with the full source code on GitHub. No paid tiers, no accounts, and no in-app purchases. Download it free.",
+      "Yes — completely free, forever. VoiceToText has no paid tiers, accounts, or in-app purchases, and its source is available on GitHub for inspection. Download it free.",
   },
   {
     question: "Does it work offline? Is my voice data sent anywhere?",
@@ -198,7 +203,7 @@ export const meetingFaqEntries: FaqEntry[] = [
   {
     question: "Can I record and transcribe meetings on my Mac for free?",
     answer:
-      "Yes. VoiceToText is free and open source, with no app subscription or per-minute app fee. Local transcription has no provider charge; optional cloud models may charge usage under your own API key. The same app also does hotkey dictation into any text field.",
+      "Yes. VoiceToText is free, with source available on GitHub and no app subscription or per-minute app fee. Local transcription has no provider charge; optional cloud models may charge usage under your own API key. The same app also does hotkey dictation into any text field.",
   },
   {
     question: "Does it record the other participants, or just my microphone?",
@@ -256,7 +261,7 @@ export const meetingPageJsonLd = {
   "@id": `${MEETING_URL}#webpage`,
   name: "Record and transcribe meetings on Mac",
   description:
-    "Free, open-source meeting recorder for Mac. Records microphone and system audio together, transcribes on-device by default, and offers optional cloud speaker diarization with editable speaker names.",
+    "Free meeting recorder for Mac with source available on GitHub. Records microphone and system audio together, transcribes on-device by default, and offers optional cloud speaker diarization with editable speaker names.",
   url: MEETING_URL,
   datePublished: MEETING_PUBLISHED,
   dateModified: MEETING_UPDATED,

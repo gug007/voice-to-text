@@ -74,6 +74,14 @@ export type SeoLandingConfig = {
 };
 
 const DEFAULT_DATE = "2026-07-27";
+const DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("en-US", {
+  dateStyle: "long",
+  timeZone: "UTC",
+});
+
+function formatDisplayDate(value: string) {
+  return DISPLAY_DATE_FORMATTER.format(new Date(`${value}T00:00:00Z`));
+}
 
 function schemas(config: SeoLandingConfig) {
   const pageUrl = `${SITE_URL}${config.path}`;
@@ -234,9 +242,9 @@ export function SeoLandingPage({ config }: { config: SeoLandingConfig }) {
               <p className={styles.byline}>
                 Written by{" "}
                 <a href={AUTHOR_URL} rel="author">Gurgen Abagyan</a>
-                {" "}· Published <time dateTime={published}>July 27, 2026</time>
+                {" "}· Published <time dateTime={published}>{formatDisplayDate(published)}</time>
                 {modified !== published ? (
-                  <> · Updated <time dateTime={modified}>{modified}</time></>
+                  <> · Updated <time dateTime={modified}>{formatDisplayDate(modified)}</time></>
                 ) : null}
               </p>
               <ul className={styles.heroPoints} role="list">

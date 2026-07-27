@@ -5,7 +5,7 @@ import { wisprFlowAlternativeConfig } from "@/components/seo/vendor-comparison-p
 import { AUTHOR_URL, SITE_URL } from "@/lib/constants";
 
 const PATH = "/wispr-flow-alternative";
-const TITLE = "Wispr Flow Alternative for Mac — Local & Open Source";
+const TITLE = "Wispr Flow Alternative for Mac — Local & Free";
 const DESCRIPTION =
   "Compare VoiceToText and Wispr Flow for Mac dictation: local versus cloud transcription, privacy controls, platforms, accounts, formatting, and tradeoffs.";
 
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "A local, open-source Wispr Flow alternative for Mac",
+    title: "A local-first Wispr Flow alternative for Mac",
     description:
       "Compare on-device and cloud transcription, privacy controls, platforms, formatting, and governance.",
     images: ["/opengraph-image"],

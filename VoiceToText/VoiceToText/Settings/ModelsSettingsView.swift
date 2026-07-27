@@ -644,7 +644,7 @@ private enum ModelBadges {
         return nil
     }
 
-    /// The `languages` field is a free string ("99", "90+", "25 European").
+    /// The `languages` field is a free string ("99", "90+", "25 European languages").
     /// Append " languages" only when it's a bare count so mixed strings read
     /// naturally.
     static func languagesLabel(_ languages: String) -> String {

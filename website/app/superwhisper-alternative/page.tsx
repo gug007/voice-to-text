@@ -5,7 +5,7 @@ import { superwhisperAlternativeConfig } from "@/components/seo/vendor-compariso
 import { AUTHOR_URL, SITE_URL } from "@/lib/constants";
 
 const PATH = "/superwhisper-alternative";
-const TITLE = "Superwhisper Alternative for Mac — Free & Open Source";
+const TITLE = "Superwhisper Alternative for Mac — Free & Local";
 const DESCRIPTION =
   "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, file workflows, source access, requirements, and who each app suits.";
 
@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "A free, open-source Superwhisper alternative for Mac",
+    title: "A free, local-first Superwhisper alternative for Mac",
     description:
       "Compare local models, platforms, formatting, meetings, source access, and the tradeoffs that matter.",
     images: ["/opengraph-image"],
@@ -38,4 +38,3 @@ export const metadata: Metadata = {
 export default function SuperwhisperAlternativePage() {
   return <SeoLandingPage config={superwhisperAlternativeConfig} />;
 }
-

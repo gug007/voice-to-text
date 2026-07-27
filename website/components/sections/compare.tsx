@@ -24,8 +24,8 @@ const ROWS: CompareRow[] = [
     footnotes: { 1: 1, 2: 2, 3: 3 },
   },
   {
-    label: "Open source",
-    cells: ["Yes — on GitHub", "—", "—", "—", "—"],
+    label: "Source access",
+    cells: ["Public on GitHub", "—", "—", "—", "—"],
     status: ["ok", "no", "no", "no", "no"],
   },
   {
@@ -137,7 +137,7 @@ function MobileCards() {
             {colIdx === 0 ? (
               <span className="chip chip--accent">
                 <span className="chip__dot" aria-hidden="true" />
-                Free &amp; open source
+                Free · source available
               </span>
             ) : null}
           </summary>

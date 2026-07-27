@@ -102,7 +102,7 @@ export default function OpengraphImage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 24, fontSize: 26, color: COLORS.textMuted }}>
-          {["On-device", "No meeting bot", "Open source"].map((label) => (
+          {["On-device", "No meeting bot", "Source on GitHub"].map((label) => (
             <div
               key={label}
               style={{

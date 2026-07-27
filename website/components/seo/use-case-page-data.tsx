@@ -14,7 +14,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
   heroPoints: [
     "Local models by default",
     "No app account",
-    "Open-source code",
+    "Source on GitHub",
     "macOS 15+ · Apple Silicon",
   ],
   summaryTitle: "The short answer",

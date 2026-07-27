@@ -12,7 +12,7 @@ export function Hero() {
       <div className="container hero__inner">
         <p className="hero__eyebrow">
           <span className="hero__eyebrow-dot" aria-hidden="true" />
-          Free · Open source · macOS
+          Free · Source on GitHub · macOS
         </p>
         <h1 id="hero-title" className="hero__title">
           Voice to text for Mac.
@@ -20,8 +20,8 @@ export function Hero() {
           <span className="hero__title-accent">Speak. It types. Anywhere.</span>
         </h1>
         <p className="hero__lead">
-          Press <HotkeyCombo /> to dictate into any app. Runs locally on Apple Silicon — free, open source,
-          and no account required.
+          Press <HotkeyCombo /> to dictate into any app. Runs locally on Apple Silicon — free, no account
+          required, and source available on GitHub.
         </p>
         <div className="hero__ctas">
           <a

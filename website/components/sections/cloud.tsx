@@ -10,28 +10,33 @@ type CloudModel = {
 const CLOUD_MODELS: CloudModel[] = [
   {
     icon: "sparkle",
-    title: "GPT-4o Transcribe (OpenAI)",
-    body: "The most accurate option overall. Use it when correctness matters more than cost — accents, technical jargon, 99+ languages.",
+    title: "GPT Transcribe (OpenAI)",
+    body: "OpenAI’s recommended transcription model — newer and cheaper than GPT-4o Transcribe. Reach for it first when correctness matters: accents, technical jargon, 99+ languages.",
+  },
+  {
+    icon: "agent",
+    title: "GPT Live Transcribe (OpenAI)",
+    body: "OpenAI’s newest streaming model. Words land in the HUD as you speak, then paste the moment you stop.",
   },
   {
     icon: "bolt",
     title: "GPT-4o Mini Transcribe (OpenAI)",
-    body: "The everyday cloud pick. Accuracy close to GPT-4o Transcribe at a fraction of the cost — good default for high-volume use.",
-  },
-  {
-    icon: "cloud",
-    title: "Whisper-1 (OpenAI)",
-    body: "OpenAI’s original hosted model — cheap and proven, fine for straightforward dictation in major languages.",
+    body: "The budget cloud pick. Accuracy close to GPT-4o Transcribe at a fraction of the cost — good for high-volume use.",
   },
   {
     icon: "mic",
     title: "Scribe v2 Realtime (ElevenLabs)",
-    body: "Live streaming — words appear in the HUD as you speak, across 90+ languages, then paste the moment you finish.",
+    body: "Live streaming across 90+ languages — words appear in the HUD as you speak.",
   },
   {
-    icon: "agent",
-    title: "GPT-4o Transcribe Realtime (OpenAI)",
-    body: "OpenAI’s streaming variant. Watch the transcript build word by word while you talk; falls back to buffered transcription if the stream can’t connect.",
+    icon: "cloud",
+    title: "GPT-4o Transcribe (OpenAI)",
+    body: "Previous-generation cloud model, still very accurate. Its Diarize variant is the one that labels who said what.",
+  },
+  {
+    icon: "box",
+    title: "…and three more",
+    body: "GPT Realtime Whisper and GPT-4o Transcribe Realtime for streaming, plus Whisper-1 — OpenAI’s original hosted model, cheap and proven. Nine cloud models in all.",
   },
 ];
 

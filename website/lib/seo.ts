@@ -55,8 +55,8 @@ export const softwareApplicationJsonLd = {
     "Voice to text on Mac with a global hotkey (Option+Space by default) — press to toggle or hold to record, fully customizable including Right Control",
     "Speech to text that runs offline on-device after a one-time model download, accelerated by the Apple Neural Engine",
     "Six local models: Parakeet TDT v3 (FluidAudio) and Whisper Large v3 Turbo, Large v3, Small, Base, Tiny (WhisperKit)",
-    "Seven optional cloud models across OpenAI (GPT Realtime Whisper, GPT-4o Transcribe, GPT-4o Transcribe Realtime, GPT-4o Transcribe Diarize, GPT-4o Mini Transcribe, Whisper-1) and ElevenLabs (Scribe v2 Realtime)",
-    "Real-time streaming transcription — words appear live as you speak with Scribe v2 Realtime, GPT Realtime Whisper, or GPT-4o Transcribe Realtime",
+    "Nine optional cloud models across OpenAI (GPT Transcribe, GPT Live Transcribe, GPT Realtime Whisper, GPT-4o Transcribe, GPT-4o Transcribe Realtime, GPT-4o Transcribe Diarize, GPT-4o Mini Transcribe, Whisper-1) and ElevenLabs (Scribe v2 Realtime)",
+    "Real-time streaming transcription — words appear live as you speak with Scribe v2 Realtime, GPT Live Transcribe, GPT Realtime Whisper, or GPT-4o Transcribe Realtime",
     "Review before pasting: edit the transcript in a floating panel, then confirm — or turn review off for instant paste",
     "One-click AI actions on the transcript: Clean transcript, To English, Improve prompt, Fix grammar, Summarize, Essentials only, plus your own custom actions",
     "Resume dictation at the caret to append to a take",
@@ -156,7 +156,7 @@ const faqEntries: FaqEntry[] = [
   {
     question: "How accurate is it? Which models does it use?",
     answer:
-      "You choose from six local models: Parakeet TDT v3 is the fastest on-device option, Whisper Large v3 is the most accurate offline option, and Whisper Large v3 Turbo is the best balance — plus Small, Base, and Tiny for older or space-constrained Macs. For the highest accuracy across accents and technical jargon, bring your own API key and switch to GPT-4o Transcribe, GPT-4o Mini Transcribe, or Whisper-1 (OpenAI), or Scribe v2 Realtime (ElevenLabs) in Settings.",
+      "You choose from six local models: Parakeet TDT v3 is the fastest on-device option, Whisper Large v3 is the most accurate offline option, and Whisper Large v3 Turbo is the best balance — plus Small, Base, and Tiny for older or space-constrained Macs. For the highest accuracy across accents and technical jargon, bring your own API key and switch to GPT Transcribe, GPT-4o Transcribe, or GPT-4o Mini Transcribe (OpenAI), or Scribe v2 Realtime (ElevenLabs) in Settings.",
   },
   {
     question: "What apps does VoiceToText work in?",

@@ -3,6 +3,9 @@ import Foundation
 // UserDefaults keys exposed to settings-ui:
 //   decoder.language                  – String? (e.g. "en"; nil = auto-detect)
 //   decoder.initialPrompt             – String? (freeform context hint)
+//   decoder.keywords                  – String (comma-separated biasing hints,
+//                                       e.g. "SwiftUI,CoreAudio,AC-42"; OpenAI
+//                                       gpt-transcribe / gpt-live-transcribe only)
 //   decoder.temperatureFallbackCount  – Int (default 5)
 //   decoder.compressionRatioThreshold – Float? (default 2.4)
 //   decoder.logProbThreshold          – Float? (default -1.0)
@@ -14,6 +17,10 @@ import Foundation
 struct TranscriptionDecoderOptions {
     var language: String?
     var initialPrompt: String?
+    /// Raw, unsanitized keyword hints exactly as the user typed them, so the
+    /// value round-trips in settings. Illegal characters are stripped at the
+    /// request boundary (`OpenAIModelCapabilities.sanitizedKeywords`), not here.
+    var keywords: [String]
     var temperatureFallbackCount: Int
     var compressionRatioThreshold: Float?
     var logProbThreshold: Float?
@@ -27,6 +34,7 @@ struct TranscriptionDecoderOptions {
         return TranscriptionDecoderOptions(
             language: ud.nonEmptyString(forKey: "decoder.language"),
             initialPrompt: ud.nonEmptyString(forKey: "decoder.initialPrompt"),
+            keywords: ud.stringListCSV(forKey: "decoder.keywords"),
             temperatureFallbackCount: ud.int(forKey: "decoder.temperatureFallbackCount", default: 5),
             compressionRatioThreshold: ud.float(forKey: "decoder.compressionRatioThreshold", default: 2.4),
             logProbThreshold: ud.float(forKey: "decoder.logProbThreshold", default: -1.0),
@@ -64,6 +72,14 @@ private extension UserDefaults {
         return raw
             .split(separator: ",")
             .compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+    }
+
+    func stringListCSV(forKey key: String) -> [String] {
+        guard let raw = string(forKey: key), !raw.isEmpty else { return [] }
+        return raw
+            .split(separator: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }
 

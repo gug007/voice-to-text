@@ -13,13 +13,22 @@ import OSLog
 /// `OpenAIAPIKey` (no separate credential).
 ///
 /// Two commit modes, keyed off the model (`usesManualCommit`):
-/// - Server-VAD models (e.g. `gpt-4o-transcribe`) get a `server_vad`
-///   `turn_detection` block; the server auto-commits each utterance as the user
-///   speaks, so at finish at most the trailing utterance is still pending.
+/// - Server-VAD models (`gpt-4o-transcribe`, `gpt-live-transcribe`) get a
+///   `server_vad` `turn_detection` block; the server auto-commits each utterance
+///   as the user speaks, so at finish at most the trailing utterance is still
+///   pending.
 /// - `gpt-realtime-whisper` does NOT support VAD turn detection: the config must
 ///   omit `turn_detection`, and audio is only transcribed after an explicit
 ///   `input_audio_buffer.commit`. Nothing auto-commits, so at finish the engine
 ///   always commits and waits for the final `completed` event.
+///
+/// Turn detection is model-dependent, not session-dependent: the realtime-VAD
+/// guide states that models supporting VAD default to `server_vad` "while
+/// `gpt-realtime-whisper` requires turn detection to be omitted or set to
+/// `null`" — it names no other model. `gpt-live-transcribe` is therefore a
+/// server-VAD model. That is an inference from a rule stated in the negative, so
+/// `sendSessionConfig` also carries a fallback ladder that flips this session to
+/// manual commit if the server rejects the VAD config.
 ///
 /// Also implements buffered `transcribe(samples:)` as a one-shot session for the
 /// retry path and non-streaming callers (always a manual commit at finish).
@@ -27,11 +36,42 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     let modelId: String
     private let session: URLSession
 
-    /// `gpt-realtime-whisper` does not support VAD turn detection: its config
-    /// must omit `turn_detection`, and audio only transcribes after an explicit
-    /// `input_audio_buffer.commit`. Every other realtime model here uses
-    /// `server_vad` auto-commit.
-    private var usesManualCommit: Bool { modelId == "gpt-realtime-whisper" }
+    /// Which fields this model accepts (and which it rejects outright).
+    private let capabilities: OpenAIModelCapabilities
+
+    /// Seeded per session from `capabilities`, but mutable: if the server
+    /// rejects the VAD config the fallback ladder drops to `turn_detection: null`
+    /// mid-session, and `finishStream` must then take the always-commit-and-wait
+    /// branch or the only utterance never arrives.
+    private var usesManualCommit: Bool
+
+    /// Set when the fallback ladder gave up on VAD *mid-session*. Distinct from
+    /// `usesManualCommit`: a model that is manual-commit by nature has its whole
+    /// take flushed by a caller that knows to wait (`commitOnFinish`), whereas a
+    /// downgraded session streamed live with nothing auto-committing, so the
+    /// single commit at finish covers the entire recording. That needs the
+    /// buffered drain, not the trailing-utterance grace window.
+    private var downgradedToManualCommit = false
+
+    /// Config attempts, in the order `downgradeSessionConfig` walks them. Each
+    /// rung removes whatever the previous one might have been rejected for.
+    private enum SessionConfigStage {
+        /// `server_vad` + `prompt` / `keywords` / `languages`.
+        case full
+        /// `server_vad`, no context fields.
+        case minimal
+        /// Explicit `turn_detection: null`, no context fields.
+        case manualCommit
+    }
+
+    private var configStage: SessionConfigStage = .full
+    /// Set when the server acknowledges our `session.update`. Until then the
+    /// session transcribes nothing, so audio waits (buffered) rather than being
+    /// poured into a session that will never answer.
+    private var sessionConfigured = false
+    /// Clamped `prompt` for this session, combined in `startStream` from the
+    /// caller's context and `decoder.initialPrompt`.
+    private var sessionPrompt: String?
 
     // 16 kHz mono Float32 (recorder) → 24 kHz mono Int16 (OpenAI requirement).
     private let inputFormat: AVAudioFormat
@@ -72,8 +112,20 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     /// finish wait should stop instead of running out its cap.
     private var streamClosed = false
 
+    /// Bumped by every `startStream`. A torn-down session's receive loop can
+    /// still be parked in `task.receive()`; it resumes on the actor only at the
+    /// next suspension point, which — because `startStream` tears down, resets,
+    /// and *then* awaits the socket handshake — falls inside the next session's
+    /// window. Without this fence the dead session's `streamClosed = true` lands
+    /// on a healthy socket and silently disables both the config gate and the
+    /// finish waits.
+    private var sessionGeneration = 0
+
     init(modelId: String, inputSampleRate: Double = AudioConfig.targetSampleRate) {
         self.modelId = modelId
+        let capabilities = OpenAIModelCapabilities.forModel(modelId)
+        self.capabilities = capabilities
+        self.usesManualCommit = capabilities.realtimeUsesManualCommit
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 3600
@@ -125,6 +177,20 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         streamClosed = false
         converter = nil
         self.onLiveText = onLiveText
+        // Fence the previous session's receive loop out of everything reset here.
+        sessionGeneration &+= 1
+        let generation = sessionGeneration
+
+        // Reset the config ladder — a previous session may have downgraded it,
+        // and the next one deserves a fresh attempt at the best config.
+        configStage = .full
+        sessionConfigured = false
+        usesManualCommit = capabilities.realtimeUsesManualCommit
+        downgradedToManualCommit = false
+        sessionPrompt = OpenAIModelCapabilities.combinedPrompt(
+            initial: TranscriptionDecoderOptions.current.initialPrompt,
+            context: contextPrompt
+        )
 
         guard let url = URL(string: "wss://api.openai.com/v1/realtime?intent=transcription") else {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI Realtime URL")
@@ -135,7 +201,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         let task = session.webSocketTask(with: request)
         self.task = task
         task.resume()
-        startReceiveLoop()
+        startReceiveLoop(generation: generation)
 
         // Configure the transcription session before any audio is sent.
         await sendSessionConfig()
@@ -145,6 +211,10 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         )
         audioContinuation = continuation
         senderTask = Task { [weak self] in
+            // Hold audio until the session is confirmed. The stream is unbounded,
+            // so waiting buffers rather than drops — and audio sent before the
+            // update lands (or after it was rejected) is transcribed by nothing.
+            await self?.awaitSessionConfigured()
             for await chunk in audioStream {
                 await self?.sendChunkOverSocket(chunk)
             }
@@ -163,12 +233,14 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         audioContinuation?.finish()
         await senderTask?.value
 
-        if commitOnFinish {
-            // One-shot buffered session: the bulk feed outruns the server, so
-            // every transcript may still be in flight even with no partial in
-            // sight. Commit the trailing buffer and wait for the pending count
-            // to drain — after a settle window that lets the commit's own
-            // `committed` event arrive — bailing early if the socket dies.
+        if commitOnFinish || downgradedToManualCommit {
+            // One-shot buffered session (or a live one the fallback ladder
+            // dropped to no-VAD): the whole take is still uncommitted, so every
+            // transcript may be in flight even with no partial in sight — and
+            // there may be several, which the `finishSignaled` wait below would
+            // truncate to the first. Commit the trailing buffer and wait for the
+            // pending count to drain — after a settle window that lets the
+            // commit's own `committed` event arrive — bailing if the socket dies.
             finishing = true
             finishSignaled = false
             await sendCommit()
@@ -237,20 +309,56 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     private func sendSessionConfig() async {
         guard let task else { return }
-        // Manual-commit models reject a `turn_detection` block — omit the key
-        // entirely so the server transcribes only on explicit commits.
+
+        var transcription: [String: Any] = ["model": modelId]
+        // Context fields only on the first rung: they are the most likely reason
+        // for a rejection (an over-long prompt, a `<`/`>`/CR/LF in a keyword, or
+        // a language code the server doesn't accept all reject the whole update),
+        // so the first downgrade drops them wholesale.
+        if configStage == .full {
+            // Only the models wired up with `prompt` support opt in — see
+            // `sendsRealtimePrompt`. The realtime models that shipped earlier
+            // keep the exact `session.update` payload they always sent.
+            if capabilities.sendsRealtimePrompt, let sessionPrompt {
+                transcription["prompt"] = sessionPrompt
+            }
+            let opts = TranscriptionDecoderOptions.current
+            if capabilities.supportsKeywords {
+                let keywords = OpenAIModelCapabilities.sanitizedKeywords(from: opts.keywords)
+                if !keywords.isEmpty { transcription["keywords"] = keywords }
+            }
+            if capabilities.usesPluralLanguages,
+               let code = OpenAIModelCapabilities.validatedLanguageCode(opts.language) {
+                transcription["languages"] = [code]
+            }
+        }
+        // `delay` is deliberately never sent: the guide shows it on a
+        // transcription session while the API reference scopes it to
+        // `gpt-realtime-whisper` in GA sessions, and an unsupported field rejects
+        // the entire update.
+
         var input: [String: Any] = [
             "format": ["type": "audio/pcm", "rate": 24_000],
-            "transcription": ["model": modelId],
+            "transcription": transcription,
         ]
-        if !usesManualCommit {
-            input["turn_detection"] = [
-                "type": "server_vad",
-                "threshold": 0.5,
-                "prefix_padding_ms": 300,
-                "silence_duration_ms": 500,
-            ]
+        switch configStage {
+        case .full, .minimal:
+            // Manual-commit models reject a `turn_detection` block — omit the key
+            // entirely so the server transcribes only on explicit commits.
+            if !usesManualCommit {
+                input["turn_detection"] = [
+                    "type": "server_vad",
+                    "threshold": 0.5,
+                    "prefix_padding_ms": 300,
+                    "silence_duration_ms": 500,
+                ]
+            }
+        case .manualCommit:
+            // Last rung: say `null` explicitly rather than omitting the key, so a
+            // server that distinguishes "absent" from "null" still lands on no-VAD.
+            input["turn_detection"] = NSNull()
         }
+
         let payload: [String: Any] = [
             "type": "session.update",
             "session": [
@@ -260,6 +368,53 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         ]
         guard let json = Self.encode(payload) else { return }
         try? await task.send(.string(json))
+    }
+
+    /// Blocks the sender task until the server confirms the session config, the
+    /// socket dies, or the wait cap expires. Bounded on purpose: a server that
+    /// never answers must cost one short stall, not the whole take.
+    private func awaitSessionConfigured() async {
+        var waitedMs = 0
+        while !sessionConfigured, !streamClosed, !Task.isCancelled,
+              waitedMs < Self.sessionConfigWaitMs {
+            try? await Task.sleep(for: .milliseconds(Self.sessionConfigPollMs))
+            waitedMs += Self.sessionConfigPollMs
+        }
+        if !sessionConfigured, !streamClosed, !Task.isCancelled {
+            AppLog.dictation.warning(
+                "OpenAI realtime session not confirmed within \(Self.sessionConfigWaitMs) ms; streaming audio anyway"
+            )
+        }
+    }
+
+    /// The server rejected a `session.update` that was never acknowledged, so the
+    /// session as configured transcribes nothing. Step one rung down the ladder
+    /// and resend; after the last rung, leave `lastError` holding the server's
+    /// own message so `finishStream` surfaces it instead of an empty transcript.
+    private func downgradeSessionConfig() {
+        let next: SessionConfigStage?
+        switch configStage {
+        case .full: next = .minimal
+        case .minimal: next = .manualCommit
+        case .manualCommit: next = nil
+        }
+        guard let next else {
+            AppLog.dictation.error("OpenAI realtime session config rejected at every fallback; giving up")
+            return
+        }
+        configStage = next
+        if next == .manualCommit {
+            // Nothing will auto-commit from here on, so `finishStream` has to
+            // flush and wait even when no partial ever surfaced — and because
+            // this session has been streaming live all along, that one commit
+            // covers the whole recording rather than a trailing utterance.
+            usesManualCommit = true
+            downgradedToManualCommit = true
+        }
+        AppLog.dictation.warning("Retrying OpenAI realtime session config on a reduced fallback")
+        Task { [weak self] in
+            await self?.sendSessionConfig()
+        }
     }
 
     private func sendChunkOverSocket(_ samples: [Float]) async {
@@ -284,17 +439,22 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     // MARK: - Receive
 
-    private func startReceiveLoop() {
+    private func startReceiveLoop(generation: Int) {
         receiveTask = Task { [weak self] in
-            await self?.receiveLoop()
+            await self?.receiveLoop(generation: generation)
         }
     }
 
-    private func receiveLoop() async {
-        guard let task else { return }
+    /// `generation` is the session this loop belongs to. Every write below is
+    /// fenced on it still being the live one: `task.receive()` resumes whenever
+    /// the actor next yields, which for a torn-down socket is typically already
+    /// inside the *next* session (see `sessionGeneration`).
+    private func receiveLoop(generation: Int) async {
+        guard let task, generation == sessionGeneration else { return }
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
+                guard generation == sessionGeneration else { return }
                 switch message {
                 case .string(let text): handleMessage(text)
                 case .data(let data):
@@ -306,6 +466,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
                 break
             }
         }
+        guard generation == sessionGeneration else { return }
         streamClosed = true
         signalFinishIfNeeded()
     }
@@ -318,6 +479,14 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         switch type {
         case "session.created", "session.updated",
              "transcription_session.created", "transcription_session.updated":
+            // Only `.updated` confirms our config landed — `.created` is the
+            // server's greeting and arrives before the update is even read. Any
+            // error seen before this point was a config rejection we recovered
+            // from, so it must not outlive the retry as a stale `lastError`.
+            if type.hasSuffix(".updated") {
+                sessionConfigured = true
+                lastError = nil
+            }
             AppLog.dictation.info("OpenAI realtime session ready (\(type))")
         case "conversation.item.input_audio_transcription.delta":
             if let delta = obj["delta"] as? String {
@@ -340,7 +509,16 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             if type == "conversation.item.input_audio_transcription.failed" {
                 pendingTranscripts = max(0, pendingTranscripts - 1)
             }
+            // Verbatim: for a rejected `session.update` this is the only
+            // diagnostic there is — the server never says which field it disliked
+            // anywhere else.
             AppLog.dictation.error("OpenAI realtime error: \(err)")
+            // An error before the session was ever confirmed is a rejected config,
+            // not a failed utterance: retry on a reduced one instead of streaming
+            // into a session that will never transcribe.
+            if type == "error", !sessionConfigured {
+                downgradeSessionConfig()
+            }
         default:
             break // speech_started/stopped, item.created, etc.
         }
@@ -424,6 +602,11 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     private static let finishGraceMs = 2_000
     private static let finishPollMs = 50
+    /// Cap on holding audio while waiting for `session.updated`, sized to cover
+    /// the whole fallback ladder (each rung is one round trip) without letting a
+    /// silent server turn into a visible recording stall.
+    private static let sessionConfigWaitMs = 2_000
+    private static let sessionConfigPollMs = 25
     /// Buffered sessions: minimum wait so the manual commit's `committed`
     /// event can arrive before `pendingTranscripts == 0` is trusted.
     private static let bulkCommitSettleMs = 1_000

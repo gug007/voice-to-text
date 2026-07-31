@@ -22,6 +22,9 @@ enum OpenAIConnectionTest {
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     let modelId: String
 
+    /// Which fields this model accepts (and which it rejects outright).
+    private let capabilities: OpenAIModelCapabilities
+
     /// Replaced wholesale when a request dies on a stale pooled connection
     /// (see `send`); otherwise lives for the engine's lifetime.
     private var session: URLSession
@@ -34,6 +37,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
 
     init(modelId: String, sampleRate: Int = 16_000) {
         self.modelId = modelId
+        self.capabilities = .forModel(modelId)
         self.sampleRate = sampleRate
         self.session = Self.makeSession()
     }
@@ -56,10 +60,6 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     /// carry their own cross-request context, so callers must not pre-chunk.
     nonisolated var chunksInternally: Bool { true }
 
-    /// Speaker-diarizing model — a different `response_format`, no `prompt`
-    /// support, and cross-request speaker pinning (see `transcribeDiarize`).
-    private var isDiarize: Bool { modelId == "gpt-4o-transcribe-diarize" }
-
     func prepare(progress: PrepareProgress?) async throws {
         progress?(0.5, "Checking API key…")
         guard OpenAIAPIKey.read() != nil else {
@@ -79,7 +79,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             throw TranscriptionEngineError.notReady
         }
 
-        if isDiarize {
+        // The diarizing model has its own request shape and its own cross-request
+        // continuity mechanism (speaker pinning); see `transcribeDiarize`.
+        if capabilities.isDiarize {
             return try await transcribeDiarize(samples: samples, apiKey: apiKey, progress: progress)
         }
 
@@ -124,15 +126,45 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
         )
-        let prompt = [opts.initialPrompt, contextPrompt]
-            .compactMap { $0 }
-            .joined(separator: " ")
-        request.httpBody = Self.makeMultipartBody(
+        // Models on the plural-`languages` form reject the singular `language`
+        // alongside it, and reject a malformed code outright — so their language
+        // goes through validation and the singular field is suppressed entirely.
+        // Every older model keeps its previous behavior: raw `language`, no
+        // `keywords`. Neither `chunking_strategy` nor `known_speaker_*[]` is
+        // reachable from this path — both are scoped to the diarizing model.
+        let languages = capabilities.usesPluralLanguages
+            ? [OpenAIModelCapabilities.validatedLanguageCode(opts.language)].compactMap { $0 }
+            : []
+        // The prompt clamp is scoped the same way: an over-long `prompt` is
+        // documented as rejecting the whole request only on the models that take
+        // `languages`. The older models have always sent the full concatenation,
+        // so clamping them would silently truncate a long user glossary that used
+        // to reach the API.
+        let promptLimit: Int? = capabilities.usesPluralLanguages
+            ? OpenAIModelCapabilities.promptCharacterLimit
+            : nil
+        let prompt = capabilities.supportsPrompt
+            ? OpenAIModelCapabilities.combinedPrompt(
+                initial: opts.initialPrompt,
+                context: contextPrompt,
+                limit: promptLimit
+            )
+            : nil
+        request.httpBody = OpenAIRequestBuilder.makeMultipartBody(
             boundary: boundary,
             modelId: modelId,
             wav: wav,
-            language: opts.language,
-            prompt: prompt.isEmpty ? nil : prompt
+            language: capabilities.usesPluralLanguages ? nil : opts.language,
+            prompt: prompt,
+            // The docs' own `gpt-transcribe` examples omit `response_format`, and
+            // the reference states per-model restrictions for every model *except*
+            // this one — so sending the endpoint-wide `json` default explicitly is
+            // an assumption. Revisit if a 400 ever names `response_format`.
+            responseFormat: capabilities.batchResponseFormat,
+            languages: languages,
+            keywords: capabilities.supportsKeywords
+                ? OpenAIModelCapabilities.sanitizedKeywords(from: opts.keywords)
+                : []
         )
 
         let data: Data
@@ -149,7 +181,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let summary = Self.errorMessage(from: data) ?? "HTTP \(http.statusCode)"
+            let summary = Self.errorMessage(from: data, status: http.statusCode) ?? "HTTP \(http.statusCode)"
             throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
         }
 
@@ -232,13 +264,13 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             "multipart/form-data; boundary=\(boundary)",
             forHTTPHeaderField: "Content-Type"
         )
-        request.httpBody = Self.makeMultipartBody(
+        request.httpBody = OpenAIRequestBuilder.makeMultipartBody(
             boundary: boundary,
             modelId: modelId,
             wav: wav,
             language: language,
             prompt: nil,
-            responseFormat: "diarized_json",
+            responseFormat: capabilities.batchResponseFormat,
             chunkingStrategy: "auto",
             knownSpeakerNames: knownSpeakerNames,
             knownSpeakerReferences: knownSpeakerReferences
@@ -258,7 +290,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let summary = Self.errorMessage(from: data) ?? "HTTP \(http.statusCode)"
+            let summary = Self.errorMessage(from: data, status: http.statusCode) ?? "HTTP \(http.statusCode)"
             throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
         }
 
@@ -347,64 +379,41 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         return request
     }
 
-    private nonisolated static func makeMultipartBody(
-        boundary: String,
-        modelId: String,
-        wav: Data,
-        language: String?,
-        prompt: String?,
-        responseFormat: String = "json",
-        chunkingStrategy: String? = nil,
-        knownSpeakerNames: [String] = [],
-        knownSpeakerReferences: [String] = []
-    ) -> Data {
-        var body = Data()
-
-        func appendField(_ name: String, _ value: String) {
-            body.append(Data("--\(boundary)\r\n".utf8))
-            body.append(Data("Content-Disposition: form-data; name=\"\(name)\"\r\n\r\n".utf8))
-            body.append(Data(value.utf8))
-            body.append(Data("\r\n".utf8))
-        }
-
-        appendField("model", modelId)
-        appendField("response_format", responseFormat)
-        if let chunkingStrategy, !chunkingStrategy.isEmpty {
-            appendField("chunking_strategy", chunkingStrategy)
-        }
-        if let language, !language.isEmpty {
-            appendField("language", language)
-        }
-        if let prompt, !prompt.isEmpty {
-            appendField("prompt", prompt)
-        }
-        for name in knownSpeakerNames {
-            appendField("known_speaker_names[]", name)
-        }
-        for reference in knownSpeakerReferences {
-            appendField("known_speaker_references[]", reference)
-        }
-
-        body.append(Data("--\(boundary)\r\n".utf8))
-        body.append(Data("Content-Disposition: form-data; name=\"file\"; filename=\"audio.wav\"\r\n".utf8))
-        body.append(Data("Content-Type: audio/wav\r\n\r\n".utf8))
-        body.append(wav)
-        body.append(Data("\r\n".utf8))
-
-        body.append(Data("--\(boundary)--\r\n".utf8))
-        return body
-    }
-
-    private nonisolated static func errorMessage(from data: Data) -> String? {
+    private nonisolated static func errorMessage(from data: Data, status: Int) -> String? {
         struct Envelope: Decodable {
-            struct ErrorBody: Decodable { let message: String? }
+            struct ErrorBody: Decodable {
+                let message: String?
+                let code: String?
+            }
             let error: ErrorBody
         }
-        if let env = try? JSONDecoder().decode(Envelope.self, from: data),
-           let message = env.error.message,
-           !message.isEmpty {
+        let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
+        let message = envelope?.error.message
+        if isModelUnavailable(status: status, code: envelope?.error.code, message: message) {
+            return modelUnavailableMessage
+        }
+        if let message, !message.isEmpty {
             return message
         }
         return String(data: data, encoding: .utf8)
+    }
+
+    /// Both new July 2026 models ship as unversioned aliases with no published
+    /// tier requirement, so "your key can't see this model yet" is a plausible
+    /// first-run failure. The raw API string for it ("The model `…` does not
+    /// exist…") reads like an app bug, so name the fix instead.
+    nonisolated static let modelUnavailableMessage =
+        "This model isn't available on your OpenAI account yet. Pick another model in Settings → Models."
+
+    private nonisolated static func isModelUnavailable(
+        status: Int,
+        code: String?,
+        message: String?
+    ) -> Bool {
+        // A 404 from this endpoint can only be an unknown model — the URL is a
+        // compile-time constant.
+        if status == 404 { return true }
+        let haystack = [code, message].compactMap { $0 }.joined(separator: " ").lowercased()
+        return haystack.contains("model_not_found")
     }
 }

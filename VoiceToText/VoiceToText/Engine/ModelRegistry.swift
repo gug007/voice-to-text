@@ -148,13 +148,25 @@ enum ModelCatalog {
             benchmarkWER: nil
         ),
         ModelDescriptor(
+            id: "openai-gpt-live-transcribe",
+            displayName: "GPT Live Transcribe (OpenAI)",
+            backend: .openAIRealtime,
+            backendModelId: "gpt-live-transcribe",
+            approxSizeMB: 0,
+            languages: "99+",
+            notes: "OpenAI's newest live streaming model — words appear as you speak. Audio goes to OpenAI.",
+            quality: 9,
+            speed: 10,
+            benchmarkWER: nil
+        ),
+        ModelDescriptor(
             id: "openai-gpt-realtime-whisper",
             displayName: "GPT Realtime Whisper (OpenAI)",
             backend: .openAIRealtime,
             backendModelId: "gpt-realtime-whisper",
             approxSizeMB: 0,
             languages: "99+",
-            notes: "OpenAI's newest live streaming model, built for the lowest latency. Audio goes to OpenAI.",
+            notes: "Live streaming built for the lowest latency. Audio goes to OpenAI.",
             quality: 9,
             speed: 10,
             benchmarkWER: nil
@@ -172,14 +184,39 @@ enum ModelCatalog {
             benchmarkWER: nil
         ),
         ModelDescriptor(
+            id: "openai-gpt-transcribe",
+            displayName: "GPT Transcribe (OpenAI)",
+            backend: .openAI,
+            backendModelId: "gpt-transcribe",
+            approxSizeMB: 0,
+            languages: "99+",
+            // Top `quality`, and listed ahead of GPT-4o Transcribe so it takes
+            // the "Most accurate" chip (`ModelBadges` keeps the first of equal
+            // maxima). OpenAI's own guide is explicit: "Start with
+            // `gpt-transcribe`. This is the recommended model for transcribing
+            // recorded speech in its original language" — GPT-4o Transcribe is
+            // now reserved for speaker labels, timestamps, subtitles, or
+            // translation. It is also cheaper ($0.0045 vs $0.006/min).
+            notes: "OpenAI's recommended transcription model — newer and cheaper than GPT-4o Transcribe. Audio goes to OpenAI.",
+            quality: 10,
+            speed: 6,
+            benchmarkWER: nil
+        ),
+        ModelDescriptor(
             id: "openai-gpt-4o-transcribe",
             displayName: "GPT-4o Transcribe (OpenAI)",
             backend: .openAI,
             backendModelId: "gpt-4o-transcribe",
             approxSizeMB: 0,
             languages: "99+",
-            notes: "The most accurate option overall. Audio goes to OpenAI.",
-            quality: 10,
+            // Was "the most accurate option overall" at quality 10 — OpenAI now
+            // names gpt-transcribe the recommended model for recorded speech, so
+            // neither the superlative nor the top slot holds. Kept at 9 (level
+            // with Mini, whose notes already call it "nearly as accurate") rather
+            // than demoted further: it is still a strong model, just no longer
+            // the one to reach for first.
+            notes: "Previous-generation cloud model, still very accurate. Audio goes to OpenAI.",
+            quality: 9,
             speed: 5,
             benchmarkWER: nil
         ),

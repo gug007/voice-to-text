@@ -105,6 +105,13 @@ swiftc -parse-as-library \
 "$TMPDIR/diarized-transcript-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/OpenAIModelCapabilities.swift \
+  VoiceToText/VoiceToText/Engine/OpenAIRequestBuilder.swift \
+  Tests/OpenAIRequestBuilderHarness.swift \
+  -o "$TMPDIR/openai-request-builder-harness"
+"$TMPDIR/openai-request-builder-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/SpeakerRelabeler.swift \
   Tests/SpeakerRelabelerHarness.swift \
   -o "$TMPDIR/speaker-relabeler-harness"

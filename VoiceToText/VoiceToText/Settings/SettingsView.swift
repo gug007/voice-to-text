@@ -6,6 +6,15 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var registry: ModelRegistry
     @State private var selection: Section = .general
+    @Environment(\.motion) private var motion
+
+    /// The sidebar, as data. Enum declaration order used to decide what the
+    /// sidebar looked like; these two groups decide it now, and the enum is
+    /// free to be in whatever order the routing wants.
+    static let sidebarGroups: [SidebarGroup] = [
+        SidebarGroup(title: "Dictate", sections: [.general, .meetings, .history]),
+        SidebarGroup(title: "Configure", sections: [.hotkey, .models, .actions, .cloud, .updates])
+    ]
 
     enum Section: String, CaseIterable, Identifiable {
         case general, meetings, history, hotkey, models, actions, cloud, updates
@@ -38,31 +47,26 @@ struct SettingsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Section.allCases, selection: $selection) { section in
-                Label(section.title, systemImage: section.icon)
-                    // macOS 26's floating sidebar panel clips the row's leading
-                    // icon gutter (known NavigationSplitView issue; safe-area
-                    // padding shifts the panel, not the rows). Indent the row
-                    // content itself back into the visible panel.
-                    .padding(.leading, sidebarContentInset)
-                    .tag(section)
-            }
-            .listStyle(.sidebar)
+            SettingsSidebar(selection: $selection)
+                .navigationSplitViewColumnWidth(min: 188, ideal: 208, max: 260)
         } detail: {
-            detailView
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                // With the transparent title bar (hiddenTitleBar), pull the pane
-                // up so its header sits at the very top of the content area. The
-                // detail has no window controls, so nothing is obscured.
-                .ignoresSafeArea(.container, edges: .top)
+            // The pane swap is the one place `Motion.layout` shows itself in the
+            // window: the arriving pane fades up 4pt, the leaving one just
+            // fades. The sidebar is outside this scope on purpose — its capsule
+            // slides on `Motion.select` and must never cross-fade with it.
+            ZStack(alignment: .topLeading) {
+                detailView
+                    .transition(.paneSwap)
+                    .id(selection)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .animation(motion.layout, value: selection)
         }
-        .navigationTitle("")
-        .frame(minWidth: 880, minHeight: 560)
-    }
-
-    private var sidebarContentInset: CGFloat {
-        if #available(macOS 26.0, *) { return 14 }
-        return 0
+        // `.navigationTitle("")` and `.ignoresSafeArea(.container, edges: .top)`
+        // are gone along with `.windowStyle(.hiddenTitleBar)` — the three were
+        // one interlocking hack and only came out together. Each pane declares
+        // a real `.toolbar`, and `PaneScaffold` owns the scroll-edge effect.
+        .frame(minWidth: 720, minHeight: 480)
     }
 
     @ViewBuilder
@@ -80,17 +84,22 @@ struct SettingsView: View {
     }
 }
 
+/// The one pane title in the app: Display 26/semibold over a Body subtitle in
+/// `inkMuted`. It replaces both the old 28/semibold `PaneHeader` and History's
+/// 27/**bold** `LargeTitleHeader` — bold no longer exists anywhere.
 struct PaneHeader: View {
     let title: String
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Space.s2) {
             Text(title)
-                .font(.system(size: 28, weight: .semibold))
+                .typo(.display)
+                .foregroundStyle(Palette.ink)
             Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -103,86 +112,83 @@ struct HotkeyPane: View {
     @State private var captureSession = HotkeyCaptureSession()
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
-                    title: "Shortcut",
-                    subtitle: "The keyboard shortcut to start and stop dictation."
-                )
+        PaneScaffold {
+            PaneHeader(
+                title: "Shortcut",
+                subtitle: "The keyboard shortcut to start and stop dictation."
+            )
 
-                RowCard {
-                    HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Recording shortcut")
-                                .font(.system(size: 14, weight: .medium))
-                            Text(subtitle)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if isRecording {
-                            Text("Press a shortcut…")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .padding(.horizontal, 10)
-                                .padding(.vertical, 6)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6)
-                                        .strokeBorder(Color.accentColor, lineWidth: 1.5)
-                                )
-                        } else {
-                            KeyCap(keys: store.binding.displayKeys)
-                        }
-                        Button(isRecording ? "Cancel" : "Change") {
-                            if isRecording { stopRecording(cancelled: true) } else { startRecording() }
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .keyboardShortcut(isRecording ? .cancelAction : .defaultAction)
+            Plate {
+                HStack(alignment: .center, spacing: Space.s6) {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text("Recording shortcut")
+                            .typo(.headline)
+                            .foregroundStyle(Palette.ink)
+                        Text(subtitle)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
                     }
-                    .padding(18)
-                }
-
-                RowCard {
-                    HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("Recording mode")
-                                .font(.system(size: 14, weight: .medium))
-                            Text(modeSubtitle)
-                                .font(.system(size: 12))
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        Picker("Recording mode", selection: modeBinding) {
-                            ForEach(RecordingShortcutMode.allCases) { mode in
-                                Text(mode.title).tag(mode)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-                        .frame(width: 240)
+                    Spacer()
+                    if isRecording {
+                        Text("Press a shortcut…")
+                            .typo(.captionMedium)
+                            .foregroundStyle(Palette.inkMuted)
+                            .padding(.horizontal, Space.s5)
+                            .padding(.vertical, Space.s3)
+                            .background(
+                                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                                    .strokeBorder(Palette.accent, lineWidth: 1.5)
+                            )
+                    } else {
+                        KeyCap(keys: store.binding.displayKeys)
                     }
-                    .padding(18)
-                }
-
-                if let errorMessage {
-                    Text(errorMessage)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                }
-
-                HStack(spacing: 12) {
-                    if store.binding != .defaultBinding {
-                        Button("Reset to ⌥Space") { store.resetToDefault() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                    Button(isRecording ? "Cancel" : "Change") {
+                        if isRecording { stopRecording(cancelled: true) } else { startRecording() }
                     }
-                    Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .keyboardShortcut(isRecording ? .cancelAction : .defaultAction)
                 }
             }
-            .padding(32)
+
+            Plate {
+                HStack(alignment: .center, spacing: Space.s6) {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text("Recording mode")
+                            .typo(.headline)
+                            .foregroundStyle(Palette.ink)
+                        Text(modeSubtitle)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    Spacer()
+                    Picker("Recording mode", selection: modeBinding) {
+                        ForEach(RecordingShortcutMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                    .frame(width: 240)
+                }
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.signalWarn)
+            }
+
+            HStack(spacing: Space.s5) {
+                if store.binding != .defaultBinding {
+                    Button("Reset to ⌥Space") { store.resetToDefault() }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                }
+                Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkFaint)
+            }
         }
         .onDisappear { stopRecording(cancelled: true) }
     }
@@ -242,20 +248,20 @@ struct HotkeyPane: View {
 private struct KeyCap: View {
     let keys: [String]
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.s2) {
             ForEach(keys, id: \.self) { key in
                 Text(key)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
+                    .typo(.mono)
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, Space.s4)
+                    .padding(.vertical, Space.s2)
                     .background(
-                        RoundedRectangle(cornerRadius: 5)
-                            .fill(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
+                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                            .fill(Palette.wellFill)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 5)
-                            .strokeBorder(Color.primary.opacity(0.1))
+                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                            .strokeBorder(Palette.hairline)
                     )
             }
         }
@@ -272,41 +278,65 @@ struct GeneralPane: View {
     @Bindable private var loginItem = LoginItemController.shared
     @Bindable private var presence = AppPresenceController.shared
 
-    enum PermissionAlert: Identifiable {
+    enum PermissionAlert: String, Identifiable {
         case microphone
         case accessibility
 
-        var id: String {
+        var id: String { rawValue }
+
+        var title: String {
             switch self {
-            case .microphone: return "mic"
-            case .accessibility: return "a11y"
+            case .microphone: return PermissionCopy.microphoneAlertTitle
+            case .accessibility: return PermissionCopy.accessibilityAlertTitle
+            }
+        }
+
+        /// Both bodies are assembled from `PermissionCopy`, so a card subtitle
+        /// and its alert can never disagree about where the setting lives.
+        var message: String {
+            switch self {
+            case .microphone: return PermissionCopy.microphoneAlertBody
+            case .accessibility: return PermissionCopy.accessibilityAlertBody
+            }
+        }
+
+        func openSystemSettings() {
+            switch self {
+            case .microphone:
+                MicPermission.openSystemSettings()
+            case .accessibility:
+                AccessibilityPermission.promptForPermission()
+                AccessibilityPermission.openSystemSettings()
             }
         }
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
-                    title: "General",
-                    subtitle: "Dictation controls, permissions, and hotkey status."
-                )
+        // Three blocks, in the order the user needs them: the thing you came
+        // here to do, the preferences that shape it, then the diagnostics —
+        // which quiet themselves down to one line as soon as they are green.
+        PaneScaffold {
+            PaneHeader(
+                title: "General",
+                subtitle: "Dictation controls, permissions, and hotkey status."
+            )
 
-                dictationCard
+            dictationCard
 
+            PaneSection("Preferences") {
                 ReviewBeforePasteCard()
-
                 launchAtLoginCard
-
                 presenceCard
-
-                statusCard
-
-                microphoneCard
-
-                accessibilityCard
             }
-            .padding(32)
+
+            PaneSection("Permissions") {
+                // The three copy-pasted permission cards, collapsed into
+                // one self-quieting group. `.id` forces a rebuild after a
+                // hotkey re-registration, whose result `HotkeyManager`
+                // publishes imperatively.
+                PermissionsGroup(items: permissionItems)
+                    .id(hotkeyRegistrationRefreshID)
+            }
         }
         .onAppear {
             refreshPermissions()
@@ -315,28 +345,18 @@ struct GeneralPane: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             refreshPermissions()
         }
-        .alert(item: $permissionAlert) { alert in
-            switch alert {
-            case .microphone:
-                return Alert(
-                    title: Text("Microphone Access Required"),
-                    message: Text("VoiceToText needs permission to record audio for transcription. Open System Settings → Privacy & Security → Microphone and enable VoiceToText."),
-                    primaryButton: .default(Text("Open System Settings")) {
-                        MicPermission.openSystemSettings()
-                    },
-                    secondaryButton: .cancel()
-                )
-            case .accessibility:
-                return Alert(
-                    title: Text("Accessibility Access Required"),
-                    message: Text("VoiceToText needs Accessibility permission for global shortcuts, Esc cancel, and typing text into other apps. Open System Settings → Privacy & Security → Accessibility and enable VoiceToText."),
-                    primaryButton: .default(Text("Open System Settings")) {
-                        AccessibilityPermission.promptForPermission()
-                        AccessibilityPermission.openSystemSettings()
-                    },
-                    secondaryButton: .cancel()
-                )
-            }
+        .alert(
+            permissionAlert?.title ?? "",
+            isPresented: Binding(
+                get: { permissionAlert != nil },
+                set: { if !$0 { permissionAlert = nil } }
+            ),
+            presenting: permissionAlert
+        ) { alert in
+            Button(PermissionCopy.openSystemSettingsButton) { alert.openSystemSettings() }
+            Button("Cancel", role: .cancel) {}
+        } message: { alert in
+            Text(alert.message)
         }
     }
 
@@ -392,36 +412,57 @@ struct GeneralPane: View {
         dictation.toggle()
     }
 
+    /// The hero block: the one thing this pane is for. A 40pt tinted glyph, the
+    /// live state as a title, and the record affordance — the only control in
+    /// the window allowed to be `.borderedProminent`.
     @ViewBuilder
     private var dictationCard: some View {
-        RowCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
+        Plate {
+            HStack(spacing: Space.s5) {
+                Image(systemName: isRecording ? "stop.fill" : "mic.fill")
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(heroTint)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(heroTint.opacity(0.12)))
+                    .contentTransition(.symbolEffect(.replace.downUp))
+                    .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: Space.s2) {
                     Text(recordingTitle)
-                        .font(.system(size: 14, weight: .medium))
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
                     Text(recordingSubtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
-                Spacer()
+                Spacer(minLength: Space.s5)
                 Button(action: handleStartTap) {
                     Label(
-                        dictation.state == .recording ? "Stop" : "Start",
-                        systemImage: dictation.state == .recording ? "stop.fill" : "record.circle"
+                        isRecording ? "Stop" : "Start",
+                        systemImage: isRecording ? "stop.fill" : "record.circle"
                     )
+                    .contentTransition(.symbolEffect(.replace.downUp))
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
-                .tint(dictation.state == .recording ? .red : .accentColor)
+                // Flat tints only. The brand gradient never sits behind a label:
+                // white on #6194FF is 2.92:1, below even the large-text floor.
+                .tint(heroTint)
             }
-            .padding(18)
         }
     }
 
+    private var isRecording: Bool { dictation.state == .recording }
+
+    /// One tint for the hero glyph and the record button, so they can never
+    /// disagree about what state the app is in.
+    private var heroTint: Color { isRecording ? Palette.signalLive : Palette.accent }
+
     @ViewBuilder
     private var launchAtLoginCard: some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 8) {
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s4) {
                 SettingsToggleRow(
                     title: "Launch at login",
                     subtitle: launchAtLoginSubtitle,
@@ -429,10 +470,10 @@ struct GeneralPane: View {
                 )
 
                 if loginItem.requiresApproval {
-                    HStack(spacing: 8) {
+                    HStack(spacing: Space.s4) {
                         Text("Approval needed in System Settings.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.orange)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.signalWarn)
                         Button("Open Login Items…") {
                             loginItem.openLoginItemsSettings()
                         }
@@ -441,11 +482,10 @@ struct GeneralPane: View {
                     }
                 } else if let err = loginItem.lastError {
                     Text(err)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.signalWarn)
                 }
             }
-            .padding(18)
         }
     }
 
@@ -469,15 +509,15 @@ struct GeneralPane: View {
     /// forced on and locked — otherwise there'd be no way back to this window.
     @ViewBuilder
     private var presenceCard: some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 14) {
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s5) {
                 SettingsToggleRow(
                     title: "Show in Dock",
                     subtitle: "Turn off to keep VoiceToText out of the Dock and the app switcher. It keeps running in the menu bar, and your shortcut still works everywhere.",
                     isOn: dockIconBinding
                 )
 
-                Divider()
+                PlateDivider(leadingInset: 0)
 
                 SettingsToggleRow(
                     title: "Show in menu bar",
@@ -486,7 +526,6 @@ struct GeneralPane: View {
                     isLocked: presence.isMenuBarIconLocked
                 )
             }
-            .padding(18)
         }
     }
 
@@ -513,51 +552,73 @@ struct GeneralPane: View {
         return "Adds a VoiceToText icon to the menu bar for starting dictation and reopening this window."
     }
 
-    @ViewBuilder
-    private var statusCard: some View {
+    // MARK: - Permissions, as data
+
+    /// Hotkey registration, microphone and accessibility were three hand-built
+    /// cards that differed only in their strings and their button's action.
+    /// They are one array now; `StatusPlate` renders it.
+    private var permissionItems: [StatusItem] {
+        [hotkeyStatusItem, microphoneStatusItem, accessibilityStatusItem]
+    }
+
+    private var hotkeyStatusItem: StatusItem {
         let isRegistered = HotkeyManager.shared.isRegistered
         let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
         let needsListenEventAccess = usesStandaloneRightControl && !listenEventGranted
-        RowCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Image(systemName: isRegistered ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(isRegistered ? .green : .orange)
-                        Text("Global hotkey")
-                            .font(.system(size: 14, weight: .medium))
+
+        return StatusItem(
+            id: "hotkey",
+            level: isRegistered ? .ready : .warning,
+            title: "Global hotkey",
+            message: hotkeyStatusMessage(
+                isRegistered: isRegistered,
+                usesStandaloneRightControl: usesStandaloneRightControl,
+                listenEventGranted: listenEventGranted
+            ),
+            actionTitle: isRegistered
+                ? nil
+                : (needsListenEventAccess ? PermissionCopy.openSettingsShortButton : "Retry"),
+            action: isRegistered ? nil : {
+                if needsListenEventAccess {
+                    _ = ListenEventPermission.request()
+                    refreshPermissions()
+                    if ListenEventPermission.isGranted {
+                        retryHotkeyRegistration()
+                    } else {
+                        ListenEventPermission.openSystemSettings()
                     }
-                    Text(hotkeyStatusMessage(
-                        isRegistered: isRegistered,
-                        usesStandaloneRightControl: usesStandaloneRightControl,
-                        listenEventGranted: listenEventGranted
-                    ))
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !isRegistered {
-                    Button(needsListenEventAccess ? "Open Settings…" : "Retry") {
-                        if needsListenEventAccess {
-                            _ = ListenEventPermission.request()
-                            refreshPermissions()
-                            if ListenEventPermission.isGranted {
-                                retryHotkeyRegistration()
-                            } else {
-                                ListenEventPermission.openSystemSettings()
-                            }
-                        } else {
-                            retryHotkeyRegistration()
-                            refreshPermissions()
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+                } else {
+                    retryHotkeyRegistration()
+                    refreshPermissions()
                 }
             }
-            .padding(18)
-        }
-        .id(hotkeyRegistrationRefreshID)
+        )
+    }
+
+    private var microphoneStatusItem: StatusItem {
+        let granted = micStatus == .authorized
+        return StatusItem(
+            id: "microphone",
+            level: granted ? .ready : .warning,
+            title: PermissionCopy.microphoneTitle,
+            message: micSubtitle,
+            actionTitle: granted ? nil : micActionTitle,
+            action: granted ? nil : { handleMicTap() }
+        )
+    }
+
+    private var accessibilityStatusItem: StatusItem {
+        StatusItem(
+            id: "accessibility",
+            level: accessibilityGranted ? .ready : .warning,
+            title: PermissionCopy.accessibilityTitle,
+            message: PermissionCopy.accessibilityPurpose,
+            actionTitle: accessibilityGranted ? nil : PermissionCopy.openSettingsShortButton,
+            action: accessibilityGranted ? nil : {
+                AccessibilityPermission.promptForPermission()
+                AccessibilityPermission.openSystemSettings()
+            }
+        )
     }
 
     private func hotkeyStatusMessage(
@@ -569,77 +630,19 @@ struct GeneralPane: View {
             return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
         }
         if usesStandaloneRightControl && !listenEventGranted {
-            return "Right Control needs Input Monitoring permission. Enable VoiceToText in System Settings, then return here."
+            return PermissionCopy.inputMonitoringNeeded
         }
         return "Hotkey registration failed. Retry, or check Accessibility permission."
-    }
-
-    @ViewBuilder
-    private var microphoneCard: some View {
-        let granted = micStatus == .authorized
-        RowCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Image(systemName: granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(granted ? .green : .orange)
-                        Text("Microphone")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    Text(micSubtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !granted {
-                    Button(micActionTitle) {
-                        handleMicTap()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-            .padding(18)
-        }
-    }
-
-    @ViewBuilder
-    private var accessibilityCard: some View {
-        RowCard {
-            HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    HStack(spacing: 6) {
-                        Image(systemName: accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundStyle(accessibilityGranted ? .green : .orange)
-                        Text("Accessibility")
-                            .font(.system(size: 14, weight: .medium))
-                    }
-                    Text("Required for global shortcuts, Esc cancel, and typing text into other apps.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                if !accessibilityGranted {
-                    Button("Open Settings…") {
-                        AccessibilityPermission.promptForPermission()
-                        AccessibilityPermission.openSystemSettings()
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-            }
-            .padding(18)
-        }
     }
 
     private var micSubtitle: String {
         switch micStatus {
         case .authorized:
-            return "VoiceToText can record from your microphone."
+            return PermissionCopy.microphoneGranted
         case .notDetermined:
-            return "Click Request to grant microphone access."
+            return PermissionCopy.microphoneNotDetermined
         case .denied, .restricted:
-            return "Denied. Open System Settings → Privacy → Microphone and enable VoiceToText."
+            return PermissionCopy.microphoneDenied
         @unknown default:
             return "Unknown status."
         }
@@ -647,8 +650,8 @@ struct GeneralPane: View {
 
     private var micActionTitle: String {
         switch micStatus {
-        case .notDetermined: return "Request…"
-        default: return "Open Settings…"
+        case .notDetermined: return PermissionCopy.microphoneRequestButton
+        default: return PermissionCopy.openSettingsShortButton
         }
     }
 
@@ -694,18 +697,101 @@ struct GeneralPane: View {
     }
 }
 
-struct RowCard<Content: View>: View {
-    @ViewBuilder let content: Content
+// MARK: - Permissions, self-quieting
+
+/// The permission group, which demotes itself once it has nothing to say.
+///
+/// Diagnostics were masquerading as settings: three full-height cards, always
+/// expanded, occupying roughly half of GeneralPane in the 99% case where every
+/// one of them is green. This group collapses on `Motion.layout` into a single
+/// "All set" line in `signalReady` with a disclosure to re-open it, and any
+/// regression re-expands it inline — turning the summary `signalWarn` with a
+/// count — with no user action.
+///
+/// It stays IN THE PANE rather than becoming a toolbar chip: the direction's own
+/// rule is zero custom toolbar backgrounds, and a chip is the first thing the
+/// system drops when the toolbar condenses — which is exactly when a warning
+/// most needs to be visible.
+private struct PermissionsGroup: View {
+    let items: [StatusItem]
+
+    @State private var isExpanded = false
+    @Environment(\.motion) private var motion
+
+    private var issueCount: Int { items.filter { $0.level != .ready }.count }
+    private var allGranted: Bool { issueCount == 0 }
+    /// A regression forces the detail open — there is no way to collapse a
+    /// warning out of sight.
+    private var showsDetail: Bool { !allGranted || isExpanded }
+
     var body: some View {
-        content
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .strokeBorder(Color.primary.opacity(0.08))
-            )
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s5) {
+                summary
+
+                if showsDetail {
+                    ForEach(items) { item in
+                        PlateDivider(leadingInset: 0)
+                        StatusRow(item.level, title: item.title, message: item.message) {
+                            if let actionTitle = item.actionTitle, let action = item.action {
+                                Button(actionTitle, action: action)
+                                    .buttonStyle(.bordered)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .animation(motion.layout, value: showsDetail)
+        .animation(motion.layout, value: issueCount)
+        // Going green re-collapses the group, so a user who opened it to fix
+        // something isn't left with the expanded diagnostics forever.
+        .onChange(of: allGranted) { _, granted in
+            if granted { isExpanded = false }
+        }
+    }
+
+    @ViewBuilder
+    private var summary: some View {
+        HStack(spacing: Space.s4) {
+            Image(systemName: allGranted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(allGranted ? Palette.signalReady : Palette.signalWarn)
+                .accessibilityHidden(true)
+
+            Text(summaryText)
+                .typo(.headline)
+                .foregroundStyle(allGranted ? Palette.signalReady : Palette.ink)
+                .contentTransition(.numericText())
+
+            Spacer(minLength: Space.s4)
+
+            if allGranted {
+                Button {
+                    withAnimation(motion.layout) { isExpanded.toggle() }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Palette.inkFaint)
+                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(disclosureLabel)
+                .accessibilityLabel(disclosureLabel)
+            }
+        }
+    }
+
+    private var summaryText: String {
+        if allGranted { return "All set" }
+        return issueCount == 1
+            ? "1 permission needs attention"
+            : "\(issueCount) permissions need attention"
+    }
+
+    private var disclosureLabel: String {
+        isExpanded ? "Hide permission details" : "Show permission details"
     }
 }
-

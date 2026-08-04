@@ -32,6 +32,9 @@ final class MeetingController {
     private(set) var state: State = .idle
     /// Only meaningful while `state == .importing`.
     private(set) var importStage: ImportStage = .extracting(0)
+    /// File name of the media being imported, so the importing card can name what
+    /// it's working on instead of saying "your file". Only set during `.importing`.
+    private(set) var importingFileName: String?
     /// Wall-clock seconds since recording began (drives the timer in the UI).
     private(set) var elapsed: TimeInterval = 0
     /// Live mic+system level, 0…1, for the recording indicator.
@@ -140,9 +143,14 @@ final class MeetingController {
         defer { transitioning = false }
         lastSavedSummary = nil
 
+        let name = url.lastPathComponent
         let working = Self.makeWorkingURL()
         workingURL = working
         importStage = .extracting(0)
+        importingFileName = name
+        // The name is the importing card's subject; every exit below has either
+        // folded it into its message or has no card left to label.
+        defer { importingFileName = nil }
         state = .importing
 
         do {
@@ -162,21 +170,35 @@ final class MeetingController {
             )
         } catch {
             discardWorkingFile()
-            state = .error(error.localizedDescription)
+            state = .error("Couldn't import “\(name)” — \(error.localizedDescription)")
             return
         }
 
         let duration = Self.wavDuration(at: working)
         guard duration >= 1.0 else {
             discardWorkingFile()
-            state = .error("That file was too short to transcribe.")
+            state = .error("“\(name)” is too short to transcribe.")
             return
         }
 
         importStage = .transcribing
-        let (issue, summary) = await transcribeAndArchive(url: working, duration: duration)
+        let (issue, summary) = await transcribeAndArchive(
+            url: working,
+            duration: duration,
+            sourceLabel: name
+        )
         workingURL = nil
         finish(issue: issue, summary: summary)
+    }
+
+    /// Surfaces a pre-flight import failure — a drop we can't accept at all — in
+    /// the pane's usual error slot, so a rejected file says why instead of
+    /// vanishing. Ignored while busy: a drag that lands mid-recording must not
+    /// disturb the state machine, and the drop already bounces back visibly.
+    func rejectImport(_ message: String) {
+        guard !isBusy else { return }
+        lastSavedSummary = nil
+        state = .error(message)
     }
 
     // MARK: - Transcribe & archive (shared by stop & import)
@@ -185,9 +207,15 @@ final class MeetingController {
     /// History as a conversation. Never throws — on any failure the audio is
     /// still archived (with a placeholder/notice) so a long recording is never
     /// lost over a transcription hiccup. Returns a user-facing `issue` message
-    /// (nil = clean) and a success `summary`. Drives `transcribedChunks` /
+    /// (nil = clean) and a success `summary`. `sourceLabel` names the uploaded
+    /// file when this came from an import, so the confirmation says which file
+    /// landed rather than just how long it was. Drives `transcribedChunks` /
     /// `totalChunks` as it goes.
-    private func transcribeAndArchive(url: URL, duration: Double) async -> (issue: String?, summary: String?) {
+    private func transcribeAndArchive(
+        url: URL,
+        duration: Double,
+        sourceLabel: String? = nil
+    ) async -> (issue: String?, summary: String?) {
         transcribedChunks = 0
         totalChunks = 0
 
@@ -223,8 +251,11 @@ final class MeetingController {
         }
 
         saveToHistory(url: url, transcript: transcript, duration: duration, model: model)
-        let summary = issue == nil ? "Saved a \(duration.formattedClock) recording to History." : nil
-        return (issue, summary)
+        guard issue == nil else { return (issue, nil) }
+        let summary = sourceLabel.map {
+            "Transcribed “\($0)” (\(duration.formattedClock)) — saved to History."
+        } ?? "Saved a \(duration.formattedClock) recording to History."
+        return (nil, summary)
     }
 
     /// Settles the state machine after a stop or import finishes.

@@ -8,6 +8,8 @@ import SwiftUI
 struct ModelsPane: View {
     @Bindable var registry: ModelRegistry
     var onShowCloudSettings: () -> Void = {}
+    @Environment(\.motion) private var motion
+    @Environment(\.increaseContrast) private var increaseContrast
     @State private var scope: ModelScope = .all
 
     enum ModelScope: String, CaseIterable, Identifiable {
@@ -43,6 +45,17 @@ struct ModelsPane: View {
             case .quality: return "Quality"
             case .speed: return "Speed"
             case .name: return "Name"
+            }
+        }
+
+        /// The sort menu uses `.labelStyle(.titleAndIcon)`, so every option
+        /// needs a glyph — the icons are what survive a condensed menu bar.
+        var symbol: String {
+            switch self {
+            case .featured: return "sparkles"
+            case .quality: return "target"
+            case .speed: return "bolt.fill"
+            case .name: return "textformat"
             }
         }
     }
@@ -85,48 +98,77 @@ struct ModelsPane: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 28) {
-                header
+        PaneScaffold {
+            header
 
-                HStack(spacing: 12) {
-                    ScopePicker(scope: $scope)
-                    Spacer()
-                    HStack(spacing: 8) {
-                        Text("Sort by")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
-                        MinimalDropdown(
-                            selection: $sort,
-                            sections: [
-                                DropdownSection(items: ModelSort.allCases.map {
-                                    DropdownItem(value: $0, title: $0.title)
-                                })
-                            ],
-                            popupWidth: 150
-                        )
-                    }
+            VStack(spacing: Space.s4) {
+                ForEach(visibleModels) { model in
+                    ModelRow(
+                        model: model,
+                        registry: registry,
+                        onShowCloudSettings: onShowCloudSettings
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture { registry.setActive(model.id) }
                 }
+            }
+        }
+        // Selection changes animate the accent treatment across the whole
+        // list rather than per-row, so every row's tint moves in one motion.
+        .animation(motion.select, value: registry.activeModelId)
+        .toolbar { toolbarContent }
+        .onAppear { registry.refreshInstalledState() }
+    }
 
-                VStack(spacing: 8) {
-                    ForEach(visibleModels) { model in
-                        ModelRow(
-                            model: model,
-                            registry: registry,
-                            onShowCloudSettings: onShowCloudSettings
-                        )
-                        .contentShape(Rectangle())
-                        .onTapGesture { registry.setActive(model.id) }
+    // MARK: - Toolbar
+    //
+    // The scope filter and the sort control were two homeless widgets floating
+    // in the pane's first row — a hand-rolled capsule segmented control and a
+    // "Sort by" label next to a custom dropdown. They are toolbar items now:
+    // no custom background, no border, no divider. The system groups same-type
+    // items onto one shared glass capsule and separates the two functional
+    // groups with a `ToolbarSpacer` where it exists.
+
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Picker("Scope", selection: $scope) {
+                ForEach(ModelScope.allCases) { item in
+                    if let symbol = item.symbol {
+                        Label(item.title, systemImage: symbol).tag(item)
+                    } else {
+                        Text(item.title).tag(item)
                     }
                 }
             }
-            .padding(.horizontal, 36)
-            .padding(.vertical, 36)
-            // Selection changes animate the accent treatment across the whole
-            // list rather than per-row, so borders/glow cross-fade in one motion.
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: registry.activeModelId)
+            .pickerStyle(.segmented)
+            .labelStyle(.titleAndIcon)
+            .labelsHidden()
+            .controlSize(.small)
+            .help("Show all models, only local ones, or only cloud ones")
         }
-        .onAppear { registry.refreshInstalledState() }
+
+        // macOS 26+ only. Below it, the system's own inter-item spacing keeps
+        // the two groups apart — a little tighter, never merged.
+        if #available(macOS 26.0, *) {
+            ToolbarSpacer(.fixed, placement: .primaryAction)
+        }
+
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Picker("Sort by", selection: $sort) {
+                    ForEach(ModelSort.allCases) { option in
+                        Label(option.title, systemImage: option.symbol).tag(option)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelStyle(.titleAndIcon)
+            } label: {
+                Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+            .menuIndicator(.hidden)
+            .help("Sort the model list")
+        }
     }
 
     private var header: some View {
@@ -143,160 +185,103 @@ struct ModelsPane: View {
     }
 
     private var diskUsageChip: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: Space.s2) {
             Image(systemName: "internaldrive")
-                .font(.system(size: 10, weight: .semibold))
+                .font(Typo.micro)
             Text("\(registry.totalDiskUsageBytes.formattedDiskSize) on disk")
-                .font(.system(size: 11, weight: .medium))
+                .typo(.mono)
         }
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 5)
-        .background(Capsule().fill(Color.primary.opacity(0.06)))
+        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+        .padding(.horizontal, Space.s4)
+        .padding(.vertical, Space.s2)
+        .background(Capsule().fill(Palette.ink.opacity(0.06)))
     }
 
 }
 
-/// Minimal capsule filter for the model list: All / On this Mac / Cloud.
-private struct ScopePicker: View {
-    @Binding var scope: ModelsPane.ModelScope
-
-    var body: some View {
-        HStack(spacing: 2) {
-            ForEach(ModelsPane.ModelScope.allCases) { item in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        scope = item
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        if let symbol = item.symbol {
-                            Image(systemName: symbol)
-                                .font(.system(size: 10, weight: .medium))
-                        }
-                        Text(item.title)
-                            .font(.system(size: 12, weight: .medium))
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .foregroundStyle(scope == item ? Color.primary : Color.secondary)
-                    .background(
-                        Capsule().fill(scope == item
-                                       ? Color.primary.opacity(0.09)
-                                       : Color.clear)
-                    )
-                    .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .background(
-            Capsule().strokeBorder(Color.primary.opacity(0.08))
-        )
-    }
-}
+// `ScopePicker` — the hand-rolled capsule segmented control that used to sit in
+// the pane's first row — is gone. It is a system `Picker(.segmented)` in the
+// toolbar now, which is one fewer bespoke control to keep in sync with the
+// system's control metrics.
 
 // MARK: - Row
 
 private struct ModelRow: View {
+    /// The 56pt model row of the spec: a 34pt tile, one title line and one
+    /// monospaced meta line. The two `CapsuleGauge`s and the notes paragraph
+    /// they sat under are gone — a 1–10 bar told the user nothing they could
+    /// act on, where "Local · 632 MB · 7.8% WER · 99 languages" is the axis
+    /// eight near-identical rows actually differ on.
+    static let minHeight: CGFloat = 56
+
     let model: ModelDescriptor
     @Bindable var registry: ModelRegistry
     let onShowCloudSettings: () -> Void
-    @Bindable private var keyStore = OpenAIAPIKeyStore.shared
-    @State private var hovered = false
+    @Bindable private var openAIKeys = OpenAIAPIKeyStore.shared
+    @Bindable private var elevenLabsKeys = ElevenLabsAPIKeyStore.shared
+    @Environment(\.increaseContrast) private var increaseContrast
 
     private var isActive: Bool { registry.activeModelId == model.id }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 16) {
+        Plate(isInteractive: true, padding: 0) {
+            rowContent
+                // Both the tint wash and the selection bar live inside the
+                // plate's content, so the plate's own clip shape keeps them
+                // concentric instead of squaring off its corners.
+                .background(isActive ? Palette.accent.opacity(0.08) : Color.clear)
+                .overlay(alignment: .leading) { selectionBar }
+        }
+    }
+
+    private var rowContent: some View {
+        HStack(alignment: .center, spacing: Space.s5) {
             ProviderIconTile(isCloud: model.isCloud)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.s1) {
                 // Title and badges flow: inline while they fit, badges wrap
                 // to the next line instead of truncating the title.
-                BadgeFlow(hSpacing: 8, vSpacing: 5) {
+                BadgeFlow(hSpacing: Space.s3, vSpacing: Space.s2) {
                     titleText
                     badges
                 }
-                Text(model.notes)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: 12) {
-                    CapsuleGauge(
-                        label: "Quality",
-                        value: model.quality,
-                        tint: .accentColor,
-                        annotation: werAnnotation,
-                        annotationHelp: werAnnotation == nil ? nil
-                            : "Word error rate — Open ASR Leaderboard (English average). Lower is better."
-                    )
-                    CapsuleGauge(label: "Speed", value: model.speed, tint: .teal)
-                    languagesChip
-                }
-                .padding(.top, 2)
+                Text(metaLine)
+                    .typo(.mono)
+                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .help(metaLineHelp)
             }
             // Claim all free row width — otherwise the column settles at its
             // ideal size and the leftover becomes a blank gap while the title
             // truncates.
             .frame(maxWidth: .infinity, alignment: .leading)
 
-            Spacer(minLength: 12)
+            Spacer(minLength: Space.s5)
 
-            VStack(alignment: .trailing, spacing: 6) {
-                readinessControl
-                if let size = displaySize {
-                    Text(size)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
-                        .fixedSize(horizontal: true, vertical: false)
-                }
-            }
+            readinessControl
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(fillColor)
-                // Glow lives on the card shape, not the row, so text and
-                // controls inside don't inherit a tinted shadow.
-                .shadow(color: isActive ? Color.accentColor.opacity(0.22) : .clear, radius: 10, y: 3)
-        )
-        .overlay(rowBorder)
-        .onHover { h in
-            withAnimation(.easeInOut(duration: 0.15)) { hovered = h }
-        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .frame(minHeight: Self.minHeight)
     }
 
-    private var fillColor: Color {
-        if isActive { return Color.accentColor.opacity(0.12) }
-        if hovered { return Color(nsColor: .controlBackgroundColor).opacity(0.9) }
-        return Color(nsColor: .controlBackgroundColor).opacity(0.6)
-    }
-
+    /// The active row's 3 × 40 accent bar. The 1.5pt gradient border and the
+    /// accent glow are gone: tint carries the meaning, decoration doesn't.
     @ViewBuilder
-    private var rowBorder: some View {
+    private var selectionBar: some View {
         if isActive {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [Color.accentColor.opacity(0.9), Color.accentColor.opacity(0.35)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1.5
-                )
-        } else {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.primary.opacity(hovered ? 0.14 : 0.06))
+            Capsule()
+                .fill(Palette.accent)
+                .frame(width: 3, height: 40)
+                .padding(.leading, Space.s2)
         }
     }
 
     private var titleText: some View {
         Text(model.sectionedDisplayName)
-            .font(.system(size: 14, weight: .semibold))
+            .typo(.headline)
+            .foregroundStyle(isActive ? Palette.accent : Palette.ink)
             .lineLimit(1)
     }
 
@@ -310,32 +295,45 @@ private struct ModelRow: View {
     }
 
     private var activeBadge: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: Space.s1) {
             Image(systemName: "checkmark")
-                .font(.system(size: 9, weight: .bold))
+                .font(Typo.micro)
             Text("Active")
-                .font(.system(size: 10, weight: .semibold))
+                .typo(.micro)
+                .textCase(.uppercase)
                 .lineLimit(1)
         }
         .fixedSize()
-        .foregroundStyle(Color.accentColor)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.accentColor.opacity(0.15))
-        )
+        .foregroundStyle(Palette.accent)
+        .padding(.horizontal, Space.s3)
+        .padding(.vertical, Space.s1)
+        .background(Capsule().fill(Palette.accent.opacity(0.14)))
     }
 
-    private var languagesChip: some View {
-        HStack(spacing: 4) {
-            Image(systemName: "globe")
-                .font(.system(size: 9, weight: .semibold))
-            Text(ModelBadges.languagesLabel(model.languages))
-                .font(.system(size: 10, weight: .medium))
-        }
-        .foregroundStyle(.secondary)
-        .fixedSize()
+    // MARK: The meta line
+
+    /// The one Mono 11 line that replaced two gauges, a globe chip and a notes
+    /// paragraph: `Local · 632 MB · 7.8% WER · 99 languages`, or
+    /// `Cloud · 99+ languages`.
+    ///
+    /// Every segment comes from a field `ModelDescriptor` actually carries. The
+    /// spec's per-minute cloud price has no field behind it, so it is omitted
+    /// rather than invented; cloud models likewise carry no `benchmarkWER`
+    /// (there is no comparable public leaderboard) and no on-disk size.
+    private var metaLine: String {
+        var parts = [model.isCloud ? "Cloud" : "Local"]
+        if let displaySize { parts.append(displaySize) }
+        if let werAnnotation { parts.append(werAnnotation) }
+        parts.append(ModelBadges.languagesLabel(model.languages))
+        return parts.joined(separator: " · ")
+    }
+
+    /// The descriptive notes the row no longer has the height to print, plus
+    /// the WER provenance the gauge's annotation used to carry.
+    private var metaLineHelp: String {
+        guard werAnnotation != nil else { return model.notes }
+        return model.notes
+            + "\nWord error rate — Open ASR Leaderboard (English average). Lower is better."
     }
 
     /// "6.3% WER" for models with leaderboard data, else nil.
@@ -343,7 +341,6 @@ private struct ModelRow: View {
         guard let wer = model.benchmarkWER else { return nil }
         return String(format: "%.1f%% WER", wer)
     }
-
 
     private var displaySize: String? {
         if model.isCloud { return nil }
@@ -365,26 +362,41 @@ private struct ModelRow: View {
         }
     }
 
+    /// Whether the provider that owns THIS row has a key.
+    ///
+    /// The row used to read `OpenAIAPIKeyStore.shared` for every cloud model, so
+    /// an OpenAI-only key reported the ElevenLabs row as "Connected" and the
+    /// first dictation with it failed at the network boundary. Readiness now
+    /// keys off `model.backend.cloudProvider`, which is the only thing that
+    /// knows who the row belongs to.
+    private var cloudProviderHasKey: Bool {
+        switch model.backend.cloudProvider {
+        case .openAI: return openAIKeys.hasKey
+        case .elevenLabs: return elevenLabsKeys.hasKey
+        case nil: return false
+        }
+    }
+
     @ViewBuilder
     private var cloudReadinessControl: some View {
-        if keyStore.hasKey {
-            StatusDot(color: .green, label: "Connected")
+        if cloudProviderHasKey {
+            StatusLabel(level: .ready, text: "Connected")
         } else {
             Button {
                 onShowCloudSettings()
             } label: {
-                HStack(spacing: 3) {
+                HStack(spacing: Space.s2) {
                     Text("Add API key")
                     Image(systemName: "arrow.right")
-                        .font(.system(size: 8, weight: .bold))
+                        .font(Typo.micro)
                 }
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.orange)
-                .padding(.horizontal, 9)
-                .padding(.vertical, 4)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.signalWarn)
+                .padding(.horizontal, Space.s4)
+                .padding(.vertical, Space.s2)
                 .background(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                        .fill(Color.orange.opacity(0.12))
+                    RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                        .fill(Palette.signalWarn.opacity(0.12))
                 )
             }
             .buttonStyle(.plain)
@@ -403,30 +415,31 @@ private struct ModelRow: View {
             .controlSize(.small)
 
         case .preparing(let fraction, let message):
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: Space.s2) {
                 ProgressView(value: fraction)
                     .progressViewStyle(.linear)
                     .frame(width: 120)
-                HStack(spacing: 6) {
+                HStack(spacing: Space.s3) {
                     Text(message)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
                         .lineLimit(1)
                     Text("\(Int(fraction * 100))%")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .typo(.mono)
+                        .contentTransition(.numericText())
+                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
                 }
             }
 
         case .installed:
-            HStack(spacing: 8) {
-                StatusDot(color: .green, label: "Installed")
+            HStack(spacing: Space.s4) {
+                StatusLabel(level: .ready, text: "Installed")
                 Button {
                     registry.deleteModel(id: model.id)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(Typo.captionMedium)
+                        .foregroundStyle(Palette.inkMuted)
                 }
                 .buttonStyle(.plain)
                 .help("Delete model from disk")
@@ -438,56 +451,17 @@ private struct ModelRow: View {
             }
             .buttonStyle(.bordered)
             .controlSize(.small)
-            .tint(.red)
+            .tint(Palette.signalWarn)
         }
     }
 }
 
 // MARK: - Subcomponents
 
-/// A small labeled capsule bar showing a 1–10 rating as a fill fraction. Track
-/// uses an opacity-based tint so it reads in both light and dark mode.
-///
-/// The bar fill always reflects the static `value` (visual continuity). Two
-/// optional overlays surface benchmark data without disturbing the bar:
-/// `valueText` replaces the numeric readout (e.g. a measured "28×"), and
-/// `annotation` appends a quieter trailing note (e.g. "6.3% WER").
-private struct CapsuleGauge: View {
-    let label: String
-    let value: Int
-    let tint: Color
-    var annotation: String? = nil
-    var annotationHelp: String? = nil
-
-    private var fraction: Double { Double(min(max(value, 0), 10)) / 10.0 }
-
-    var body: some View {
-        HStack(spacing: 6) {
-            Text(label)
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.tertiary)
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.primary.opacity(0.08))
-                    Capsule()
-                        .fill(tint)
-                        .frame(width: geo.size.width * fraction)
-                }
-            }
-            .frame(width: 56, height: 5)
-            Text("\(value)")
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.secondary)
-            if let annotation {
-                Text(annotation)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-                    .help(annotationHelp ?? "")
-            }
-        }
-        .fixedSize()
-    }
-}
+// `CapsuleGauge` — the "Quality 8 / Speed 7" bar pair — is deleted along with
+// its last call site. A 1–10 bar with no units was the least actionable thing
+// on the row; the Mono 11 meta line prints the numbers those bars were a
+// picture of (size, measured WER, language count).
 
 /// Left-aligned flow for the title line: everything on one line while it
 /// fits, overflowing badges wrap to following lines instead of squeezing or
@@ -563,18 +537,19 @@ private struct Chip: View {
     let tint: Color
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: Space.s1) {
             Image(systemName: symbol)
-                .font(.system(size: 8, weight: .bold))
+                .font(Typo.micro)
             Text(text)
-                .font(.system(size: 10, weight: .semibold))
+                .typo(.micro)
+                .textCase(.uppercase)
                 .lineLimit(1)
         }
         .fixedSize()
         .foregroundStyle(tint)
-        .padding(.horizontal, 7)
-        .padding(.vertical, 2)
-        .background(Capsule().fill(tint.opacity(0.12)))
+        .padding(.horizontal, Space.s3)
+        .padding(.vertical, Space.s1)
+        .background(Capsule().fill(tint.opacity(0.14)))
     }
 }
 
@@ -582,26 +557,24 @@ private struct Chip: View {
 /// pulsing dot + "LIVE", styled to match `activeBadge`.
 private struct RealtimeBadge: View {
     @State private var pulsing = false
+    @Environment(\.motion) private var motion
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: Space.s2) {
             Circle()
-                .fill(Color.orange)
+                .fill(Palette.signalWarn)
                 .frame(width: 5, height: 5)
-                .opacity(pulsing ? 1.0 : 0.35)
+                .opacity(motion.repeatsAllowed ? (pulsing ? 1.0 : 0.35) : 0.85)
             Text("LIVE")
-                .font(.system(size: 10, weight: .semibold))
-                .tracking(0.4)
+                .typo(.micro)
         }
-        .foregroundStyle(Color.orange)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                .fill(Color.orange.opacity(0.15))
-        )
+        .foregroundStyle(Palette.signalWarn)
+        .padding(.horizontal, Space.s3)
+        .padding(.vertical, Space.s1)
+        .background(Capsule().fill(Palette.signalWarn.opacity(0.15)))
         .onAppear {
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
+            guard motion.repeatsAllowed else { return }
+            withAnimation(.smooth(duration: 1.1).repeatForever(autoreverses: true)) {
                 pulsing = true
             }
         }
@@ -633,13 +606,13 @@ private enum ModelBadges {
     /// accurate, then Fastest.
     static func editorial(for model: ModelDescriptor) -> (text: String, symbol: String, tint: Color)? {
         if model.id == "parakeet-tdt-v3" {
-            return ("Recommended", "sparkles", .accentColor)
+            return ("Recommended", "sparkles", Palette.accent)
         }
         if model.id == mostAccurateLocalId || model.id == mostAccurateCloudId {
-            return ("Most accurate", "target", .indigo)
+            return ("Most accurate", "target", Palette.badgeIndigo)
         }
         if model.speed == 10 && model.quality >= 8 {
-            return ("Fastest", "bolt.fill", .orange)
+            return ("Fastest", "bolt.fill", Palette.signalWarn)
         }
         return nil
     }

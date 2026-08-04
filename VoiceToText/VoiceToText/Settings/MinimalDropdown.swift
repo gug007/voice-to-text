@@ -41,6 +41,8 @@ struct MinimalDropdown<Value: Hashable>: View {
     var popupWidth: CGFloat = 280
     var maxPopupHeight: CGFloat = 360
 
+    @Environment(\.motion) private var motion
+
     @State private var isOpen = false
     @State private var isHovering = false
 
@@ -54,31 +56,29 @@ struct MinimalDropdown<Value: Hashable>: View {
     }
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+
         Button {
             isOpen.toggle()
         } label: {
-            HStack(spacing: 6) {
+            HStack(spacing: Space.s3) {
                 Text(selectedTitle)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
+                    .typo(.body)
+                    .foregroundStyle(Palette.ink)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(Typo.micro)
+                    .foregroundStyle(Palette.inkMuted)
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.primary.opacity(isHovering ? 0.09 : 0.05))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .padding(.horizontal, Space.s4)
+            .padding(.vertical, Space.s2)
+            .background(shape.fill(Palette.ink.opacity(isHovering ? 0.09 : 0.05)))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) { isHovering = hovering }
-        }
+        .onHover { isHovering = $0 }
+        .animation(motion.hover, value: isHovering)
         .popover(isPresented: $isOpen, arrowEdge: .bottom) {
             DropdownPopup(
                 sections: sections,
@@ -99,6 +99,15 @@ struct MinimalDropdown<Value: Hashable>: View {
 /// caller's fixed value and its height to the content, capped at `maxHeight` —
 /// only then does it scroll, so short lists never show a scroller. Reusable on
 /// its own for triggers that aren't the bound select control.
+///
+/// This is glass surface #4 of the inventory in `GlassSurface.swift` — one call
+/// site covering both popovers on the list (the dropdown's own popup and the
+/// `RecordingRow` regenerate menu). It is filled edge to edge with a
+/// `Rectangle`, not a rounded shape: the popover already clips its content to
+/// the system's corner radius, so a rounded fill would only leak the chrome
+/// behind it at the corners. The point of routing it through `glassSurface` is
+/// that Reduce Transparency now flattens the popup exactly when it flattens the
+/// HUD and the toast, instead of leaving two of the four surfaces translucent.
 struct DropdownPopup<Value: Hashable>: View {
     let sections: [DropdownSection<Value>]
     /// The value drawn with a checkmark, or `nil` for none.
@@ -111,15 +120,16 @@ struct DropdownPopup<Value: Hashable>: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: Space.s1) {
                 ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
                     if let header = section.header {
-                        Text(header.uppercased())
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 8)
-                            .padding(.top, index == 0 ? 2 : 8)
-                            .padding(.bottom, 1)
+                        Text(header)
+                            .typo(.micro)
+                            .textCase(.uppercase)
+                            .foregroundStyle(Palette.inkFaint)
+                            .padding(.horizontal, Space.s4)
+                            .padding(.top, index == 0 ? Space.s1 : Space.s4)
+                            .padding(.bottom, Space.s1)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     ForEach(section.items, id: \.value) { item in
@@ -134,7 +144,7 @@ struct DropdownPopup<Value: Hashable>: View {
                     }
                 }
             }
-            .padding(6)
+            .padding(Space.s3)
             // macOS 15 geometry observer: MainActor-friendly (avoids the
             // @Sendable preference-closure friction under Swift 6 isolation).
             .onGeometryChange(for: CGFloat.self) { proxy in
@@ -145,6 +155,7 @@ struct DropdownPopup<Value: Hashable>: View {
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(width: width, height: min(max(contentHeight, 1), maxHeight))
+        .glassSurface(in: Rectangle())
     }
 }
 
@@ -157,53 +168,53 @@ private struct DropdownRow: View {
     let isSelected: Bool
     let action: () -> Void
 
+    @Environment(\.motion) private var motion
+
     @State private var isHovering = false
 
     var body: some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+
         Button(action: action) {
-            HStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: Space.s4) {
+                VStack(alignment: .leading, spacing: Space.s1) {
                     Text(title)
-                        .font(.system(size: 13))
-                        .foregroundStyle(.primary)
+                        .typo(.body)
+                        .foregroundStyle(Palette.ink)
                         .lineLimit(1)
                     if let detail, !detail.isEmpty {
                         Text(detail)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
                             .lineLimit(1)
                     }
                 }
-                Spacer(minLength: 8)
+                Spacer(minLength: Space.s4)
                 if let caption, !caption.isEmpty {
                     Text(caption)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.tertiary)
+                        .typo(.mono)
+                        .foregroundStyle(Palette.inkFaint)
                 }
                 Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Color.accentColor)
+                    .font(Typo.captionMedium)
+                    .foregroundStyle(Palette.accent)
                     .opacity(isSelected ? 1 : 0)
-                    .frame(width: 12)
+                    .frame(width: Space.s5)
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
+            .padding(.horizontal, Space.s4)
+            .padding(.vertical, Space.s3)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(rowFill)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+            .background(shape.fill(rowFill))
+            .contentShape(shape)
         }
         .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.1)) { isHovering = hovering }
-        }
+        .onHover { isHovering = $0 }
+        .animation(motion.hover, value: isHovering)
     }
 
     private var rowFill: Color {
-        if isHovering { return Color.primary.opacity(0.08) }
-        if isSelected { return Color.accentColor.opacity(0.10) }
+        if isHovering { return Palette.ink.opacity(0.08) }
+        if isSelected { return Palette.accent.opacity(0.10) }
         return .clear
     }
 }

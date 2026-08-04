@@ -15,24 +15,27 @@ struct CloudPane: View {
 
     private static let elevenLabsKeysURL = URL(string: "https://elevenlabs.io/app/settings/api-keys")!
 
+    /// The two provider tints, as light/dark pairs — raw `.blue` / `.purple`
+    /// are not tokens and read differently in each appearance.
+    private static let openAITint = Palette.accent
+    private static let elevenLabsTint = Palette.dynamic(
+        "providerElevenLabs", light: 0x5856D6, dark: 0x7D7AFF
+    )
+
     private enum StatusKind { case neutral, success, failure }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 32) {
-                PaneHeader(
-                    title: "Cloud",
-                    subtitle: "Connect to online transcription. Your key stays on this Mac."
-                )
+        PaneScaffold {
+            PaneHeader(
+                title: "Cloud",
+                subtitle: "Connect to online transcription. Your key stays on this Mac."
+            )
 
-                openAISection
+            openAISection
 
-                elevenLabsSection
+            elevenLabsSection
 
-                privacyFooter
-            }
-            .padding(.horizontal, 36)
-            .padding(.vertical, 36)
+            privacyFooter
         }
         .onAppear {
             draftKey = ""
@@ -48,54 +51,48 @@ struct CloudPane: View {
 
     @ViewBuilder
     private var openAISection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 14) {
-                ProviderIconTile(symbol: "cloud.fill", tint: .blue)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("OpenAI")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s6) {
+                HStack(alignment: .center, spacing: Space.s5) {
+                    ProviderIconTile(symbol: "cloud.fill", tint: Self.openAITint)
+                    VStack(alignment: .leading, spacing: Space.s1) {
+                        Text("OpenAI")
+                            .typo(.title)
+                            .foregroundStyle(Palette.ink)
+                        Text("GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1")
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    Spacer(minLength: Space.s5)
+                    StatusLabel(
+                        level: keyStore.hasKey ? .ready : .warning,
+                        text: keyStore.hasKey ? "Configured" : "Not set"
+                    )
                 }
-                Spacer(minLength: 12)
-                StatusDot(
-                    color: keyStore.hasKey ? .green : .orange,
-                    label: keyStore.hasKey ? "Configured" : "Not set"
-                )
-            }
 
-            keyField
+                keyField
 
-            actionRow
+                actionRow
 
-            if let statusMessage {
-                Text(statusMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(statusColor)
-                    .transition(.opacity)
-            }
-
-            Link(destination: OpenAIEndpoint.apiKeysDocs) {
-                HStack(spacing: 4) {
-                    Text("Get an API key")
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9, weight: .semibold))
+                if let statusMessage {
+                    Text(statusMessage)
+                        .typo(.caption)
+                        .foregroundStyle(statusColor)
+                        .transition(.opacity)
                 }
-                .font(.system(size: 11, weight: .medium))
+
+                Link(destination: OpenAIEndpoint.apiKeysDocs) {
+                    HStack(spacing: Space.s2) {
+                        Text("Get an API key")
+                        Image(systemName: "arrow.up.right")
+                            .font(Typo.micro)
+                    }
+                    .typo(.captionMedium)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.accent)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06))
-        )
     }
 
     private var keyField: some View {
@@ -103,36 +100,37 @@ struct CloudPane: View {
             "",
             text: $draftKey,
             prompt: Text(keyStore.hasKey ? "Replace existing key" : "Paste your API key")
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(Palette.inkFaint)
         )
         .textFieldStyle(.plain)
-        .font(.system(size: 13, design: .monospaced))
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08))
-        )
+        .font(Typo.mono)
+        .padding(.horizontal, Space.s5)
+        .padding(.vertical, Space.s5)
+        .background {
+            // Radius 10 = the plate's 16 minus this well's 6pt inset.
+            ConcentricRectangle(inset: Space.s3) { shape in
+                shape
+                    .fill(Palette.wellFill)
+                    .overlay(shape.strokeBorder(Palette.hairline))
+            }
+        }
         .onSubmit { save() }
     }
 
     @ViewBuilder
     private var actionRow: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: Space.s5) {
             Button("Save") { save() }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
+                .tint(Palette.accent)
                 .disabled(draftKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
             Button {
                 Task { await testConnection() }
             } label: {
                 if isTesting {
-                    HStack(spacing: 6) {
+                    HStack(spacing: Space.s3) {
                         ProgressView().controlSize(.small)
                         Text("Testing…")
                     }
@@ -147,16 +145,17 @@ struct CloudPane: View {
             Spacer()
 
             if keyStore.hasKey {
+                // Destructive text button: quiet by default, signalLive on hover
+                // — never a filled red control.
                 Button {
                     keyStore.clearKey()
                     draftKey = ""
                     setStatus("Key removed.", kind: .neutral)
                 } label: {
                     Text("Remove")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.red.opacity(0.85))
+                        .typo(.captionMedium)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(DestructiveTextButtonStyle())
                 .help("Forget the saved API key")
             }
         }
@@ -166,116 +165,109 @@ struct CloudPane: View {
 
     @ViewBuilder
     private var elevenLabsSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(alignment: .center, spacing: 14) {
-                ProviderIconTile(symbol: "waveform", tint: .purple)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("ElevenLabs")
-                        .font(.system(size: 16, weight: .semibold))
-                    Text("Scribe v2 Realtime — live streaming transcription")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s6) {
+                HStack(alignment: .center, spacing: Space.s5) {
+                    ProviderIconTile(symbol: "waveform", tint: Self.elevenLabsTint)
+                    VStack(alignment: .leading, spacing: Space.s1) {
+                        Text("ElevenLabs")
+                            .typo(.title)
+                            .foregroundStyle(Palette.ink)
+                        Text("Scribe v2 Realtime — live streaming transcription")
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    Spacer(minLength: Space.s5)
+                    StatusLabel(
+                        level: elevenKeyStore.hasKey ? .ready : .warning,
+                        text: elevenKeyStore.hasKey ? "Configured" : "Not set"
+                    )
                 }
-                Spacer(minLength: 12)
-                StatusDot(
-                    color: elevenKeyStore.hasKey ? .green : .orange,
-                    label: elevenKeyStore.hasKey ? "Configured" : "Not set"
+
+                SecureField(
+                    "",
+                    text: $draftElevenKey,
+                    prompt: Text(elevenKeyStore.hasKey ? "Replace existing key" : "Paste your API key")
+                        .foregroundStyle(Palette.inkFaint)
                 )
-            }
-
-            SecureField(
-                "",
-                text: $draftElevenKey,
-                prompt: Text(elevenKeyStore.hasKey ? "Replace existing key" : "Paste your API key")
-                    .foregroundStyle(.tertiary)
-            )
-            .textFieldStyle(.plain)
-            .font(.system(size: 13, design: .monospaced))
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08))
-            )
-            .onSubmit { saveEleven() }
-
-            HStack(spacing: 10) {
-                Button("Save") { saveEleven() }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
-                    .disabled(draftElevenKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-
-                Button {
-                    Task { await testElevenConnection() }
-                } label: {
-                    if elevenIsTesting {
-                        HStack(spacing: 6) {
-                            ProgressView().controlSize(.small)
-                            Text("Testing…")
-                        }
-                    } else {
-                        Text("Test")
+                .textFieldStyle(.plain)
+                .font(Typo.mono)
+                .padding(.horizontal, Space.s5)
+                .padding(.vertical, Space.s5)
+                .background {
+                    ConcentricRectangle(inset: Space.s3) { shape in
+                        shape
+                            .fill(Palette.wellFill)
+                            .overlay(shape.strokeBorder(Palette.hairline))
                     }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .disabled(!elevenKeyStore.hasKey || elevenIsTesting)
+                .onSubmit { saveEleven() }
 
-                Spacer()
+                HStack(spacing: Space.s5) {
+                    Button("Save") { saveEleven() }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.regular)
+                        .tint(Palette.accent)
+                        .disabled(draftElevenKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
 
-                if elevenKeyStore.hasKey {
                     Button {
-                        elevenKeyStore.clearKey()
-                        draftElevenKey = ""
-                        setElevenStatus("Key removed.", kind: .neutral)
+                        Task { await testElevenConnection() }
                     } label: {
-                        Text("Remove")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(.red.opacity(0.85))
+                        if elevenIsTesting {
+                            HStack(spacing: Space.s3) {
+                                ProgressView().controlSize(.small)
+                                Text("Testing…")
+                            }
+                        } else {
+                            Text("Test")
+                        }
                     }
-                    .buttonStyle(.plain)
-                    .help("Forget the saved API key")
-                }
-            }
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
+                    .disabled(!elevenKeyStore.hasKey || elevenIsTesting)
 
-            if let elevenStatusMessage {
-                Text(elevenStatusMessage)
-                    .font(.system(size: 11))
-                    .foregroundStyle(elevenStatusColor)
-                    .transition(.opacity)
-            }
+                    Spacer()
 
-            Link(destination: Self.elevenLabsKeysURL) {
-                HStack(spacing: 4) {
-                    Text("Get an API key")
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 9, weight: .semibold))
+                    if elevenKeyStore.hasKey {
+                        Button {
+                            elevenKeyStore.clearKey()
+                            draftElevenKey = ""
+                            setElevenStatus("Key removed.", kind: .neutral)
+                        } label: {
+                            Text("Remove")
+                                .typo(.captionMedium)
+                        }
+                        .buttonStyle(DestructiveTextButtonStyle())
+                        .help("Forget the saved API key")
+                    }
                 }
-                .font(.system(size: 11, weight: .medium))
+
+                if let elevenStatusMessage {
+                    Text(elevenStatusMessage)
+                        .typo(.caption)
+                        .foregroundStyle(elevenStatusColor)
+                        .transition(.opacity)
+                }
+
+                Link(destination: Self.elevenLabsKeysURL) {
+                    HStack(spacing: Space.s2) {
+                        Text("Get an API key")
+                        Image(systemName: "arrow.up.right")
+                            .font(Typo.micro)
+                    }
+                    .typo(.captionMedium)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.accent)
             }
-            .buttonStyle(.plain)
-            .foregroundStyle(.tint)
         }
-        .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.06))
-        )
     }
 
     private var elevenStatusColor: Color {
         switch elevenStatusKind {
-        case .neutral: return .secondary
-        case .success: return .green
-        case .failure: return .orange
+        case .neutral: return Palette.inkMuted
+        case .success: return Palette.signalReady
+        case .failure: return Palette.signalWarn
         }
     }
 
@@ -308,32 +300,32 @@ struct CloudPane: View {
     // MARK: - Privacy footer
 
     private var privacyFooter: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: Space.s4) {
             Image(systemName: "lock.shield")
-                .font(.system(size: 12))
-                .foregroundStyle(.tertiary)
+                .font(Typo.captionMedium)
+                .foregroundStyle(Palette.inkFaint)
                 .padding(.top, 1)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: Space.s2) {
                 Text("Privacy")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
                 Text("Cloud models upload your audio to the provider. Local models keep audio on this Mac.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkFaint)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 4)
+        .padding(.horizontal, Space.s3)
     }
 
     // MARK: - Helpers
 
     private var statusColor: Color {
         switch statusKind {
-        case .neutral: return .secondary
-        case .success: return .green
-        case .failure: return .orange
+        case .neutral: return Palette.inkMuted
+        case .success: return Palette.signalReady
+        case .failure: return Palette.signalWarn
         }
     }
 

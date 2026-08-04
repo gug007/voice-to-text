@@ -19,11 +19,15 @@ struct VoiceToTextApp: App {
         Window("VoiceToText", id: WindowID.main) {
             MainWindowView(registry: registry)
         }
-        .defaultSize(width: 880, height: 600)
+        // 900 × 620 default, 720 × 480 minimum (SettingsView) — narrow enough
+        // that a 13" MacBook Air at scaled resolution can show this beside a
+        // document, which 880 × 560 could not.
+        .defaultSize(width: 900, height: 620)
         .windowResizability(.contentMinSize)
-        // Transparent, full-height title bar so each pane's header sits at the
-        // very top of the content area instead of below an empty title-bar band.
-        .windowStyle(.hiddenTitleBar)
+        // `.windowStyle(.hiddenTitleBar)` is gone. It only existed so each
+        // pane's header could sit at the very top of the content area, and it
+        // cost a real toolbar plus 32pt of pane padding to keep the traffic
+        // lights off the content. The panes carry a system toolbar now.
     }
 }
 
@@ -40,6 +44,9 @@ struct MainWindowView: View {
                 PermissionGateView()
             }
         }
+        // Resolve Reduce Motion once for the whole window and publish the motion
+        // vocabulary downward; `Plate` and every pane read `\.motion` from here.
+        .motionEnvironment()
         .task {
             WindowOpener.shared.register { [openWindow] in
                 openWindow(id: WindowID.main)

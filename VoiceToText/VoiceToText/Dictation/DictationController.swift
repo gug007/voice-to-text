@@ -31,6 +31,7 @@ private final class RecordingEscapeEventTapContext {
 /// never overlap), so the same tap serves both.
 private final class HUDEscapeEventTapContext {
     enum Target {
+        case transcribing
         case review
         case failure
     }
@@ -59,6 +60,16 @@ final class DictationController {
     static let shared = DictationController()
 
     private(set) var state: State = .idle
+
+    /// Seconds since the current recording began, or nil when nothing is being
+    /// recorded. Read by the menu-bar item, which shows the elapsed clock as a
+    /// **menu row** rather than in the status-item title: a title that changes
+    /// width every second relayouts the status item, and AppKit reflows every
+    /// extra to its left each time it does.
+    var recordingElapsedSeconds: TimeInterval? {
+        guard state == .recording, let recordStart else { return nil }
+        return Date().timeIntervalSince(recordStart)
+    }
 
     private let recorder = AudioRecorder()
     private var recordStart: Date?
@@ -91,15 +102,17 @@ final class DictationController {
     /// exempts from its own stall detection and which can legitimately run for
     /// minutes. This only ever fires on a genuine wedge.
     private static let preparingWatchdogTimeout: Duration = .seconds(300)
+    private var transcribingEscMonitor: Any?
     private var reviewEscMonitor: Any?
     private var failureEscMonitor: Any?
     private var recordingLocalEscMonitor: Any?
     private var recordingEscEventTap: CFMachPort?
     private var recordingEscRunLoopSource: CFRunLoopSource?
     private var recordingEscEventTapContext: RecordingEscapeEventTapContext?
-    /// Global Escape fallback shared by the review and failure HUDs. Only one of
-    /// those HUDs shows at a time, so a single tap serves both; each install tears
-    /// down the prior tap first, and each HUD's monitor teardown removes it.
+    /// Global Escape fallback shared by the transcribing, review and failure
+    /// HUDs. Only one of those shows at a time, so a single tap serves all three;
+    /// each install tears down the prior tap first, and each HUD's monitor
+    /// teardown removes it.
     private var hudEscEventTap: CFMachPort?
     private var hudEscRunLoopSource: CFRunLoopSource?
     private var hudEscEventTapContext: HUDEscapeEventTapContext?
@@ -600,6 +613,29 @@ final class DictationController {
         recordingEscEventTapContext = nil
     }
 
+    /// Esc during transcribing aborts the in-flight transcription — the same
+    /// thing the HUD's Cancel button does. The recording taps are already gone
+    /// by this point and the panel deliberately isn't key here (the caret has to
+    /// stay in the target app), so the global tap does the real work and the
+    /// local monitor only covers the case where our app happens to be active.
+    private func installTranscribingEscMonitor() {
+        removeTranscribingEscMonitor()
+        transcribingEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            Task { @MainActor in self?.cancelTranscription() }
+            return nil
+        }
+        installHUDEscapeEventTap(target: .transcribing)
+    }
+
+    private func removeTranscribingEscMonitor() {
+        if let transcribingEscMonitor {
+            NSEvent.removeMonitor(transcribingEscMonitor)
+            self.transcribingEscMonitor = nil
+        }
+        removeHUDEscapeEventTap()
+    }
+
     private func installReviewEscMonitor() {
         removeReviewEscMonitor()
         // Local monitor: our review panel is key, so Esc is dispatched into our app.
@@ -755,10 +791,12 @@ final class DictationController {
     }
 
     /// Routes a global-tap Escape to the dismissal for whichever HUD is showing.
-    /// Both dismissals guard their own state and tear the tap down, so a late
+    /// Every dismissal guards its own state and tears the tap down, so a late
     /// Escape after the HUD already closed is a harmless no-op.
     private func handleHUDEscape(target: HUDEscapeEventTapContext.Target) {
         switch target {
+        case .transcribing:
+            cancelTranscription()
         case .review:
             cancelReview()
         case .failure:
@@ -914,9 +952,34 @@ final class DictationController {
         guard state != .transcribing else { return }
         transcriptionRunID &+= 1
         state = .transcribing
-        LiveHUDPanel.shared.showTranscribing()
+        LiveHUDPanel.shared.showTranscribing(
+            onCancel: { [weak self] in self?.cancelTranscription() }
+        )
+        installTranscribingEscMonitor()
         startTranscribingElapsedTicker(from: Date())
         armTranscribingWatchdog(runID: transcriptionRunID)
+    }
+
+    /// Abandons an in-flight transcription from the HUD's Cancel button or Esc
+    /// — the only way out of a hung cloud request short of the 10-minute
+    /// watchdog. The pipeline is fenced on the run ID rather than cancelled:
+    /// every `await` in `runTranscriptionPipeline` re-checks it, so the
+    /// abandoned run returns silently instead of pushing a review or a failure
+    /// HUD onto an app the user already sent back to idle.
+    private func cancelTranscription() {
+        guard state == .transcribing else { return }
+        AppLog.dictation.info("Transcription cancelled")
+        transcriptionRunID &+= 1
+        removeTranscribingEscMonitor()
+        stopTranscribingElapsedTicker()
+        cancelStreamingSession()
+        inFlightTranscriptionSamples = nil
+        lastFailedSamples = nil
+        // A resumed take returns to the review it came from (whose earlier
+        // takes are still pending and must survive); a first-pass take ends the
+        // session, so anything it left behind goes with it.
+        if resumeContext == nil { discardPendingHistory() }
+        finishRecordingSession(fallbackTo: .idle)
     }
 
     /// Fenced on the start ID rather than cancelled from every exit path: once
@@ -1072,13 +1135,17 @@ final class DictationController {
         let runID = transcriptionRunID
         inFlightTranscriptionSamples = samples
         defer {
-            stopTranscribingElapsedTicker()
-            // Only the watchdog reads this, and the line above just cancelled it
-            // — holding on any longer would keep the last dictation's raw audio
-            // (megabytes per minute) alive for the rest of the session, even
-            // after the user cancelled the review and its History take was
-            // retracted. A newer run's samples are left alone.
-            if runID == transcriptionRunID { inFlightTranscriptionSamples = nil }
+            // Fenced as a whole: a run the user cancelled (or the watchdog gave
+            // up on) can outlive its own HUD, and by the time it unwinds the
+            // ticker, the watchdog and the samples may already belong to a newer
+            // run — stopping that run's clock from here would leave it with no
+            // watchdog at all. Holding the samples any longer than the run that
+            // owns them would keep the last dictation's raw audio (megabytes per
+            // minute) alive for the rest of the session.
+            if runID == transcriptionRunID {
+                stopTranscribingElapsedTicker()
+                inFlightTranscriptionSamples = nil
+            }
         }
 
         let voiced = await VoiceActivityGate.shared.isVoiced(samples)
@@ -1109,7 +1176,9 @@ final class DictationController {
             produce = { try await streaming.finishStream() }
         } else {
             recordedModel = descriptor
-            guard let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) else {
+            let prepared = await ModelRegistry.shared.prepareModel(id: descriptor.id)
+            guard runID == transcriptionRunID else { return }
+            guard let engine = prepared else {
                 enterFailureHUD(
                     message: "Failed to prepare model for transcription.",
                     samples: samples,
@@ -1182,6 +1251,7 @@ final class DictationController {
         } else {
             // No review step: the text is delivered and kept right away.
             commitPendingHistory()
+            removeTranscribingEscMonitor()
             LiveHUDPanel.shared.hide()
             deliver(text: processed)
         }
@@ -1206,6 +1276,10 @@ final class DictationController {
         samples: [Float]? = nil,
         canRetry: Bool = false
     ) {
+        // Leaving `.transcribing` (or never having reached it): its Esc route
+        // hands over to the review banner's or the failure HUD's, installed
+        // below. A no-op on the paths that never armed it.
+        removeTranscribingEscMonitor()
         let retryAvailable = canRetry && samples != nil
 
         if let resume = resumeContext {
@@ -1248,6 +1322,9 @@ final class DictationController {
         // exit window (e.g. ⌘R then ⌘1 in quick succession) so a stale
         // transform can never overwrite this session's transcript.
         cancelReviewAction()
+        // Hands the Escape route over from the transcribing HUD to this one
+        // (`installReviewEscMonitor` below re-arms the shared global tap).
+        removeTranscribingEscMonitor()
         state = .reviewing(text: text)
         LiveHUDPanel.shared.showReview(
             text: text,

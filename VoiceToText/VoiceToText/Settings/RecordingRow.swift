@@ -13,6 +13,9 @@ struct RecordingRow: View {
     let isPlaying: Bool
     /// Hidden in the Conversations list, where every row is the same type.
     var showsTypeBadge: Bool = true
+    /// The live History search query, so matched substrings can be marked in
+    /// the transcript. Empty everywhere else.
+    var highlight: String = ""
     let onPlay: () -> Void
     let onDelete: () -> Void
     let onToggleFavorite: () -> Void
@@ -20,6 +23,9 @@ struct RecordingRow: View {
     let onRemoveTranscript: (UUID) -> Void
     /// Persists the canonical-label → name mapping for this recording.
     let onRenameSpeakers: ([String: String]) -> Void
+
+    @Environment(\.motion) private var motion
+    @Environment(\.increaseContrast) private var increaseContrast
 
     @Bindable private var regenerator = TranscriptRegenerator.shared
     @State private var copied = false
@@ -35,6 +41,13 @@ struct RecordingRow: View {
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
 
+    /// Tertiary ink for this row's metadata, collapsed into `inkMuted` under
+    /// Increase Contrast. The row is the surface History's search highlight
+    /// lands on, so its whole ramp has to be the same one the highlight uses.
+    private var faintInk: Color {
+        Palette.inkFaint(increaseContrast: increaseContrast)
+    }
+
     /// Canonical speaker labels present in the stored transcript. The rename
     /// control only appears when this is non-empty (i.e. a diarized recording).
     private var speakerLabels: [String] { SpeakerRelabeler.speakerLabels(in: entry.transcript) }
@@ -46,29 +59,30 @@ struct RecordingRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(alignment: .center, spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.s5) {
+            HStack(alignment: .center, spacing: Space.s5) {
                 PlayTile(isPlaying: isPlaying, action: onPlay)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(Self.dateFormatter.string(from: entry.createdAt))
-                        .font(.system(size: 13, weight: .medium))
-                    HStack(spacing: 5) {
+                VStack(alignment: .leading, spacing: Space.s2) {
+                    Text(RecordingDateFormat.rowLabel(entry.createdAt))
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
+                    HStack(spacing: Space.s3) {
                         if showsTypeBadge {
                             RecordingTypeBadge(source: entry.source)
                             Text("·")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.quaternary)
+                                .typo(.caption)
+                                .foregroundStyle(faintInk)
                         }
                         Text(metaLine)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.tertiary)
+                            .typo(.mono)
+                            .foregroundStyle(faintInk)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: Space.s5)
 
                 actionButtons
             }
@@ -76,24 +90,23 @@ struct RecordingRow: View {
             transcriptSection
 
             if let failure = regenerator.failure, failure.id == entry.id {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
                     Text(failure.message)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.signalWarn)
                         .fixedSize(horizontal: false, vertical: true)
                     Button("Dismiss") { regenerator.dismissFailure() }
                         .buttonStyle(.plain)
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.tint)
+                        .typo(.captionMedium)
+                        .foregroundStyle(Palette.accent)
                 }
             }
         }
-        .padding(16)
+        .padding(Space.s6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.12)) { isHovering = hovering }
-        }
+        .onHover { isHovering = $0 }
+        .animation(motion.hover, value: isHovering)
         .onDisappear { copyResetTask?.cancel() }
     }
 
@@ -102,12 +115,12 @@ struct RecordingRow: View {
     /// the regenerate spinner stays put while a regeneration is in flight).
     @ViewBuilder
     private var actionButtons: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: Space.s3) {
             if entry.isFavorited || isHovering {
                 iconButton(
                     systemName: entry.isFavorited ? "star.fill" : "star",
                     help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                    tint: entry.isFavorited ? .yellow : .secondary,
+                    tint: entry.isFavorited ? Palette.favorite : Palette.inkMuted,
                     action: onToggleFavorite
                 )
             }
@@ -122,13 +135,13 @@ struct RecordingRow: View {
                 iconButton(
                     systemName: copied ? "checkmark" : "doc.on.doc",
                     help: "Copy transcript",
-                    tint: copied ? .green : .secondary,
+                    tint: copied ? Palette.signalReady : Palette.inkMuted,
                     action: copyActiveTranscript
                 )
                 iconButton(
                     systemName: "trash",
                     help: "Delete recording",
-                    tint: .secondary,
+                    tint: Palette.inkMuted,
                     action: onDelete
                 )
             }
@@ -140,10 +153,11 @@ struct RecordingRow: View {
     @ViewBuilder
     private var transcriptSection: some View {
         if entry.hasAlternateTranscripts {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: Space.s5) {
                 ForEach(entry.transcriptVariants) { variant in
                     TranscriptBlockView(
                         text: displayText(variant.text),
+                        highlight: highlight,
                         header: TranscriptBlockView.Header(
                             label: modelLabel(for: variant),
                             isActive: variant.id == entry.id,
@@ -153,7 +167,11 @@ struct RecordingRow: View {
                 }
             }
         } else {
-            TranscriptBlockView(text: displayText(entry.transcript), header: nil)
+            TranscriptBlockView(
+                text: displayText(entry.transcript),
+                highlight: highlight,
+                header: nil
+            )
         }
     }
 
@@ -194,8 +212,8 @@ struct RecordingRow: View {
             showRenameSpeakers.toggle()
         } label: {
             Image(systemName: "person.crop.circle")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .font(Typo.body)
+                .foregroundStyle(Palette.inkMuted)
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
         }
@@ -209,19 +227,24 @@ struct RecordingRow: View {
 
     /// One labeled text field per canonical speaker. Clearing a field reverts that
     /// speaker to its "Speaker N" label; giving two the same name merges them.
+    ///
+    /// Glass surface #4 of the inventory in `GlassSurface.swift` — the last of
+    /// the three popovers. Filled with a `Rectangle` for the same reason as
+    /// `DropdownPopup`: the popover already owns the corner radius.
     private var speakerNamePopover: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: Space.s5) {
             Text("Name speakers")
-                .font(.system(size: 13, weight: .semibold))
-            VStack(alignment: .leading, spacing: 10) {
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+            VStack(alignment: .leading, spacing: Space.s5) {
                 ForEach(speakerLabels, id: \.self) { label in
-                    VStack(alignment: .leading, spacing: 3) {
+                    VStack(alignment: .leading, spacing: Space.s2) {
                         Text(label)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
                         TextField(label, text: speakerNameBinding(for: label))
                             .textFieldStyle(.roundedBorder)
-                            .font(.system(size: 12))
+                            .typo(.body)
                     }
                 }
             }
@@ -229,12 +252,13 @@ struct RecordingRow: View {
                 Spacer()
                 Button("Done") { showRenameSpeakers = false }
                     .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.tint)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.accent)
             }
         }
-        .padding(14)
+        .padding(Space.s6)
         .frame(width: 220)
+        .glassSurface(in: Rectangle())
     }
 
     private func speakerNameBinding(for label: String) -> Binding<String> {
@@ -249,14 +273,15 @@ struct RecordingRow: View {
     @ViewBuilder
     private var regenerateControl: some View {
         if isRegenerating {
-            HStack(spacing: 5) {
+            HStack(spacing: Space.s3) {
                 ProgressView()
                     .controlSize(.small)
                     .scaleEffect(0.7)
                 if regenerator.totalChunks > 1 {
                     Text("\(regenerator.transcribedChunks)/\(regenerator.totalChunks)")
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .typo(.mono)
+                        .contentTransition(.numericText())
+                        .foregroundStyle(faintInk)
                 }
             }
             .frame(minWidth: 24, minHeight: 24)
@@ -266,8 +291,8 @@ struct RecordingRow: View {
                 showRegenerateMenu.toggle()
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .font(Typo.body)
+                    .foregroundStyle(Palette.inkMuted)
                     .frame(width: 24, height: 24)
                     .contentShape(Rectangle())
             }
@@ -319,7 +344,7 @@ struct RecordingRow: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 12))
+                .font(Typo.body)
                 .foregroundStyle(tint)
                 .frame(width: 24, height: 24)
                 .contentShape(Rectangle())
@@ -327,14 +352,6 @@ struct RecordingRow: View {
         .buttonStyle(.plain)
         .help(help)
     }
-
-    private static let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        formatter.doesRelativeDateFormatting = true
-        return formatter
-    }()
 }
 
 /// Renders one transcript: a selectable, expandable body that clamps to a few
@@ -343,6 +360,11 @@ struct RecordingRow: View {
 /// and remove; without one it's the bare text, as a single-transcript row shows.
 struct TranscriptBlockView: View {
     let text: String
+    /// History's live search query. Non-empty means the matched substrings are
+    /// washed in `accent` @ 0.22 with `ink` on top — an `AttributedString` on
+    /// the same `Text`, so selection, the line clamp and "Show more" all keep
+    /// working exactly as they do unsearched.
+    var highlight: String = ""
     let header: Header?
 
     /// Per-version chrome shown when comparing multiple transcripts.
@@ -358,14 +380,17 @@ struct TranscriptBlockView: View {
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
 
+    @Environment(\.motion) private var motion
+
     /// Lines shown before the transcript is clamped and a "Show more" appears.
     /// Kept short so a collapsed row scans as a preview, not a wall of text.
     private static let collapsedLineLimit = 3
 
     /// One source of truth for the transcript type, shared by the visible body
     /// and the hidden measuring probes so truncation is measured against exactly
-    /// what's drawn.
-    private static let transcriptFont = Font.system(size: 12)
+    /// what's drawn — including the step's line-height, which the probes have to
+    /// carry or they measure a shorter block than the row draws.
+    private static let transcriptStyle: Typo.Style = .body
 
     /// Truncated when one extra line would make the transcript taller — i.e. it
     /// overflows the collapsed clamp. Derived from stable, expand-independent
@@ -381,57 +406,76 @@ struct TranscriptBlockView: View {
     @ViewBuilder
     private var content: some View {
         if let header {
-            VStack(alignment: .leading, spacing: 8) {
-                headerRow(header)
-                transcriptBody
+            // A version block is a well inside the row's plate, so its radius is
+            // derived from the enclosing plate rather than typed.
+            ConcentricRectangle(inset: Space.s3) { shape in
+                VStack(alignment: .leading, spacing: Space.s4) {
+                    headerRow(header)
+                    transcriptBody
+                }
+                .padding(Space.s5)
+                .background(shape.fill(Palette.wellFill))
+                .overlay(
+                    shape.strokeBorder(
+                        header.isActive ? Palette.accent.opacity(0.35) : Color.clear
+                    )
+                )
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(header.isActive ? Color.accentColor.opacity(0.35) : Color.clear)
-            )
         } else {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: Space.s4) {
                 transcriptBody
             }
         }
     }
 
     private func headerRow(_ header: Header) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s4) {
             if header.isActive {
                 Circle()
-                    .fill(Color.accentColor)
+                    .fill(Palette.accent)
                     .frame(width: 5, height: 5)
             }
             Text(header.label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(header.isActive ? .primary : .secondary)
+                .typo(.captionMedium)
+                .foregroundStyle(header.isActive ? Palette.ink : Palette.inkMuted)
             if header.isActive {
                 Text("Current")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(.tint)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(Color.accentColor.opacity(0.14)))
+                    .typo(.micro)
+                    .textCase(.uppercase)
+                    .foregroundStyle(Palette.accent)
+                    .padding(.horizontal, Space.s3)
+                    .padding(.vertical, Space.s1)
+                    .background(Capsule().fill(Palette.accent.opacity(0.14)))
             }
-            Spacer(minLength: 8)
-            smallIcon(copied ? "checkmark" : "doc.on.doc", tint: copied ? .green : .secondary, help: "Copy this version") {
+            Spacer(minLength: Space.s4)
+            smallIcon(
+                copied ? "checkmark" : "doc.on.doc",
+                tint: copied ? Palette.signalReady : Palette.inkMuted,
+                help: "Copy this version"
+            ) {
                 copyText()
             }
-            smallIcon("trash", tint: .secondary, help: "Remove this version", action: header.onRemove)
+            smallIcon(
+                "trash",
+                tint: Palette.inkMuted,
+                help: "Remove this version",
+                action: header.onRemove
+            )
         }
+    }
+
+    /// The body text, with any search hits marked. Unsearched this is a plain
+    /// `AttributedString` carrying no attributes, so the `.secondary`
+    /// foreground style below still owns every glyph.
+    private var attributedText: AttributedString {
+        HistorySearch.highlighted(text, query: highlight)
     }
 
     @ViewBuilder
     private var transcriptBody: some View {
-        Text(text)
-            .font(Self.transcriptFont)
-            .foregroundStyle(.secondary)
+        Text(attributedText)
+            .typo(Self.transcriptStyle)
+            .foregroundStyle(Palette.inkMuted)
             .textSelection(.enabled)
             .lineLimit(expanded ? nil : Self.collapsedLineLimit)
             .fixedSize(horizontal: false, vertical: true)
@@ -445,11 +489,11 @@ struct TranscriptBlockView: View {
 
         if isTruncated || expanded {
             Button(expanded ? "Show less" : "Show more") {
-                withAnimation(.easeInOut(duration: 0.15)) { expanded.toggle() }
+                withAnimation(motion.layout) { expanded.toggle() }
             }
             .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(.tint)
+            .typo(.captionMedium)
+            .foregroundStyle(Palette.accent)
         }
     }
 
@@ -469,7 +513,7 @@ struct TranscriptBlockView: View {
 
     private func measuringText(lineLimit: Int?, onHeight: @escaping (CGFloat) -> Void) -> some View {
         Text(text)
-            .font(Self.transcriptFont)
+            .typo(Self.transcriptStyle)
             .lineLimit(lineLimit)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -503,7 +547,7 @@ struct TranscriptBlockView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 11))
+                .font(Typo.captionMedium)
                 .foregroundStyle(tint)
                 .frame(width: 22, height: 22)
                 .contentShape(Rectangle())
@@ -519,15 +563,17 @@ struct TranscriptBlockView: View {
 struct RecordingTypeBadge: View {
     let source: RecordingHistoryEntry.Source?
 
+    @Environment(\.increaseContrast) private var increaseContrast
+
     var body: some View {
         let resolved = source ?? .dictation
-        HStack(spacing: 3) {
+        HStack(spacing: Space.s1) {
             Image(systemName: resolved.symbolName)
-                .font(.system(size: 9, weight: .medium))
+                .font(Typo.micro)
             Text(resolved.displayName)
-                .font(.system(size: 11))
+                .typo(.caption)
         }
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
     }
 }
 
@@ -541,14 +587,10 @@ struct PlayTile: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(
-                        isPlaying
-                        ? AnyShapeStyle(Color.accentColor)
-                        : AnyShapeStyle(Color.primary.opacity(0.06))
-                    )
+                    .fill(isPlaying ? Palette.accent : Palette.ink.opacity(0.06))
                 Image(systemName: isPlaying ? "stop.fill" : "play.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isPlaying ? Color.white : Color.secondary)
+                    .font(Typo.micro)
+                    .foregroundStyle(isPlaying ? Color.white : Palette.inkMuted)
             }
             .frame(width: 28, height: 28)
             .contentShape(Circle())

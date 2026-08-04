@@ -1,52 +1,20 @@
+import AppKit
 import SwiftUI
 
-/// Shared building blocks for the History and Conversations panes: a large
-/// title, a single soft container for the recordings list, quiet section
-/// captions/footers, and the capsule buttons the record card uses. These two
-/// screens read as the app's "library" (browsing saved content); they aim for a
-/// calm, minimal look — hairlines and whitespace over heavy chrome.
+/// Shared building blocks for the History and Conversations panes: the
+/// recordings list, quiet section captions/footers, and the capsule buttons the
+/// record card uses. These two screens read as the app's "library" (browsing
+/// saved content); they aim for a calm, minimal look — hairlines and whitespace
+/// over heavy chrome.
+///
+/// The pane title lives in `PaneHeader` (SettingsView.swift) — the 27pt bold
+/// `LargeTitleHeader` that used to live here is gone, along with the app's only
+/// use of bold.
+///
+/// The surface these panes sit on is `Plate`; the old `InsetCard` (radius 12,
+/// primary @ 0.035, no stroke) is gone too.
 
-// MARK: - Header
-
-/// Large navigation-style title + subtitle that anchors each pane. Bigger than
-/// `PaneHeader`, but semibold rather than heavy so it reads as quiet emphasis.
-struct LargeTitleHeader: View {
-    let title: String
-    let subtitle: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            Text(title)
-                .font(.system(size: 27, weight: .bold))
-            Text(subtitle)
-                .font(.system(size: 13))
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-    }
-}
-
-// MARK: - Grouped containers
-
-/// A single soft container — the one bit of surface the panes lean on, used for
-/// the recordings list and the state-driven cards. No stroke; a barely-there
-/// fill so it separates from the pane without reading as a boxy card. Content
-/// manages its own padding so a list of rows can run edge-to-edge with hairline
-/// separators between them.
-struct InsetCard<Content: View>: View {
-    private static var cornerRadius: CGFloat { 12 }
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous)
-                    .fill(Color.primary.opacity(0.035))
-            )
-            .clipShape(RoundedRectangle(cornerRadius: Self.cornerRadius, style: .continuous))
-    }
-}
+// MARK: - Section captions
 
 /// Small gray caption above a grouped section (an iOS list header). The
 /// optional trailing slot carries section controls like "Clear All" or a
@@ -56,14 +24,14 @@ struct GroupCaption<Trailing: View>: View {
     @ViewBuilder var trailing: Trailing
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: Space.s4) {
             Text(text)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.inkMuted)
+            Spacer(minLength: Space.s4)
             trailing
         }
-        .padding(.horizontal, 6)
+        .padding(.horizontal, Space.s3)
     }
 }
 
@@ -79,21 +47,25 @@ struct GroupFooter: View {
 
     var body: some View {
         Text(text)
-            .font(.system(size: 11))
-            .foregroundStyle(.tertiary)
+            .typo(.caption)
+            .foregroundStyle(Palette.inkFaint)
             .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, 6)
+            .padding(.horizontal, Space.s3)
     }
 }
 
 // MARK: - Recordings list
 
-/// An inset-grouped list of saved recordings: one card, rows divided by
-/// edge-to-edge hairlines. Shared by History (all recordings, with type badges)
-/// and Conversations (conversations only, badge hidden).
+/// An inset-grouped list of saved recordings: one flush `Plate`, rows divided
+/// by hairlines inset 14pt from the leading edge. Shared by History (all
+/// recordings, with type badges) and Conversations (conversations only, badge
+/// hidden).
 struct RecordingsList: View {
     let entries: [RecordingHistoryEntry]
     var showsTypeBadge: Bool = true
+    /// History's live search query, forwarded so each row can mark its matched
+    /// substrings. Empty in Conversations, which has no search field.
+    var highlight: String = ""
     let isPlaying: (RecordingHistoryEntry) -> Bool
     let onPlay: (RecordingHistoryEntry) -> Void
     let onDelete: (RecordingHistoryEntry) -> Void
@@ -102,30 +74,21 @@ struct RecordingsList: View {
     let onRenameSpeakers: (RecordingHistoryEntry, [String: String]) -> Void
 
     var body: some View {
-        InsetCard {
-            // Lazy so opening a long History doesn't lay out every row's
-            // transcript and its two hidden measuring probes up front; only
-            // rows scrolled into view are measured.
-            LazyVStack(spacing: 0) {
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    if index > 0 {
-                        Rectangle()
-                            .fill(Color.primary.opacity(0.06))
-                            .frame(height: 1)
-                            .padding(.leading, 16)
-                    }
-                    RecordingRow(
-                        entry: entry,
-                        isPlaying: isPlaying(entry),
-                        showsTypeBadge: showsTypeBadge,
-                        onPlay: { onPlay(entry) },
-                        onDelete: { onDelete(entry) },
-                        onToggleFavorite: { onToggleFavorite(entry) },
-                        onRemoveTranscript: { onRemoveTranscript(entry, $0) },
-                        onRenameSpeakers: { onRenameSpeakers(entry, $0) }
-                    )
-                }
-            }
+        // `FlushPlate` is lazy, so opening a long History doesn't lay out every
+        // row's transcript and its two hidden measuring probes up front; only
+        // rows scrolled into view are measured. It also owns the dividers.
+        FlushPlate(data: entries) { entry in
+            RecordingRow(
+                entry: entry,
+                isPlaying: isPlaying(entry),
+                showsTypeBadge: showsTypeBadge,
+                highlight: highlight,
+                onPlay: { onPlay(entry) },
+                onDelete: { onDelete(entry) },
+                onToggleFavorite: { onToggleFavorite(entry) },
+                onRemoveTranscript: { onRemoveTranscript(entry, $0) },
+                onRenameSpeakers: { onRenameSpeakers(entry, $0) }
+            )
         }
     }
 }
@@ -137,19 +100,23 @@ struct RecordingsList: View {
 struct FavoritesFilterButton: View {
     @Binding var isOn: Bool
 
+    /// The favourite amber, as a light/dark pair — `Color.yellow` is unreadable
+    /// on a white plate in light appearance.
+    static let tint = Palette.dynamic("favorite", light: 0xC99A00, dark: 0xFFD426)
+
     var body: some View {
         Button { isOn.toggle() } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: Space.s2) {
                 Image(systemName: isOn ? "star.fill" : "star")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(Typo.micro)
                 Text("Favorites")
-                    .font(.system(size: 11, weight: .medium))
+                    .typo(.captionMedium)
             }
-            .foregroundStyle(isOn ? Color.yellow : Color.secondary)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4)
+            .foregroundStyle(isOn ? Self.tint : Palette.inkMuted)
+            .padding(.horizontal, Space.s4)
+            .padding(.vertical, Space.s2)
             .background(
-                Capsule().fill(isOn ? Color.yellow.opacity(0.16) : Color.primary.opacity(0.06))
+                Capsule().fill(isOn ? Self.tint.opacity(0.16) : Palette.wellFill)
             )
             .contentShape(Capsule())
         }
@@ -160,63 +127,10 @@ struct FavoritesFilterButton: View {
 
 // MARK: - Capsule buttons
 
-/// A filled capsule split into a primary action and a trailing menu, iOS-style —
-/// one tap target for the common action (Start Recording) and a chevron that
-/// reveals secondary actions (Upload File…). Reads as a single pill: the two
-/// halves share the accent fill, divided by a hairline.
-struct SplitCapsuleButton<MenuContent: View>: View {
-    let title: String
-    var systemImage: String? = nil
-    var tint: Color = .accentColor
-    var isDisabled: Bool = false
-    let action: () -> Void
-    @ViewBuilder var menu: () -> MenuContent
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: action) {
-                HStack(spacing: 7) {
-                    if let systemImage {
-                        Image(systemName: systemImage)
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    Text(title)
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .padding(.leading, 18)
-                .padding(.trailing, 14)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Rectangle()
-                .fill(Color.white.opacity(0.25))
-                .frame(width: 1, height: 20)
-
-            Menu {
-                menu()
-            } label: {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .bold))
-                    .padding(.horizontal, 11)
-                    .padding(.vertical, 10)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(.plain)
-            .fixedSize()
-        }
-        .foregroundStyle(.white)
-        .background(Capsule().fill(tint))
-        .clipShape(Capsule())
-        .fixedSize()
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1)
-    }
-}
+// `SplitCapsuleButton` (a filled capsule split into Start Recording + a chevron
+// menu holding Upload File…) is gone. Both of its actions are toolbar items on
+// the Conversations pane now — Start Recording as a prominent item, Upload File…
+// in the system overflow — so the control had zero call sites left.
 
 /// Filled or tinted capsule button in the iOS style — the primary affordance on
 /// the Conversations record card (Start, Stop & Transcribe, Cancel).
@@ -226,22 +140,22 @@ struct CapsuleActionButton: View {
     let title: String
     var systemImage: String? = nil
     var style: Style = .primary
-    var tint: Color = .accentColor
+    var tint: Color = Palette.accent
     var isDisabled: Bool = false
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 7) {
+            HStack(spacing: Space.s3) {
                 if let systemImage {
                     Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(Typo.headline)
                 }
                 Text(title)
-                    .font(.system(size: 14, weight: .semibold))
+                    .typo(.headline)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 10)
+            .padding(.horizontal, Space.s6)
+            .padding(.vertical, Space.s4)
             .foregroundStyle(style == .primary ? AnyShapeStyle(.white) : AnyShapeStyle(tint))
             .background(
                 Capsule()

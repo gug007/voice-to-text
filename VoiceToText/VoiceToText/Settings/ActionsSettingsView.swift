@@ -9,30 +9,28 @@ struct ActionsPane: View {
     var onShowCloudSettings: () -> Void = {}
 
     @State private var editorDraft: ActionEditorDraft?
+    @Environment(\.motion) private var motion
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
-                    title: "Actions",
-                    subtitle: "One-click AI edits for your transcript — enabled actions show as buttons in the review panel."
-                )
+        PaneScaffold {
+            PaneHeader(
+                title: "Actions",
+                subtitle: "One-click AI edits for your transcript — enabled actions show as buttons in the review panel."
+            )
 
-                if !keyStore.hasKey {
-                    missingKeyBanner
-                }
-
-                actionList
-
-                addRow
-
-                Text("Actions send the transcript to OpenAI (\(ActionRunner.modelId)). In the review panel, click an action or press ⌘1–⌘9.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+            if !keyStore.hasKey {
+                missingKeyBanner
             }
-            .padding(32)
-            .animation(.easeInOut(duration: 0.18), value: keyStore.hasKey)
+
+            actionList
+
+            addRow
+
+            Text("Actions send the transcript to OpenAI (\(ActionRunner.modelId)). In the review panel, click an action or press ⌘1–⌘9.")
+                .typo(.caption)
+                .foregroundStyle(Palette.inkFaint)
         }
+        .animation(motion.layout, value: keyStore.hasKey)
         .sheet(item: $editorDraft) { draft in
             ActionEditorSheet(draft: draft) { saved in
                 if store.actions.contains(where: { $0.id == saved.id }) {
@@ -47,38 +45,20 @@ struct ActionsPane: View {
     // MARK: - Missing key banner
 
     /// Shown while no OpenAI key is configured — actions can't run without
-    /// one. A quiet tinted banner instead of an alert: informative, one
-    /// action, and it disappears on its own once a key is saved.
+    /// one. The same status vocabulary the General pane's permission group
+    /// uses: informative, one action, and it disappears on its own once a key
+    /// is saved.
     private var missingKeyBanner: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "key.fill")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("OpenAI API key required")
-                    .font(.system(size: 13, weight: .medium))
-                Text("Actions run on the OpenAI API and stay inactive until a key is added.")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: 12)
-            Button("Add Key…") {
-                onShowCloudSettings()
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.orange.opacity(0.08))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.25))
-        )
+        StatusPlate([
+            StatusItem(
+                id: "openai-key",
+                level: .warning,
+                title: "OpenAI API key required",
+                message: "Actions run on the OpenAI API and stay inactive until a key is added.",
+                actionTitle: "Add Key…",
+                action: onShowCloudSettings
+            )
+        ])
         .transition(.opacity)
     }
 
@@ -88,10 +68,10 @@ struct ActionsPane: View {
     private var actionList: some View {
         if store.actions.isEmpty {
             Text("No actions yet. Add one below, or pick a suggestion.")
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
         } else {
-            VStack(spacing: 8) {
+            VStack(spacing: Space.s4) {
                 ForEach(store.actions) { action in
                     actionRow(action, enabledIndex: enabledIndex(of: action))
                 }
@@ -107,30 +87,31 @@ struct ActionsPane: View {
     }
 
     private func actionRow(_ action: DictationAction, enabledIndex: Int?) -> some View {
-        RowCard {
-            HStack(alignment: .center, spacing: 16) {
-                VStack(alignment: .leading, spacing: 3) {
+        Plate {
+            HStack(alignment: .center, spacing: Space.s6) {
+                VStack(alignment: .leading, spacing: Space.s2) {
                     Text(action.name)
-                        .font(.system(size: 14, weight: .medium))
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
                     Text(action.prompt)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .opacity(action.isEnabled ? 1.0 : 0.5)
-                Spacer(minLength: 12)
+                Spacer(minLength: Space.s5)
                 if let enabledIndex, enabledIndex < 9 {
                     Text("⌘\(enabledIndex + 1)")
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .typo(.mono)
+                        .foregroundStyle(Palette.inkFaint)
                 }
                 Button {
                     editorDraft = ActionEditorDraft(action: action)
                 } label: {
                     Image(systemName: "pencil")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .font(Typo.body)
+                        .foregroundStyle(Palette.inkMuted)
                 }
                 .buttonStyle(.plain)
                 .help("Edit action")
@@ -138,8 +119,8 @@ struct ActionsPane: View {
                     store.remove(id: action.id)
                 } label: {
                     Image(systemName: "trash")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .font(Typo.captionMedium)
+                        .foregroundStyle(Palette.inkMuted)
                 }
                 .buttonStyle(.plain)
                 .help("Delete action")
@@ -149,7 +130,6 @@ struct ActionsPane: View {
                     .controlSize(.small)
                     .help(action.isEnabled ? "Hide from the review panel" : "Show in the review panel")
             }
-            .padding(18)
         }
     }
 
@@ -221,38 +201,39 @@ private struct ActionEditorSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: Space.s6) {
             Text(draft.isNew ? "New Action" : "Edit Action")
-                .font(.system(size: 16, weight: .semibold))
+                .typo(.title)
+                .foregroundStyle(Palette.ink)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.s3) {
                 Text("Name")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
                 TextField("e.g. Translate to English", text: $name)
                     .textFieldStyle(.roundedBorder)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: Space.s3) {
                 Text("Instruction")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
                 TextEditor(text: $prompt)
-                    .font(.system(size: 13))
+                    .font(Typo.body)
                     .scrollContentBackground(.hidden)
-                    .padding(8)
+                    .padding(Space.s4)
                     .frame(height: 110)
                     .background(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .fill(Color(nsColor: .textBackgroundColor).opacity(0.5))
+                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                            .fill(Palette.wellFill)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                            .strokeBorder(Color.primary.opacity(0.08))
+                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                            .strokeBorder(Palette.hairline)
                     )
                 Text("Tell the AI how to transform the transcript.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.tertiary)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkFaint)
             }
 
             HStack {
@@ -273,7 +254,7 @@ private struct ActionEditorSheet: View {
                 .disabled(trimmedName.isEmpty || trimmedPrompt.isEmpty)
             }
         }
-        .padding(24)
+        .padding(Space.s7)
         .frame(width: 440)
     }
 }

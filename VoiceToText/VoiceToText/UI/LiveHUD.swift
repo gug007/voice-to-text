@@ -3,26 +3,45 @@ import Observation
 import OSLog
 import SwiftUI
 
-/// Recording HUD: non-activating, non-key — floats above whatever app the
-/// user is typing in without stealing focus.
-private final class NonKeyPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
-    override var canBecomeMain: Bool { false }
-}
+// MARK: - The panel
+//
+// PANEL / FOCUS MODEL
+//
+// There is exactly ONE panel. It used to be two — a non-key recording panel and
+// a key-accepting review panel — which ordered out and in at different sizes in
+// the same frame, which is why recording → review read as a glitch. The object
+// on screen now never changes identity; only `acceptsKey` flips.
+//
+// Key eligibility is a stored flag rather than a `true`/`false` override,
+// because `canBecomeKey` is consulted by AppKit when a window is ordered in or
+// asked to become key — not continuously. Every flip therefore goes through
+// `setKeyEligible(_:)`, which re-orders the panel afterwards.
+//
+// GIVING KEY BACK is the dangerous direction. A nonactivating panel that is key
+// has taken key status away from the frontmost app's window; simply setting
+// `acceptsKey = false` would leave it key with no way to type into it and no
+// way for the target app to get the caret back. The only ordering AppKit
+// documents for handing key back to the previously key window is `orderOut(_:)`
+// — which is exactly what the two-panel version did on every one of these
+// transitions. So a downgrade orders the panel out (key returns to the target
+// app, precisely as today), flips the flag, and orders it straight back in
+// within the same runloop turn.
+private final class HUDPanel: NSPanel {
+    /// Flipped per mode by `LiveHUDPanel.setKeyEligible(_:)`. Never write it
+    /// directly — the panel must be re-ordered after every change.
+    var acceptsKey = false
 
-/// Review HUD: nonactivating (doesn't bring our Settings window forward with it)
-/// but still accepts key status so the user can edit the transcript in a TextEditor.
-/// Same pattern as Spotlight/Raycast.
-private final class KeyAcceptingPanel: NSPanel {
-    override var canBecomeKey: Bool { true }
+    override var canBecomeKey: Bool { acceptsKey }
+    /// Never main: the app must not come forward, the Settings window must stay
+    /// wherever the user left it.
     override var canBecomeMain: Bool { false }
 }
 
 /// Hosting view that responds to the very first click even when our app isn't
-/// the active one. The HUD panels are nonactivating, so without this the first
+/// the active one. The HUD panel is nonactivating, so without this the first
 /// click on a HUD button while another app is frontmost is consumed to bring the
 /// panel forward instead of firing the button — leaving the buttons dead until a
-/// second click. Applies to both HUD panels.
+/// second click.
 ///
 /// Concrete (non-generic) on purpose: a generic `NSHostingView<Content>`
 /// subclass crashes the Swift 6.3 optimizer (EarlyPerfInliner segfault on the
@@ -31,15 +50,52 @@ private final class FirstMouseHostingView: NSHostingView<LiveHUDView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
 
-enum LiveHUDMode {
+// MARK: - Modes
+
+nonisolated enum LiveHUDMode: Sendable, Equatable {
     case recording
     /// Recording resumed from a review session: the prior transcript stays on
     /// screen (read-only) while new speech streams in at the caret.
     case resumeRecording
     case transcribing
     case reviewing
+    /// A transcription failure. No longer a separate 480×200 panel — it renders
+    /// as a banner inside the same card at the same review width.
     case failed
+
+    /// Whether the panel accepts key status (and therefore keyboard input) in
+    /// this mode. Recording and transcribing must NOT: the user is typing in
+    /// another app and the caret has to stay there.
+    var acceptsKey: Bool {
+        switch self {
+        case .recording, .transcribing: return false
+        case .resumeRecording, .reviewing, .failed: return true
+        }
+    }
 }
+
+// MARK: - Feature flags
+
+nonisolated enum HUDFeatureFlags {
+    /// THE MORPH KILL SWITCH.
+    ///
+    /// `defaults write com.gug007.VoiceToText hud.morph -bool NO` restores the
+    /// pre-Clear-Coat behaviour: the panel frame is set with `animate: false`
+    /// and the card's mode change carries no animation, i.e. today's hard cut.
+    /// Read fresh at every transition, so flipping it takes effect on the next
+    /// dictation without a rebuild or even a relaunch.
+    ///
+    /// It exists because the NSPanel frame animation and the SwiftUI spring are
+    /// two clocks that have to agree frame-for-frame; if they ever fight on a
+    /// machine we can't reproduce, this is the switch that turns the fight off.
+    static let morphKey = "hud.morph"
+
+    static var morphEnabled: Bool {
+        UserDefaults.standard.object(forKey: morphKey) as? Bool ?? true
+    }
+}
+
+// MARK: - State
 
 @Observable
 @MainActor
@@ -77,12 +133,17 @@ final class LiveHUDState {
     var recordingPrefix: String = ""
     var recordingSuffix: String = ""
 
+    /// Set while this session came out of a review (Resume). Keeps the card at
+    /// the review width through the resumed take AND its transcribing phase, so
+    /// the morph never snaps back to the compact size mid-session.
+    var resumedSession: Bool = false
+
     /// Last error surfaced through the failure HUD. Cleared whenever the HUD
     /// transitions away from `.failed`.
     var failureMessage: String = ""
     /// Whether the failure HUD should offer a Retry button. Failures whose
     /// audio can't possibly succeed on a second pass (too-short, VAD silent)
-    /// set this to `false` and only show Dismiss.
+    /// set this to `false` and only show Close.
     var failureCanRetry: Bool = false
 
     /// Whether this review session shows the action chips row. Snapshotted
@@ -102,6 +163,11 @@ final class LiveHUDState {
     /// oldest first. Revert pops one entry at a time, so chained actions
     /// (translate, then improve) undo step by step back to the original.
     var actionRevertStack: [String] = []
+
+    /// Bumped every time the panel is shown from hidden. The card replays its
+    /// entrance spring on change — `onAppear` fires once per hosting view, and
+    /// the hosting view now outlives every session.
+    var presentationCount: Int = 0
 
     /// Cursor position inside the review editor. Written by the editor's
     /// delegate, read by DictationController when Resume is pressed so the
@@ -133,35 +199,34 @@ struct TranscribingProgress: Equatable {
     let total: Int
 }
 
+// MARK: - Controller
+
 @MainActor
 final class LiveHUDPanel {
     static let shared = LiveHUDPanel()
-    private var recordingPanel: NSPanel?
-    private var reviewPanel: NSPanel?
+
+    private var panel: HUDPanel?
     private let state = LiveHUDState.shared
 
-    private let recordingSize = NSSize(width: 480, height: 168)
-    /// Taller recording layout that reserves room for the live transcript
-    /// (streaming engines). Used while `state.showsLiveText` is set, including
-    /// the recording→transcribing hand-off (which leaves the flag untouched).
-    private let recordingLiveSize = NSSize(width: 480, height: 240)
-    private var activeRecordingSize: NSSize {
-        state.showsLiveText ? recordingLiveSize : recordingSize
-    }
-    private let reviewSize = NSSize(width: 620, height: 260)
-    /// Taller review layout that reserves room for the action chips row.
-    private let reviewActionsSize = NSSize(width: 620, height: 300)
-    private let failureSize = NSSize(width: 480, height: 200)
+    /// Last card size SwiftUI actually laid out. The panel frame is always this
+    /// plus the shadow gutter — there are no `NSSize` constants left.
+    private var measuredCardSize: CGSize = .zero
+    /// When the current morph ends. Late size corrections inside this window
+    /// ride the same spring; after it they snap.
+    private var morphDeadline: Date = .distantPast
+
+    private var dragStartPanelOrigin: NSPoint?
+    private var dragStartMouse: NSPoint?
 
     private init() {}
+
+    // MARK: Presentation
 
     func show(
         showsLiveText: Bool = false,
         onStop: (@MainActor () -> Void)? = nil,
         onCancel: (@MainActor () -> Void)? = nil
     ) {
-        reviewPanel?.orderOut(nil)
-
         state.mode = .recording
         state.isRecording = true
         state.elapsedSeconds = 0
@@ -175,6 +240,7 @@ final class LiveHUDPanel {
         state.partialTranscript = ""
         state.recordingPrefix = ""
         state.recordingSuffix = ""
+        state.resumedSession = false
         state.failureMessage = ""
         state.failureCanRetry = false
         state.selectedRange = NSRange(location: 0, length: 0)
@@ -189,16 +255,13 @@ final class LiveHUDPanel {
         state.onRetry = nil
         state.onRunAction = nil
 
-        let p = ensureRecordingPanel()
-        position(p, size: activeRecordingSize)
-        p.orderFrontRegardless()
-        AppLog.hud.info("HUD shown at \(String(describing: p.frame))")
+        present()
+        AppLog.hud.info("HUD shown at \(String(describing: self.panel?.frame))")
     }
 
-    /// Recording resumed from a review session. Keeps the review panel up (so
-    /// there's no jump) and renders the resume-recording layout: the prior
-    /// transcript, split at the caret, stays visible while new speech streams
-    /// in at the insertion point.
+    /// Recording resumed from a review session: the prior transcript, split at
+    /// the caret, stays visible while new speech streams in at the insertion
+    /// point. The card keeps the review session's exact size so nothing shifts.
     func showResumeRecording(
         prefix: String,
         suffix: String,
@@ -206,8 +269,6 @@ final class LiveHUDPanel {
         onStop: (@MainActor () -> Void)? = nil,
         onCancel: (@MainActor () -> Void)? = nil
     ) {
-        recordingPanel?.orderOut(nil)
-
         state.mode = .resumeRecording
         state.isRecording = true
         state.elapsedSeconds = 0
@@ -217,6 +278,7 @@ final class LiveHUDPanel {
         state.partialTranscript = ""
         state.recordingPrefix = prefix
         state.recordingSuffix = suffix
+        state.resumedSession = true
         state.reviewBanner = nil
         state.runningActionId = nil
         // Drive the resume HUD's Finish/Cancel buttons; without these the
@@ -224,31 +286,26 @@ final class LiveHUDPanel {
         state.onStop = onStop
         state.onCancel = onCancel
 
-        // Reuse the review panel at its current size so the transcript doesn't
-        // shift when recording starts.
-        let p = ensureReviewPanel()
-        position(p, size: state.reviewShowsActions ? reviewActionsSize : reviewSize)
-        p.orderFrontRegardless()
-        p.makeKeyAndOrderFront(nil)
-        AppLog.hud.info("HUD resume-recording shown at \(String(describing: p.frame))")
+        present()
+        AppLog.hud.info("HUD resume-recording shown at \(String(describing: self.panel?.frame))")
     }
 
-    /// Reuses the recording panel (same size/position) for a seamless
-    /// hand-off from "recording" to "transcribing". Also hides the review
-    /// panel — needed when transitioning from the failure HUD (which is
-    /// hosted on the review panel) into a retry.
-    func showTranscribing() {
-        reviewPanel?.orderOut(nil)
-
+    /// Hand-off from "recording" to "transcribing" in the same card: the meter
+    /// keeps its samples and freezes in place rather than being replaced.
+    ///
+    /// `onCancel` is rebound rather than inherited from the recording session:
+    /// the control row still shows Cancel here (Finish is gone), and by this
+    /// point cancelling means abandoning the transcription, not the recording.
+    func showTranscribing(onCancel: @escaping @MainActor () -> Void) {
         state.mode = .transcribing
         state.isRecording = false
         state.level = 0
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
+        state.onCancel = onCancel
+        state.onStop = nil
 
-        let p = ensureRecordingPanel()
-        position(p, size: activeRecordingSize)
-        p.orderFrontRegardless()
+        present()
     }
 
     func showReview(
@@ -261,8 +318,6 @@ final class LiveHUDPanel {
         onRetry: (@MainActor () -> Void)? = nil,
         onRunAction: (@MainActor (DictationAction) -> Void)? = nil
     ) {
-        recordingPanel?.orderOut(nil)
-
         let nsLen = (text as NSString).length
         let caret = max(0, min(cursorLocation ?? nsLen, nsLen))
 
@@ -273,9 +328,10 @@ final class LiveHUDPanel {
         state.reviewBanner = banner
         state.failureMessage = ""
         state.failureCanRetry = false
+        state.resumedSession = false
         state.selectedRange = NSRange(location: caret, length: 0)
         // Snapshot once per session: the chip list, the row's presence, and
-        // the panel height are decided together, so a mid-review settings
+        // the card height are decided together, so a mid-review settings
         // change (key added, action toggled) can't squeeze the editor inside
         // a fixed frame or desync ⌘1–⌘9 from the visible chips.
         state.reviewActions = ActionsStore.shared.enabledActions
@@ -289,28 +345,20 @@ final class LiveHUDPanel {
         state.onRetry = onRetry
         state.onRunAction = onRunAction
 
-        let p = ensureReviewPanel()
-        position(p, size: state.reviewShowsActions ? reviewActionsSize : reviewSize)
-        // Nonactivating panel: becomes key for keyboard input without activating
-        // our app, so the Settings window stays wherever the user left it.
-        p.orderFrontRegardless()
-        p.makeKeyAndOrderFront(nil)
-        AppLog.hud.info("HUD review shown at \(String(describing: p.frame))")
+        present()
+        AppLog.hud.info("HUD review shown at \(String(describing: self.panel?.frame))")
     }
 
-    /// Displays the failure HUD with a user-facing error message. Offers Retry
-    /// when `canRetry` is true (network/transient failures); otherwise only a
-    /// Dismiss action (e.g. "no speech detected", where re-running the same
-    /// audio won't help). Hosted on the key-accepting review panel so the
-    /// buttons and Esc work, sized smaller than the review HUD.
+    /// A transcription failure, rendered as a banner inside the same card at the
+    /// same width as review — the standalone failure panel is gone. Offers Retry
+    /// when `canRetry` is true (network/transient failures); otherwise only
+    /// Close (e.g. "no speech detected", where re-running the audio won't help).
     func showFailure(
         message: String,
         canRetry: Bool,
         onRetry: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
-        recordingPanel?.orderOut(nil)
-
         state.mode = .failed
         state.isRecording = false
         state.level = 0
@@ -320,6 +368,7 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
         state.reviewText = ""
         state.reviewBanner = nil
+        state.resumedSession = false
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil
@@ -330,10 +379,7 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRunAction = nil
 
-        let p = ensureReviewPanel()
-        position(p, size: failureSize)
-        p.orderFrontRegardless()
-        p.makeKeyAndOrderFront(nil)
+        present()
         AppLog.hud.info("HUD failure shown: \(message)")
     }
 
@@ -373,6 +419,7 @@ final class LiveHUDPanel {
         state.partialTranscript = ""
         state.recordingPrefix = ""
         state.recordingSuffix = ""
+        state.resumedSession = false
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.failureMessage = ""
@@ -386,15 +433,17 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
-        recordingPanel?.orderOut(nil)
-        reviewPanel?.orderOut(nil)
+        panel?.orderOut(nil)
+        panel?.acceptsKey = false
+        morphDeadline = .distantPast
     }
 
-    /// Whether the given key event was delivered to the review panel.
-    /// Used to keep review-only shortcuts (⌘1–⌘9) from firing while the
-    /// user is typing in another of our windows (e.g. Settings).
+    /// Whether the given key event was delivered to the HUD while it is showing
+    /// the review transcript. Used to keep review-only shortcuts (⌘1–⌘9) from
+    /// firing while the user is typing in another of our windows (e.g.
+    /// Settings). The mode test is what the second panel used to provide.
     func isReviewPanelEvent(_ event: NSEvent) -> Bool {
-        event.window === reviewPanel
+        event.window === panel && state.mode == .reviewing
     }
 
     /// Current edited review text (read at paste time).
@@ -404,872 +453,321 @@ final class LiveHUDPanel {
     /// to decide where to splice the next transcription).
     var currentCursorLocation: Int { state.selectedRange.location }
 
-    private func ensureRecordingPanel() -> NSPanel {
-        if let recordingPanel { return recordingPanel }
+    // MARK: Panel lifecycle
 
-        let initialRect = NSRect(origin: .zero, size: recordingSize)
-        let p = NonKeyPanel(
-            contentRect: initialRect,
+    /// Orders the panel in for the mode already written into `state`, sizing it
+    /// from the layout the card is about to produce and flipping key
+    /// eligibility to match.
+    private func present() {
+        let panel = ensurePanel()
+        let wasVisible = panel.isVisible
+        let layout = HUDLayout(state: state)
+
+        if !wasVisible {
+            state.presentationCount &+= 1
+            measuredCardSize = .zero
+        }
+
+        // The card animates on the same spring, starting in the same runloop
+        // turn — that is the whole point of driving the frame from here rather
+        // than waiting for SwiftUI to report its new size.
+        let animate = wasVisible && HUDFeatureFlags.morphEnabled
+        if animate { morphDeadline = Date().addingTimeInterval(HUDMetrics.morphDuration) }
+
+        let estimate = layout.estimatedCardSize
+        measuredCardSize = estimate
+
+        // ORDERING. `setKeyEligible` re-orders the panel (an upgrade orders it
+        // front and makes it key; a downgrade from key orders it OUT and back
+        // in, which is the only way AppKit hands key status back to the target
+        // app). Ordering a window out mid-flight tears down an in-progress
+        // frame animation, so on a WARM show the key transition has to settle
+        // first and the morph starts after it — otherwise resuming from review
+        // and pressing Finish snaps instead of morphing.
+        //
+        // On a COLD show the frame has to be set first: the panel is not on
+        // screen yet, and ordering it in at the previous session's size would
+        // flash that size for a runloop turn before the correct frame lands.
+        // Nothing is animating then either (`animate` is false), so there is no
+        // in-flight animation for the ordering to interrupt.
+        if wasVisible {
+            setKeyEligible(layout.mode.acceptsKey, wasVisible: true)
+            applyFrame(cardSize: estimate, animated: animate)
+        } else {
+            applyFrame(cardSize: estimate, animated: animate)
+            setKeyEligible(layout.mode.acceptsKey, wasVisible: false)
+        }
+    }
+
+    private func ensurePanel() -> HUDPanel {
+        if let panel { return panel }
+
+        let rect = NSRect(origin: .zero, size: NSSize(width: 468, height: 180))
+        let p = HUDPanel(
+            contentRect: rect,
             styleMask: [.nonactivatingPanel, .borderless],
             backing: .buffered,
             defer: false
         )
-        configureFloating(p)
-        attachHosting(p, rect: initialRect)
-        recordingPanel = p
-        return p
-    }
-
-    private func ensureReviewPanel() -> NSPanel {
-        if let reviewPanel { return reviewPanel }
-
-        let initialRect = NSRect(origin: .zero, size: reviewSize)
-        let p = KeyAcceptingPanel(
-            contentRect: initialRect,
-            styleMask: [.nonactivatingPanel, .borderless],
-            backing: .buffered,
-            defer: false
-        )
-        configureFloating(p)
-        attachHosting(p, rect: initialRect)
-        reviewPanel = p
-        return p
-    }
-
-    private func configureFloating(_ p: NSPanel) {
         p.isReleasedWhenClosed = false
         p.isFloatingPanel = true
         p.level = .statusBar
         p.backgroundColor = .clear
         p.isOpaque = false
+        // The shadow is drawn in the card's layer so it can travel with the
+        // morph; a second AppKit shadow would lag it by a frame.
         p.hasShadow = false
         p.hidesOnDeactivate = false
         p.becomesKeyOnlyIfNeeded = true
+        p.animationBehavior = .utilityWindow
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-    }
 
-    private func attachHosting(_ p: NSPanel, rect: NSRect) {
-        let hosting = FirstMouseHostingView(rootView: LiveHUDView(state: state))
+        let hosting = FirstMouseHostingView(
+            rootView: LiveHUDView(state: state) { size in
+                LiveHUDPanel.shared.cardSizeChanged(size)
+            }
+        )
         hosting.frame = rect
         hosting.autoresizingMask = [.width, .height]
         p.contentView = hosting
+
+        panel = p
+        return p
     }
 
-    private func position(_ panel: NSPanel, size: NSSize) {
-        guard let screen = NSScreen.main else { return }
-        let screenFrame = screen.visibleFrame
-        let x = screenFrame.midX - size.width / 2
-        let y = screenFrame.minY + 120
-        panel.setFrame(
-            NSRect(x: x, y: y, width: size.width, height: size.height),
-            display: true,
-            animate: false
-        )
-    }
-}
+    /// The one place `canBecomeKey` changes.
+    ///
+    /// Upgrade: flip, then order front — AppKit only re-evaluates key
+    /// eligibility on an ordering operation, which is the trap this whole
+    /// merge had to survive.
+    ///
+    /// Downgrade: the panel currently holds key status taken from the target
+    /// app's window. `orderOut` is the only ordering that hands key back to the
+    /// previously key window — and it is precisely what the two-panel version
+    /// did on this transition — so we order out, flip, and order straight back
+    /// in inside one runloop turn.
+    private func setKeyEligible(_ eligible: Bool, wasVisible: Bool) {
+        guard let panel else { return }
 
-struct LiveHUDView: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        Group {
-            switch state.mode {
-            case .recording:
-                RecordingView(state: state)
-            case .resumeRecording:
-                ResumeRecordingView(state: state)
-            case .transcribing:
-                TranscribingView(state: state)
-            case .reviewing:
-                ReviewView(state: state)
-            case .failed:
-                FailedView(state: state)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 26, style: .continuous)
-                .fill(Color(white: 0.12))
-        )
-        .shadow(color: .black.opacity(0.22), radius: 18, x: 0, y: 4)
-        .padding(20)
-    }
-}
-
-private struct RecordingView: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        VStack(spacing: 10) {
-            LevelBars(samples: state.levelHistory)
-                .frame(maxWidth: .infinity)
-                .frame(height: 72)
-
-            if state.showsLiveText {
-                // The transcript area is pinned to a constant three-line height
-                // by the hidden sizer below, so the HUD never reflows — whether
-                // it shows the "Listening" indicator, one line, or three wrapped
-                // lines. An empty Text doesn't reserve its line count, so the
-                // sizer carries real line breaks to hold the height open.
-                // Newest words stay visible via head truncation.
-                ZStack(alignment: .topLeading) {
-                    Text("\n\n")
-                        .font(.system(size: 13, weight: .regular))
-                        .lineLimit(3, reservesSpace: true)
-                        .hidden()
-
-                    if state.partialTranscript.isEmpty {
-                        ListeningIndicator()
-                            .transition(.opacity)
-                    } else {
-                        Text(state.partialTranscript)
-                            .font(.system(size: 13, weight: .regular))
-                            .foregroundStyle(.white.opacity(0.85))
-                            .lineLimit(3, reservesSpace: true)
-                            .truncationMode(.head)
-                            .multilineTextAlignment(.leading)
-                            .transition(.opacity)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .animation(.easeOut(duration: 0.18), value: state.partialTranscript)
-            }
-
-            HStack(spacing: 8) {
-                Text(timeString)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .monospacedDigit()
-
-                Spacer()
-
-                ReviewKeyButton(
-                    title: "Cancel",
-                    hint: "esc",
-                    emphasis: .secondary
-                ) { state.onCancel?() }
-
-                ReviewKeyButton(
-                    title: "Finish",
-                    hint: finishHint,
-                    emphasis: .primary
-                ) { state.onStop?() }
-            }
-        }
-    }
-
-    private var timeString: String {
-        let total = Int(state.elapsedSeconds)
-        let minutes = total / 60
-        let seconds = total % 60
-        return String(format: "%d:%02d", minutes, seconds)
-    }
-
-    // Toggle mode finishes on the same hotkey, so show it; hold mode finishes on
-    // release, which has no key to surface, so the button stands alone there.
-    private var finishHint: String? {
-        switch HotkeyStore.shared.mode {
-        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
-        case .hold: return nil
-        }
-    }
-}
-
-/// Recording resumed from a review session. The transcript the user was
-/// reviewing stays on screen (read-only); for streaming engines the new words
-/// appear in accent color at the caret, while a compact level meter, elapsed
-/// timer, and Cancel / Finish buttons sit underneath.
-private struct ResumeRecordingView: View {
-    @Bindable var state: LiveHUDState
-
-    private static let bottomAnchor = "resume-transcript-end"
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            ScrollViewReader { proxy in
-                ScrollView(.vertical, showsIndicators: true) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        transcript
-                            .font(.system(size: 15))
-                            .multilineTextAlignment(.leading)
-                            .frame(maxWidth: .infinity, alignment: .topLeading)
-                        Color.clear.frame(height: 1).id(Self.bottomAnchor)
-                    }
-                }
-                .onChange(of: state.partialTranscript) {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        proxy.scrollTo(Self.bottomAnchor, anchor: .bottom)
-                    }
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            HStack(spacing: 12) {
-                RecordingDot()
-                LevelBars(samples: state.levelHistory)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 26)
-                Text(timeString)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
-                    .foregroundStyle(.white.opacity(0.5))
-                    .monospacedDigit()
-            }
-
-            HStack(spacing: 8) {
-                Spacer()
-
-                ReviewKeyButton(
-                    title: "Cancel",
-                    hint: "esc",
-                    emphasis: .secondary
-                ) { state.onCancel?() }
-
-                ReviewKeyButton(
-                    title: "Finish",
-                    hint: finishHint,
-                    emphasis: .primary
-                ) { state.onStop?() }
-            }
-        }
-    }
-
-    // Prior transcript at the editor's normal brightness; the in-progress
-    // dictation streams in accent blue at the caret so it's clear where the
-    // new words land. Buffered engines emit no partial, so the prior text
-    // simply stays put until the take is transcribed.
-    private var transcript: Text {
-        let priorColor = Color.white.opacity(0.92)
-        var result = Text(state.recordingPrefix).foregroundColor(priorColor)
-        if !state.partialTranscript.isEmpty {
-            if needsLeadingSpace {
-                result = result + Text(" ")
-            }
-            result = result + Text(state.partialTranscript)
-                .foregroundColor(Color(nsColor: .systemBlue))
-        }
-        result = result + Text(state.recordingSuffix).foregroundColor(priorColor)
-        return result
-    }
-
-    private var needsLeadingSpace: Bool {
-        guard let last = state.recordingPrefix.last, let first = state.partialTranscript.first else {
-            return false
-        }
-        return !last.isWhitespace && !first.isWhitespace
-    }
-
-    private var timeString: String {
-        let total = Int(state.elapsedSeconds)
-        return String(format: "%d:%02d", total / 60, total % 60)
-    }
-
-    // Mirror the fresh-recording HUD: toggle mode finishes on the same hotkey,
-    // so surface it on the button; hold mode finishes on release, which has no
-    // key to show, so the button stands alone.
-    private var finishHint: String? {
-        switch HotkeyStore.shared.mode {
-        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
-        case .hold: return nil
-        }
-    }
-}
-
-/// Pulsing red dot marking an active recording.
-private struct RecordingDot: View {
-    @State private var pulsing = false
-
-    var body: some View {
-        Circle()
-            .fill(Color.red)
-            .frame(width: 9, height: 9)
-            .opacity(pulsing ? 1 : 0.35)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
-                    pulsing = true
-                }
-            }
-    }
-}
-
-/// Placeholder shown while a streaming engine is connected but hasn't emitted
-/// any words yet. A breathing "live" dot beside a shimmering "Listening" label
-/// — reuses the same shimmer treatment as the transcribing state so the two
-/// phases read as one continuous animation rather than a hard cut.
-private struct ListeningIndicator: View {
-    @State private var pulsing = false
-
-    private static let dotSize: CGFloat = 7
-
-    var body: some View {
-        HStack(spacing: 9) {
-            Circle()
-                .fill(.white)
-                .frame(width: Self.dotSize, height: Self.dotSize)
-                .scaleEffect(pulsing ? 1 : 0.85)
-                .opacity(pulsing ? 1 : 0.5)
-
-            ShimmerText("Listening")
-                .font(.system(size: 13, weight: .medium))
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.3).repeatForever(autoreverses: true)) {
-                pulsing = true
-            }
-        }
-    }
-}
-
-private struct TranscribingView: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        VStack(spacing: 14) {
-            PulsingDots()
-                .frame(height: 14)
-
-            ShimmerText("Transcribing")
-                .font(.system(size: 14, weight: .medium))
-
-            HStack(spacing: 10) {
-                if let progress = state.transcribingProgress {
-                    Text("\(progress.current) / \(progress.total)")
-                }
-                Text(elapsedString)
-                    .monospacedDigit()
-            }
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .foregroundStyle(.white.opacity(0.42))
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    private var elapsedString: String {
-        String(format: "%0.1fs", state.transcribingElapsedSeconds)
-    }
-}
-
-private struct PulsingDots: View {
-    @State private var phase: Double = 0
-
-    private static let dotCount = 3
-    private static let dotSize: CGFloat = 8
-    private static let dotSpacing: CGFloat = 10
-    private static let cycleDuration: TimeInterval = 1.2
-
-    var body: some View {
-        HStack(spacing: Self.dotSpacing) {
-            ForEach(0..<Self.dotCount, id: \.self) { index in
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: Self.dotSize, height: Self.dotSize)
-                    .opacity(opacity(at: index))
-                    .scaleEffect(scale(at: index))
-            }
-        }
-        .onAppear {
-            withAnimation(.linear(duration: Self.cycleDuration).repeatForever(autoreverses: false)) {
-                phase = 1
-            }
-        }
-    }
-
-    // Per-dot phase offset makes the highlight travel left → right;
-    // the triangle shape smooths the cycle.
-    private func wave(at index: Int) -> Double {
-        let offset = Double(index) / Double(Self.dotCount)
-        let p = (phase + offset).truncatingRemainder(dividingBy: 1.0)
-        return 1 - abs(p - 0.5) * 2
-    }
-
-    private func opacity(at index: Int) -> Double {
-        0.25 + 0.7 * wave(at: index)
-    }
-
-    private func scale(at index: Int) -> Double {
-        0.8 + 0.4 * wave(at: index)
-    }
-}
-
-private struct ShimmerText: View {
-    let text: String
-    @State private var phase: CGFloat = -1
-
-    init(_ text: String) { self.text = text }
-
-    private static let cycleDuration: TimeInterval = 1.8
-    private static let baseOpacity: Double = 0.4
-
-    var body: some View {
-        // A dim base word with a full-brightness copy locked exactly on top of
-        // it; only the gradient *mask* slides across, so the bright sweep tracks
-        // the letters precisely instead of rendering a shifted ghost copy.
-        Text(text)
-            .foregroundStyle(.white.opacity(Self.baseOpacity))
-            .overlay {
-                Text(text)
-                    .foregroundStyle(.white)
-                    .mask {
-                        GeometryReader { geo in
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .white.opacity(0), location: 0),
-                                    .init(color: .white.opacity(0.95), location: 0.5),
-                                    .init(color: .white.opacity(0), location: 1),
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                            .frame(width: geo.size.width * 0.6)
-                            .offset(x: geo.size.width * phase)
-                        }
-                    }
-            }
-            .onAppear {
-                withAnimation(.linear(duration: Self.cycleDuration).repeatForever(autoreverses: false)) {
-                    phase = 1.6
-                }
-            }
-    }
-}
-
-private struct ReviewView: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let banner = state.reviewBanner {
-                ReviewBanner(message: banner, onRetry: state.onRetry)
-            }
-
-            ReviewTextEditor(text: $state.reviewText, state: state)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-
-            if state.reviewShowsActions {
-                ReviewActionsBar(state: state)
-            }
-
-            HStack(spacing: 8) {
-                ReviewKeyButton(
-                    title: "Cancel",
-                    hint: "esc",
-                    emphasis: .secondary
-                ) { state.onCancel?() }
-
-                Spacer()
-
-                if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
-                    ReviewKeyButton(
-                        title: "Undo",
-                        systemImage: "arrow.uturn.backward",
-                        hint: nil,
-                        emphasis: .secondary
-                    ) { state.undoLastAction() }
-                    .help("Undo last action")
-                }
-
-                ReviewKeyButton(
-                    title: "Resume",
-                    systemImage: "mic.fill",
-                    hint: "⌘R",
-                    emphasis: .secondary
-                ) { state.onResume?() }
-
-                ReviewKeyButton(
-                    title: "Paste",
-                    hint: HotkeyStore.shared.binding.displayKeys.joined(),
-                    emphasis: .primary
-                ) { state.onPaste?() }
-            }
-        }
-    }
-}
-
-/// Row of AI action chips between the review editor and the key buttons.
-/// Clicking a chip (or ⌘1–⌘9) sends the transcript through the action's
-/// OpenAI transform; the running chip shimmers and the rest disable until
-/// the request settles. After a transform, the Undo button next to the mic
-/// in the bottom bar restores the pre-action text.
-private struct ReviewActionsBar: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 6) {
-                ForEach(Array(state.reviewActions.enumerated()), id: \.element.id) { index, action in
-                    ReviewActionChip(
-                        title: action.name,
-                        hint: index < 9 ? "⌘\(index + 1)" : nil,
-                        isRunning: state.runningActionId == action.id,
-                        isDisabled: state.runningActionId != nil && state.runningActionId != action.id
-                    ) { state.onRunAction?(action) }
-                }
-            }
-        }
-    }
-}
-
-private struct ReviewActionChip: View {
-    let title: String
-    var systemImage: String? = nil
-    let hint: String?
-    let isRunning: Bool
-    let isDisabled: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 6) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                if isRunning {
-                    ShimmerText(title)
-                        .font(.system(size: 12, weight: .medium))
-                } else {
-                    Text(title)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.72))
-                }
-                if let hint, !isRunning {
-                    Text(hint)
-                        .font(.system(size: 10, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.white.opacity(0.4))
-                }
-            }
-            .lineLimit(1)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(Color.white.opacity(isRunning ? 0.10 : 0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .strokeBorder(Color.white.opacity(isRunning ? 0.16 : 0.08))
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled || isRunning)
-        .opacity(isDisabled ? 0.35 : 1)
-    }
-}
-
-/// NSTextView-backed editor: we need the caret position when Resume is
-/// pressed so the next transcription can be spliced in at the cursor.
-/// SwiftUI's TextEditor doesn't expose a selection binding on macOS in a way
-/// that survives panel focus changes, so we wrap an NSTextView directly.
-private struct ReviewTextEditor: NSViewRepresentable {
-    @Binding var text: String
-    let state: LiveHUDState
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
-        Self.configureScrollView(scrollView)
-        guard let textView = scrollView.documentView as? NSTextView else {
-            return scrollView
-        }
-        Self.configureTextView(textView, delegate: context.coordinator)
-        textView.string = text
-        textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
-        context.coordinator.lastSyncedText = text
-        focusOnNextRunLoop(textView)
-        return scrollView
-    }
-
-    func updateNSView(_ scrollView: NSScrollView, context: Context) {
-        context.coordinator.parent = self
-        guard let textView = scrollView.documentView as? NSTextView else { return }
-
-        // Skip resync when nothing came in from the outside — otherwise we'd
-        // clobber the user's caret on every keystroke (textDidChange writes
-        // through the binding, which triggers updateNSView).
-        guard textView.string != text, context.coordinator.lastSyncedText != text else {
+        if eligible {
+            panel.acceptsKey = true
+            panel.orderFrontRegardless()
+            // Nonactivating panel: becomes key for keyboard input without
+            // activating our app, so the Settings window stays where it is.
+            panel.makeKeyAndOrderFront(nil)
             return
         }
-        textView.breakUndoCoalescing()
-        textView.string = text
-        // The replacement bypassed the undo machinery, so recorded operations
-        // now target ranges in text that no longer exists — replaying them
-        // would corrupt the transcript or raise NSRangeException.
-        textView.undoManager?.removeAllActions()
-        textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
-        context.coordinator.lastSyncedText = text
+
+        let mustReleaseKey = wasVisible && panel.acceptsKey && panel.isKeyWindow
+        if mustReleaseKey {
+            panel.orderOut(nil)
+        }
+        panel.acceptsKey = false
+        panel.orderFrontRegardless()
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
-    }
+    // MARK: Frame
 
-    private func clampedRange(_ range: NSRange, in text: String) -> NSRange {
-        let length = (text as NSString).length
-        let location = max(0, min(range.location, length))
-        let extent = max(0, min(range.length, length - location))
-        return NSRange(location: location, length: extent)
-    }
+    /// Called by the card once SwiftUI has laid it out. The estimate in
+    /// `present()` is exact for every fixed-height section, so this only fires
+    /// when content actually grew — a two-line failure banner, a localized
+    /// button that widened the control row.
+    func cardSizeChanged(_ size: CGSize) {
+        let rounded = CGSize(width: size.width.rounded(), height: size.height.rounded())
+        guard rounded.width > 1, rounded.height > 1 else { return }
+        guard abs(rounded.width - measuredCardSize.width) > 0.5
+                || abs(rounded.height - measuredCardSize.height) > 0.5 else { return }
+        measuredCardSize = rounded
 
-    private func focusOnNextRunLoop(_ textView: NSTextView) {
-        DispatchQueue.main.async {
-            textView.window?.makeFirstResponder(textView)
+        let animated = HUDFeatureFlags.morphEnabled && Date() < morphDeadline
+        // Deferred one turn: this arrives from inside SwiftUI's layout pass and
+        // resizing the window synchronously from there re-enters it.
+        Task { @MainActor [weak self] in
+            guard let self, self.panel?.isVisible == true else { return }
+            self.applyFrame(cardSize: rounded, animated: animated)
         }
     }
 
-    private static func configureTextView(_ textView: NSTextView, delegate: NSTextViewDelegate) {
-        textView.delegate = delegate
-        textView.font = .systemFont(ofSize: 15)
-        textView.textColor = NSColor.white.withAlphaComponent(0.92)
-        textView.insertionPointColor = .systemBlue
-        textView.backgroundColor = .clear
-        textView.drawsBackground = false
-        textView.isRichText = false
-        textView.allowsUndo = true
-        textView.isAutomaticQuoteSubstitutionEnabled = false
-        textView.isAutomaticDashSubstitutionEnabled = false
-        textView.isAutomaticSpellingCorrectionEnabled = false
-    }
+    private func applyFrame(cardSize: CGSize, animated: Bool) {
+        guard let panel else { return }
+        let frame = panelFrame(cardSize: cardSize)
+        guard frame != panel.frame else { return }
 
-    private static func configureScrollView(_ scrollView: NSScrollView) {
-        scrollView.drawsBackground = false
-        scrollView.backgroundColor = .clear
-        scrollView.hasVerticalScroller = true
-        scrollView.hasHorizontalScroller = false
-        scrollView.autohidesScrollers = true
-    }
-
-    final class Coordinator: NSObject, NSTextViewDelegate {
-        var parent: ReviewTextEditor
-        /// Last text we either sent to or received from the NSTextView.
-        /// Lets `updateNSView` distinguish "user just typed" from "binding
-        /// changed externally" and skip self-inflicted refreshes.
-        var lastSyncedText: String = ""
-
-        init(parent: ReviewTextEditor) {
-            self.parent = parent
+        guard animated else {
+            panel.setFrame(frame, display: true, animate: false)
+            return
         }
-
-        func textDidChange(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            lastSyncedText = textView.string
-            parent.text = textView.string
-            parent.state.selectedRange = textView.selectedRange()
-        }
-
-        func textViewDidChangeSelection(_ notification: Notification) {
-            guard let textView = notification.object as? NSTextView else { return }
-            parent.state.selectedRange = textView.selectedRange()
-        }
-
-        /// Return pastes; Shift+Return inserts a literal newline.
-        func textView(_ textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-            guard commandSelector == #selector(NSResponder.insertNewline(_:)) else { return false }
-            let shiftHeld = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
-            if shiftHeld {
-                return false // let the text view insert the newline itself
-            }
-            parent.state.onPaste?()
-            return true // swallow the Return so it pastes instead of adding a line
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = HUDMetrics.morphDuration
+            context.timingFunction = HUDMetrics.morphTiming
+            // Lets the layer-backed content ride the same clock as the frame.
+            context.allowsImplicitAnimation = true
+            panel.animator().setFrame(frame, display: true)
         }
     }
-}
 
-/// Shown when transcription fails or returns nothing. Surfaces the error
-/// message (so the user knows what went wrong) and offers Retry when the
-/// audio still has a chance to transcribe on a second pass (network blip,
-/// transient model error, empty decode).
-private struct FailedView: View {
-    @Bindable var state: LiveHUDState
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color.orange.opacity(0.9))
-                    .padding(.top, 1)
-                Text(state.failureMessage)
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.88))
-                    .fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 0)
-            }
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 8) {
-                Spacer()
-
-                ReviewKeyButton(
-                    title: state.failureCanRetry ? "Dismiss" : "Close",
-                    hint: "esc",
-                    emphasis: .secondary
-                ) { state.onCancel?() }
-
-                if state.failureCanRetry {
-                    ReviewKeyButton(
-                        title: "Retry",
-                        systemImage: "arrow.clockwise",
-                        hint: "↩",
-                        emphasis: .primary
-                    ) { state.onRetry?() }
-                }
-            }
-        }
-    }
-}
-
-private struct ReviewBanner: View {
-    let message: String
-    var onRetry: (() -> Void)? = nil
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color.orange.opacity(0.85))
-            Text(message)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.88))
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
-            if let onRetry {
-                Button(action: onRetry) {
-                    HStack(spacing: 5) {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 10, weight: .semibold))
-                        Text("Retry")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Capsule().fill(Color.orange.opacity(0.28)))
-                    .overlay(Capsule().strokeBorder(Color.orange.opacity(0.5)))
-                }
-                .buttonStyle(.plain)
-                .help("Retry transcribing the last recording")
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(Color.orange.opacity(0.18))
+    /// Panel frame = card + a 24pt transparent shadow gutter on every side,
+    /// anchored by its bottom edge and horizontal centre so growth happens
+    /// upward and outward from where the user last put it.
+    private func panelFrame(cardSize: CGSize) -> NSRect {
+        let size = NSSize(
+            width: cardSize.width + HUDMetrics.gutter * 2,
+            height: cardSize.height + HUDMetrics.gutter * 2
         )
-        .overlay(
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .strokeBorder(Color.orange.opacity(0.35))
+        let screen = activeScreen()
+        let visible = screen.visibleFrame
+        let anchor = anchor(on: screen)
+
+        let x = Self.clamp(
+            (anchor.x - size.width / 2).rounded(),
+            visible.minX + HUDMetrics.screenMargin,
+            visible.maxX - size.width - HUDMetrics.screenMargin
+        )
+        let y = Self.clamp(
+            anchor.y.rounded(),
+            visible.minY + HUDMetrics.screenMargin,
+            visible.maxY - size.height - HUDMetrics.screenMargin
+        )
+        return NSRect(x: x, y: y, width: size.width, height: size.height)
+    }
+
+    private static func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
+        guard high >= low else { return (low + high) / 2 }
+        return min(max(value, low), high)
+    }
+
+    // MARK: Placement
+
+    /// The screen the HUD belongs on: whatever screen it is already showing on
+    /// (a morph must never teleport the card between displays), otherwise the
+    /// screen holding the focused window of the frontmost app — which is where
+    /// the transcript is about to be typed.
+    private func activeScreen() -> NSScreen {
+        if let panel, panel.isVisible, let screen = panel.screen { return screen }
+        if let screen = Self.focusedWindowScreen() { return screen }
+        if let screen = NSScreen.screens.first(where: {
+            NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
+        }) { return screen }
+        return NSScreen.main ?? NSScreen.screens[0]
+    }
+
+    /// The screen containing the frontmost window of the frontmost application.
+    ///
+    /// Read from the window server rather than the Accessibility API: bounds and
+    /// owner PID are readable without Screen Recording permission (only window
+    /// *names* are gated), and the list is already in front-to-back order.
+    private static func focusedWindowScreen() -> NSScreen? {
+        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
+            return nil
+        }
+        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
+        guard let infos = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
+            return nil
+        }
+        for info in infos {
+            guard info[kCGWindowOwnerPID as String] as? pid_t == pid,
+                  info[kCGWindowLayer as String] as? Int == 0,
+                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
+                  let x = bounds["X"], let y = bounds["Y"],
+                  let w = bounds["Width"], let h = bounds["Height"],
+                  w > 64, h > 64
+            else { continue }
+            // CGWindow bounds are top-left origin, measured from the top of the
+            // primary display; NSScreen is bottom-left origin.
+            guard let primaryTop = NSScreen.screens.first?.frame.maxY else { return nil }
+            let rect = NSRect(x: x, y: primaryTop - y - h, width: w, height: h)
+            let centre = NSPoint(x: rect.midX, y: rect.midY)
+            if let hit = NSScreen.screens.first(where: { NSMouseInRect(centre, $0.frame, false) }) {
+                return hit
+            }
+            return NSScreen.screens.max { a, b in
+                a.frame.intersection(rect).area < b.frame.intersection(rect).area
+            }
+        }
+        return nil
+    }
+
+    /// The panel's bottom-centre in screen coordinates: the user's dragged
+    /// position for this display, or the default.
+    private func anchor(on screen: NSScreen) -> NSPoint {
+        storedAnchor(on: screen) ?? Self.defaultAnchor(on: screen)
+    }
+
+    private static func defaultAnchor(on screen: NSScreen) -> NSPoint {
+        let visible = screen.visibleFrame
+        return NSPoint(x: visible.midX, y: visible.minY + HUDMetrics.defaultBottomInset)
+    }
+
+    /// Per-display identity that survives a reconnect: the display's name plus
+    /// its point size. `CGDirectDisplayID` is recycled across reconnects and
+    /// `NSScreen.frame.origin` moves whenever the arrangement changes, so
+    /// neither is usable as a key on its own.
+    private static func screenKey(_ screen: NSScreen) -> String {
+        let size = screen.frame.size
+        return "\(screen.localizedName)|\(Int(size.width))x\(Int(size.height))"
+    }
+
+    private static let anchorsDefaultsKey = "hud.panelAnchors"
+
+    private func storedAnchor(on screen: NSScreen) -> NSPoint? {
+        let store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]]
+        guard let pair = store?[Self.screenKey(screen)], pair.count == 2 else { return nil }
+        // Stored relative to the visible frame's origin so a rearranged desktop
+        // keeps the HUD in the same place on this display rather than off it.
+        let visible = screen.visibleFrame
+        return NSPoint(x: visible.minX + pair[0], y: visible.minY + pair[1])
+    }
+
+    private func storeAnchor(_ point: NSPoint, on screen: NSScreen) {
+        let visible = screen.visibleFrame
+        var store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]] ?? [:]
+        store[Self.screenKey(screen)] = [point.x - visible.minX, point.y - visible.minY]
+        UserDefaults.standard.set(store, forKey: Self.anchorsDefaultsKey)
+    }
+
+    private func clearAnchor(on screen: NSScreen) {
+        var store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]] ?? [:]
+        store.removeValue(forKey: Self.screenKey(screen))
+        UserDefaults.standard.set(store, forKey: Self.anchorsDefaultsKey)
+    }
+
+    // MARK: Dragging
+
+    /// Screen-absolute drag: the window moves under the cursor, so a
+    /// window-relative translation would chase itself and oscillate.
+    func dragBegan() {
+        dragStartPanelOrigin = panel?.frame.origin
+        dragStartMouse = NSEvent.mouseLocation
+    }
+
+    func dragChanged() {
+        guard let panel, let origin = dragStartPanelOrigin, let start = dragStartMouse else { return }
+        let now = NSEvent.mouseLocation
+        panel.setFrameOrigin(
+            NSPoint(x: origin.x + now.x - start.x, y: origin.y + now.y - start.y)
         )
     }
-}
 
-private struct ReviewKeyButton: View {
-    enum Emphasis { case primary, secondary }
-
-    let title: String
-    let systemImage: String?
-    let hint: String?
-    let emphasis: Emphasis
-    let action: () -> Void
-
-    init(
-        title: String,
-        systemImage: String? = nil,
-        hint: String?,
-        emphasis: Emphasis,
-        action: @escaping () -> Void
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.hint = hint
-        self.emphasis = emphasis
-        self.action = action
+    func dragEnded() {
+        defer {
+            dragStartPanelOrigin = nil
+            dragStartMouse = nil
+        }
+        guard let panel, let screen = panel.screen else { return }
+        storeAnchor(NSPoint(x: panel.frame.midX, y: panel.frame.minY), on: screen)
     }
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 13, weight: .medium))
-                        .accessibilityLabel(title)
-                } else {
-                    Text(title)
-                        .font(.system(size: 13, weight: .medium))
-                }
-                if let hint {
-                    Text(hint)
-                        .font(.system(size: 11, weight: .regular, design: .monospaced))
-                        .foregroundStyle(.white.opacity(emphasis == .primary ? 0.55 : 0.4))
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 7)
-            .foregroundStyle(.white.opacity(emphasis == .primary ? 0.96 : 0.72))
-            .background(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(emphasis == .primary ? 0.12 : 0.05))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .strokeBorder(Color.white.opacity(emphasis == .primary ? 0.18 : 0.08))
-            )
-        }
-        .buttonStyle(.plain)
+    /// Double-click on the card: forget this display's stored origin and spring
+    /// back to the default position.
+    func resetPosition() {
+        guard let panel, let screen = panel.screen else { return }
+        clearAnchor(on: screen)
+        let animated = HUDFeatureFlags.morphEnabled
+        if animated { morphDeadline = Date().addingTimeInterval(HUDMetrics.morphDuration) }
+        applyFrame(cardSize: measuredCardSize, animated: animated)
     }
 }
 
-/// Mirrored capsule bars, oldest → newest left → right. Each bar springs to
-/// its level independently so the strip feels alive even on a steady signal.
-/// A small floor keeps silent bars visible as a thin baseline. Shared by the
-/// dictation HUD and the Conversations recording card.
-struct LevelBars: View {
-    let samples: [Double]
-    /// Bar color. White on the dark dictation HUD; `.primary` adapts on the
-    /// Conversations card.
-    var tint: Color = .white
-
-    private static let barCount = 56
-    private static let barSpacing: CGFloat = 3
-    private static let minBarHeight: CGFloat = 3
-
-    var body: some View {
-        GeometryReader { geo in
-            let totalSpacing = Self.barSpacing * CGFloat(Self.barCount - 1)
-            let barWidth = max(2, (geo.size.width - totalSpacing) / CGFloat(Self.barCount))
-            let maxHeight = geo.size.height
-
-            HStack(alignment: .center, spacing: Self.barSpacing) {
-                ForEach(0..<Self.barCount, id: \.self) { index in
-                    let level = level(at: index)
-                    Capsule()
-                        .fill(tint.opacity(opacity(at: index)))
-                        .frame(width: barWidth, height: barHeight(level: level, max: maxHeight))
-                        .animation(.spring(response: 0.18, dampingFraction: 0.75), value: level)
-                }
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-        }
-    }
-
-    private func level(at index: Int) -> Double {
-        guard !samples.isEmpty else { return 0 }
-        let step = Double(samples.count) / Double(Self.barCount)
-        let sampleIndex = min(samples.count - 1, Int(Double(index) * step))
-        return samples[sampleIndex]
-    }
-
-    private func barHeight(level: Double, max maxHeight: CGFloat) -> CGFloat {
-        let clamped = min(1, Swift.max(0, level))
-        return Self.minBarHeight + (maxHeight - Self.minBarHeight) * CGFloat(clamped)
-    }
-
-    // Older samples on the left fade out; the rightmost bars sit at the
-    // "write head" and read as the current input.
-    private func opacity(at index: Int) -> Double {
-        let t = Double(index) / Double(Self.barCount - 1)
-        return 0.22 + 0.68 * t
-    }
+private extension NSRect {
+    var area: CGFloat { isNull ? 0 : width * height }
 }

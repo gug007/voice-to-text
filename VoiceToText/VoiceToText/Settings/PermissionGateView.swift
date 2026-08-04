@@ -15,16 +15,11 @@ struct PermissionGateView: View {
                 .font(.system(size: 40, weight: .regular))
                 .foregroundStyle(.white)
                 .frame(width: 88, height: 88)
-                .background(
-                    LinearGradient(
-                        colors: [
-                            Color(red: 0.38, green: 0.58, blue: 1.0),
-                            Color(red: 0.52, green: 0.31, blue: 0.97)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
+                // Brand use #1 of 2. The literal this replaces was exactly the
+                // light-mode token (#6194FF → #854FF7) with no dark variant, so
+                // the tile stayed light-mode blue on a dark desktop while the
+                // sidebar mark tracked the appearance.
+                .background(Palette.brandGradient)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
 
             Text("Grant microphone access")
@@ -49,7 +44,7 @@ struct PermissionGateView: View {
                 #if DEBUG
                 Text("status=\(statusName) raw=\(micStatus.rawValue)")
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Palette.inkFaint)
                     .padding(.top, 4)
                 #endif
             }

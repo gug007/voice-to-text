@@ -4,25 +4,30 @@ struct UpdatesPane: View {
     @Bindable private var updater = AppUpdater.shared
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                PaneHeader(
-                    title: "Updates",
-                    subtitle: "Keep VoiceToText up to date."
-                )
+        PaneScaffold {
+            PaneHeader(
+                title: "Updates",
+                subtitle: "Keep VoiceToText up to date."
+            )
 
-                versionCard
-                actionCard
+            versionCard
+            actionCard
 
-                if case .error(let message) = updater.status {
-                    errorCard(message)
-                }
-
-                if case .available(_, _, let notes) = updater.status, !notes.isEmpty {
-                    releaseNotesCard(notes)
-                }
+            if case .error(let message) = updater.status {
+                // The same status vocabulary the permission group uses.
+                StatusPlate([
+                    StatusItem(
+                        id: "update-error",
+                        level: .warning,
+                        title: "Update failed",
+                        message: message
+                    )
+                ])
             }
-            .padding(32)
+
+            if case .available(_, _, let notes) = updater.status, !notes.isEmpty {
+                releaseNotesCard(notes)
+            }
         }
     }
 
@@ -30,78 +35,59 @@ struct UpdatesPane: View {
 
     @ViewBuilder
     private var versionCard: some View {
-        RowCard {
+        Plate {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.s2) {
                     Text("Current version")
-                        .font(.system(size: 14, weight: .medium))
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
                     Text(updater.currentVersion)
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .typo(.mono)
+                        .foregroundStyle(Palette.inkFaint)
                 }
                 Spacer()
                 statusPill
             }
-            .padding(18)
         }
     }
 
     @ViewBuilder
     private var actionCard: some View {
-        RowCard {
+        Plate {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: Space.s2) {
                     Text(actionTitle)
-                        .font(.system(size: 14, weight: .medium))
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
                     Text(actionSubtitle)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
 
                     if case .downloading(let fraction) = updater.status {
                         ProgressView(value: fraction)
                             .progressViewStyle(.linear)
                             .frame(maxWidth: 280)
-                            .padding(.top, 4)
+                            .padding(.top, Space.s2)
                     }
                 }
                 Spacer()
                 actionButton
             }
-            .padding(18)
-        }
-    }
-
-    private func errorCard(_ message: String) -> some View {
-        RowCard {
-            HStack(alignment: .top, spacing: 10) {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Update failed")
-                        .font(.system(size: 13, weight: .medium))
-                    Text(message)
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer()
-            }
-            .padding(18)
         }
     }
 
     private func releaseNotesCard(_ notes: String) -> some View {
-        RowCard {
-            VStack(alignment: .leading, spacing: 8) {
+        Plate {
+            VStack(alignment: .leading, spacing: Space.s4) {
                 Text("Release notes")
-                    .font(.system(size: 13, weight: .medium))
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
                 Text(notes)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
                     .textSelection(.enabled)
             }
-            .padding(18)
         }
     }
 
@@ -114,43 +100,38 @@ struct UpdatesPane: View {
             EmptyView()
 
         case .checking:
-            HStack(spacing: 6) {
+            HStack(spacing: Space.s3) {
                 ProgressView().controlSize(.small)
                 Text("Checking…")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
             }
 
         case .upToDate:
-            Label("Up to date", systemImage: "checkmark.circle.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.green)
-                .labelStyle(.titleAndIcon)
+            StatusLabel(level: .ready, text: "Up to date")
 
         case .available(let latest, _, _):
             Label("v\(latest) available", systemImage: "arrow.down.circle.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(Color.accentColor)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.accent)
                 .labelStyle(.titleAndIcon)
 
         case .downloading(let fraction):
             Text("Downloading \(Int(fraction * 100))%")
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .typo(.mono)
+                .foregroundStyle(Palette.inkMuted)
+                .contentTransition(.numericText())
 
         case .installing:
-            HStack(spacing: 6) {
+            HStack(spacing: Space.s3) {
                 ProgressView().controlSize(.small)
                 Text("Installing…")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
             }
 
         case .error:
-            Label("Error", systemImage: "exclamationmark.triangle.fill")
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.orange)
-                .labelStyle(.titleAndIcon)
+            StatusLabel(level: .warning, text: "Error")
         }
     }
 
@@ -200,6 +181,7 @@ struct UpdatesPane: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
+            .tint(Palette.accent)
 
         default:
             Button("Check Now") {

@@ -103,7 +103,9 @@ private struct HUDCard: View {
 
             if layout.showsResumeTranscript {
                 ResumeTranscript(state: state)
-                    .frame(height: HUDMetrics.resumeTextHeight)
+                    // Sized to absorb the card's slack, so the transcript starts
+                    // on the top inset exactly where review's editor did.
+                    .frame(height: layout.resumeTranscriptHeight)
             }
 
             if layout.showsInlineMeter {
@@ -142,6 +144,10 @@ private struct HUDCard: View {
                 HUDActionChipRow(state: state)
                     .frame(height: HUDMetrics.chipRowHeight)
                     .transition(.opacity)
+            }
+
+            if layout.showsTailSpacer {
+                Spacer(minLength: 0)
             }
 
             HUDControlRow(state: state, layout: layout, namespace: hudNamespace)

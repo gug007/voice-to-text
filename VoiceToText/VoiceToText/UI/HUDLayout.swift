@@ -160,18 +160,18 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// The heights of the sections this mode stacks, top to bottom.
     private var sectionHeights: [CGFloat] {
         var rows = fixedSectionHeights
-        guard showsEmptyState else { return rows }
-        rows.insert(emptyStateHeight, at: rows.count - 1)
+        if showsEmptyState { rows.insert(emptyStateHeight, at: rows.count - 1) }
+        if showsResumeTranscript { rows.insert(resumeTranscriptHeight, at: hasBanner ? 1 : 0) }
         return rows
     }
 
-    /// Every section except the empty state, whose job is to absorb slack.
+    /// Every section whose height is a constant — that is, all of them except
+    /// the one that absorbs the card's slack.
     private var fixedSectionHeights: [CGFloat] {
         var rows: [CGFloat] = []
         if hasBanner { rows.append(HUDMetrics.bannerHeight) }
         if showsMeter { rows.append(HUDMetrics.meterHeight) }
         if showsStreamText { rows.append(HUDMetrics.streamTextHeight) }
-        if showsResumeTranscript { rows.append(HUDMetrics.resumeTextHeight) }
         if showsInlineMeter { rows.append(HUDMetrics.inlineMeterHeight) }
         if showsEditor { rows.append(HUDMetrics.editorHeight) }
         if showsChipRow { rows.append(HUDMetrics.chipRowHeight) }
@@ -179,16 +179,46 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         return rows
     }
 
-    /// The failure card is the one layout whose content is much shorter than its
-    /// minimum height, so the empty-state block takes the difference. Without
-    /// this the Close/Retry row floats in the middle of the card instead of
-    /// sitting on its bottom edge like every other mode's control row.
-    var emptyStateHeight: CGFloat {
+    /// What is left of `minHeight` for the one section that absorbs this card's
+    /// slack, never less than its `natural` height.
+    ///
+    /// A card whose sections are shorter than its minimum height has to give
+    /// that difference to SOMETHING. Left alone, `.frame(minHeight:)` centres
+    /// the stack and hands half to the top inset and half to the bottom one,
+    /// which lifts the control row off the card's bottom edge — the one thing
+    /// that is identical in every mode.
+    private func absorbedHeight(natural: CGFloat) -> CGFloat {
         let fixed = fixedSectionHeights
         let used = fixed.reduce(0, +)
             + HUDMetrics.gap * CGFloat(fixed.count)
             + HUDMetrics.inset * 2
-        return max(HUDMetrics.emptyStateHeight, minHeight - used)
+        return max(natural, minHeight - used)
+    }
+
+    /// The failure card's content is far shorter than its minimum height, so
+    /// the empty-state block takes the difference.
+    var emptyStateHeight: CGFloat {
+        absorbedHeight(natural: HUDMetrics.emptyStateHeight)
+    }
+
+    /// The resumed take's transcript takes the difference for the same reason,
+    /// and it is the section that should: resume holds the REVIEW card's height
+    /// so the transcript does not move when Resume is pressed, but it shows one
+    /// section fewer than review did (no chip row, 42pt with its gap). Growing
+    /// the transcript into exactly that space is what makes the promise true —
+    /// centred slack put 28pt of dead air at each end and dropped the text 28pt
+    /// the moment recording resumed.
+    var resumeTranscriptHeight: CGFloat {
+        absorbedHeight(natural: HUDMetrics.resumeTextHeight)
+    }
+
+    /// A resumed take's transcribing phase keeps the review height too, but by
+    /// then the transcript is gone and only the frozen meter and the control row
+    /// are left — 158pt of slack with no section willing to hold it. A tail
+    /// spacer sends all of it below the meter, so the control row stays on the
+    /// bottom edge instead of the pair floating in the middle of the card.
+    var showsTailSpacer: Bool {
+        mode == .transcribing && resumedSession
     }
 
     /// What the card will measure once SwiftUI lays it out.

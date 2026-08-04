@@ -92,10 +92,29 @@ nonisolated struct HUDLayout: Equatable, Sendable {
 
     // MARK: Sections
 
+    /// A resumed take, from the moment Resume is pressed until review comes
+    /// back: it records, then it transcribes. Both phases show the same three
+    /// sections in the same slots, which is the whole point — the transcript
+    /// never blanks, and the meter freezes exactly where it was live.
+    ///
+    /// Transcribing used to drop to the full-height meter and the control row
+    /// alone, 120pt of content in the 278pt card resume holds for continuity.
+    /// Nothing could absorb the other 158pt, so the two survivors floated in
+    /// the middle of an otherwise empty card with the transcript nowhere in
+    /// sight — even though `showTranscribing` never clears it.
+    private var isResumedTake: Bool {
+        mode == .resumeRecording || (mode == .transcribing && resumedSession)
+    }
+
     /// The full-height meter. Present in recording AND transcribing — the bars
-    /// freeze and desaturate in place instead of being replaced by dots.
+    /// freeze and desaturate in place instead of being replaced by dots. A
+    /// resumed take freezes its inline meter instead, in the same slot.
     var showsMeter: Bool {
-        mode == .recording || mode == .transcribing
+        switch mode {
+        case .recording: return true
+        case .transcribing: return !resumedSession
+        case .resumeRecording, .reviewing, .failed: return false
+        }
     }
 
     var showsStreamText: Bool {
@@ -103,12 +122,12 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     }
 
     var showsResumeTranscript: Bool {
-        mode == .resumeRecording
+        isResumedTake
     }
 
     /// The 26pt meter row (dot · meter · clock) under a resumed take.
     var showsInlineMeter: Bool {
-        mode == .resumeRecording
+        isResumedTake
     }
 
     var showsEditor: Bool {
@@ -212,14 +231,6 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         absorbedHeight(natural: HUDMetrics.resumeTextHeight)
     }
 
-    /// A resumed take's transcribing phase keeps the review height too, but by
-    /// then the transcript is gone and only the frozen meter and the control row
-    /// are left — 158pt of slack with no section willing to hold it. A tail
-    /// spacer sends all of it below the meter, so the control row stays on the
-    /// bottom edge instead of the pair floating in the middle of the card.
-    var showsTailSpacer: Bool {
-        mode == .transcribing && resumedSession
-    }
 
     /// What the card will measure once SwiftUI lays it out.
     ///

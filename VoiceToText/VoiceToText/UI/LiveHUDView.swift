@@ -109,10 +109,14 @@ private struct HUDCard: View {
             }
 
             if layout.showsInlineMeter {
+                // Carries straight through into transcribing: same row, same
+                // slot, bars and dot desaturating in place. Nothing moves.
+                let isFrozen = state.mode == .transcribing
                 HStack(spacing: HUDMetrics.gap) {
-                    RecordingPulse()
+                    RecordingPulse(isLive: !isFrozen)
                     LevelBars(
                         samples: state.levelHistory,
+                        isFrozen: isFrozen,
                         isOverloaded: state.level > LevelBars.overloadThreshold
                     )
                     .frame(maxWidth: .infinity)
@@ -144,10 +148,6 @@ private struct HUDCard: View {
                 HUDActionChipRow(state: state)
                     .frame(height: HUDMetrics.chipRowHeight)
                     .transition(.opacity)
-            }
-
-            if layout.showsTailSpacer {
-                Spacer(minLength: 0)
             }
 
             HUDControlRow(state: state, layout: layout, namespace: hudNamespace)

@@ -157,20 +157,31 @@ struct HUDBanner: View {
 
 /// Pulsing dot marking an active recording.
 struct RecordingPulse: View {
+    /// Still capturing. `false` once the take is in transcribing: the dot
+    /// settles to the meter's frozen grey on the same 0.4s clock the bars
+    /// desaturate on, rather than blinking on over a dead meter.
+    var isLive: Bool = true
+
     @Environment(\.motion) private var motion
     @State private var pulsing = false
 
     var body: some View {
         Circle()
-            .fill(Palette.signalLive)
+            .fill(isLive ? Palette.signalLive : Palette.inkFaint.opacity(0.30))
             .frame(width: 9, height: 9)
-            .opacity(motion.repeatsAllowed ? (pulsing ? 1 : 0.35) : 0.85)
+            .opacity(liveOpacity)
             .onAppear {
                 guard motion.repeatsAllowed else { return }
                 withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                     pulsing = true
                 }
             }
+            .animation(motion.reduceMotion ? Motion.reduced : .smooth(duration: 0.4), value: isLive)
+    }
+
+    private var liveOpacity: Double {
+        guard isLive else { return 1 }
+        return motion.repeatsAllowed ? (pulsing ? 1 : 0.35) : 0.85
     }
 }
 

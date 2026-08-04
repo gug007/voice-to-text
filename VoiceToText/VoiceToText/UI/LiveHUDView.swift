@@ -86,6 +86,13 @@ private struct HUDCard: View {
                     .transition(.opacity)
             }
 
+            if layout.showsPreparing {
+                HUDPreparingBlock(state: state)
+                    // Sized to absorb the card's slack, so the model name starts
+                    // on the top inset and the control row stays on the bottom.
+                    .frame(height: layout.preparingHeight, alignment: .topLeading)
+            }
+
             if layout.showsMeter {
                 LevelBars(
                     samples: state.levelHistory,
@@ -165,7 +172,7 @@ private struct HUDCard: View {
         switch state.mode {
         case .failed: return state.failureMessage
         case .reviewing, .resumeRecording: return state.reviewBanner
-        case .recording, .transcribing: return nil
+        case .preparing, .recording, .transcribing: return nil
         }
     }
 
@@ -175,7 +182,7 @@ private struct HUDCard: View {
     private var hasBannerRetry: Bool {
         switch state.mode {
         case .reviewing, .resumeRecording: return state.onRetry != nil
-        case .failed, .recording, .transcribing: return false
+        case .failed, .preparing, .recording, .transcribing: return false
         }
     }
 
@@ -346,6 +353,22 @@ private struct HUDControlRow: View {
     var body: some View {
         HStack(spacing: Space.s4) {
             switch layout.mode {
+            case .preparing:
+                // Neutral verb: the block above names the phase precisely
+                // ("Downloading 3/12 files", "Compiling…"), so this row only has
+                // to say the app is working and how far along it is.
+                ShimmerText("Preparing")
+                    .typo(.headline)
+                Text(preparingDetail)
+                    .typo(.mono)
+                    .foregroundStyle(Palette.inkFaint)
+                    .contentTransition(.numericText())
+                Spacer(minLength: Space.s4)
+                // Nothing to finish yet, but a stalled download has to have a
+                // way out — the hotkey policy already maps this to
+                // `cancelPendingRecording`, so Cancel keeps its `esc` hint.
+                cancelButton(title: "Cancel")
+
             case .recording, .resumeRecording:
                 if !layout.showsInlineMeter {
                     HUDClock(seconds: state.elapsedSeconds)
@@ -393,11 +416,11 @@ private struct HUDControlRow: View {
             case .failed:
                 Spacer(minLength: Space.s4)
                 cancelButton(title: "Close")
-                if state.failureCanRetry {
+                if let actionTitle = state.failureActionTitle {
                     primaryButton(
-                        title: "Retry",
-                        systemImage: "arrow.clockwise",
-                        hint: "↩"
+                        title: actionTitle,
+                        systemImage: state.failureActionIcon,
+                        hint: state.failureActionHint
                     ) { state.onRetry?() }
                 }
             }
@@ -433,6 +456,101 @@ private struct HUDControlRow: View {
         let elapsed = String(format: "%0.1fs", state.transcribingElapsedSeconds)
         guard let progress = state.transcribingProgress else { return elapsed }
         return "\(progress.current) / \(progress.total) · \(elapsed)"
+    }
+
+    /// Blank until the registry reports its first sample — an honest "we don't
+    /// know yet" beats a 0% that looks like a stalled download.
+    private var preparingDetail: String {
+        guard let fraction = state.preparingFraction else { return "" }
+        return "\(Int((fraction * 100).rounded()))%"
+    }
+}
+
+// MARK: - Preparing
+
+/// What the card shows while the model is fetched or loaded: which model, which
+/// phase, how far along. This is the surface that used to not exist — a first
+/// run spent the whole 470MB download with nothing on screen but a menu-bar
+/// glyph, which reads as a dead hotkey.
+private struct HUDPreparingBlock: View {
+    @Bindable var state: LiveHUDState
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s4) {
+            Text(title)
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+                .lineLimit(1)
+
+            HUDProgressBar(fraction: state.preparingFraction)
+
+            Text(state.preparingMessage)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+    }
+
+    /// The phase message is the engine's own text, so the verb is read back off
+    /// it rather than tracked separately — a compile that follows a download
+    /// must not keep claiming to be downloading.
+    private var title: String {
+        let name = state.preparingModelName
+        guard !name.isEmpty else { return "Preparing model" }
+        if state.preparingMessage.localizedCaseInsensitiveContains("download") {
+            return "Downloading \(name)"
+        }
+        return "Loading \(name)"
+    }
+}
+
+/// 4pt track. Determinate once the registry reports a fraction; before that a
+/// sweep runs across the track so a phase that reports nothing still looks
+/// alive. Flat and static under Reduce Motion.
+private struct HUDProgressBar: View {
+    let fraction: Double?
+
+    @Environment(\.motion) private var motion
+    @State private var sweep: CGFloat = -1
+
+    private static let height: CGFloat = 4
+    private static let sweepWidth: CGFloat = 0.35
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule().fill(Palette.ink.opacity(0.10))
+
+                if let fraction {
+                    Capsule()
+                        .fill(Palette.accent)
+                        .frame(width: max(0, min(1, fraction)) * geo.size.width)
+                        .animation(motion.layout, value: fraction)
+                } else if motion.repeatsAllowed {
+                    Capsule()
+                        .fill(Palette.accent)
+                        .frame(width: geo.size.width * Self.sweepWidth)
+                        .offset(x: sweep * geo.size.width)
+                        .onAppear {
+                            withAnimation(
+                                .easeInOut(duration: 1.1).repeatForever(autoreverses: false)
+                            ) {
+                                sweep = 1
+                            }
+                        }
+                } else {
+                    Capsule()
+                        .fill(Palette.accent.opacity(0.5))
+                        .frame(width: geo.size.width * Self.sweepWidth)
+                }
+            }
+            // The sweep travels a full width past each edge; without this it
+            // would paint outside the track and across the card.
+            .clipShape(Capsule())
+        }
+        .frame(height: Self.height)
+        .accessibilityLabel("Model preparation progress")
     }
 }
 

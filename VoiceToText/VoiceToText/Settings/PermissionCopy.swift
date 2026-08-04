@@ -31,6 +31,10 @@ nonisolated enum PermissionCopy {
     static var microphoneEnable: String { enableInstruction(pane: "Microphone") }
     static var microphoneDenied: String { "Denied. \(microphoneEnable)" }
     static var microphoneAlertBody: String { "\(microphonePurpose) \(microphoneEnable)" }
+    /// The HUD's version. The card carries an Open Settings button, so it states
+    /// the problem and lets the button carry the path — spelling the path out
+    /// here too would truncate in the banner's two lines.
+    static var microphoneHUDMessage: String { "Microphone access denied. \(microphonePurpose)" }
 
     // MARK: Accessibility
 
@@ -42,6 +46,11 @@ nonisolated enum PermissionCopy {
     static var accessibilityEnable: String { enableInstruction(pane: "Accessibility") }
     static var accessibilityAlertBody: String {
         "VoiceToText needs Accessibility permission for \(accessibilityReason). \(accessibilityEnable)"
+    }
+    /// The HUD's version — same reason, no path (the card's Open Settings button
+    /// is the path), so it fits the banner instead of truncating mid-sentence.
+    static var accessibilityHUDMessage: String {
+        "VoiceToText needs Accessibility permission for \(accessibilityReason)."
     }
 
     // MARK: Input Monitoring (standalone Right Control)

@@ -53,6 +53,12 @@ private final class FirstMouseHostingView: NSHostingView<LiveHUDView> {
 // MARK: - Modes
 
 nonisolated enum LiveHUDMode: Sendable, Equatable {
+    /// The model is being downloaded or loaded, before capture can start. Shown
+    /// only once preparation outlasts `DictationController.preparingRevealDelay`
+    /// — a warm model is ready in milliseconds and must not flash a card — which
+    /// is what puts the first-run download on screen instead of leaving the
+    /// hotkey looking dead for the length of a 470MB fetch.
+    case preparing
     case recording
     /// Recording resumed from a review session: the prior transcript stays on
     /// screen (read-only) while new speech streams in at the caret.
@@ -64,11 +70,11 @@ nonisolated enum LiveHUDMode: Sendable, Equatable {
     case failed
 
     /// Whether the panel accepts key status (and therefore keyboard input) in
-    /// this mode. Recording and transcribing must NOT: the user is typing in
-    /// another app and the caret has to stay there.
+    /// this mode. Preparing, recording and transcribing must NOT: the user is
+    /// typing in another app and the caret has to stay there.
     var acceptsKey: Bool {
         switch self {
-        case .recording, .transcribing: return false
+        case .preparing, .recording, .transcribing: return false
         case .resumeRecording, .reviewing, .failed: return true
         }
     }
@@ -141,10 +147,28 @@ final class LiveHUDState {
     /// Last error surfaced through the failure HUD. Cleared whenever the HUD
     /// transitions away from `.failed`.
     var failureMessage: String = ""
-    /// Whether the failure HUD should offer a Retry button. Failures whose
-    /// audio can't possibly succeed on a second pass (too-short, VAD silent)
-    /// set this to `false` and only show Close.
-    var failureCanRetry: Bool = false
+    /// Title of the failure card's action button, or nil for Close only.
+    /// Failures whose audio can't possibly succeed on a second pass (too-short,
+    /// VAD silent) offer nothing; transcription failures offer "Retry"; a
+    /// missing permission offers "Open Settings", because pressing the hotkey
+    /// again cannot fix it and the message alone leaves the user hunting.
+    var failureActionTitle: String?
+    var failureActionIcon: String = "arrow.clockwise"
+    /// Key hint on that button — only set where the key is really bound
+    /// (Return runs Retry; nothing is bound to Open Settings).
+    var failureActionHint: String?
+
+    /// Display name of the model being downloaded or loaded, on the preparing
+    /// card. The card names the model because "which model is this waiting on"
+    /// is the first thing a user asks when a hotkey press seems to do nothing.
+    var preparingModelName: String = ""
+    /// Preparation progress, 0...1. Nil until the registry reports its first
+    /// sample, which is what the indeterminate bar renders.
+    var preparingFraction: Double?
+    /// Phase text straight from the engine — "Downloading 3/12 files",
+    /// "Compiling parakeet_encoder…". This is the line that distinguishes a
+    /// running download from a wedged one.
+    var preparingMessage: String = ""
 
     /// Whether this review session shows the action chips row. Snapshotted
     /// from `ActionsStore.shared.showsInReview` when the review HUD is shown
@@ -222,6 +246,54 @@ final class LiveHUDPanel {
 
     // MARK: Presentation
 
+    /// The model is being fetched or loaded and recording hasn't started yet.
+    ///
+    /// Deliberately NOT shown on every hotkey press — `DictationController`
+    /// only calls this once preparation has outlasted its reveal delay, so a
+    /// warm model goes straight to the recording card and this one never
+    /// flashes. Cancel maps to `cancelPendingRecording()`, the same action the
+    /// hotkey policy already had for this state.
+    func showPreparing(modelName: String, onCancel: @escaping @MainActor () -> Void) {
+        state.mode = .preparing
+        state.isRecording = false
+        state.level = 0
+        state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
+        state.preparingModelName = modelName
+        state.preparingFraction = nil
+        state.preparingMessage = ""
+        state.reviewText = ""
+        state.reviewBanner = nil
+        state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
+        state.showsLiveText = false
+        state.partialTranscript = ""
+        state.recordingPrefix = ""
+        state.recordingSuffix = ""
+        state.resumedSession = false
+        state.failureMessage = ""
+        state.failureActionTitle = nil
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertStack = []
+        state.onPaste = nil
+        state.onCancel = onCancel
+        state.onStop = nil
+        state.onResume = nil
+        state.onRetry = nil
+        state.onRunAction = nil
+
+        present()
+        AppLog.hud.info("HUD preparing shown for \(modelName)")
+    }
+
+    /// Progress sample from `ModelRegistry`, polled while the preparing card is
+    /// up. Pass nil for `fraction` to keep the bar indeterminate.
+    func setPreparingProgress(fraction: Double?, message: String) {
+        state.preparingFraction = fraction
+        state.preparingMessage = message
+    }
+
     func show(
         showsLiveText: Bool = false,
         onStop: (@MainActor () -> Void)? = nil,
@@ -242,7 +314,9 @@ final class LiveHUDPanel {
         state.recordingSuffix = ""
         state.resumedSession = false
         state.failureMessage = ""
-        state.failureCanRetry = false
+        state.failureActionTitle = nil
+        state.preparingMessage = ""
+        state.preparingFraction = nil
         state.selectedRange = NSRange(location: 0, length: 0)
         state.reviewShowsActions = false
         state.reviewActions = []
@@ -327,7 +401,7 @@ final class LiveHUDPanel {
         state.reviewText = text
         state.reviewBanner = banner
         state.failureMessage = ""
-        state.failureCanRetry = false
+        state.failureActionTitle = nil
         state.resumedSession = false
         state.selectedRange = NSRange(location: caret, length: 0)
         // Snapshot once per session: the chip list, the row's presence, and
@@ -349,13 +423,16 @@ final class LiveHUDPanel {
         AppLog.hud.info("HUD review shown at \(String(describing: self.panel?.frame))")
     }
 
-    /// A transcription failure, rendered as a banner inside the same card at the
-    /// same width as review — the standalone failure panel is gone. Offers Retry
-    /// when `canRetry` is true (network/transient failures); otherwise only
-    /// Close (e.g. "no speech detected", where re-running the audio won't help).
+    /// A failure, rendered as a banner inside the same card at the same width as
+    /// review — the standalone failure panel is gone. `actionTitle` nil leaves
+    /// only Close (e.g. "no speech detected", where re-running the audio won't
+    /// help); "Retry" re-runs the audio; "Open Settings" is what a permission
+    /// failure offers instead, since the hotkey can't fix itself.
     func showFailure(
         message: String,
-        canRetry: Bool,
+        actionTitle: String?,
+        actionIcon: String = "arrow.clockwise",
+        actionHint: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
@@ -363,7 +440,11 @@ final class LiveHUDPanel {
         state.isRecording = false
         state.level = 0
         state.failureMessage = message
-        state.failureCanRetry = canRetry
+        state.failureActionTitle = actionTitle
+        state.failureActionIcon = actionIcon
+        state.failureActionHint = actionHint
+        state.preparingMessage = ""
+        state.preparingFraction = nil
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.reviewText = ""
@@ -423,7 +504,10 @@ final class LiveHUDPanel {
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.failureMessage = ""
-        state.failureCanRetry = false
+        state.failureActionTitle = nil
+        state.preparingModelName = ""
+        state.preparingMessage = ""
+        state.preparingFraction = nil
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil

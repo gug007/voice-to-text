@@ -36,6 +36,8 @@ nonisolated enum HUDMetrics {
     static let chipRowHeight: CGFloat = 30
     static let bannerHeight: CGFloat = 34
     static let emptyStateHeight: CGFloat = 20
+    /// Model name, phase line and progress bar, stacked.
+    static let preparingHeight: CGFloat = 56
     /// Control row: one 28pt control, which is the macOS 26 regular metric.
     static let controlRowHeight: CGFloat = 28
 
@@ -85,7 +87,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         hasBanner = switch state.mode {
         case .reviewing, .resumeRecording: state.reviewBanner != nil
         case .failed: true
-        case .recording, .transcribing: false
+        case .preparing, .recording, .transcribing: false
         }
         resumedSession = state.resumedSession
     }
@@ -113,8 +115,15 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         switch mode {
         case .recording: return true
         case .transcribing: return !resumedSession
-        case .resumeRecording, .reviewing, .failed: return false
+        case .preparing, .resumeRecording, .reviewing, .failed: return false
         }
+    }
+
+    /// Model name, phase line and progress bar, while the model is fetched or
+    /// loaded. Absorbs the card's slack (see `preparingHeight`) so the control
+    /// row still sits on the bottom edge exactly where recording puts it.
+    var showsPreparing: Bool {
+        mode == .preparing
     }
 
     var showsStreamText: Bool {
@@ -150,7 +159,10 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         // A resumed take's transcribing phase keeps the review width so the
         // morph never snaps back to compact mid-session.
         case .transcribing: return resumedSession
-        case .recording: return false
+        // Preparing is compact because it only ever precedes a compact
+        // recording card: a take resumed out of review keeps the review card on
+        // screen instead of showing this one (see `beginPreparingPhase`).
+        case .preparing, .recording: return false
         }
     }
 
@@ -160,6 +172,10 @@ nonisolated struct HUDLayout: Equatable, Sendable {
 
     var minHeight: CGFloat {
         switch mode {
+        // Same height as the recording card it hands over to, so the morph into
+        // recording moves nothing but the content.
+        case .preparing:
+            return HUDMetrics.recordingMinHeight
         case .recording:
             return showsLiveText ? HUDMetrics.recordingLiveMinHeight : HUDMetrics.recordingMinHeight
         case .transcribing:
@@ -180,6 +196,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     private var sectionHeights: [CGFloat] {
         var rows = fixedSectionHeights
         if showsEmptyState { rows.insert(emptyStateHeight, at: rows.count - 1) }
+        if showsPreparing { rows.insert(preparingHeight, at: rows.count - 1) }
         if showsResumeTranscript { rows.insert(resumeTranscriptHeight, at: hasBanner ? 1 : 0) }
         return rows
     }
@@ -218,6 +235,13 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// the empty-state block takes the difference.
     var emptyStateHeight: CGFloat {
         absorbedHeight(natural: HUDMetrics.emptyStateHeight)
+    }
+
+    /// The preparing card's three lines are shorter than the recording height it
+    /// holds, and the control row must stay welded to the bottom edge, so this
+    /// block takes the difference — same rule as the empty state.
+    var preparingHeight: CGFloat {
+        absorbedHeight(natural: HUDMetrics.preparingHeight)
     }
 
     /// The resumed take's transcript takes the difference for the same reason,

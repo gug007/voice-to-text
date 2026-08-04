@@ -31,6 +31,7 @@ private final class RecordingEscapeEventTapContext {
 /// never overlap), so the same tap serves both.
 private final class HUDEscapeEventTapContext {
     enum Target {
+        case preparing
         case transcribing
         case review
         case failure
@@ -102,6 +103,19 @@ final class DictationController {
     /// exempts from its own stall detection and which can legitimately run for
     /// minutes. This only ever fires on a genuine wedge.
     private static let preparingWatchdogTimeout: Duration = .seconds(300)
+    /// Pushes `ModelRegistry` progress into the preparing card while it's up.
+    /// Polled rather than observed: readiness is written from the engine's own
+    /// progress callback at whatever rate it emits, and a fixed 200ms sample is
+    /// both smoother on screen and cheaper than an observation re-arm per file.
+    private var preparingProgressTask: Task<Void, Never>?
+    /// How long preparation may run before the HUD explains itself. A warm model
+    /// is ready in milliseconds, so showing the card unconditionally would flash
+    /// it on every hotkey press; past this, the wait is long enough that silence
+    /// reads as a dead hotkey — which is exactly what a first-run 470MB download
+    /// used to look like.
+    private static let preparingRevealDelay: Duration = .milliseconds(250)
+    private static let preparingProgressInterval: Duration = .milliseconds(200)
+    private var preparingEscMonitor: Any?
     private var transcribingEscMonitor: Any?
     private var reviewEscMonitor: Any?
     private var failureEscMonitor: Any?
@@ -376,7 +390,14 @@ final class DictationController {
             guard AccessibilityPermission.isGranted else {
                 AccessibilityPermission.promptForPermission()
                 AppLog.dictation.warning("Missing Accessibility permission, could not start global hotkey recording")
-                state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
+                // The card, not just the state: macOS only shows its own prompt
+                // the first time we ask, so on every press after that this is
+                // the sole explanation the user gets for a hotkey that appears
+                // to do nothing.
+                enterFailureHUD(
+                    message: PermissionCopy.accessibilityHUDMessage,
+                    action: .openSettings { AccessibilityPermission.openSystemSettings() }
+                )
                 return
             }
             let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
@@ -434,7 +455,7 @@ final class DictationController {
     private func cancelPendingRecording() {
         AppLog.dictation.info("Pending recording cancelled")
         standaloneModifierEventCoordinator.reset()
-        stopPreparingWatchdog()
+        endPreparingPhase()
         recordingStartGate.cancelActiveStart()
         if case .preparing = state {
             finishRecordingSession(fallbackTo: .idle)
@@ -795,6 +816,8 @@ final class DictationController {
     /// Escape after the HUD already closed is a harmless no-op.
     private func handleHUDEscape(target: HUDEscapeEventTapContext.Target) {
         switch target {
+        case .preparing:
+            cancelPendingRecording()
         case .transcribing:
             cancelTranscription()
         case .review:
@@ -820,27 +843,34 @@ final class DictationController {
         guard recordingStartGate.accepts(startID) else { return }
         guard granted else {
             recordingStartGate.finish(startID)
-            state = .error("Microphone access denied. Grant it in System Settings → Privacy → Microphone.")
+            enterFailureHUD(
+                message: PermissionCopy.microphoneHUDMessage,
+                action: .openSettings { MicPermission.openSystemSettings() }
+            )
             return
         }
 
         guard let descriptor = ModelRegistry.shared.activeModel else {
             AppLog.dictation.error("startRecording: no active model")
             recordingStartGate.finish(startID)
-            state = .error("No active model selected.")
+            enterFailureHUD(message: "No active model selected.")
             return
         }
 
         AppLog.dictation.info("startRecording: active model=\(descriptor.id)")
         guard recordingStartGate.accepts(startID) else { return }
         state = .preparing(modelDisplayName: descriptor.displayName)
-        armPreparingWatchdog(startID: startID)
+        beginPreparingPhase(
+            startID: startID,
+            descriptor: descriptor,
+            isResume: resumeContext != nil
+        )
         let preparedModel = await ModelRegistry.shared.prepareModel(id: descriptor.id)
         guard recordingStartGate.accepts(startID) else { return }
         guard let engine = preparedModel else {
             AppLog.dictation.error("startRecording: prepareModel returned nil")
             recordingStartGate.finish(startID)
-            state = .error(preparationErrorMessage(for: descriptor))
+            enterFailureHUD(message: preparationErrorMessage(for: descriptor))
             return
         }
 
@@ -888,7 +918,9 @@ final class DictationController {
                 return
             }
             state = .recording
-            stopPreparingWatchdog()
+            // Before the recording card and its own Esc tap go up: the preparing
+            // card hands over to them, and two session taps must never coexist.
+            endPreparingPhase()
             recordingStartGate.finish(startID)
             let start = Date()
             recordStart = start
@@ -913,18 +945,19 @@ final class DictationController {
             guard installRecordingEscMonitors() else {
                 _ = await recorder.stop()
                 cancelStreamingSession()
-                LiveHUDPanel.shared.hide()
-                state = .error("Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.")
+                enterFailureHUD(
+                    message: "Esc cancel could not be enabled. Check Accessibility or Input Monitoring in System Settings, then try again.",
+                    action: .openSettings { AccessibilityPermission.openSystemSettings() }
+                )
                 return
             }
             startElapsedTicker(from: start)
             AppLog.dictation.info("startRecording: recording started")
         } catch {
             recordingStartGate.finish(startID)
-            stopPreparingWatchdog()
             cancelStreamingSession()
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
-            state = .error("Could not start recording: \(error.localizedDescription)")
+            enterFailureHUD(message: "Could not start recording: \(error.localizedDescription)")
         }
     }
 
@@ -980,6 +1013,90 @@ final class DictationController {
         // session, so anything it left behind goes with it.
         if resumeContext == nil { discardPendingHistory() }
         finishRecordingSession(fallbackTo: .idle)
+    }
+
+    /// Everything that runs for the length of the `.preparing` state: the
+    /// watchdog, and — unless this start came out of a review — the card that
+    /// tells the user what the app is waiting on.
+    ///
+    /// A resumed take deliberately shows nothing: its review card is still on
+    /// screen holding the transcript, and its model is the one that just
+    /// transcribed (so preparation is a cache hit). Replacing that card with a
+    /// compact progress card would throw the transcript off screen to report a
+    /// wait that isn't happening.
+    private func beginPreparingPhase(
+        startID: RecordingStartGate.StartID,
+        descriptor: ModelDescriptor,
+        isResume: Bool
+    ) {
+        armPreparingWatchdog(startID: startID)
+        guard !isResume else { return }
+        preparingProgressTask?.cancel()
+        preparingProgressTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.preparingRevealDelay)
+            guard let self, !Task.isCancelled, self.isPreparing(startID) else { return }
+
+            LiveHUDPanel.shared.showPreparing(modelName: descriptor.displayName) { [weak self] in
+                self?.cancelPendingRecording()
+            }
+            self.installPreparingEscMonitor()
+            AppLog.dictation.info("Preparing HUD shown for \(descriptor.id)")
+
+            while !Task.isCancelled, self.isPreparing(startID) {
+                if case .preparing(let fraction, let message) =
+                    ModelRegistry.shared.readiness(for: descriptor.id) {
+                    // The registry publishes 0.0 the moment preparation starts,
+                    // and the phases that report nothing (the CoreML compile
+                    // tail) never move it. A bar pinned at 0% is what a wedged
+                    // download looks like, so "no progress yet" is passed as
+                    // unknown and the card runs its indeterminate sweep instead.
+                    LiveHUDPanel.shared.setPreparingProgress(
+                        fraction: fraction > 0 ? fraction : nil,
+                        message: message
+                    )
+                }
+                try? await Task.sleep(for: Self.preparingProgressInterval)
+            }
+        }
+    }
+
+    /// True while this exact start is still the one being prepared. Both halves
+    /// matter: the gate fences a superseded start, and the state check catches
+    /// the window after preparation finished but before the task is cancelled.
+    private func isPreparing(_ startID: RecordingStartGate.StartID) -> Bool {
+        guard case .preparing = state else { return false }
+        return recordingStartGate.accepts(startID)
+    }
+
+    /// Tears down everything `beginPreparingPhase` armed. Safe to call from any
+    /// exit path, including one where the card was never revealed.
+    private func endPreparingPhase() {
+        stopPreparingWatchdog()
+        preparingProgressTask?.cancel()
+        preparingProgressTask = nil
+        removePreparingEscMonitor()
+    }
+
+    /// Esc during preparing cancels the pending start — the same thing the
+    /// card's Cancel button does, and what the hotkey policy already maps this
+    /// state to. The panel isn't key here (the caret stays in the target app),
+    /// so the global tap does the real work.
+    private func installPreparingEscMonitor() {
+        removePreparingEscMonitor()
+        preparingEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            Task { @MainActor in self?.cancelPendingRecording() }
+            return nil
+        }
+        installHUDEscapeEventTap(target: .preparing)
+    }
+
+    private func removePreparingEscMonitor() {
+        if let preparingEscMonitor {
+            NSEvent.removeMonitor(preparingEscMonitor)
+            self.preparingEscMonitor = nil
+        }
+        removeHUDEscapeEventTap()
     }
 
     /// Fenced on the start ID rather than cancelled from every exit path: once
@@ -1274,8 +1391,12 @@ final class DictationController {
     private func enterFailureHUD(
         message: String,
         samples: [Float]? = nil,
-        canRetry: Bool = false
+        canRetry: Bool = false,
+        action: FailureAction? = nil
     ) {
+        // A start that failed before recording began still has its preparing
+        // card up (and its Esc route armed); this hands both over.
+        endPreparingPhase()
         // Leaving `.transcribing` (or never having reached it): its Esc route
         // hands over to the review banner's or the failure HUD's, installed
         // below. A no-op on the paths that never armed it.
@@ -1301,13 +1422,41 @@ final class DictationController {
         lastFailedSamples = retryAvailable ? samples : nil
         state = .error(message)
 
+        // Retry wins whenever the same audio could plausibly succeed on a second
+        // pass; otherwise the caller's action (Open Settings for a permission
+        // failure, where pressing the hotkey again can never help); otherwise
+        // Close alone.
+        let resolvedAction: FailureAction? = retryAvailable
+            ? .retry { [weak self] in self?.retryTranscription() }
+            : action
+
         LiveHUDPanel.shared.showFailure(
             message: message,
-            canRetry: retryAvailable,
-            onRetry: { [weak self] in self?.retryTranscription() },
+            actionTitle: resolvedAction?.title,
+            actionIcon: resolvedAction?.icon ?? "arrow.clockwise",
+            actionHint: resolvedAction?.hint,
+            onRetry: { resolvedAction?.run() },
             onCancel: { [weak self] in self?.dismissFailure() }
         )
         installFailureEscMonitor()
+    }
+
+    /// The failure card's optional action button.
+    struct FailureAction {
+        let title: String
+        let icon: String
+        /// Only set where the key is really bound — Return runs Retry through
+        /// `installFailureEscMonitor`; nothing is bound to Open Settings.
+        let hint: String?
+        let run: @MainActor () -> Void
+
+        static func retry(_ run: @escaping @MainActor () -> Void) -> FailureAction {
+            FailureAction(title: "Retry", icon: "arrow.clockwise", hint: "↩", run: run)
+        }
+
+        static func openSettings(_ run: @escaping @MainActor () -> Void) -> FailureAction {
+            FailureAction(title: "Open Settings", icon: "gear", hint: nil, run: run)
+        }
     }
 
     // MARK: - Review flow
@@ -1439,7 +1588,10 @@ final class DictationController {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
             AppLog.dictation.warning("Missing Accessibility permission, could not resume recording")
-            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
+            // Stay in review with the reason on a banner. Dropping to `.error`
+            // here left the review card on screen over a state that no longer
+            // matched it, and took the user's transcript out of reach of Paste.
+            LiveHUDState.shared.reviewBanner = PermissionCopy.accessibilityHUDMessage
             return
         }
 
@@ -1514,7 +1666,10 @@ final class DictationController {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
             AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
-            state = .error("Accessibility permission needed. Grant it in System Settings → Privacy & Security → Accessibility.")
+            enterFailureHUD(
+                message: PermissionCopy.accessibilityHUDMessage,
+                action: .openSettings { AccessibilityPermission.openSystemSettings() }
+            )
             return
         }
 

@@ -1,0 +1,1 @@
+The release uses PostgreSQL, WebSocket reconnects, and a background worker written in TypeScript. Before deployment, review the VoiceInk adapter, the MacWhisper export, and ticket VTT two zero four eight. Then send the checksum to the operations team and verify that every retry preserves the original request identifier.

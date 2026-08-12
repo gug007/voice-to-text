@@ -17,6 +17,7 @@ const ROUTE_LINKS = [
   { href: GUIDE_PATH, label: "Guide" },
   { href: "/offline-speech-to-text-mac", label: "Offline" },
   { href: "/meeting-recording", label: "Meetings" },
+  { href: "/compare/best-dictation-apps-for-mac", label: "Compare" },
 ] as const;
 
 type NavProps = {

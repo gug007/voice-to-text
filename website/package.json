@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "benchmark:verify": "node scripts/score-dictation-benchmark.mjs --verify-only",
+    "prebuild": "npm run benchmark:verify",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"

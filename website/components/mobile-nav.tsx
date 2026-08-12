@@ -44,7 +44,7 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
   }, [open]);
 
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 961px)");
+    const desktop = window.matchMedia("(min-width: 1041px)");
     const closeAtDesktopWidth = (event: MediaQueryListEvent) => {
       if (!event.matches) return;
       if (open) {
@@ -157,6 +157,16 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
                 onClick={close}
               >
                 Voice to text for coding
+              </Link>
+            </li>
+            <li>
+              <Link
+                href="/compare/best-dictation-apps-for-mac"
+                aria-current={current === "/compare/best-dictation-apps-for-mac" ? "page" : undefined}
+                tabIndex={open ? 0 : -1}
+                onClick={close}
+              >
+                Compare dictation apps
               </Link>
             </li>
           </ul>

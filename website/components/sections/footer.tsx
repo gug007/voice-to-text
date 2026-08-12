@@ -51,6 +51,7 @@ const COLUMNS: FooterColumn[] = [
       { kind: "route", href: "/whisper-vs-parakeet-mac", label: "Whisper vs. Parakeet" },
       { kind: "route", href: "/superwhisper-alternative", label: "Superwhisper alternative" },
       { kind: "route", href: "/wispr-flow-alternative", label: "Wispr Flow alternative" },
+      { kind: "route", href: "/compare/best-dictation-apps-for-mac", label: "Best dictation apps for Mac" },
     ],
   },
 ];

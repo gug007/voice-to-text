@@ -77,7 +77,7 @@ export default function RootLayout({
           <style>{`
             .reveal, .reveal-child { opacity: 1 !important; transform: none !important; }
             .theme-toggle { display: none !important; }
-            @media (max-width: 960px) {
+            @media (max-width: 1040px) {
               .nav__primary, .nav__mobile, .nav__inner > .btn { display: none !important; }
               .nav__fallback { display: flex !important; }
             }

@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0.0",
+  "fixture_id": "meeting-en-us-three-speaker",
+  "turns": [
+    {
+      "turn": 1,
+      "speaker": "speaker_a",
+      "text": "Let’s start with the launch schedule."
+    },
+    {
+      "turn": 2,
+      "speaker": "speaker_b",
+      "text": "The desktop build is ready for final testing, but the help center still needs two screenshots."
+    },
+    {
+      "turn": 3,
+      "speaker": "speaker_c",
+      "text": "I can deliver those before noon tomorrow."
+    },
+    {
+      "turn": 4,
+      "speaker": "speaker_a",
+      "text": "Great."
+    },
+    {
+      "turn": 5,
+      "speaker": "speaker_b",
+      "text": "Once they are uploaded, I will review the article and notify support."
+    },
+    {
+      "turn": 6,
+      "speaker": "speaker_c",
+      "text": "Please record Friday as the release candidate deadline."
+    }
+  ]
+}

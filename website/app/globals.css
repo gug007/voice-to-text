@@ -768,7 +768,7 @@ button { font-family: inherit; }
 }
 .nav__menu-download { width: 100%; margin-top: var(--space-2); }
 
-@media (max-width: 960px) {
+@media (max-width: 1040px) {
   .nav__primary { display: none; }
   .nav__inner > .btn { display: none; }
   .nav__mobile { display: block; margin-left: auto; }

@@ -9,6 +9,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const homeLastModified = "2026-07-27";
   const contentPageLastModified = "2026-07-27";
   const newContentLastModified = "2026-07-27";
+  const comparisonLastModified = "2026-08-12";
   return [
     {
       url: `${SITE_URL}/`,
@@ -63,6 +64,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: newContentLastModified,
       changeFrequency: "monthly",
       priority: 0.75,
+    },
+    {
+      url: `${SITE_URL}/compare/best-dictation-apps-for-mac`,
+      lastModified: comparisonLastModified,
+      changeFrequency: "monthly",
+      priority: 0.9,
     },
   ];
 }

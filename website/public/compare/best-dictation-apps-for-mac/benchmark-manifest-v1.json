@@ -1,0 +1,292 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema_version": "1.0.0",
+  "benchmark_id": "best-dictation-apps-for-mac",
+  "methodology_version": "1.0.0",
+  "created_at": "2026-08-12",
+  "methodology_path": "methodology-v1.md",
+  "results_template_path": "results-template.csv",
+  "disclosure": {
+    "cross_app_hands_on_results_exist": false,
+    "publication_state": "methodology_only",
+    "statement": "No cross-app hands-on results exist yet. This package contains a preregistered method, reference text, and an empty results template only."
+  },
+  "execution_gate": {
+    "ready": false,
+    "blocking_items": [
+      "Record the canonical WAV stimulus for every audio-based fixture.",
+      "Add each WAV path, duration, and SHA-256 digest to this manifest.",
+      "Publish and hash the calibration stimulus, unscored warm-up recording, and isolated meeting source tracks.",
+      "Freeze the Mac hardware, macOS build, virtual audio device version, and meeting client version in the run log."
+    ]
+  },
+  "products": [
+    "voicetotext",
+    "apple-dictation",
+    "wispr-flow",
+    "superwhisper",
+    "macwhisper",
+    "aqua-voice",
+    "voiceink"
+  ],
+  "integrity": {
+    "algorithm": "sha256",
+    "encoding": "utf-8",
+    "line_endings": "lf",
+    "files": [
+      {
+        "path": "methodology-v1.md",
+        "sha256": "fde37a7935337fb536afb0a722b341f44a91733e13c0e80235ea7df1544b6dad"
+      },
+      {
+        "path": "results-template.csv",
+        "sha256": "14426dae7602ba3b5d2040dd65a8593779c018a1fae7c2d660f58c3de4fdbc30"
+      },
+      {
+        "path": "fixtures/references/correction-en-us-target.txt",
+        "sha256": "879440a5db7947973f09fc80b792a52c75644b877ed807276ead2a67ab3e0036"
+      },
+      {
+        "path": "fixtures/references/dictation-en-us-general.txt",
+        "sha256": "1d9dec554d2c5ffa32d85a77466eedd1c5afb9f4a28e3599f467a6618121ff36"
+      },
+      {
+        "path": "fixtures/references/dictation-en-us-technical.txt",
+        "sha256": "d85bf03c9f2b26eb59d214704c8668957a55e695334321f99c31a7961c16f35c"
+      },
+      {
+        "path": "fixtures/references/dictation-es-es-general.txt",
+        "sha256": "02791186db538f75a0443b659c594cac7eb5f04d4cd2198e0afb4091c07c6028"
+      },
+      {
+        "path": "fixtures/references/dictation-fr-fr-general.txt",
+        "sha256": "c05c554136a81640ad85ff15393cec0f8cadd7d3120ff6e36e31cd0c5be1895e"
+      },
+      {
+        "path": "fixtures/references/file-en-us-interview.txt",
+        "sha256": "3e8c5e0b9b5f58439530b27eb6340aa501964e88a87724d7ae5a9ce8f506dc71"
+      },
+      {
+        "path": "fixtures/references/meeting-en-us-three-speaker.txt",
+        "sha256": "3aaadf60f504f28821310b944a219bf4a0bd18af7c50bf57d40adae1357b974c"
+      },
+      {
+        "path": "fixtures/seeds/correction-en-us-seed.txt",
+        "sha256": "c57fb7ca7f7912b23e4a8d3a44ad55625f4a98e388b2d8755d9dd6854a6b0e95"
+      },
+      {
+        "path": "fixtures/segments/meeting-en-us-three-speaker.json",
+        "sha256": "7537ded91f34b753db533d40eb56adf5cb628117157d3158e0e2d7b9f6c5ada0"
+      }
+    ]
+  },
+  "protocol": {
+    "required_repetitions": 3,
+    "test_window_days": 7,
+    "minimum_block_spacing_hours": 4,
+    "minimum_test_days": 2,
+    "warmup_runs_per_product_block": 1,
+    "run_order": {
+      "statement": "Use these exact product orders for repetitions 1, 2, and 3. Fixture order remains the manifest order.",
+      "block_1": [
+        "voicetotext",
+        "macwhisper",
+        "aqua-voice",
+        "apple-dictation",
+        "voiceink",
+        "wispr-flow",
+        "superwhisper"
+      ],
+      "block_2": [
+        "wispr-flow",
+        "voiceink",
+        "apple-dictation",
+        "aqua-voice",
+        "superwhisper",
+        "voicetotext",
+        "macwhisper"
+      ],
+      "block_3": [
+        "superwhisper",
+        "aqua-voice",
+        "macwhisper",
+        "wispr-flow",
+        "voicetotext",
+        "apple-dictation",
+        "voiceink"
+      ]
+    },
+    "calibration": {
+      "level_tolerance_db": 0.2,
+      "onset_tolerance_ms": 20,
+      "failure_status": "invalid",
+      "failure_reason": "invalid_rig",
+      "failure_action": "Repair the route and restart the entire block."
+    },
+    "default_profile": "default",
+    "profiles": {
+      "default": "Fresh install or reset settings; accept the normal onboarding defaults and use the vendor-recommended model for the selected language.",
+      "local_only": "Optional second track using the strongest documented mode in which audio and transcript processing remain on the Mac. Never substitute this track for the default track."
+    },
+    "audio_specification": {
+      "format": "WAV",
+      "encoding": "linear PCM",
+      "sample_rate_hz": 48000,
+      "channels": 1,
+      "bit_depth": 24,
+      "integrated_loudness_lufs": -23,
+      "true_peak_max_dbtp": -1,
+      "leading_silence_ms": 500,
+      "trailing_silence_ms": 500
+    },
+    "eligible_status": "complete",
+    "non_rankable_statuses": [
+      "",
+      "not_tested",
+      "unsupported",
+      "failed",
+      "invalid"
+    ],
+    "same_environment_fields": [
+      "hardware",
+      "macos_version",
+      "test_profile"
+    ],
+    "required_metadata_fields": [
+      "app_version",
+      "plan",
+      "test_profile",
+      "processing_path",
+      "privacy_mode",
+      "app_language_setting",
+      "tested_at",
+      "hardware",
+      "macos_version",
+      "price_snapshot",
+      "pricing_source_url"
+    ]
+  },
+  "normalization": {
+    "unicode": "NFKC",
+    "case": "locale-aware lowercase",
+    "apostrophes": "canonical ASCII apostrophe",
+    "word_metric_punctuation": "removed",
+    "character_metric_punctuation": "removed",
+    "character_metric_whitespace": "removed",
+    "word_segmentation": "Intl.Segmenter with fixture locale and isWordLike=true"
+  },
+  "ranking": {
+    "minimum_apps": 2,
+    "require_all_fixtures_in_scope": true,
+    "require_all_repetitions": true,
+    "require_same_environment": true,
+    "aggregate": "median within fixture, then unweighted mean across fixtures",
+    "ties": "competition ranking",
+    "overall_score": false,
+    "statement": "There is no weighted overall score. Publish separate metric tables so readers can choose their own tradeoffs. Blank and not_tested rows are never eligible for any rank."
+  },
+  "fixtures": [
+    {
+      "id": "dictation-en-us-general",
+      "workflow": "dictation",
+      "language": "English (United States)",
+      "locale": "en-US",
+      "reference_path": "fixtures/references/dictation-en-us-general.txt",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": ["raw_transcript", "elapsed_seconds"],
+      "metrics": ["wer", "cer", "strict_edit_distance", "elapsed_seconds"]
+    },
+    {
+      "id": "dictation-en-us-technical",
+      "workflow": "dictation",
+      "language": "English (United States)",
+      "locale": "en-US",
+      "reference_path": "fixtures/references/dictation-en-us-technical.txt",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": ["raw_transcript", "elapsed_seconds"],
+      "metrics": ["wer", "cer", "strict_edit_distance", "elapsed_seconds"]
+    },
+    {
+      "id": "dictation-es-es-general",
+      "workflow": "dictation",
+      "language": "Spanish (Spain)",
+      "locale": "es-ES",
+      "reference_path": "fixtures/references/dictation-es-es-general.txt",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": ["raw_transcript", "elapsed_seconds"],
+      "metrics": ["wer", "cer", "strict_edit_distance", "elapsed_seconds"]
+    },
+    {
+      "id": "dictation-fr-fr-general",
+      "workflow": "dictation",
+      "language": "French (France)",
+      "locale": "fr-FR",
+      "reference_path": "fixtures/references/dictation-fr-fr-general.txt",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": ["raw_transcript", "elapsed_seconds"],
+      "metrics": ["wer", "cer", "strict_edit_distance", "elapsed_seconds"]
+    },
+    {
+      "id": "file-en-us-interview",
+      "workflow": "file_transcription",
+      "language": "English (United States)",
+      "locale": "en-US",
+      "reference_path": "fixtures/references/file-en-us-interview.txt",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": ["raw_transcript", "elapsed_seconds"],
+      "metrics": ["wer", "cer", "strict_edit_distance", "elapsed_seconds"]
+    },
+    {
+      "id": "meeting-en-us-three-speaker",
+      "workflow": "meeting",
+      "language": "English (United States)",
+      "locale": "en-US",
+      "reference_path": "fixtures/references/meeting-en-us-three-speaker.txt",
+      "segments_path": "fixtures/segments/meeting-en-us-three-speaker.json",
+      "audio_path": null,
+      "audio_sha256": null,
+      "required_repetitions": 3,
+      "required_fields": [
+        "raw_transcript",
+        "elapsed_seconds",
+        "capture_complete",
+        "speaker_turns_correct",
+        "speaker_turns_total"
+      ],
+      "metrics": [
+        "wer",
+        "cer",
+        "strict_edit_distance",
+        "elapsed_seconds",
+        "capture_complete",
+        "speaker_turn_accuracy"
+      ]
+    },
+    {
+      "id": "correction-en-us-seeded",
+      "workflow": "correction",
+      "language": "English (United States)",
+      "locale": "en-US",
+      "reference_path": "fixtures/references/correction-en-us-target.txt",
+      "seed_path": "fixtures/seeds/correction-en-us-seed.txt",
+      "required_repetitions": 3,
+      "required_fields": ["final_transcript", "correction_seconds", "edit_actions"],
+      "metrics": [
+        "initial_strict_edit_distance",
+        "final_strict_edit_distance",
+        "correction_seconds",
+        "edit_actions"
+      ]
+    }
+  ]
+}

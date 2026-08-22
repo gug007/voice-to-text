@@ -277,6 +277,7 @@ struct GeneralPane: View {
     @Bindable private var dictation = DictationController.shared
     @Bindable private var loginItem = LoginItemController.shared
     @Bindable private var presence = AppPresenceController.shared
+    @Bindable private var appearance = AppearanceController.shared
 
     enum PermissionAlert: String, Identifiable {
         case microphone
@@ -327,6 +328,7 @@ struct GeneralPane: View {
                 ReviewBeforePasteCard()
                 launchAtLoginCard
                 presenceCard
+                appearanceCard
             }
 
             PaneSection("Permissions") {
@@ -550,6 +552,48 @@ struct GeneralPane: View {
             return "Required while VoiceToText is hidden from the Dock — it's how you reopen this window."
         }
         return "Adds a VoiceToText icon to the menu bar for starting dictation and reopening this window."
+    }
+
+    /// App-wide light/dark. `System` is the default and follows macOS, schedule
+    /// included; the other two pin every window in the process — HUD, popovers
+    /// and toasts included — no matter what the system does. The switch is here
+    /// rather than in the token layer because nothing below `AppearanceController`
+    /// needs to know: `Palette` re-resolves against whatever it pins.
+    @ViewBuilder
+    private var appearanceCard: some View {
+        Plate {
+            HStack(alignment: .center, spacing: Space.s6) {
+                VStack(alignment: .leading, spacing: Space.s2) {
+                    Text("Appearance")
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
+                    Text(appearanceSubtitle)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: Space.s6)
+                Picker("Appearance", selection: $appearance.mode) {
+                    ForEach(AppAppearance.allCases) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: 240)
+            }
+        }
+    }
+
+    private var appearanceSubtitle: String {
+        switch appearance.mode {
+        case .system:
+            return "Follows macOS, including the automatic light/dark schedule."
+        case .light:
+            return "VoiceToText stays light even when macOS switches to dark."
+        case .dark:
+            return "VoiceToText stays dark even when macOS switches to light."
+        }
     }
 
     // MARK: - Permissions, as data

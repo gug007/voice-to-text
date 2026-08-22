@@ -110,12 +110,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // Dock.
     func applicationWillFinishLaunching(_ notification: Notification) {
         AppPresenceController.shared.applyDockPolicy()
+        // Same reason as the Dock policy: pin the appearance before the first
+        // window is placed, so a dark-pinned launch never flashes light.
+        AppearanceController.shared.apply()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         launchedAt = Date()
         LoginItemController.shared.applyDefaultIfNeeded()
         AppPresenceController.shared.syncMenuBarItem()
+        AppearanceController.shared.startObservingContrastChanges()
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(

@@ -12,7 +12,8 @@ import SwiftUI
 nonisolated enum HUDMetrics {
     /// Transparent border around the card, inside the panel. The card's drop
     /// shadow lives here, which is why the panel itself has `hasShadow = false`.
-    static let gutter: CGFloat = 24
+    /// Three 24pt blur radii plus the 16pt vertical offset avoids a hard edge.
+    static let gutter: CGFloat = 88
     /// Card content inset — 12, down from 20. This is what fixed the compact
     /// recording overflow (112pt of content in an 88pt box).
     /// Every HUD control is therefore radius 22 − 12 = 10, concentrically.
@@ -49,8 +50,8 @@ nonisolated enum HUDMetrics {
     static let reviewMinHeight: CGFloat = 236
     static let reviewChipsMinHeight: CGFloat = 278
 
-    /// Default placement: panel bottom edge 120pt above the visible frame.
-    static let defaultBottomInset: CGFloat = 120
+    /// Default placement: panel bottom edge 56pt above the visible frame.
+    static let defaultBottomInset: CGFloat = 56
     /// Never let the panel touch a screen edge.
     static let screenMargin: CGFloat = 8
 

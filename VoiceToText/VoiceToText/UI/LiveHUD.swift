@@ -690,7 +690,7 @@ final class LiveHUDPanel {
         }
     }
 
-    /// Panel frame = card + a 24pt transparent shadow gutter on every side,
+    /// Panel frame = card + an 88pt transparent shadow gutter on every side,
     /// anchored by its bottom edge and horizontal centre so growth happens
     /// upward and outward from where the user last put it.
     private func panelFrame(cardSize: CGSize) -> NSRect {

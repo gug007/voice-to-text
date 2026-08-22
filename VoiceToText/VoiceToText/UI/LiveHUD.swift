@@ -691,8 +691,14 @@ final class LiveHUDPanel {
     }
 
     /// Panel frame = card + an 88pt transparent shadow gutter on every side,
-    /// anchored by its bottom edge and horizontal centre so growth happens
-    /// upward and outward from where the user last put it.
+    /// anchored by the *card's* bottom edge and horizontal centre so growth
+    /// happens upward and outward from where the user last put it.
+    ///
+    /// Every coordinate here is card space — the anchor is the card's
+    /// bottom-centre, the clamp keeps the card on screen, and the gutter is
+    /// added back only at the end. Measuring on the panel instead would tie a
+    /// persisted position to `gutter`, so changing the shadow's size would
+    /// silently move every HUD anyone had ever dragged.
     private func panelFrame(cardSize: CGSize) -> NSRect {
         let size = NSSize(
             width: cardSize.width + HUDMetrics.gutter * 2,
@@ -702,17 +708,22 @@ final class LiveHUDPanel {
         let visible = screen.visibleFrame
         let anchor = anchor(on: screen)
 
-        let x = Self.clamp(
-            (anchor.x - size.width / 2).rounded(),
+        let cardX = Self.clamp(
+            (anchor.x - cardSize.width / 2).rounded(),
             visible.minX + HUDMetrics.screenMargin,
-            visible.maxX - size.width - HUDMetrics.screenMargin
+            visible.maxX - cardSize.width - HUDMetrics.screenMargin
         )
-        let y = Self.clamp(
+        let cardY = Self.clamp(
             anchor.y.rounded(),
             visible.minY + HUDMetrics.screenMargin,
-            visible.maxY - size.height - HUDMetrics.screenMargin
+            visible.maxY - cardSize.height - HUDMetrics.screenMargin
         )
-        return NSRect(x: x, y: y, width: size.width, height: size.height)
+        return NSRect(
+            x: cardX - HUDMetrics.gutter,
+            y: cardY - HUDMetrics.gutter,
+            width: size.width,
+            height: size.height
+        )
     }
 
     private static func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
@@ -771,7 +782,7 @@ final class LiveHUDPanel {
         return nil
     }
 
-    /// The panel's bottom-centre in screen coordinates: the user's dragged
+    /// The card's bottom-centre in screen coordinates: the user's dragged
     /// position for this display, or the default.
     private func anchor(on screen: NSScreen) -> NSPoint {
         storedAnchor(on: screen) ?? Self.defaultAnchor(on: screen)
@@ -791,7 +802,10 @@ final class LiveHUDPanel {
         return "\(screen.localizedName)|\(Int(size.width))x\(Int(size.height))"
     }
 
-    private static let anchorsDefaultsKey = "hud.panelAnchors"
+    /// v2 stores the card's bottom-centre. v1 stored the panel's, which tied
+    /// every saved position to `gutter`; those values are dropped on upgrade
+    /// and the HUD falls back to the unchanged default placement.
+    private static let anchorsDefaultsKey = "hud.panelAnchors.v2"
 
     private func storedAnchor(on screen: NSScreen) -> NSPoint? {
         let store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]]
@@ -838,7 +852,10 @@ final class LiveHUDPanel {
             dragStartMouse = nil
         }
         guard let panel, let screen = panel.screen else { return }
-        storeAnchor(NSPoint(x: panel.frame.midX, y: panel.frame.minY), on: screen)
+        storeAnchor(
+            NSPoint(x: panel.frame.midX, y: panel.frame.minY + HUDMetrics.gutter),
+            on: screen
+        )
     }
 
     /// Double-click on the card: forget this display's stored origin and spring

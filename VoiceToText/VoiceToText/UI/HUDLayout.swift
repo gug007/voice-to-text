@@ -13,6 +13,9 @@ nonisolated enum HUDMetrics {
     /// Transparent border around the card, inside the panel. The card's drop
     /// shadow lives here, which is why the panel itself has `hasShadow = false`.
     /// Three 24pt blur radii plus the 16pt vertical offset avoids a hard edge.
+    ///
+    /// Placement never reads this: `panelFrame` anchors and clamps the card and
+    /// adds the gutter last, so resizing the shadow cannot move the HUD.
     static let gutter: CGFloat = 88
     /// Card content inset — 12, down from 20. This is what fixed the compact
     /// recording overflow (112pt of content in an 88pt box).
@@ -50,9 +53,11 @@ nonisolated enum HUDMetrics {
     static let reviewMinHeight: CGFloat = 236
     static let reviewChipsMinHeight: CGFloat = 278
 
-    /// Default placement: panel bottom edge 56pt above the visible frame.
-    static let defaultBottomInset: CGFloat = 56
-    /// Never let the panel touch a screen edge.
+    /// Default placement: card bottom edge 144pt above the visible frame.
+    /// Measured on the card, not the panel, so it is independent of `gutter`.
+    static let defaultBottomInset: CGFloat = 144
+    /// Never let the card touch a screen edge. The panel's transparent shadow
+    /// gutter is allowed to overhang it.
     static let screenMargin: CGFloat = 8
 
     /// `Motion.hudMorph` is `.bouncy(duration: 0.38, extraBounce: 0.06)`. The

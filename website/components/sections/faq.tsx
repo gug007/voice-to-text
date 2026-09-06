@@ -75,15 +75,16 @@ const FAQS: Faq[] = [
 
 export function Faq() {
   return (
-    <section className="section faq reveal" id="faq" aria-labelledby="faq-title">
+    <section className="section faq" id="faq" aria-labelledby="faq-title">
       <div className="container">
-        <p className="section__eyebrow">FAQ</p>
-        <h2 id="faq-title" className="section__title">
-          What you need to know before installing.
-        </h2>
-        <p className="section__deck">
-          Eight direct answers about privacy, setup, compatibility, and everyday use.
-        </p>
+        <div className="section__head section__head--center">
+          <h2 id="faq-title" className="section__title">
+            What to know before installing.
+          </h2>
+          <p className="section__deck">
+            Direct answers about privacy, setup, compatibility, and everyday use.
+          </p>
+        </div>
         <div className="faq__list">
           {FAQS.map(({ question, answer }) => (
             <details key={question} className="faq-item">

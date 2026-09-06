@@ -13,16 +13,15 @@ export async function Contributors() {
   const contributors = await getContributors();
 
   return (
-    <section className="section contributors reveal" id="contributors" aria-labelledby="contributors-title">
+    <section className="section contributors" id="contributors" aria-labelledby="contributors-title">
       <div className="container contributors__inner">
         <div className="contributors__intro">
-          <p className="section__eyebrow">Built in public</p>
           <h2 id="contributors-title" className="section__title">
-            The people behind VoiceToText.
+            Built in public, by these people.
           </h2>
           <p className="section__deck">
             Every commit, issue, and release happens in the open on GitHub. These are the contributors
-            who have shipped code to the project — pull requests are welcome.
+            who have shipped code to the project so far. Pull requests are welcome.
           </p>
           <div className="contributors__ctas">
             <ExternalLink
@@ -35,7 +34,7 @@ export async function Contributors() {
               <span>Contribute on GitHub</span>
             </ExternalLink>
             <ExternalLink className="contributors__issues" href={ISSUES_URL}>
-              Report an issue <Icon name="arrow-right" size="sm" />
+              Report an issue
             </ExternalLink>
           </div>
         </div>

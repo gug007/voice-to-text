@@ -14,6 +14,7 @@ import { HowItWorks } from "@/components/sections/how-it-works";
 import { Nav } from "@/components/sections/nav";
 import { Proof } from "@/components/sections/proof";
 import { StickyCta } from "@/components/sticky-cta";
+import { Icon } from "@/components/ui/icon";
 import { UseCaseExplorer } from "@/components/use-case-explorer";
 import {
   faqPageJsonLd,
@@ -55,7 +56,7 @@ const TOPIC_GUIDES = [
   {
     href: "/meeting-recording",
     title: "Record and transcribe meetings",
-    body: "Capture your microphone and system audio together, then transcribe calls locally by default—without a bot in the meeting.",
+    body: "Capture your microphone and system audio together, then transcribe calls locally by default, with no bot in the meeting.",
   },
 ] as const;
 
@@ -75,23 +76,29 @@ export default function Home() {
         <Demo />
         <HowItWorks />
         <UseCaseExplorer />
-        <section className="section guide-section reveal" id="guides" aria-labelledby="guides-title">
-          <div className="container guide__container">
-            <p className="section__eyebrow">Mac speech-to-text guides</p>
-            <h2 id="guides-title" className="section__title">
-              Pick the voice workflow you want to improve.
-            </h2>
-            <p className="section__deck">
-              Practical guides for private dictation, faster coding, and meeting transcription on Mac.
-            </p>
-            <div className="guide__choices">
-              {TOPIC_GUIDES.map(({ href, title, body }) => (
-                <article key={href} className="guide__choice">
-                  <h3><Link className="link" href={href}>{title}</Link></h3>
-                  <p>{body}</p>
-                </article>
-              ))}
+        <section className="section guide-section" id="guides" aria-labelledby="guides-title">
+          <div className="container">
+            <div className="section__head">
+              <h2 id="guides-title" className="section__title">
+                Guides for the workflow you want to improve.
+              </h2>
+              <p className="section__deck">
+                Practical setup notes for private dictation, faster coding, and meeting transcription on a Mac.
+              </p>
             </div>
+            <ul className="guide-list" role="list">
+              {TOPIC_GUIDES.map(({ href, title, body }) => (
+                <li key={href}>
+                  <Link className="guide-list__item" href={href}>
+                    <span>
+                      <h3>{title}</h3>
+                      <p>{body}</p>
+                    </span>
+                    <Icon name="arrow-right" className="guide-list__chevron" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
           </div>
         </section>
         <Features />

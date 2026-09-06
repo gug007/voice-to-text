@@ -89,7 +89,7 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
           </p>
           <p className="footer__privacy t-caption">
             No app telemetry. No account. Your audio stays on the Mac in local mode.{" "}
-            <ExternalLink className="link" href={REPO_URL}>Audit the source on GitHub →</ExternalLink>
+            <ExternalLink className="link" href={REPO_URL}>Audit the source on GitHub</ExternalLink>
           </p>
         </div>
         <nav className="footer__columns" aria-label="Footer">

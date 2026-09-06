@@ -27,14 +27,14 @@ const USE_CASES: readonly UseCase[] = [
     icon: "apps",
     title: "Write emails, notes, and messages without breaking your flow.",
     body: "Put the cursor where you want the text, speak naturally, review the result, and press Return. VoiceToText handles punctuation and types into the app already in front of you.",
-    sample: "Quick update — I finished the proposal and shared it with the team. I’ll send the final version before lunch tomorrow.",
+    sample: "Quick update: I finished the proposal and shared it with the team. I’ll send the final version before lunch tomorrow.",
     apps: ["Mail", "Notes", "Slack", "Notion"],
     cta: "Dictate your next message",
     href: DMG_URL,
   },
   {
     id: "coding",
-    label: "AI & coding",
+    label: "AI and coding",
     icon: "agent",
     title: "Speak detailed prompts into ChatGPT, Cursor, or your terminal.",
     body: "Explain the context, constraints, and desired result out loud. Long technical requests become editable text at the cursor, ready to refine before you send them.",
@@ -70,71 +70,77 @@ export function UseCaseExplorer() {
   const ctaContent = (
     <>
       <span>{active.cta}</span>
-      <Icon name={active.internal ? "arrow-right" : "download"} />
+      {active.internal ? null : <Icon name="download" />}
     </>
   );
 
   return (
-    <section className="section use-case-explorer reveal" id="use-cases" aria-labelledby="use-cases-title">
+    <section className="section use-case-explorer" id="use-cases" aria-labelledby="use-cases-title">
       <div className="container">
-        <p className="section__eyebrow">Choose your workflow</p>
-        <h2 id="use-cases-title" className="section__title">Where will voice to text save you time?</h2>
-        <p className="section__deck">
-          Dictate everyday writing, longer AI prompts, or entire meetings. Pick a workflow to see how
-          VoiceToText fits the Mac apps you already use.
-        </p>
+        <div className="section__head">
+          <h2 id="use-cases-title" className="section__title">Where will you use it first?</h2>
+          <p className="section__deck">
+            Everyday writing, long prompts for AI tools, or whole meetings. Pick one to see how it fits the
+            Mac apps you already use.
+          </p>
+        </div>
 
         <div className="use-case-explorer__layout">
-          <div className="use-case-explorer__choices" aria-label="Choose a VoiceToText workflow">
+          <div className="segmented" aria-label="Choose a VoiceToText workflow">
             {USE_CASES.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className={`use-case-choice${active.id === item.id ? " is-active" : ""}`}
+                className={`segmented__item${active.id === item.id ? " is-active" : ""}`}
                 aria-pressed={active.id === item.id}
                 onClick={() => selectUseCase(item.id)}
               >
-                <span className="use-case-choice__icon" aria-hidden="true"><Icon name={item.icon} /></span>
-                <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.title}</small>
-                </span>
-                <Icon name="arrow-right" className="use-case-choice__arrow" />
+                <Icon name={item.icon} />
+                {item.label}
               </button>
             ))}
           </div>
 
           <div className="use-case-panel" aria-live="polite">
-            <p className="t-label">{active.label}</p>
-            <h3>{active.title}</h3>
-            <p className="use-case-panel__body">{active.body}</p>
-            <blockquote className="use-case-panel__sample">
-              <span className="use-case-panel__mic" aria-hidden="true"><Icon name="mic" /></span>
-              <p>{active.sample}</p>
-            </blockquote>
-            <ul className="use-case-panel__apps" aria-label={`Example apps for ${active.label}`}>
-              {active.apps.map((app) => <li key={app}>{app}</li>)}
-            </ul>
-            {active.internal ? (
-              <Link
-                className="btn btn--primary"
-                href={active.href}
-                data-analytics-event="use_case_cta"
-                data-analytics-placement="home_use_cases"
-                data-analytics-label={active.id}
-              >
-                {ctaContent}
-              </Link>
-            ) : (
-              <a
-                className="btn btn--primary"
-                href={active.href}
-                data-analytics-event="download_click"
-                data-analytics-placement="home_use_cases"
-              >
-                {ctaContent}
-              </a>
-            )}
+            <div className="use-case-panel__text">
+              <h3>{active.title}</h3>
+              <p className="use-case-panel__body">{active.body}</p>
+              <ul className="use-case-panel__apps" aria-label={`Example apps for ${active.label}`}>
+                {active.apps.map((app) => <li key={app}>{app}</li>)}
+              </ul>
+              {active.internal ? (
+                <Link
+                  className="btn btn--primary"
+                  href={active.href}
+                  data-analytics-event="use_case_cta"
+                  data-analytics-placement="home_use_cases"
+                  data-analytics-label={active.id}
+                >
+                  {ctaContent}
+                </Link>
+              ) : (
+                <a
+                  className="btn btn--primary"
+                  href={active.href}
+                  data-analytics-event="download_click"
+                  data-analytics-placement="home_use_cases"
+                >
+                  {ctaContent}
+                </a>
+              )}
+            </div>
+            <figure className="review-mock" aria-label="Transcript review panel">
+              <figcaption className="review-mock__chrome">
+                <span className="review-mock__dot" aria-hidden="true" />
+                Review before paste
+              </figcaption>
+              <p className="review-mock__text">{active.sample}</p>
+              <div className="review-mock__keys" aria-hidden="true">
+                <span><kbd className="keycap">Return</kbd> Paste</span>
+                <span><kbd className="keycap">Esc</kbd> Cancel</span>
+                <span><kbd className="keycap">⌘R</kbd> Keep talking</span>
+              </div>
+            </figure>
           </div>
         </div>
       </div>

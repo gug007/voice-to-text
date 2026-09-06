@@ -301,7 +301,7 @@ export function DictationDemo() {
       </div>
 
       <figcaption className="demo-card__caption">
-        <span>Press <HotkeyCombo />, speak, press again — words appear at the cursor. Nothing leaves the Mac.</span>
+        <span>Press <HotkeyCombo />, speak, press again. Nothing leaves your Mac.</span>
         <button
           type="button"
           className="demo-replay"

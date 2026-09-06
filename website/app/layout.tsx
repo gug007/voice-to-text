@@ -1,5 +1,4 @@
 import type { Metadata, Viewport } from "next";
-import { Geist } from "next/font/google";
 import Script from "next/script";
 
 import { AnalyticsEvents } from "@/components/analytics-events";
@@ -13,12 +12,6 @@ import {
 } from "@/lib/seo";
 
 import "./globals.css";
-
-const sans = Geist({
-  subsets: ["latin"],
-  display: "swap",
-  variable: "--font-sans",
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -58,17 +51,17 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0A0A0B" },
-    { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
+    { media: "(prefers-color-scheme: dark)", color: "#1E1E20" },
+    { media: "(prefers-color-scheme: light)", color: "#F4F4F7" },
   ],
-  colorScheme: "dark light",
+  colorScheme: "light dark",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={sans.variable} suppressHydrationWarning>
+    <html lang="en" suppressHydrationWarning>
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />

@@ -32,7 +32,7 @@ export function ThemeToggle() {
   const theme = useSyncExternalStore<Theme>(
     subscribeTheme,
     readTheme,
-    () => "dark",
+    () => "light",
   );
 
   const handleToggle = useCallback(() => {

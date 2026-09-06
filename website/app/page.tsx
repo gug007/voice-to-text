@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { JsonLd } from "@/components/json-ld";
 import { ScrollEffects } from "@/components/scroll-effects";
+import { Contributors } from "@/components/sections/contributors";
 import { Demo } from "@/components/sections/demo";
 import { Download } from "@/components/sections/download";
 import { Faq } from "@/components/sections/faq";
@@ -94,6 +95,7 @@ export default function Home() {
           </div>
         </section>
         <Features />
+        <Contributors />
         <Faq />
         <Download />
       </main>

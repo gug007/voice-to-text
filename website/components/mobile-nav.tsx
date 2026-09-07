@@ -44,7 +44,7 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
   }, [open]);
 
   useEffect(() => {
-    const desktop = window.matchMedia("(min-width: 1041px)");
+    const desktop = window.matchMedia("(min-width: 1181px)");
     const closeAtDesktopWidth = (event: MediaQueryListEvent) => {
       if (!event.matches) return;
       if (open) {

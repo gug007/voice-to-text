@@ -587,6 +587,7 @@ button { font-family: inherit; }
 .nav__links { display: flex; gap: 2px; align-items: center; }
 .nav__primary { margin-left: auto; }
 .nav__links a {
+  white-space: nowrap;
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-medium);
   color: var(--text-secondary);
@@ -677,7 +678,11 @@ button { font-family: inherit; }
 .nav__menu li a[aria-current="page"] { color: var(--text-primary); background: var(--well); }
 .nav__menu-download { width: 100%; margin-top: var(--space-2); }
 
-@media (max-width: 1040px) {
+@media (max-width: 1320px) {
+  .nav__inner { gap: var(--space-2); }
+  .nav__links a { padding: 6px 9px; }
+}
+@media (max-width: 1180px) {
   .nav__primary { display: none; }
   .nav__inner > .btn { display: none; }
   .nav__mobile { display: block; margin-left: auto; }

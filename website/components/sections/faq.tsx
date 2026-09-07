@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
+import { ExternalLink } from "@/components/ui/external-link";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
+import { ISSUES_URL } from "@/lib/constants";
 
 type Faq = {
   question: string;
@@ -75,15 +77,18 @@ const FAQS: Faq[] = [
 
 export function Faq() {
   return (
-    <section className="section faq" id="faq" aria-labelledby="faq-title">
-      <div className="container">
-        <div className="section__head section__head--center">
+    <section className="section section--band faq faq--split" id="faq" aria-labelledby="faq-title">
+      <div className="container faq__layout">
+        <div className="faq__intro">
           <h2 id="faq-title" className="section__title">
             What to know before installing.
           </h2>
           <p className="section__deck">
             Direct answers about privacy, setup, compatibility, and everyday use.
           </p>
+          <ExternalLink className="faq__more" href={ISSUES_URL}>
+            More questions on GitHub <Icon name="arrow-right" size="sm" />
+          </ExternalLink>
         </div>
         <div className="faq__list">
           {FAQS.map(({ question, answer }) => (

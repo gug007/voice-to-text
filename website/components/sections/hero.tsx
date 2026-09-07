@@ -1,13 +1,14 @@
 import { DMG_URL } from "@/lib/constants";
+import { HeroStage } from "@/components/hero-stage";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
 import { WaveBars } from "@/components/ui/wave-bars";
 
-const META = ["Signed & notarized", "Direct DMG", "No app telemetry"];
+const META = ["Signed & notarized", "No app telemetry", "Apple Silicon · macOS 15+"];
 
 export function Hero() {
   return (
-    <section className="section hero" id="top" aria-labelledby="hero-title">
+    <section className="section hero hero--stage" id="top" aria-labelledby="hero-title">
       <WaveBars />
       <div className="container hero__inner">
         <p className="hero__eyebrow">
@@ -20,8 +21,7 @@ export function Hero() {
           <span className="hero__title-accent">Speak. It types. Anywhere.</span>
         </h1>
         <p className="hero__lead">
-          Press <HotkeyCombo /> to dictate into any app. Runs locally on Apple Silicon — free, no account
-          required, and source available on GitHub.
+          Press <HotkeyCombo /> to dictate into any app. Local on Apple Silicon, free, no account.
         </p>
         <div className="hero__ctas">
           <a
@@ -34,10 +34,10 @@ export function Hero() {
             <span>Download for Mac — free</span>
           </a>
           <a className="btn btn--secondary btn--lg" href="#demo">
-            <span>See it in action</span>
-            <Icon name="arrow-right" />
+            <span>Watch the demo</span>
           </a>
         </div>
+        <HeroStage />
         <p className="hero__meta">
           {META.map((item, i) => (
             <span key={item} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-3)" }}>
@@ -45,13 +45,6 @@ export function Hero() {
               {i < META.length - 1 ? <span className="hero__meta-sep" aria-hidden="true" /> : null}
             </span>
           ))}
-        </p>
-        <p className="hero__meta-sub t-caption">
-          Built for Apple Silicon (M1 or newer) · Requires macOS 15.0 or later.
-        </p>
-        <p className="hero__subcopy">
-          Speak in Notes, Slack, Mail, Notion, ChatGPT, a terminal, or any other text field. Review the
-          result before it types, or turn on instant paste.
         </p>
       </div>
     </section>

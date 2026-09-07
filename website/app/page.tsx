@@ -11,11 +11,10 @@ import { Features } from "@/components/sections/features";
 import { Footer } from "@/components/sections/footer";
 import { Hero } from "@/components/sections/hero";
 import { HowItWorks } from "@/components/sections/how-it-works";
+import { Models } from "@/components/sections/models";
 import { Nav } from "@/components/sections/nav";
-import { Proof } from "@/components/sections/proof";
 import { StickyCta } from "@/components/sticky-cta";
 import { Icon } from "@/components/ui/icon";
-import { UseCaseExplorer } from "@/components/use-case-explorer";
 import {
   faqPageJsonLd,
   homePageJsonLd,
@@ -72,10 +71,11 @@ export default function Home() {
       <Nav />
       <main id="main" tabIndex={-1}>
         <Hero />
-        <Proof />
-        <Demo />
         <HowItWorks />
-        <UseCaseExplorer />
+        <Demo />
+        <Features />
+        <Models />
+        <Contributors />
         <section className="section guide-section" id="guides" aria-labelledby="guides-title">
           <div className="container">
             <div className="section__head">
@@ -101,8 +101,6 @@ export default function Home() {
             </ul>
           </div>
         </section>
-        <Features />
-        <Contributors />
         <Faq />
         <Download />
       </main>

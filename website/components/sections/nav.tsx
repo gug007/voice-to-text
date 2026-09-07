@@ -9,14 +9,13 @@ import { ThemeToggle } from "@/components/theme-toggle";
 
 const HASH_LINKS = [
   { href: "#demo", label: "Demo" },
-  { href: "#use-cases", label: "Use cases" },
+  { href: "#how-it-works", label: "How it works" },
   { href: "#features", label: "Privacy" },
+  { href: "#models", label: "Models" },
 ] as const;
 
 const ROUTE_LINKS = [
   { href: GUIDE_PATH, label: "Guide" },
-  { href: "/offline-speech-to-text-mac", label: "Offline" },
-  { href: "/meeting-recording", label: "Meetings" },
   { href: "/compare/best-dictation-apps-for-mac", label: "Compare" },
 ] as const;
 

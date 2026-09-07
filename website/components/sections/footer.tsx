@@ -25,8 +25,9 @@ const COLUMNS: FooterColumn[] = [
   {
     title: "Product",
     links: [
-      { kind: "hash", href: "#use-cases", label: "Use cases" },
+      { kind: "hash", href: "#how-it-works", label: "How it works" },
       { kind: "hash", href: "#features", label: "Privacy & features" },
+      { kind: "hash", href: "#models", label: "Local models" },
       { kind: "route", href: "/meeting-recording", label: "Meeting recorder for Mac" },
       { kind: "hash", href: "#faq", label: "FAQ" },
       { kind: "hash", href: "#download", label: "Download the app" },

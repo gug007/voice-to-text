@@ -1,33 +1,10 @@
-import type { ReactNode } from "react";
+import Image from "next/image";
+import Link from "next/link";
 
-import { DMG_URL, RELEASES_URL } from "@/lib/constants";
+import { DMG_URL, GUIDE_PATH, RELEASES_URL } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
-
-type Step = {
-  title: ReactNode;
-  body: ReactNode;
-};
-
-const STEPS: Step[] = [
-  {
-    title: "Open the DMG",
-    body: <>Drag <strong>VoiceToText</strong> to <code className="code-inline">/Applications</code>. It takes five seconds.</>,
-  },
-  {
-    title: "Launch the app",
-    body: "The default local model (Parakeet TDT v3) downloads itself. No setup, no account.",
-  },
-  {
-    title: "Grant Microphone and Accessibility",
-    body: "A one-time prompt. The mic hears you, and Accessibility types into whatever app you are in. Revoke either at any time in System Settings.",
-  },
-  {
-    title: <>Press <HotkeyCombo />, speak, press again</>,
-    body: "Review the transcript, hit Return, and it lands at the cursor. Prefer hold-to-talk? One switch in Settings.",
-  },
-];
 
 export function Download() {
   return (
@@ -35,12 +12,13 @@ export function Download() {
       <div className="container download__inner">
         <div className="download__glow" aria-hidden="true" />
         <div className="download__plate">
+          <Image className="download__icon" src="/app-icon.png" width={56} height={56} alt="VoiceToText app icon" />
           <h2 id="download-title" className="section__title">
-            Download VoiceToText for Mac.
+            Install it in the time it takes to say so.
           </h2>
           <p className="section__deck">
-            Free, signed and notarized, and served straight from GitHub Releases. Requires macOS 15 or
-            later on Apple Silicon.
+            Download VoiceToText for Mac free: open the DMG, drag it to Applications, grant two permissions,
+            press <HotkeyCombo />. Signed, notarized, and served from GitHub Releases.
           </p>
           <div className="download__ctas">
             <a
@@ -57,24 +35,11 @@ export function Download() {
               <span>All releases on GitHub</span>
             </ExternalLink>
           </div>
-          <p className="download__meta">Updates are built in. The app checks GitHub Releases daily and installs new versions in place.</p>
-          <ol className="download__steps" role="list">
-            {STEPS.map(({ title, body }, i) => (
-              <li key={i} className="download__step">
-                <span className="download__step-num" aria-hidden="true">{i + 1}</span>
-                <div>
-                  <h3 className="download__step-title">{title}</h3>
-                  <p className="download__step-body">{body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-          <p className="download__perms t-caption">
-            <strong>Why two permissions?</strong> Microphone lets the app hear you. Accessibility lets it type
-            into whatever app you are in. Both stay on the device.
+          <p className="download__note t-caption">
+            macOS 15.0 or later · Apple Silicon (M1 or newer) · Updates install in place.
           </p>
-          <p className="download__reqs t-caption">
-            <strong>Requirements:</strong> macOS 15.0 or later and an Apple Silicon Mac (M1 or newer).
+          <p className="download__note t-caption">
+            Need it step by step? <Link className="link" href={GUIDE_PATH}>Read the Mac setup guide</Link>.
           </p>
         </div>
       </div>

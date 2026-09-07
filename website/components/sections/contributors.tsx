@@ -13,7 +13,7 @@ export async function Contributors() {
   const contributors = await getContributors();
 
   return (
-    <section className="section contributors" id="contributors" aria-labelledby="contributors-title">
+    <section className="section section--band contributors" id="contributors" aria-labelledby="contributors-title">
       <div className="container contributors__inner">
         <div className="contributors__intro">
           <h2 id="contributors-title" className="section__title">

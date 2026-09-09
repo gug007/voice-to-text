@@ -4,7 +4,7 @@
 
 .hero {
   overflow: hidden;
-  padding: clamp(112px, 14vh, 158px) 0 clamp(var(--space-16), 8vw, var(--space-24));
+  padding: clamp(112px, 9vw, 158px) 0 clamp(var(--space-16), 8vw, var(--space-24));
   border-bottom: 1px solid var(--border);
   background:
     radial-gradient(ellipse 78% 66% at 18% 30%, var(--hero-halo), transparent 72%),
@@ -12,16 +12,13 @@
   background-size: auto, 28px 28px;
 }
 
-.heroInner {
-  max-width: 1080px;
-}
-
+.heroInner,
 .content {
-  max-width: 980px;
+  max-width: var(--container-narrow);
 }
 
 .wideContent {
-  max-width: 1240px;
+  max-width: var(--maxw);
 }
 
 .eyebrow {
@@ -32,7 +29,7 @@
   padding: 6px var(--space-3);
   border: 1px solid var(--border);
   border-radius: var(--radius-full);
-  background: color-mix(in srgb, var(--surface-elevated) 72%, transparent);
+  background: var(--surface);
   color: var(--text-secondary);
   font-size: var(--fs-caption);
   font-weight: var(--fw-medium);
@@ -44,15 +41,15 @@
 .gateDot {
   width: 7px;
   height: 7px;
-  border-radius: 50%;
-  background: #22c55e;
-  box-shadow: 0 0 0 4px color-mix(in srgb, #22c55e 12%, transparent);
+  border-radius: var(--radius-full);
+  background: var(--ready);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--ready) 12%, transparent);
 }
 
 .title {
   max-width: 15.5ch;
   margin-bottom: var(--space-6);
-  font-size: clamp(44px, 7vw, 82px);
+  font-size: var(--fs-display-2, clamp(34px, 4.4vw, 54px));
   font-weight: var(--fw-semibold);
   line-height: var(--lh-display);
   letter-spacing: var(--ls-display);
@@ -60,7 +57,7 @@
 }
 
 .lead {
-  max-width: 67ch;
+  max-width: var(--measure, 34em);
   margin-bottom: var(--space-8);
   color: var(--text-secondary);
   font-size: clamp(19px, 2.2vw, 24px);
@@ -91,13 +88,21 @@
   text-underline-offset: 3px;
 }
 
+.byline a:hover,
+.vendorLink:hover,
+.sourceGroup a:hover,
+.matrix tbody th a:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .disclosure {
-  max-width: 76ch;
+  max-width: var(--measure, 34em);
   margin-top: var(--space-8);
   padding: var(--space-5);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  background: var(--surface);
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.65;
@@ -108,42 +113,39 @@
 }
 
 .section {
-  padding-block: clamp(var(--space-16), 8vw, var(--space-24));
+  padding-block: clamp(72px, 9vw, 132px);
 }
 
+/* The alternating band RECEDES, matching globals .section--band. */
 .sectionAlt {
   border-block: 1px solid var(--border);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--surface) 72%, var(--bg)),
-      color-mix(in srgb, var(--surface-elevated) 34%, var(--bg))
-    );
+  background: var(--bg-deep);
 }
 
 .sectionHeader {
   max-width: 760px;
-  margin-bottom: var(--space-10);
+  margin-bottom: var(--head-gap, clamp(38px, 5vw, 64px));
 }
 
+/* One kicker dialect site-wide: mirrors globals .kicker. */
 .sectionLabel {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: 9px;
   margin-bottom: var(--space-4);
   color: var(--text-muted);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--ls-label);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: var(--fw-regular);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .sectionLabel::before {
-  width: 14px;
+  width: 22px;
   height: 1px;
-  background: currentColor;
+  background: var(--hairline-3);
   content: "";
-  opacity: 0.65;
 }
 
 .sectionHeader h2,
@@ -156,12 +158,20 @@
   text-wrap: balance;
 }
 
-.sectionHeader > p:last-child,
-.metricCallout > div:last-child > p,
-.answerCopy p {
+.sectionHeader > p:last-child {
+  max-width: var(--measure, 34em);
   color: var(--text-secondary);
   font-size: var(--fs-body-lg);
-  line-height: 1.75;
+  line-height: var(--lh-body);
+  text-wrap: pretty;
+}
+
+.metricCallout > div:last-child > p:not(.sectionLabel),
+.answerCopy p {
+  max-width: var(--measure, 34em);
+  color: var(--text-secondary);
+  font-size: var(--fs-body-md);
+  line-height: 1.7;
   text-wrap: pretty;
 }
 
@@ -197,14 +207,12 @@
   padding: clamp(var(--space-5), 3vw, var(--space-8));
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  background: var(--surface);
 }
 
 .pickCard:first-child {
   border-color: var(--border-strong);
-  background:
-    radial-gradient(circle at 100% 0, var(--hero-halo), transparent 48%),
-    color-mix(in srgb, var(--surface-elevated) 70%, transparent);
+  background: var(--surface-elevated);
 }
 
 .pickTopline {
@@ -222,7 +230,7 @@
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border-strong);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   color: var(--text-muted);
   font-family: var(--font-mono-tokens);
   font-size: var(--fs-code);
@@ -238,12 +246,13 @@
 
 .pickCard h3 {
   margin-bottom: var(--space-3);
-  font-size: clamp(24px, 3vw, 31px);
+  font-size: var(--fs-display-4);
   line-height: var(--lh-heading);
   letter-spacing: var(--ls-display);
 }
 
 .pickVerdict {
+  max-width: var(--measure, 34em);
   margin-bottom: var(--space-6);
   color: var(--text-secondary);
   font-size: 16px;
@@ -304,8 +313,8 @@
 }
 
 .tableWrap:focus-visible {
-  outline: 2px solid var(--accent-solid);
-  outline-offset: 3px;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .matrix {
@@ -341,9 +350,11 @@
   top: 0;
   z-index: 2;
   background: var(--surface-elevated);
-  color: var(--text-primary);
-  font-size: var(--fs-caption);
-  letter-spacing: var(--ls-label);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: var(--fw-regular);
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
@@ -449,18 +460,18 @@
   padding: var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: var(--surface);
 }
 
 .privacySteps > li > span,
 .protocol > li > span {
   display: inline-flex;
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border-strong);
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   color: var(--text-muted);
   font-family: var(--font-mono-tokens);
   font-size: var(--fs-code);
@@ -474,17 +485,19 @@
 
 .privacySteps p,
 .protocol p {
+  max-width: var(--measure, 34em);
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.65;
 }
 
 .note {
+  max-width: var(--measure, 34em);
   margin-top: var(--space-6);
   padding: var(--space-5);
-  border-left: 3px solid var(--text-primary);
+  border-left: 3px solid var(--accent);
   border-radius: 0 var(--radius-lg) var(--radius-lg) 0;
-  background: var(--surface-elevated);
+  background: var(--surface);
   color: var(--text-secondary);
   font-size: 15px;
   line-height: 1.7;
@@ -504,7 +517,7 @@
   padding: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, var(--surface) 84%, transparent);
+  background: var(--surface);
   transition:
     border-color var(--duration-fast) var(--ease-standard),
     transform var(--duration-fast) var(--ease-standard),
@@ -546,9 +559,9 @@
 .releaseGate {
   margin-top: var(--space-6);
   padding: var(--space-6);
-  border: 1px solid color-mix(in srgb, #22c55e 28%, var(--border));
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: color-mix(in srgb, #22c55e 4%, var(--surface));
+  background: var(--surface);
 }
 
 .releaseGate > div {
@@ -559,6 +572,7 @@
 }
 
 .releaseGate p {
+  max-width: var(--measure, 34em);
   color: var(--text-secondary);
   font-size: 14px;
   line-height: 1.65;
@@ -574,7 +588,7 @@
   padding: var(--space-5);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  background: var(--surface);
 }
 
 .sourceGroup h3 {
@@ -584,10 +598,12 @@
 
 .sourceGroup ul {
   display: grid;
-  gap: var(--space-2);
+  gap: 0;
 }
 
 .sourceGroup a {
+  display: inline-block;
+  padding-block: 8px;
   color: var(--text-secondary);
   font-size: var(--fs-body-sm);
   line-height: 1.5;
@@ -597,9 +613,9 @@
 }
 
 .finalCta {
-  padding-block: clamp(var(--space-16), 9vw, 112px);
+  padding-block: clamp(72px, 9vw, 132px);
   border-top: 1px solid var(--border);
-  background: radial-gradient(ellipse 62% 90% at 50% 100%, var(--hero-halo), transparent 74%);
+  background: var(--bg);
   text-align: center;
 }
 
@@ -617,7 +633,7 @@
 }
 
 .finalCta > div > p:not(.sectionLabel) {
-  max-width: 62ch;
+  max-width: var(--measure, 34em);
   margin: 0 auto var(--space-8);
   color: var(--text-secondary);
   font-size: var(--fs-body-lg);
@@ -632,10 +648,6 @@
   .pickCard:first-child {
     grid-column: span 2;
     min-height: 340px;
-  }
-
-  .pickCard:first-child .pickVerdict {
-    max-width: 68ch;
   }
 
   .pickCard:first-child .pickNotes {
@@ -666,8 +678,14 @@
     padding-bottom: 68px;
   }
 
-  .title {
-    font-size: clamp(39px, 11.5vw, 54px);
+  .section,
+  .finalCta {
+    padding-block: 64px;
+  }
+
+  .eyebrow {
+    align-items: flex-start;
+    border-radius: var(--radius-md);
   }
 
   .heroActions,
@@ -706,6 +724,13 @@
   .matrix th:first-child {
     width: 152px;
     min-width: 152px;
+  }
+}
+
+@media (max-width: 480px) {
+  .section,
+  .finalCta {
+    padding-block: 56px;
   }
 }
 

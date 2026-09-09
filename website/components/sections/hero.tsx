@@ -4,9 +4,9 @@ import { Icon } from "@/components/ui/icon";
 import { WaveBars } from "@/components/ui/wave-bars";
 
 const TRUST = [
-  "Free & open source",
+  "Free · source on GitHub",
   "Works fully offline",
-  "No accounts, no telemetry",
+  "No account, no app telemetry",
   "Signed & notarized",
   "macOS 15+ · Apple Silicon",
 ];

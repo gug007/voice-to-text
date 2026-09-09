@@ -6,18 +6,30 @@ import { ExternalLink } from "@/components/ui/external-link";
 import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+/* Listed in the order the sections appear in the document, so the nav reads as
+ * a table of contents rather than jumping the visitor back and forth. */
 const HASH_LINKS = [
-  { href: "#demo", label: "Demo" },
   { href: "#how-it-works", label: "How it works" },
+  { href: "#demo", label: "Demo" },
   { href: "#features", label: "Privacy" },
   { href: "#models", label: "Models" },
 ] as const;
 
+/* One label set for both navs — MobileNav renders these same arrays, so the
+ * desktop bar and the mobile drawer cannot drift into two site maps. */
 const ROUTE_LINKS = [
   { href: GUIDE_PATH, label: "Guide" },
   { href: "/offline-speech-to-text-mac", label: "Offline" },
   { href: "/meeting-recording", label: "Meetings" },
   { href: "/compare/best-dictation-apps-for-mac", label: "Compare" },
+] as const;
+
+/* The desktop bar has no room for a tenth item: measured at 1181-1440px, adding
+ * one drops the gap between the link row and the right-hand cluster from 51px to
+ * 17px and pushes that cluster 49px past the page grid. The drawer has the room,
+ * so this route lives there, under the same label the bar would have used. */
+const DRAWER_ONLY_LINKS = [
+  { href: "/voice-to-text-for-coding", label: "Coding" },
 ] as const;
 
 type NavProps = {
@@ -56,6 +68,8 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
           </ExternalLink>
         </nav>
         <div className="nav__right">
+          {/* No-JS chrome only: the noscript block in app/layout.tsx swaps this in
+              below 1181px, where the hamburger cannot open without JavaScript. */}
           <nav className="nav__fallback" aria-label="Quick links">
             <Link href={GUIDE_PATH}>Guide</Link>
             <Link href="/meeting-recording">Meetings</Link>
@@ -68,7 +82,12 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
               Download free
             </a>
           </nav>
-          <MobileNav current={current} links={HASH_LINKS} linkPrefix={linkPrefix} />
+          <MobileNav
+            current={current}
+            links={HASH_LINKS}
+            routes={[...ROUTE_LINKS, ...DRAWER_ONLY_LINKS]}
+            linkPrefix={linkPrefix}
+          />
           <ThemeToggle />
           <a
             className="btn btn--primary btn--sm"

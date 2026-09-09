@@ -22,7 +22,7 @@ const CARDS: PrivacyCard[] = [
   {
     icon: "lock",
     title: "Two permissions, both explainable",
-    body: "Microphone, so it can hear you. Accessibility, because that is the only way macOS lets one app type into another. Nothing else is asked for.",
+    body: "Microphone, so it can hear you. Accessibility, because that is the only way macOS lets one app type into another. Only if you rebind the shortcut to Right Control on its own does macOS also ask for Input Monitoring.",
   },
 ];
 

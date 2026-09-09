@@ -23,7 +23,7 @@ export function Download() {
               </p>
               <h2 id="download-title">Install it in the time it takes to say so.</h2>
               <p className="lede">
-                Free, open source, and quiet by default. Signed, notarized, and served from GitHub
+                Free, source on GitHub, and quiet by default. Signed, notarized, and served from GitHub
                 Releases — if it isn&rsquo;t for you, drag it to the Trash and nothing of yours went
                 anywhere.
               </p>

@@ -6,13 +6,14 @@ import { ScrollEffects } from "@/components/scroll-effects";
 import { Contributors } from "@/components/sections/contributors";
 import { Demo } from "@/components/sections/demo";
 import { Download } from "@/components/sections/download";
+import { Everywhere } from "@/components/sections/everywhere";
 import { Faq } from "@/components/sections/faq";
 import { Features } from "@/components/sections/features";
 import { Footer } from "@/components/sections/footer";
 import { Hero } from "@/components/sections/hero";
-import { HowItWorks } from "@/components/sections/how-it-works";
 import { Models } from "@/components/sections/models";
 import { Nav } from "@/components/sections/nav";
+import { Story } from "@/components/sections/story";
 import { StickyCta } from "@/components/sticky-cta";
 import { Icon } from "@/components/ui/icon";
 import {
@@ -71,10 +72,11 @@ export default function Home() {
       <Nav />
       <main id="main" tabIndex={-1}>
         <Hero />
-        <HowItWorks />
+        <Story />
         <Demo />
         <Features />
         <Models />
+        <Everywhere />
         <Contributors />
         <section className="section guide-section" id="guides" aria-labelledby="guides-title">
           <div className="container">

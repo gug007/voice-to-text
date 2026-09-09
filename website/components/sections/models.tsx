@@ -1,77 +1,120 @@
 import Link from "next/link";
 
 type Model = {
+  n: string;
   name: string;
+  /** Shown as a small badge beside the name (the default model only). */
+  badge?: string;
   tag: string;
-  tone: "accent" | "ready" | "muted";
-  body: string;
+  note: string;
 };
 
 const MODELS: Model[] = [
   {
+    n: "01",
     name: "Parakeet TDT v3",
+    badge: "Default",
     tag: "Fastest",
-    tone: "accent",
-    body: "The default. Downloads itself on first launch and runs fastest on-device.",
+    note: "Downloads on first launch and is the fastest on-device option. What you get if you change nothing.",
   },
   {
+    n: "02",
     name: "Whisper Large v3",
     tag: "Most accurate",
-    tone: "ready",
-    body: "The most accurate offline option for tough audio.",
+    note: "The most accurate offline option, for accents, crosstalk and generally tough audio.",
   },
   {
+    n: "03",
     name: "Whisper Large v3 Turbo",
     tag: "Best balance",
-    tone: "muted",
-    body: "Near-Large accuracy at a fraction of the latency.",
+    note: "Near-Large accuracy at a fraction of the latency. The pick if you can’t decide.",
   },
   {
+    n: "04",
     name: "Whisper Small",
     tag: "Light",
-    tone: "muted",
-    body: "A solid middle ground for older Apple Silicon Macs.",
+    note: "A middle ground that keeps older Apple Silicon Macs comfortable.",
   },
   {
+    n: "05",
     name: "Whisper Base",
     tag: "Lighter",
-    tone: "muted",
-    body: "Small download, quick transcription for everyday notes.",
+    note: "A small download for quick everyday notes and short messages.",
   },
   {
+    n: "06",
     name: "Whisper Tiny",
     tag: "Smallest",
-    tone: "muted",
-    body: "For space-constrained Macs. Instant, minimal footprint.",
+    note: "For space-constrained Macs. Instant, with a minimal footprint on disk.",
   },
 ];
 
+const CLOUD_MODELS = [
+  { name: "GPT-4o Transcribe", vendor: "OpenAI" },
+  { name: "GPT-4o Mini Transcribe", vendor: "OpenAI" },
+  { name: "GPT Transcribe", vendor: "OpenAI" },
+  { name: "Scribe v2 Realtime", vendor: "ElevenLabs" },
+] as const;
+
 export function Models() {
   return (
-    <section className="section models" id="models" aria-labelledby="models-title">
-      <div className="container">
-        <div className="section__head">
-          <h2 id="models-title" className="section__title">Pick the speech-to-text model that fits your Mac.</h2>
-          <p className="section__deck">
-            Six local models, downloaded once. Cloud engines are optional and use your own API key.
+    <section className="section section--band" id="models" aria-labelledby="models-title">
+      <div className="wrap">
+        <div className="sec-head">
+          <p className="kicker kicker--ch">
+            <span className="kicker__n" aria-hidden="true">03</span>
+            <span>Chapter three · six local engines</span>
+          </p>
+          <h2 id="models-title">Pick the speech-to-text model that fits your Mac.</h2>
+          <p className="lede">
+            All six download once and then work with the network off. Swap between them in Settings
+            whenever the trade-off changes — a quick note on a MacBook Air is not the same job as a
+            noisy interview recording.
           </p>
         </div>
-        <ul className="models__grid" role="list">
-          {MODELS.map(({ name, tag, tone, body }) => (
-            <li key={name} className="models__item">
-              <div className="models__head">
-                <h3 className="models__name">{name}</h3>
-                <span className={`models__tag models__tag--${tone}`}>{tag}</span>
-              </div>
-              <p className="models__body">{body}</p>
+
+        <p className="axis" aria-hidden="true">
+          <span />
+          <span>Model</span>
+          <span>Best for</span>
+          <span>What the note says</span>
+        </p>
+        <ul className="models" role="list">
+          {MODELS.map(({ n, name, badge, tag, note }) => (
+            <li className="model" key={name}>
+              <span className="model__n">{n}</span>
+              <span className="model__name">
+                {name}
+                {badge ? <span className="badge">{badge}</span> : null}
+              </span>
+              <span>
+                <span className="tag"><i aria-hidden="true" />{tag}</span>
+              </span>
+              <span className="model__note">{note}</span>
             </li>
           ))}
         </ul>
-        <p className="models__note">
-          Highest accuracy across accents and jargon: bring your own key and switch to GPT-4o Transcribe
-          (OpenAI) or Scribe v2 Realtime (ElevenLabs) in <em>Settings → Models</em>.{" "}
-          <Link className="link" href="/whisper-vs-parakeet-mac">Compare Whisper and Parakeet on Mac</Link>.
-        </p>
+
+        <div className="cloud">
+          <div className="cloud__head">
+            <h3>Optional cloud models</h3>
+            <p className="muted">
+              Settings → Models · bring your own API key · off unless you turn it on
+            </p>
+          </div>
+          <div className="cloud__chips">
+            {CLOUD_MODELS.map(({ name, vendor }) => (
+              <span className="chip" key={name}>{name} <em>{vendor}</em></span>
+            ))}
+          </div>
+          <p className="muted">
+            Not sure which local engine to start with?{" "}
+            <Link className="link" href="/whisper-vs-parakeet-mac">
+              Compare Whisper and Parakeet on Mac
+            </Link>
+            .
+          </p>
+        </div>
       </div>
     </section>
   );

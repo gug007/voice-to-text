@@ -1,29 +1,48 @@
 import { DMG_URL } from "@/lib/constants";
-import { HeroStage } from "@/components/hero-stage";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon } from "@/components/ui/icon";
 import { WaveBars } from "@/components/ui/wave-bars";
 
-const META = ["Signed & notarized", "No app telemetry", "Apple Silicon · macOS 15+"];
+const TRUST = [
+  "Free & open source",
+  "Works fully offline",
+  "No accounts, no telemetry",
+  "Signed & notarized",
+  "macOS 15+ · Apple Silicon",
+];
+
+function Tick() {
+  return (
+    <svg
+      className="tick"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M1.8 6.4l2.7 2.7L10.2 3" />
+    </svg>
+  );
+}
 
 export function Hero() {
   return (
-    <section className="section hero hero--stage" id="top" aria-labelledby="hero-title">
+    <section className="hero" id="top" aria-labelledby="hero-title">
       <WaveBars />
-      <div className="container hero__inner">
-        <p className="hero__eyebrow">
-          <span className="hero__eyebrow-dot" aria-hidden="true" />
-          Free · Source on GitHub · macOS
-        </p>
+      <div className="hero__content">
         <h1 id="hero-title" className="hero__title">
           Voice to text for Mac.
           <br />
           <span className="hero__title-accent">Speak. It types. Anywhere.</span>
         </h1>
-        <p className="hero__lead">
-          Press <HotkeyCombo /> to dictate into any app. Local on Apple Silicon, free, no account.
+        <p className="hero__sub">
+          Press <HotkeyCombo /> in any app, say what you mean, and the words land at your cursor. Transcription runs
+          on-device on Apple Silicon — no account, no subscription, no servers of ours in the middle.
         </p>
-        <div className="hero__ctas">
+        <div className="hero__cta">
           <a
             className="btn btn--primary btn--lg"
             href={DMG_URL}
@@ -33,20 +52,23 @@ export function Hero() {
             <Icon name="download" />
             <span>Download for Mac — free</span>
           </a>
-          <a className="btn btn--secondary btn--lg" href="#demo">
-            <span>Watch the demo</span>
+          <a className="btn btn--ghost btn--lg" href="#how-it-works">
+            <span>Watch a sentence travel</span>
           </a>
         </div>
-        <HeroStage />
-        <p className="hero__meta">
-          {META.map((item, i) => (
-            <span key={item} style={{ display: "inline-flex", alignItems: "center", gap: "var(--space-3)" }}>
+        <ul className="hero__trust">
+          {TRUST.map((item) => (
+            <li key={item}>
+              <Tick />
               {item}
-              {i < META.length - 1 ? <span className="hero__meta-sep" aria-hidden="true" /> : null}
-            </span>
+            </li>
           ))}
-        </p>
+        </ul>
       </div>
+      <p className="hero__scroll" aria-hidden="true">
+        Scroll
+        <span />
+      </p>
     </section>
   );
 }

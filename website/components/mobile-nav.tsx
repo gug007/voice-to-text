@@ -49,8 +49,8 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
       if (!event.matches) return;
       if (open) {
         rootRef.current
-          ?.closest<HTMLElement>(".nav__inner")
-          ?.querySelector<HTMLElement>(".nav__brand")
+          ?.closest<HTMLElement>(".nav__in")
+          ?.querySelector<HTMLElement>(".brand")
           ?.focus();
       }
       setOpen(false);

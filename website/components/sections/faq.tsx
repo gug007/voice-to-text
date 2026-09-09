@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 
 import { ExternalLink } from "@/components/ui/external-link";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
@@ -9,6 +9,8 @@ type Faq = {
   question: string;
   answer: ReactNode;
 };
+
+const MORE: CSSProperties = { display: "inline-flex", alignItems: "center", gap: "6px", fontSize: "14px" };
 
 // KEEP IN SYNC with `faqEntries` in lib/seo.ts (the FAQPage JSON-LD source).
 // Google requires the structured data to match the visible answers — edit both.
@@ -77,29 +79,34 @@ const FAQS: Faq[] = [
 
 export function Faq() {
   return (
-    <section className="section section--band faq faq--split" id="faq" aria-labelledby="faq-title">
-      <div className="container faq__layout">
-        <div className="faq__intro">
-          <h2 id="faq-title" className="section__title">
-            What to know before installing.
-          </h2>
-          <p className="section__deck">
-            Direct answers about privacy, setup, compatibility, and everyday use.
-          </p>
-          <ExternalLink className="faq__more" href={ISSUES_URL}>
-            More questions on GitHub <Icon name="arrow-right" size="sm" />
-          </ExternalLink>
-        </div>
-        <div className="faq__list">
-          {FAQS.map(({ question, answer }) => (
-            <details key={question} className="faq-item">
-              <summary className="faq-item__q">
-                <span>{question}</span>
-                <Icon name="chevron-down" className="faq-item__chevron" />
-              </summary>
-              <div className="faq-item__a">{answer}</div>
-            </details>
-          ))}
+    <section className="section section--band" id="faq" aria-labelledby="faq-title">
+      <div className="wrap">
+        <div className="faq">
+          <div className="sec-head">
+            <p className="kicker kicker--ch">
+              <span className="kicker__n" aria-hidden="true">05</span>
+              <span>Chapter five &middot; the fine print</span>
+            </p>
+            <h2 id="faq-title">What to know before installing.</h2>
+            <p className="lede">
+              Direct answers about privacy, setup, compatibility, and everyday use — including the parts
+              that might rule it out for you.
+            </p>
+            <p className="muted">
+              <ExternalLink className="link" href={ISSUES_URL} style={MORE}>
+                More questions on GitHub <Icon name="arrow-right" size="sm" />
+              </ExternalLink>
+            </p>
+          </div>
+
+          <div className="qa">
+            {FAQS.map(({ question, answer }, index) => (
+              <details key={question} open={index === 0}>
+                <summary>{question}</summary>
+                <div className="qa__a">{answer}</div>
+              </details>
+            ))}
+          </div>
         </div>
       </div>
     </section>

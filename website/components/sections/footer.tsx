@@ -17,12 +17,15 @@ type FooterLink =
   | { kind: "external"; href: string; label: string };
 
 type FooterColumn = {
+  /** Column heading; also seeds the id that labels the column's <nav>. */
+  id: string;
   title: string;
   links: FooterLink[];
 };
 
 const COLUMNS: FooterColumn[] = [
   {
+    id: "ft-product",
     title: "Product",
     links: [
       { kind: "hash", href: "#how-it-works", label: "How it works" },
@@ -34,16 +37,8 @@ const COLUMNS: FooterColumn[] = [
     ],
   },
   {
-    title: "Project",
-    links: [
-      { kind: "external", href: REPO_URL, label: "Source on GitHub" },
-      { kind: "external", href: RELEASES_URL, label: "Release history" },
-      { kind: "external", href: INTEGRATION_URL, label: "Automation guide" },
-      { kind: "external", href: ISSUES_URL, label: "Report an issue" },
-    ],
-  },
-  {
-    title: "Guides",
+    id: "ft-learn",
+    title: "Learn",
     links: [
       { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text setup" },
       { kind: "route", href: "/offline-speech-to-text-mac", label: "Offline speech to text" },
@@ -53,6 +48,16 @@ const COLUMNS: FooterColumn[] = [
       { kind: "route", href: "/superwhisper-alternative", label: "Superwhisper alternative" },
       { kind: "route", href: "/wispr-flow-alternative", label: "Wispr Flow alternative" },
       { kind: "route", href: "/compare/best-dictation-apps-for-mac", label: "Best dictation apps for Mac" },
+    ],
+  },
+  {
+    id: "ft-source",
+    title: "Source",
+    links: [
+      { kind: "external", href: REPO_URL, label: "Source on GitHub" },
+      { kind: "external", href: RELEASES_URL, label: "Release history" },
+      { kind: "external", href: INTEGRATION_URL, label: "Automation guide" },
+      { kind: "external", href: ISSUES_URL, label: "Report an issue" },
     ],
   },
 ];
@@ -74,42 +79,48 @@ type FooterProps = {
 
 export function Footer({ linkPrefix = "" }: FooterProps) {
   return (
-    <footer className="footer" id="footer" aria-labelledby="footer-title">
-      <div className="container footer__inner">
+    <footer className="foot" id="footer" aria-labelledby="footer-title">
+      <div className="wrap">
         <h2 id="footer-title" className="sr-only">Site footer</h2>
-        <div className="footer__brand-block">
-          <a className="footer__brand" href={`${linkPrefix}#top`} aria-label="VoiceToText home">
-            <Image className="brand-mark" src="/app-icon.png" width={28} height={28} alt="" />
-            <span>VoiceToText</span>
-          </a>
-          <p className="footer__tagline">
-            Free, local-first dictation and meeting transcription for Mac. Source available on GitHub.
-          </p>
-          <p className="footer__attribution t-caption">
-            Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>.
-          </p>
-          <p className="footer__privacy t-caption">
-            No app telemetry. No account. Your audio stays on the Mac in local mode.{" "}
-            <ExternalLink className="link" href={REPO_URL}>Audit the source on GitHub</ExternalLink>
-          </p>
-        </div>
-        <nav className="footer__columns" aria-label="Footer">
+        <div className="foot__grid">
+          <div>
+            <a className="brand" href={`${linkPrefix}#top`} aria-label="VoiceToText home">
+              <Image className="brand__mark" src="/app-icon.png" width={26} height={26} alt="" />
+              <span>VoiceToText</span>
+            </a>
+            <p className="foot__about">
+              Free, local-first dictation and meeting transcription for macOS. Built in SwiftUI,
+              transcribing on-device, with no servers of its own.
+            </p>
+            <p className="foot__about">
+              No app telemetry. No account. Your audio stays on the Mac in local mode.{" "}
+              <ExternalLink href={REPO_URL}>Audit the source on GitHub</ExternalLink>
+            </p>
+          </div>
           {COLUMNS.map((column) => (
-            <div key={column.title} className="footer__col">
-              <h3 className="footer__col-title t-label">{column.title}</h3>
-              <ul role="list">
+            <nav key={column.id} aria-labelledby={column.id}>
+              <p className="foot__h" id={column.id}>{column.title}</p>
+              <ul>
                 {column.links.map((link) => (
-                  <li key={`${column.title}-${link.label}`}>
+                  <li key={`${column.id}-${link.label}`}>
                     <FooterLinkView link={link} linkPrefix={linkPrefix} />
                   </li>
                 ))}
               </ul>
-            </div>
+            </nav>
           ))}
-        </nav>
-        <p className="footer__copyright t-caption">
-          © 2026 VoiceToText contributors. Source available on GitHub.
-        </p>
+        </div>
+        <div className="foot__bar">
+          <span>© 2026 VoiceToText contributors</span>
+          <span className="sep" aria-hidden="true" />
+          <span>Free forever &middot; no accounts</span>
+          <span className="sep" aria-hidden="true" />
+          <span>macOS 15.0+</span>
+          <span className="sep" aria-hidden="true" />
+          <span>
+            Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>
+          </span>
+        </div>
       </div>
     </footer>
   );

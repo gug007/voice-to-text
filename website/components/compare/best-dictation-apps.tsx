@@ -189,9 +189,9 @@ export function BestDictationAppsPage() {
                 </div>
                 <div className={styles.answerCopy}>
                   <p>
-                    Try <strong>Apple Dictation</strong> first for zero setup. Choose <strong>MacWhisper</strong>
+                    Try <strong>Apple Dictation</strong> first for zero setup. Choose <strong>MacWhisper</strong>{" "}
                     for production file work, <strong>Wispr Flow</strong> for managed cloud dictation and meeting
-                    intelligence, <strong>Aqua Voice</strong> for voice-driven edits, <strong>Superwhisper</strong>
+                    intelligence, <strong>Aqua Voice</strong> for voice-driven edits, <strong>Superwhisper</strong>{" "}
                     for model choice, and <strong>VoiceInk</strong> for GPL-licensed local control.
                   </p>
                   <p>

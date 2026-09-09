@@ -50,9 +50,11 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
+  // The page ground, not the HUD canvas, so the browser chrome matches the page
+  // it sits above. ThemeToggle rewrites these when the visitor picks a theme.
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#1E1E20" },
-    { media: "(prefers-color-scheme: light)", color: "#F4F4F7" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0C0F" },
+    { media: "(prefers-color-scheme: light)", color: "#F5F5F5" },
   ],
   colorScheme: "light dark",
 };
@@ -65,13 +67,19 @@ export default function RootLayout({
       <head>
         <link rel="dns-prefetch" href="https://github.com" />
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        {/* Between 641px and 1180px the header drops its download button and the
+            mobile sticky bar has not armed yet, leaving no persistent CTA on the
+            page. Keep the header CTA through that band; below 641px the sticky
+            bar is the single CTA. Belongs in globals.css beside the .nav rules —
+            the extra `.nav` in the selector only outranks them from here. */}
         {/* Keep content and the compact navigation usable before/without JavaScript. */}
         <noscript>
           <style>{`
             .reveal, .reveal-child { opacity: 1 !important; transform: none !important; }
             .theme-toggle { display: none !important; }
             @media (max-width: 1180px) {
-              .nav__primary, .nav__mobile, .nav__inner > .btn { display: none !important; }
+              .nav__primary, .nav__mobile,
+              .nav__in > .btn, .nav__inner > .btn, .nav__right > .btn { display: none !important; }
               .nav__fallback { display: flex !important; }
             }
           `}</style>

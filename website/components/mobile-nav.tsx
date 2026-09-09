@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import type { CSSProperties } from "react";
 
-import { DMG_URL, GUIDE_PATH } from "@/lib/constants";
+import { DMG_URL, REPO_URL } from "@/lib/constants";
+import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
 
 type MobileNavLink = {
@@ -13,11 +15,25 @@ type MobileNavLink = {
 
 type MobileNavProps = {
   current?: string;
+  /** In-page anchors, in document order. */
   links: readonly MobileNavLink[];
+  /** Sub-page routes — the same array the desktop bar renders. */
+  routes: readonly MobileNavLink[];
   linkPrefix: string;
 };
 
-export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
+/* The panel must be opaque. Its own backdrop-filter cannot work: the ancestor
+ * `.nav` declares one and so becomes the backdrop root, leaving the menu
+ * sampling an empty backdrop while page copy reads straight through the 8%
+ * transparency of its fill. An opaque surface is the only reliable separation
+ * (the @supports fallback in globals.css patches `.nav`, never this panel). */
+const PANEL: CSSProperties = {
+  background: "var(--surface)",
+  backdropFilter: "none",
+  WebkitBackdropFilter: "none",
+};
+
+export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -49,8 +65,8 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
       if (!event.matches) return;
       if (open) {
         rootRef.current
-          ?.closest<HTMLElement>(".nav__inner")
-          ?.querySelector<HTMLElement>(".nav__brand")
+          ?.closest<HTMLElement>(".nav__in")
+          ?.querySelector<HTMLElement>(".brand")
           ?.focus();
       }
       setOpen(false);
@@ -104,6 +120,7 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
       <div
         id="mobile-navigation"
         className={`nav__menu${open ? " is-open" : ""}`}
+        style={PANEL}
         aria-hidden={!open}
       >
         <nav aria-label="Mobile">
@@ -119,55 +136,28 @@ export function MobileNav({ current, links, linkPrefix }: MobileNavProps) {
                 </a>
               </li>
             ))}
+            {routes.map(({ href, label }) => (
+              <li key={href}>
+                <Link
+                  href={href}
+                  aria-current={current === href ? "page" : undefined}
+                  tabIndex={open ? 0 : -1}
+                  onClick={close}
+                >
+                  {label}
+                </Link>
+              </li>
+            ))}
             <li>
-              <Link
-                href={GUIDE_PATH}
-                aria-current={current === GUIDE_PATH ? "page" : undefined}
+              <ExternalLink
+                href={REPO_URL}
                 tabIndex={open ? 0 : -1}
                 onClick={close}
+                data-analytics-event="github_outbound"
+                data-analytics-placement="mobile_nav"
               >
-                Setup guide
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/meeting-recording"
-                aria-current={current === "/meeting-recording" ? "page" : undefined}
-                tabIndex={open ? 0 : -1}
-                onClick={close}
-              >
-                Meeting recorder
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/offline-speech-to-text-mac"
-                aria-current={current === "/offline-speech-to-text-mac" ? "page" : undefined}
-                tabIndex={open ? 0 : -1}
-                onClick={close}
-              >
-                Offline speech to text
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/voice-to-text-for-coding"
-                aria-current={current === "/voice-to-text-for-coding" ? "page" : undefined}
-                tabIndex={open ? 0 : -1}
-                onClick={close}
-              >
-                Voice to text for coding
-              </Link>
-            </li>
-            <li>
-              <Link
-                href="/compare/best-dictation-apps-for-mac"
-                aria-current={current === "/compare/best-dictation-apps-for-mac" ? "page" : undefined}
-                tabIndex={open ? 0 : -1}
-                onClick={close}
-              >
-                Compare dictation apps
-              </Link>
+                Source
+              </ExternalLink>
             </li>
           </ul>
           <a

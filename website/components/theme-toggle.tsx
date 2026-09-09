@@ -1,10 +1,35 @@
 "use client";
 
-import { useCallback, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useSyncExternalStore } from "react";
 
 type Theme = "light" | "dark";
 
 const STORAGE_KEY = "vtt-theme";
+
+/** Page ground per theme, used only if the live background cannot be read. */
+const GROUND: Record<Theme, string> = { light: "#F5F5F5", dark: "#0B0C0F" };
+
+/** Repaint the browser chrome to match the page.
+ *
+ *  `viewport.themeColor` in app/layout.tsx emits a prefers-color-scheme pair,
+ *  which is right until the visitor uses this toggle — an OS-light visitor on
+ *  the site's dark theme would otherwise keep a light toolbar band above a
+ *  near-black page. Every theme-color meta is rewritten with the same value so
+ *  the result does not depend on which one the browser picks first. */
+function paintBrowserChrome(theme: Theme) {
+  const measured = getComputedStyle(document.body).backgroundColor;
+  const color =
+    measured && !/^(transparent$|rgba\(0, 0, 0, 0\)$)/.test(measured) ? measured : GROUND[theme];
+  const metas = document.head.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]');
+  if (metas.length === 0) {
+    const meta = document.createElement("meta");
+    meta.name = "theme-color";
+    meta.content = color;
+    document.head.appendChild(meta);
+    return;
+  }
+  metas.forEach((meta) => meta.setAttribute("content", color));
+}
 
 function readTheme(): Theme {
   const explicit = document.documentElement.getAttribute("data-theme");
@@ -34,6 +59,10 @@ export function ThemeToggle() {
     readTheme,
     () => "light",
   );
+
+  useEffect(() => {
+    paintBrowserChrome(theme);
+  }, [theme]);
 
   const handleToggle = useCallback(() => {
     const next: Theme = readTheme() === "dark" ? "light" : "dark";

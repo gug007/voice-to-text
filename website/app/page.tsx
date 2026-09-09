@@ -81,6 +81,7 @@ export default function Home() {
         <section className="section guide-section" id="guides" aria-labelledby="guides-title">
           <div className="container">
             <div className="section__head">
+              <p className="kicker">Aside &middot; read next</p>
               <h2 id="guides-title" className="section__title">
                 Guides for the workflow you want to improve.
               </h2>

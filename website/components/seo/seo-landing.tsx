@@ -273,7 +273,7 @@ export function SeoLandingPage({ config }: { config: SeoLandingConfig }) {
                   <p className={styles.sectionLabel}>Side-by-side</p>
                   <h2 className={styles.sectionTitle} id="comparison-title">Compare the practical differences.</h2>
                 </header>
-                <div className={styles.tableWrap}>
+                <div className={styles.tableWrap} tabIndex={0} role="region" aria-labelledby="comparison-title">
                   <table className={styles.comparisonTable}>
                     <caption>{config.comparison.caption}</caption>
                     <thead>

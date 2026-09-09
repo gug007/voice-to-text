@@ -31,49 +31,49 @@
   --brand-start: #6194FF;
   --brand-end: #854FF7;
   /* HUD surface, from the app's Palette (canvas / plate hairline). */
-  --hud-canvas: #F4F4F7;
-  --hud-edge: rgba(13, 13, 16, .09);
-  --hud-control: rgba(13, 13, 16, .05);
+  --hud-canvas: #F2F4F9;
+  --hud-edge: rgba(25, 21, 42, .10);
+  --hud-control: rgba(25, 21, 42, .05);
   --hud-primary: rgba(255, 255, 255, .62);
 
   /* Surfaces */
-  --bg: #F5F5F5;
-  --bg-deep: #EBEBEB;
+  --bg: #F1F5FA;
+  --bg-deep: #E6EBF1;
   --surface: #FFFFFF;
-  --surface-elevated: #FAFAFA;
-  --surface-sunken: #EFEFEF;
+  --surface-elevated: #F7FAFE;
+  --surface-sunken: #E9EDF3;
   --surface-2: var(--surface-elevated);
   --surface-3: var(--surface-sunken);
-  --plate-hover: #FAFAFA;
-  --well: rgba(21, 22, 26, .045);
+  --plate-hover: #F4F7FC;
+  --well: rgba(25, 21, 42, .045);
 
   /* Lines */
-  --border: rgba(21, 22, 26, .11);
-  --border-strong: rgba(21, 22, 26, .20);
+  --border: rgba(25, 21, 42, .12);
+  --border-strong: rgba(25, 21, 42, .22);
   --hairline: var(--border);
   --hairline-2: var(--border-strong);
-  --hairline-3: rgba(21, 22, 26, .34);
-  --divider: var(--border);
+  --hairline-3: rgba(25, 21, 42, .34);
+  --divider: rgba(25, 21, 42, .10);
 
   /* Text */
-  --text-primary: #15161A;
-  --text-secondary: #3C3E46;
-  --text-muted: #55575F;
-  --text-faint: #63656E;
+  --text-primary: #19152A;
+  --text-secondary: #3D434E;
+  --text-muted: #515762;
+  --text-faint: #5E636D;
 
   /* Accent + status */
   /* Accent sits on the locked wave's own violet axis (hue ~258) at full
      saturation, so the gradient reads as the brand rather than an orphan.
      6.2:1 on --bg; white on it is 6.8:1. */
-  --accent: #5B34E8;
+  --accent: #672FE2;
   --accent-solid: var(--accent);
-  --accent-hover: #4A28CE;
-  --accent-soft: rgba(91, 52, 232, .12);
+  --accent-hover: #5616C7;
+  --accent-soft: rgba(103, 47, 226, .11);
   --accent-muted: var(--accent-soft);
-  --accent-ring: rgba(91, 52, 232, .45);
+  --accent-ring: rgba(103, 47, 226, .42);
   --accent-ink: #FFFFFF;
-  --live: #DC2626;
-  --ready: #047857;
+  --live: #DA5140;
+  --ready: #006663;
   --ok: var(--ready);
 
   /* Type */
@@ -153,9 +153,9 @@
   --shadow-macos: 0 40px 80px -36px rgba(21, 22, 26, .35), 0 8px 24px -12px rgba(21, 22, 26, .12);
   --plate-ring: 0 0 0 1px var(--border);
 
-  --hero-halo: rgba(21, 22, 26, .035);
-  --hero-grid: rgba(21, 22, 26, .035);
-  --hero-edge: rgba(21, 22, 26, .06);
+  --hero-halo: rgba(14, 140, 150, .085);
+  --hero-grid: rgba(58, 50, 110, .06);
+  --hero-edge: rgba(25, 21, 42, .07);
 
   --hud-bg: rgba(24, 25, 29, .94);
   --hud-shadow: 0 30px 60px -24px rgba(21, 22, 26, .45);
@@ -165,9 +165,6 @@
   --btn-primary-hover-shadow: var(--shadow-2);
   --card-hover-shadow: var(--shadow-1);
   --card-bg: var(--surface);
-
-  --demo-field-shadow: var(--plate-ring), 0 24px 48px -28px rgba(21, 22, 26, .28);
-  --demo-field-shadow-record: 0 0 0 2px var(--accent), 0 0 0 7px var(--accent-soft), 0 24px 48px -28px rgba(21, 22, 26, .28);
 
   --duration-fast: 140ms;
   --duration-base: 220ms;
@@ -194,44 +191,42 @@
     color-scheme: dark;
     --brand-start: #7FA8FF;
     --brand-end: #A276FF;
-    --hud-canvas: #1E1E20;
-    --hud-edge: rgba(255, 255, 255, .14);
-    --hud-control: rgba(255, 255, 255, .05);
-    --hud-primary: rgba(255, 255, 255, .10);
-    --bg: #0B0C0F;
-    --bg-deep: #07080A;
-    --surface: #14161B;
-    --surface-elevated: #191C22;
-    --surface-sunken: #1F232A;
-    --plate-hover: #191C22;
-    --well: rgba(255, 255, 255, .055);
-    --border: rgba(255, 255, 255, .11);
-    --border-strong: rgba(255, 255, 255, .19);
-    --hairline-3: rgba(255, 255, 255, .32);
-    --text-primary: #EFEFF2;
-    --text-secondary: #C4C6CE;
-    --text-muted: #9B9EA8;
-    --text-faint: #868A95;
-    --accent: #A78BFA;
-    --accent-hover: #BCA4FC;
-    --accent-soft: rgba(167, 139, 250, .16);
-    --accent-ring: rgba(167, 139, 250, .5);
-    --accent-ink: #0B0C0F;
-    --live: #FF7B72;
-    --ready: #4ADE80;
+    --hud-canvas: #242932;
+    --hud-edge: rgba(216, 224, 255, .15);
+    --hud-control: rgba(216, 224, 255, .07);
+    --hud-primary: rgba(216, 224, 255, .12);
+    --bg: #13181F;
+    --bg-deep: #090D13;
+    --surface: #1F242B;
+    --surface-elevated: #292E36;
+    --surface-sunken: #2D333B;
+    --plate-hover: #292E36;
+    --well: rgba(216, 224, 255, .06);
+    --border: rgba(216, 224, 255, .12);
+    --border-strong: rgba(216, 224, 255, .21);
+    --hairline-3: rgba(216, 224, 255, .33);
+    --text-primary: #F0EFF9;
+    --text-secondary: #BEC3CA;
+    --text-muted: #A4AAB2;
+    --text-faint: #9BA0A9;
+    --accent: #A699FF;
+    --accent-hover: #BCB5FE;
+    --accent-soft: rgba(166, 153, 255, .17);
+    --accent-ring: rgba(166, 153, 255, .50);
+    --accent-ink: #150F24;
+    --live: #E65F53;
+    --ready: #20B3AB;
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 26px -16px rgba(0, 0, 0, .8);
     --shadow-2: 0 2px 8px rgba(0, 0, 0, .55), 0 40px 70px -34px rgba(0, 0, 0, .9);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
     --shadow-macos: 0 40px 80px -36px rgba(0, 0, 0, .8), 0 8px 24px -12px rgba(0, 0, 0, .4);
-    --hero-halo: rgba(255, 255, 255, .05);
-    --hero-grid: rgba(255, 255, 255, .03);
-    --hero-edge: rgba(255, 255, 255, .06);
+    --hero-halo: rgba(72, 205, 205, .075);
+    --hero-grid: rgba(176, 168, 255, .05);
+    --hero-edge: rgba(216, 224, 255, .08);
     --hud-bg: rgba(25, 28, 34, .96);
     --hud-shadow: 0 30px 60px -20px rgba(0, 0, 0, .7);
     --hud-timer-color: rgba(255, 255, 255, .6);
     --hud-hint-color: rgba(255, 255, 255, .45);
-    --demo-field-shadow: var(--plate-ring), 0 24px 48px -28px rgba(0, 0, 0, .7);
-    --demo-field-shadow-record: 0 0 0 2px var(--accent), 0 0 0 7px var(--accent-soft), 0 24px 48px -28px rgba(0, 0, 0, .7);
   }
 }
 
@@ -239,44 +234,42 @@
   color-scheme: dark;
   --brand-start: #7FA8FF;
   --brand-end: #A276FF;
-  --hud-canvas: #1E1E20;
-  --hud-edge: rgba(255, 255, 255, .14);
-  --hud-control: rgba(255, 255, 255, .05);
-  --hud-primary: rgba(255, 255, 255, .10);
-  --bg: #0B0C0F;
-  --bg-deep: #07080A;
-  --surface: #14161B;
-  --surface-elevated: #191C22;
-  --surface-sunken: #1F232A;
-  --plate-hover: #191C22;
-  --well: rgba(255, 255, 255, .055);
-  --border: rgba(255, 255, 255, .11);
-  --border-strong: rgba(255, 255, 255, .19);
-  --hairline-3: rgba(255, 255, 255, .32);
-  --text-primary: #EFEFF2;
-  --text-secondary: #C4C6CE;
-  --text-muted: #9B9EA8;
-  --text-faint: #868A95;
-  --accent: #A78BFA;
-  --accent-hover: #BCA4FC;
-  --accent-soft: rgba(167, 139, 250, .16);
-  --accent-ring: rgba(167, 139, 250, .5);
-  --accent-ink: #0B0C0F;
-  --live: #FF7B72;
-  --ready: #4ADE80;
+  --hud-canvas: #242932;
+  --hud-edge: rgba(216, 224, 255, .15);
+  --hud-control: rgba(216, 224, 255, .07);
+  --hud-primary: rgba(216, 224, 255, .12);
+  --bg: #13181F;
+  --bg-deep: #090D13;
+  --surface: #1F242B;
+  --surface-elevated: #292E36;
+  --surface-sunken: #2D333B;
+  --plate-hover: #292E36;
+  --well: rgba(216, 224, 255, .06);
+  --border: rgba(216, 224, 255, .12);
+  --border-strong: rgba(216, 224, 255, .21);
+  --hairline-3: rgba(216, 224, 255, .33);
+  --text-primary: #F0EFF9;
+  --text-secondary: #BEC3CA;
+  --text-muted: #A4AAB2;
+  --text-faint: #9BA0A9;
+  --accent: #A699FF;
+  --accent-hover: #BCB5FE;
+  --accent-soft: rgba(166, 153, 255, .17);
+  --accent-ring: rgba(166, 153, 255, .50);
+  --accent-ink: #150F24;
+  --live: #E65F53;
+  --ready: #20B3AB;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 26px -16px rgba(0, 0, 0, .8);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, .55), 0 40px 70px -34px rgba(0, 0, 0, .9);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
   --shadow-macos: 0 40px 80px -36px rgba(0, 0, 0, .8), 0 8px 24px -12px rgba(0, 0, 0, .4);
-  --hero-halo: rgba(255, 255, 255, .05);
-  --hero-grid: rgba(255, 255, 255, .03);
-  --hero-edge: rgba(255, 255, 255, .06);
+  --hero-halo: rgba(72, 205, 205, .075);
+  --hero-grid: rgba(176, 168, 255, .05);
+  --hero-edge: rgba(216, 224, 255, .08);
   --hud-bg: rgba(25, 28, 34, .96);
   --hud-shadow: 0 30px 60px -20px rgba(0, 0, 0, .7);
   --hud-timer-color: rgba(255, 255, 255, .6);
   --hud-hint-color: rgba(255, 255, 255, .45);
-  --demo-field-shadow: var(--plate-ring), 0 24px 48px -28px rgba(0, 0, 0, .7);
-  --demo-field-shadow-record: 0 0 0 2px var(--accent), 0 0 0 7px var(--accent-soft), 0 24px 48px -28px rgba(0, 0, 0, .7);
 }
 
 :root[data-theme="light"] {
@@ -284,44 +277,42 @@
   --brand-start: #6194FF;
   --brand-end: #854FF7;
   /* HUD surface, from the app's Palette (canvas / plate hairline). */
-  --hud-canvas: #F4F4F7;
-  --hud-edge: rgba(13, 13, 16, .09);
-  --hud-control: rgba(13, 13, 16, .05);
+  --hud-canvas: #F2F4F9;
+  --hud-edge: rgba(25, 21, 42, .10);
+  --hud-control: rgba(25, 21, 42, .05);
   --hud-primary: rgba(255, 255, 255, .62);
-  --bg: #F5F5F5;
-  --bg-deep: #EBEBEB;
+  --bg: #F1F5FA;
+  --bg-deep: #E6EBF1;
   --surface: #FFFFFF;
-  --surface-elevated: #FAFAFA;
-  --surface-sunken: #EFEFEF;
-  --plate-hover: #FAFAFA;
-  --well: rgba(21, 22, 26, .045);
-  --border: rgba(21, 22, 26, .11);
-  --border-strong: rgba(21, 22, 26, .20);
-  --hairline-3: rgba(21, 22, 26, .34);
-  --text-primary: #15161A;
-  --text-secondary: #3C3E46;
-  --text-muted: #55575F;
-  --text-faint: #63656E;
-  --accent: #5B34E8;
-  --accent-hover: #4A28CE;
-  --accent-soft: rgba(91, 52, 232, .12);
-  --accent-ring: rgba(91, 52, 232, .45);
+  --surface-elevated: #F7FAFE;
+  --surface-sunken: #E9EDF3;
+  --plate-hover: #F4F7FC;
+  --well: rgba(25, 21, 42, .045);
+  --border: rgba(25, 21, 42, .12);
+  --border-strong: rgba(25, 21, 42, .22);
+  --hairline-3: rgba(25, 21, 42, .34);
+  --text-primary: #19152A;
+  --text-secondary: #3D434E;
+  --text-muted: #515762;
+  --text-faint: #5E636D;
+  --accent: #672FE2;
+  --accent-hover: #5616C7;
+  --accent-soft: rgba(103, 47, 226, .11);
+  --accent-ring: rgba(103, 47, 226, .42);
   --accent-ink: #FFFFFF;
-  --live: #DC2626;
-  --ready: #047857;
+  --live: #DA5140;
+  --ready: #006663;
   --shadow-1: 0 1px 2px rgba(21, 22, 26, .05), 0 8px 24px -14px rgba(21, 22, 26, .28);
   --shadow-2: 0 2px 6px rgba(21, 22, 26, .06), 0 30px 60px -30px rgba(21, 22, 26, .42);
   --shadow-sm: 0 1px 2px rgba(21, 22, 26, .05);
   --shadow-macos: 0 40px 80px -36px rgba(21, 22, 26, .35), 0 8px 24px -12px rgba(21, 22, 26, .12);
-  --hero-halo: rgba(21, 22, 26, .035);
-  --hero-grid: rgba(21, 22, 26, .035);
-  --hero-edge: rgba(21, 22, 26, .06);
+  --hero-halo: rgba(14, 140, 150, .085);
+  --hero-grid: rgba(58, 50, 110, .06);
+  --hero-edge: rgba(25, 21, 42, .07);
   --hud-bg: rgba(24, 25, 29, .94);
   --hud-shadow: 0 30px 60px -24px rgba(21, 22, 26, .45);
   --hud-timer-color: rgba(255, 255, 255, .7);
   --hud-hint-color: rgba(255, 255, 255, .5);
-  --demo-field-shadow: var(--plate-ring), 0 24px 48px -28px rgba(21, 22, 26, .28);
-  --demo-field-shadow-record: 0 0 0 2px var(--accent), 0 0 0 7px var(--accent-soft), 0 24px 48px -28px rgba(21, 22, 26, .28);
 }
 
 /* ---------- Reset ---------- */
@@ -619,6 +610,7 @@ button { font-family: inherit; }
   color: var(--text-faint);
   letter-spacing: .04em;
 }
+
 /* ---------- Buttons ---------- */
 .btn {
   display: inline-flex;
@@ -1300,7 +1292,13 @@ span.brand__mark {
 .guide__note > .icon { margin-top: 2px; color: var(--accent); }
 .guide__note strong { display: block; margin-bottom: 2px; }
 .guide__choices { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-4); }
-.guide__choice { padding: var(--space-6); background: var(--surface); border-radius: var(--radius-xl); box-shadow: var(--plate-ring); }
+/* the heading link covers the whole card, the way the homepage guide rows do */
+.guide__choice { position: relative; padding: var(--space-6); background: var(--surface); border-radius: var(--radius-xl); box-shadow: var(--plate-ring); }
+.guide__choice h3 a::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.guide__choice:has(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.guide__choice h3 a:focus-visible { outline: none; }
+/* most `.guide__choice` cards are plain content, so only the linked ones react */
+.guide__choice:has(h3 a):hover { background: var(--plate-hover); }
 .guide__app-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .guide__app-list li {
   padding: 6px 12px;
@@ -1486,7 +1484,24 @@ span.brand__mark {
     transition: opacity var(--duration-base) var(--ease-standard), transform var(--duration-base) var(--ease-enter);
   }
   .sticky-cta.is-visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
-  .sticky-cta .btn { flex: 1 1 auto; min-width: 0; }
+  .sticky-cta__btn { flex: 1 1 auto; min-width: 0; }
+  .sticky-cta__close {
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 0;
+    border-radius: 12px;
+    color: var(--text-secondary);
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    padding: 0;
+  }
+  .sticky-cta__close:hover { background: var(--well); color: var(--text-primary); }
   /* keep the bar off the footer's last row */
   .foot { padding-bottom: calc(var(--space-12) + 76px); }
 }
@@ -2173,7 +2188,13 @@ span.brand__mark {
 }
 /* the 20 app tiles in #everywhere are plain <li>s; only the contributor
    tiles are real links, so the lift is scoped to the anchor. */
-a.app:hover { transform: translateY(-2px); border-color: var(--border-strong); box-shadow: var(--shadow-1); color: var(--text-primary); }
+a.app:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-1);
+  color: var(--text-primary);
+}
 .app__i {
   width: 26px;
   height: 26px;
@@ -2428,8 +2449,7 @@ a.app:hover { transform: translateY(-2px); border-color: var(--border-strong); b
   .sticky-cta, .guide-list__item, .guide-list__chevron, .faq-item__q, .faq-item__chevron,
   .app, .model, .card, .tag, .qa summary, .qa summary::after,
   .win, .composer, .composer__send, .typed, .ov,
-  .rail__node, .rail__fill, .beat h3, .beat > p:not([class]), .beat__no, .beat__note,
-  .stage__step { transition: none; }
+  .rail__node, .rail__fill, .beat h3, .beat > p:not([class]), .beat__no, .beat__note { transition: none; }
   .btn:active,
   .btn--primary:hover,
   a.app:hover { transform: none; }
@@ -2437,8 +2457,7 @@ a.app:hover { transform: translateY(-2px); border-color: var(--border-strong); b
   .guide-list__item:hover .guide-list__chevron,
   .guide-list__item:focus-visible .guide-list__chevron { transform: none; }
   .caret, .hero__scroll span, .hud__bars i,
-  .ov--key kbd:last-child::after,
-  .dictation-wave .bars i { animation: none; }
+  .ov--key kbd:last-child::after { animation: none; }
   .caret { opacity: 1; }
   .hero__scroll span { opacity: .7; }
   .hud__bars i { transform: scaleY(.6); }
@@ -2446,7 +2465,7 @@ a.app:hover { transform: translateY(-2px); border-color: var(--border-strong); b
 }
 
 @media (forced-colors: active) {
-  :focus-visible, .btn:focus-visible, .nav__menu-trigger:focus-visible {
+  :focus-visible, .btn:focus-visible, .nav__menu-trigger:focus-visible, .sticky-cta__close:focus-visible {
     outline: 2px solid ButtonText;
     outline-offset: 2px;
     box-shadow: none;
@@ -2458,4 +2477,10 @@ a.app:hover { transform: translateY(-2px); border-color: var(--border-strong); b
   .how__steps, .features__grid, .faq__list, .guide-list, .guide__steps, .guide__choice,
   .ai__transcript, .win, .ledger, .card, .app, .get, .ov--review, .ov--hud, .ov--toast { border: 1px solid CanvasText; }
   .nav { border-bottom: 1px solid CanvasText; }
+}
+
+/* Between the header's 1181px breakpoint and the sticky bar's 640px one there
+   would otherwise be no persistent download CTA anywhere on the page. */
+@media (min-width: 641px) and (max-width: 1180px) {
+  .nav .nav__right > .btn { display: inline-flex; }
 }

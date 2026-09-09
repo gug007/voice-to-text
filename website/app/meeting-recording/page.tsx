@@ -275,7 +275,7 @@ export default function MeetingRecordingPage() {
         </section>
 
         <section className="section how reveal" id="speaker-diarization" aria-labelledby="speaker-title">
-          <div className="container guide__container">
+          <div className="container">
             <p className="section__eyebrow">Speaker diarization</p>
             <h2 id="speaker-title" className="section__title">
               Separate speakers, then give the labels real names.
@@ -385,7 +385,7 @@ export default function MeetingRecordingPage() {
         </section>
 
         <section className="section how reveal" id="related-guides" aria-labelledby="meeting-related-title">
-          <div className="container guide__container">
+          <div className="container">
             <p className="section__eyebrow">Related Mac guides</p>
             <h2 id="meeting-related-title" className="section__title">Use the same app beyond meetings.</h2>
             <div className="guide__choices">

@@ -85,7 +85,7 @@ export function Models() {
               <span className="model__n">{n}</span>
               <span className="model__name">
                 {name}
-                {badge ? <span className="badge">{badge}</span> : null}
+                {badge ? <span className="badge"><span className="sr-only">Rated: </span>{badge}</span> : null}
               </span>
               <span>
                 <span className="tag"><i aria-hidden="true" />{tag}</span>

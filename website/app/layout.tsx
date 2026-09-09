@@ -72,11 +72,6 @@ export default function RootLayout({
             page. Keep the header CTA through that band; below 641px the sticky
             bar is the single CTA. Belongs in globals.css beside the .nav rules —
             the extra `.nav` in the selector only outranks them from here. */}
-        <style>{`
-          @media (min-width: 641px) and (max-width: 1180px) {
-            .nav .nav__right > .btn { display: inline-flex; }
-          }
-        `}</style>
         {/* Keep content and the compact navigation usable before/without JavaScript. */}
         <noscript>
           <style>{`

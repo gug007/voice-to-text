@@ -3,37 +3,39 @@ import type { CSSProperties } from "react";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon, type IconName } from "@/components/ui/icon";
 
-/** Each app tile colours its monogram from a hue set inline. */
+/** Each app tile colours its monogram from a hue set inline. Hues stay on the
+    duotone axis — teal 178 to violet 258 — so the grid reads as one palette. */
 type HueVars = CSSProperties & Record<"--h", number>;
 
 type App = {
   name: string;
   /** Two-character monogram shown in the tile. */
   mark: string;
+  /** 178-258: teal-to-violet band of the duotone palette. */
   hue: number;
 };
 
 const APPS: App[] = [
-  { name: "Slack", mark: "Sl", hue: 280 },
-  { name: "Mail", mark: "Ma", hue: 210 },
-  { name: "Notes", mark: "No", hue: 45 },
-  { name: "Notion", mark: "Nt", hue: 220 },
-  { name: "Obsidian", mark: "Ob", hue: 270 },
-  { name: "Bear", mark: "Be", hue: 14 },
-  { name: "Pages", mark: "Pa", hue: 28 },
-  { name: "Google Docs", mark: "GD", hue: 212 },
-  { name: "Microsoft Word", mark: "W", hue: 206 },
-  { name: "Messages", mark: "Ms", hue: 130 },
-  { name: "Gmail", mark: "Gm", hue: 2 },
-  { name: "Outlook", mark: "Ou", hue: 200 },
-  { name: "WhatsApp", mark: "Wa", hue: 145 },
-  { name: "Discord", mark: "Dc", hue: 235 },
-  { name: "Safari", mark: "Sf", hue: 196 },
-  { name: "Chrome", mark: "Cr", hue: 38 },
-  { name: "ChatGPT", mark: "GP", hue: 160 },
-  { name: "Claude.ai", mark: "Cl", hue: 22 },
-  { name: "Cursor", mark: "Cu", hue: 250 },
-  { name: "Terminal", mark: ">_", hue: 150 },
+  { name: "Slack", mark: "Sl", hue: 258 },
+  { name: "Mail", mark: "Ma", hue: 218 },
+  { name: "Notes", mark: "No", hue: 198 },
+  { name: "Notion", mark: "Nt", hue: 238 },
+  { name: "Obsidian", mark: "Ob", hue: 258 },
+  { name: "Bear", mark: "Be", hue: 178 },
+  { name: "Pages", mark: "Pa", hue: 198 },
+  { name: "Google Docs", mark: "GD", hue: 238 },
+  { name: "Microsoft Word", mark: "W", hue: 258 },
+  { name: "Messages", mark: "Ms", hue: 178 },
+  { name: "Gmail", mark: "Gm", hue: 198 },
+  { name: "Outlook", mark: "Ou", hue: 238 },
+  { name: "WhatsApp", mark: "Wa", hue: 178 },
+  { name: "Discord", mark: "Dc", hue: 258 },
+  { name: "Safari", mark: "Sf", hue: 218 },
+  { name: "Chrome", mark: "Cr", hue: 238 },
+  { name: "ChatGPT", mark: "GP", hue: 178 },
+  { name: "Claude.ai", mark: "Cl", hue: 198 },
+  { name: "Cursor", mark: "Cu", hue: 258 },
+  { name: "Terminal", mark: ">_", hue: 218 },
 ];
 
 type Extra = {

@@ -1,7 +1,5 @@
 import type { CSSProperties } from "react";
 
-const FRAME: CSSProperties = { maxWidth: "940px", margin: "0 auto" };
-
 const VIDEO: CSSProperties = {
   display: "block",
   width: "100%",
@@ -23,7 +21,7 @@ export function Demo() {
           </p>
         </div>
 
-        <figure className="win" style={FRAME}>
+        <figure className="win">
           <div className="win__bar" aria-hidden="true">
             <span className="dot dot--r" />
             <span className="dot dot--y" />

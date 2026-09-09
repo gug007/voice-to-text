@@ -70,9 +70,7 @@
   --accent-hover: #5616C7;
   --accent-soft: rgba(103, 47, 226, .11);
   --accent-muted: var(--accent-soft);
-  --accent-ring: rgba(103, 47, 226, .42);
   --accent-ink: #FFFFFF;
-  --live: #DA5140;
   --ready: #006663;
   --ok: var(--ready);
 
@@ -153,14 +151,11 @@
   --shadow-macos: 0 40px 80px -36px rgba(21, 22, 26, .35), 0 8px 24px -12px rgba(21, 22, 26, .12);
   --plate-ring: 0 0 0 1px var(--border);
 
-  --hero-halo: rgba(14, 140, 150, .085);
+  --hero-halo: rgba(103, 47, 226, .07);
   --hero-grid: rgba(58, 50, 110, .06);
-  --hero-edge: rgba(25, 21, 42, .07);
 
   --hud-bg: rgba(24, 25, 29, .94);
   --hud-shadow: 0 30px 60px -24px rgba(21, 22, 26, .45);
-  --hud-timer-color: rgba(255, 255, 255, .7);
-  --hud-hint-color: rgba(255, 255, 255, .5);
 
   --btn-primary-hover-shadow: var(--shadow-2);
   --card-hover-shadow: var(--shadow-1);
@@ -179,10 +174,10 @@
   --control-height-md: 40px;
   --control-height-lg: 46px;
 
-  /* The halo is the colour the ring is drawn ON, so it is re-declared by any
-     surface that is not --bg (see `.get`, `.section--band`, `.nav`, `.foot`). */
-  --focus-halo: var(--bg);
-  --focus-ring: 0 0 0 2px var(--focus-halo), 0 0 0 4px var(--accent);
+  /* Every page-title hero (home `.hero`, `.guide-hero`, the SEO module's own
+     `.hero`) reads this one value, so the h1 never shifts between routes.
+     Width-driven on purpose: a vh-driven clamp moves as the window is resized. */
+  --hero-pad-top: clamp(112px, 9vw, 158px);
 }
 
 /* ---------- Tokens: dark ---------- */
@@ -205,6 +200,7 @@
     --border: rgba(216, 224, 255, .12);
     --border-strong: rgba(216, 224, 255, .21);
     --hairline-3: rgba(216, 224, 255, .33);
+    --divider: rgba(216, 224, 255, .10);
     --text-primary: #F0EFF9;
     --text-secondary: #BEC3CA;
     --text-muted: #A4AAB2;
@@ -212,21 +208,16 @@
     --accent: #A699FF;
     --accent-hover: #BCB5FE;
     --accent-soft: rgba(166, 153, 255, .17);
-    --accent-ring: rgba(166, 153, 255, .50);
     --accent-ink: #150F24;
-    --live: #E65F53;
     --ready: #20B3AB;
     --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 26px -16px rgba(0, 0, 0, .8);
     --shadow-2: 0 2px 8px rgba(0, 0, 0, .55), 0 40px 70px -34px rgba(0, 0, 0, .9);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
     --shadow-macos: 0 40px 80px -36px rgba(0, 0, 0, .8), 0 8px 24px -12px rgba(0, 0, 0, .4);
-    --hero-halo: rgba(72, 205, 205, .075);
+    --hero-halo: rgba(166, 153, 255, .06);
     --hero-grid: rgba(176, 168, 255, .05);
-    --hero-edge: rgba(216, 224, 255, .08);
     --hud-bg: rgba(25, 28, 34, .96);
     --hud-shadow: 0 30px 60px -20px rgba(0, 0, 0, .7);
-    --hud-timer-color: rgba(255, 255, 255, .6);
-    --hud-hint-color: rgba(255, 255, 255, .45);
   }
 }
 
@@ -248,6 +239,7 @@
   --border: rgba(216, 224, 255, .12);
   --border-strong: rgba(216, 224, 255, .21);
   --hairline-3: rgba(216, 224, 255, .33);
+  --divider: rgba(216, 224, 255, .10);
   --text-primary: #F0EFF9;
   --text-secondary: #BEC3CA;
   --text-muted: #A4AAB2;
@@ -255,21 +247,16 @@
   --accent: #A699FF;
   --accent-hover: #BCB5FE;
   --accent-soft: rgba(166, 153, 255, .17);
-  --accent-ring: rgba(166, 153, 255, .50);
   --accent-ink: #150F24;
-  --live: #E65F53;
   --ready: #20B3AB;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .5), 0 10px 26px -16px rgba(0, 0, 0, .8);
   --shadow-2: 0 2px 8px rgba(0, 0, 0, .55), 0 40px 70px -34px rgba(0, 0, 0, .9);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, .5);
   --shadow-macos: 0 40px 80px -36px rgba(0, 0, 0, .8), 0 8px 24px -12px rgba(0, 0, 0, .4);
-  --hero-halo: rgba(72, 205, 205, .075);
+  --hero-halo: rgba(166, 153, 255, .06);
   --hero-grid: rgba(176, 168, 255, .05);
-  --hero-edge: rgba(216, 224, 255, .08);
   --hud-bg: rgba(25, 28, 34, .96);
   --hud-shadow: 0 30px 60px -20px rgba(0, 0, 0, .7);
-  --hud-timer-color: rgba(255, 255, 255, .6);
-  --hud-hint-color: rgba(255, 255, 255, .45);
 }
 
 :root[data-theme="light"] {
@@ -291,6 +278,7 @@
   --border: rgba(25, 21, 42, .12);
   --border-strong: rgba(25, 21, 42, .22);
   --hairline-3: rgba(25, 21, 42, .34);
+  --divider: rgba(25, 21, 42, .10);
   --text-primary: #19152A;
   --text-secondary: #3D434E;
   --text-muted: #515762;
@@ -298,21 +286,16 @@
   --accent: #672FE2;
   --accent-hover: #5616C7;
   --accent-soft: rgba(103, 47, 226, .11);
-  --accent-ring: rgba(103, 47, 226, .42);
   --accent-ink: #FFFFFF;
-  --live: #DA5140;
   --ready: #006663;
   --shadow-1: 0 1px 2px rgba(21, 22, 26, .05), 0 8px 24px -14px rgba(21, 22, 26, .28);
   --shadow-2: 0 2px 6px rgba(21, 22, 26, .06), 0 30px 60px -30px rgba(21, 22, 26, .42);
   --shadow-sm: 0 1px 2px rgba(21, 22, 26, .05);
   --shadow-macos: 0 40px 80px -36px rgba(21, 22, 26, .35), 0 8px 24px -12px rgba(21, 22, 26, .12);
-  --hero-halo: rgba(14, 140, 150, .085);
+  --hero-halo: rgba(103, 47, 226, .07);
   --hero-grid: rgba(58, 50, 110, .06);
-  --hero-edge: rgba(25, 21, 42, .07);
   --hud-bg: rgba(24, 25, 29, .94);
   --hud-shadow: 0 30px 60px -24px rgba(21, 22, 26, .45);
-  --hud-timer-color: rgba(255, 255, 255, .7);
-  --hud-hint-color: rgba(255, 255, 255, .5);
 }
 
 /* ---------- Reset ---------- */
@@ -398,7 +381,7 @@ button { font-family: inherit; }
   font-size: var(--fs-body-sm);
   z-index: var(--z-toast);
 }
-.skip-link:focus { top: var(--space-4); color: var(--accent-ink); outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.skip-link:focus { top: var(--space-4); color: var(--accent-ink); outline: 2px solid var(--text-primary); outline-offset: 2px; }
 
 /* ---------- Layout primitives ---------- */
 .container,
@@ -421,7 +404,8 @@ button { font-family: inherit; }
 .breadcrumb a:hover { color: var(--text-primary); }
 .hero .breadcrumb ol { justify-content: center; }
 
-.section {
+.section,
+.story {
   padding-block: clamp(72px, 9vw, 132px);
   position: relative;
 }
@@ -431,13 +415,13 @@ button { font-family: inherit; }
 .faq {
   background: var(--bg-deep);
 }
-.section--band { border-block: 1px solid var(--border); }
-/* focus rings inside a band are drawn on the band, not on the page */
 .section--band,
-.nav,
-.foot { --focus-halo: var(--bg-deep); }
-@media (max-width: 640px) { .section { padding-block: 64px; } }
-@media (max-width: 480px) { .section { padding-block: 56px; } }
+.how,
+.faq { border-block: 1px solid var(--border); }
+/* where two bands meet, the upper one's bottom edge is the whole seam */
+:is(.section--band, .how, .faq) + :is(.section--band, .how, .faq) { border-top-width: 0; }
+@media (max-width: 640px) { .section, .story { padding-block: 64px; } }
+@media (max-width: 480px) { .section, .story { padding-block: 56px; } }
 
 /* 08's section header: kicker + h2 + lede */
 .sec-head {
@@ -599,10 +583,7 @@ button { font-family: inherit; }
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 9px;
-  transition: color var(--duration-fast) var(--ease-standard),
-              border-color var(--duration-fast) var(--ease-standard);
 }
-.chip:hover { color: var(--text-primary); border-color: var(--border-strong); }
 .chip em {
   font-style: normal;
   font-family: var(--mono);
@@ -646,14 +627,32 @@ button { font-family: inherit; }
   color: var(--bg);
   box-shadow: var(--shadow-1);
 }
-.btn--primary:hover {
-  background: var(--text-primary);
-  color: var(--bg);
-  transform: translateY(-1.5px);
-  box-shadow: var(--shadow-2);
+@media (hover: hover) and (pointer: fine) {
+  .btn--primary:hover {
+    background: var(--text-primary);
+    color: var(--bg);
+    transform: translateY(-1.5px);
+    box-shadow: var(--shadow-2);
+  }
 }
 .btn--primary:active { transform: translateY(1px); box-shadow: var(--shadow-1); }
 .btn--primary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--shadow-1); }
+
+/* One press state for every other target. Deliberately OUTSIDE the
+   `@media (hover: hover)` guards above: touch is exactly who needs it. */
+.link:active,
+.guide-list__item:active,
+.guide__choice:has(h3 a):active,
+.qa summary:active,
+.faq-item__q:active,
+a.app:active,
+.nav__links a:active,
+.nav__menu li a:active,
+.nav__menu-trigger:active,
+.theme-toggle:active,
+.iconbtn:active,
+.foot a:active { background: var(--well); color: var(--text-primary); }
+a.app:active { transform: none; }
 
 /* --ghost is 08's name for it; --secondary is the name the other routes use. */
 .btn--ghost,
@@ -664,11 +663,15 @@ button { font-family: inherit; }
   -webkit-backdrop-filter: blur(6px);
           backdrop-filter: blur(6px);
 }
-.btn--ghost:hover,
-.btn--secondary:hover {
-  color: var(--text-primary);
-  border-color: var(--hairline-3);
-  background: var(--surface-elevated);
+@media (hover: hover) and (pointer: fine) {
+  .btn--ghost:hover,
+  .btn--secondary:hover {
+    color: var(--text-primary);
+    border-color: var(--hairline-3);
+    /* moves toward the ink in light and away from it in dark, so the fill is a
+       real cue in both — --surface-elevated only moved in dark. */
+    background: color-mix(in srgb, var(--text-primary) 5%, var(--surface));
+  }
 }
 
 /* ---------- Nav ----------
@@ -718,8 +721,11 @@ button { font-family: inherit; }
   color: var(--text-primary);
   font-size: 15.5px;
   letter-spacing: -.022em;
+  transition: opacity var(--duration-fast) var(--ease-standard);
 }
-.brand:hover { color: var(--text-primary); }
+@media (hover: hover) and (pointer: fine) {
+  .brand:hover { opacity: .78; }
+}
 /* `.brand__mark` is either the app icon (<img>) or 08's drawn glyph (<span>). */
 .brand__mark {
   width: 26px;
@@ -757,7 +763,9 @@ span.brand__mark {
               color var(--duration-fast) var(--ease-standard),
               background var(--duration-fast) var(--ease-standard);
 }
-.iconbtn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-elevated); }
+@media (hover: hover) and (pointer: fine) {
+  .iconbtn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-sunken); }
+}
 .nav__right { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 
 .theme-toggle {
@@ -774,9 +782,12 @@ span.brand__mark {
   cursor: pointer;
   padding: 0;
   transition: color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard),
               background var(--duration-fast) var(--ease-standard);
 }
-.theme-toggle:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-elevated); }
+@media (hover: hover) and (pointer: fine) {
+  .theme-toggle:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-sunken); }
+}
 .theme-toggle svg { width: 17px; height: 17px; }
 .theme-toggle .theme-toggle__sun { display: none; }
 .theme-toggle .theme-toggle__moon { display: block; }
@@ -804,7 +815,9 @@ span.brand__mark {
   transition: color var(--duration-fast) var(--ease-standard),
               background var(--duration-fast) var(--ease-standard);
 }
-.nav__links a:hover { color: var(--text-primary); background: var(--surface-elevated); }
+@media (hover: hover) and (pointer: fine) {
+  .nav__links a:hover { color: var(--text-primary); background: var(--surface-sunken); }
+}
 /* a cue hover cannot produce, so the current page never reads weaker than
    whatever the pointer happens to be resting on */
 .nav__links a[aria-current="page"] {
@@ -840,8 +853,10 @@ span.brand__mark {
   transition: background var(--duration-fast) var(--ease-standard),
               border-color var(--duration-fast) var(--ease-standard);
 }
-.nav__menu-trigger:hover,
-.nav__menu-trigger[aria-expanded="true"] { background: var(--surface-elevated); border-color: var(--border-strong); }
+.nav__menu-trigger[aria-expanded="true"] { background: var(--surface-sunken); border-color: var(--border-strong); }
+@media (hover: hover) and (pointer: fine) {
+  .nav__menu-trigger:hover { background: var(--surface-sunken); border-color: var(--border-strong); }
+}
 .nav__menu-trigger:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nav__menu-lines { width: 17px; height: 12px; display: flex; flex-direction: column; justify-content: space-between; }
 .nav__menu-lines span {
@@ -893,8 +908,10 @@ span.brand__mark {
   font-size: 15px;
   font-weight: var(--fw-medium);
 }
-.nav__menu li a:hover,
 .nav__menu li a[aria-current="page"] { color: var(--text-primary); background: var(--well); }
+@media (hover: hover) and (pointer: fine) {
+  .nav__menu li a:hover { color: var(--text-primary); background: var(--well); }
+}
 .nav__menu-download { width: 100%; margin-top: var(--space-2); }
 
 @media (max-width: 1320px) {
@@ -927,7 +944,7 @@ span.brand__mark {
 .hero {
   position: relative;
   overflow: hidden;
-  padding-top: clamp(112px, 14vh, 160px);
+  padding-top: var(--hero-pad-top);
   padding-bottom: clamp(56px, 7vw, 88px);
   border-bottom: 1px solid var(--border);
   text-align: center;
@@ -983,6 +1000,15 @@ span.brand__mark {
 }
 @media (prefers-reduced-motion: reduce) {
   .dictation-wave .bars i { animation: none; opacity: .3; transform: scaleY(var(--peak)); }
+}
+/* The locked wave's mask clears an ellipse at the hero's centre, but below
+   1180px the text block outgrows that hole and body copy drops to ~3.6:1.
+   The backdrop belongs to the text, not the wave: the wave's own rules,
+   opacity, mask and keyframes stay exactly as they are. */
+@media (max-width: 1180px) {
+  .hero__content, .guide-hero__inner {
+    background: radial-gradient(ellipse 92% 70% at 50% 46%, var(--bg) 52%, color-mix(in srgb, var(--bg) 0%, transparent) 100%);
+  }
 }
 @media (max-width: 640px) {
   .dictation-wave .bars { height: 46%; gap: 3px; }
@@ -1104,7 +1130,7 @@ span.brand__mark {
   padding: 0;
   display: flex;
   flex-wrap: wrap;
-  gap: 8px 10px;
+  gap: 8px 8px;
   justify-content: center;
   font-size: 12.5px;
   color: var(--text-muted);
@@ -1113,8 +1139,8 @@ span.brand__mark {
   list-style: none;
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
+  gap: 6px;
+  padding: 5px 9px;
   border-radius: var(--radius-full);
   border: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
@@ -1154,7 +1180,11 @@ span.brand__mark {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 1px;
-  background: var(--divider);
+  /* --divider is translucent, so a bare `background: var(--divider)` composites
+     over whatever SECTION the grid sits in — in a --bg-deep band the dark-theme
+     seam lands within 1.02:1 of the cards. Layer it over --surface instead, so
+     the 1px gaps read exactly like the --divider borders elsewhere. */
+  background: linear-gradient(var(--divider), var(--divider)), var(--surface);
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: var(--plate-ring);
@@ -1171,10 +1201,12 @@ span.brand__mark {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--fs-code);
+  font-weight: var(--fw-regular);
   font-variant-numeric: tabular-nums;
   margin-bottom: var(--space-5);
 }
@@ -1207,18 +1239,24 @@ span.brand__mark {
   color: var(--text-primary);
   transition: background var(--duration-fast) var(--ease-standard);
 }
-.guide-list__item:hover { background: var(--plate-hover); }
+@media (hover: hover) and (pointer: fine) {
+  .guide-list__item:hover { background: var(--plate-hover); }
+}
 /* `.guide-list` clips with overflow:hidden for its radius, so the ring goes inside */
 .guide-list__item:focus-visible {
   outline-offset: -3px;
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
 }
-.guide-list__item + .guide-list__item { border-top: 1px solid var(--divider); }
+/* each `.guide-list__item` is wrapped in its own <li>, so the items are never
+   adjacent siblings — the rule has to hang off the <li>s that are. */
+.guide-list li + li .guide-list__item { border-top: 1px solid var(--divider); }
 .guide-list__item h3 { font-size: 17px; font-weight: var(--fw-semibold); line-height: var(--lh-heading); }
 .guide-list__item p { margin-top: 4px; font-size: 15px; color: var(--text-secondary); line-height: var(--lh-body); max-width: var(--measure); }
 .guide-list__chevron { color: var(--text-muted); transition: transform var(--duration-fast) var(--ease-standard), color var(--duration-fast) var(--ease-standard); }
-.guide-list__item:hover .guide-list__chevron,
 .guide-list__item:focus-visible .guide-list__chevron { color: var(--accent); transform: translateX(2px); }
+@media (hover: hover) and (pointer: fine) {
+  .guide-list__item:hover .guide-list__chevron { color: var(--accent); transform: translateX(2px); }
+}
 @media (max-width: 480px) { .guide-list__item { padding: var(--space-4); gap: var(--space-3); } }
 
 /* The homepage's #guides still ships the legacy `.section__head` component.
@@ -1241,8 +1279,9 @@ span.brand__mark {
 
 /* ---------- Mac voice-to-text guide (sub-page) ---------- */
 .guide-hero {
-  padding-top: clamp(120px, 16vh, 168px);
+  padding-top: var(--hero-pad-top);
   padding-bottom: clamp(var(--space-16), 8vw, var(--space-24));
+  border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
 .guide-hero__inner { max-width: 920px; }
@@ -1251,7 +1290,7 @@ span.brand__mark {
 .guide-hero .hero__ctas { justify-content: flex-start; }
 .guide__meta { color: var(--text-muted); font-size: var(--fs-caption); line-height: var(--lh-caption); }
 .guide__container { max-width: 920px; }
-.guide__steps { display: grid; gap: 1px; background: var(--divider); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--plate-ring); }
+.guide__steps { display: grid; gap: 1px; background: linear-gradient(var(--divider), var(--divider)), var(--surface); border-radius: var(--radius-xl); overflow: hidden; box-shadow: var(--plate-ring); }
 .guide__step {
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr);
@@ -1266,10 +1305,13 @@ span.brand__mark {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-full);
-  background: var(--accent-muted);
-  color: var(--accent);
-  font-size: 14px;
-  font-weight: var(--fw-semibold);
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: var(--fs-code);
+  font-weight: var(--fw-regular);
+  font-variant-numeric: tabular-nums;
 }
 .guide__step h3,
 .guide__choice h3,
@@ -1282,6 +1324,8 @@ span.brand__mark {
 .guide__note {
   display: flex;
   align-items: flex-start;
+  /* the plate ends where its ink does, instead of stretching to the grid */
+  max-width: calc(var(--measure) + var(--space-5) * 2 + 40px);
   gap: var(--space-4);
   margin-top: var(--space-6);
   padding: var(--space-5);
@@ -1298,7 +1342,9 @@ span.brand__mark {
 .guide__choice:has(a:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
 .guide__choice h3 a:focus-visible { outline: none; }
 /* most `.guide__choice` cards are plain content, so only the linked ones react */
-.guide__choice:has(h3 a):hover { background: var(--plate-hover); }
+@media (hover: hover) and (pointer: fine) {
+  .guide__choice:has(h3 a):hover { background: var(--plate-hover); }
+}
 .guide__app-list { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .guide__app-list li {
   padding: 6px 12px;
@@ -1325,7 +1371,7 @@ span.brand__mark {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 1px;
-  background: var(--divider);
+  background: linear-gradient(var(--divider), var(--divider)), var(--surface);
   border-radius: var(--radius-xl);
   overflow: hidden;
   box-shadow: var(--plate-ring);
@@ -1427,7 +1473,9 @@ span.brand__mark {
   min-height: 44px;
   transition: background var(--duration-fast) var(--ease-standard);
 }
-.faq-item__q:hover { background: var(--plate-hover); }
+@media (hover: hover) and (pointer: fine) {
+  .faq-item__q:hover { background: var(--plate-hover); }
+}
 .faq-item__q::-webkit-details-marker { display: none; }
 .faq-item__q:focus-visible { outline-offset: -3px; }
 .faq-item__q > span { flex: 1; }
@@ -1455,7 +1503,7 @@ span.brand__mark {
 }
 
 /* ---------- Cloud bullets (sub-pages) ---------- */
-.cloud__bullets { max-width: var(--measure); margin: var(--space-8) auto 0; padding-left: 0; list-style: none; color: var(--text-muted); }
+.cloud__bullets { max-width: var(--measure); margin: var(--space-8) 0 0; padding-left: 0; list-style: none; color: var(--text-muted); }
 .cloud__bullets li { position: relative; padding-left: var(--space-6); }
 .cloud__bullets li::before { content: ""; position: absolute; left: 4px; top: .55em; width: 5px; height: 5px; border-radius: var(--radius-full); background: var(--text-muted); opacity: .7; }
 .cloud__bullets li + li { margin-top: var(--space-2); }
@@ -1501,18 +1549,19 @@ span.brand__mark {
     cursor: pointer;
     padding: 0;
   }
+  @media (hover: hover) and (pointer: fine) {
+    .sticky-cta__close:active { background: var(--well); color: var(--text-primary); }
   .sticky-cta__close:hover { background: var(--well); color: var(--text-primary); }
-  /* keep the bar off the footer's last row */
-  .foot { padding-bottom: calc(var(--space-12) + 76px); }
+  }
 }
 
 /* ============================================================
    08 — STORY RIG (sticky stage + scrolling beats)
    ============================================================ */
 .story {
+  /* block rhythm comes from the shared `.section, .story` rule above — the story
+     is not a `.section` element, so it has to be named there explicitly. */
   position: relative;
-  /* the same block rhythm as `.section`; the story is not a `.section` element */
-  padding-block: clamp(72px, 9vw, 132px);
 }
 .story__rig {
   display: grid;
@@ -1599,8 +1648,10 @@ span.brand__mark {
   transition: filter .45s var(--ease-standard), transform .45s var(--ease-standard);
 }
 .stage[data-state="3"] .win { filter: saturate(.72) brightness(.985); }
-/* `.win` clips for its radius, so the video's ring is drawn inside it */
-.win > video:focus-visible { outline-offset: -3px; }
+/* `.win` clips for its radius, so the ring goes on the frame, not on the video's
+   own dark picture — the pattern `.guide__choice` uses for its covering link. */
+.win:has(> video:focus-visible) { outline: 2px solid var(--accent); outline-offset: 2px; }
+.win > video:focus-visible { outline: none; }
 .win__bar {
   display: flex;
   align-items: center;
@@ -2082,7 +2133,8 @@ span.brand__mark {
   font-family: var(--mono);
   font-size: 12.5px;
   background: var(--surface-sunken);
-  padding: 2px 6px;
+  border: 1px solid var(--border);
+  padding: 2px 5px;
   border-radius: 5px;
   color: var(--text-secondary);
 }
@@ -2111,10 +2163,8 @@ span.brand__mark {
   align-items: center;
   padding: 18px 10px 18px 4px;
   border-bottom: 1px solid var(--border);
-  transition: background var(--duration-base) var(--ease-standard);
   border-radius: var(--radius-sm);
 }
-.model:hover { background: var(--surface-elevated); }
 .model__n { font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
 .model__name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-size: 16px; font-weight: 560; letter-spacing: -.018em; }
 .badge {
@@ -2188,12 +2238,14 @@ span.brand__mark {
 }
 /* the 20 app tiles in #everywhere are plain <li>s; only the contributor
    tiles are real links, so the lift is scoped to the anchor. */
-a.app:hover {
-  transform: translateY(-2px);
-  border-color: var(--border-strong);
-  background: var(--surface-elevated);
-  box-shadow: var(--shadow-1);
-  color: var(--text-primary);
+@media (hover: hover) and (pointer: fine) {
+  a.app:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    background: var(--surface-elevated);
+    box-shadow: var(--shadow-1);
+    color: var(--text-primary);
+  }
 }
 .app__i {
   width: 26px;
@@ -2207,12 +2259,16 @@ a.app:hover {
   font-weight: var(--fw-semibold);
   letter-spacing: -.02em;
   background: hsl(var(--h) 70% 52% / .14);
-  color: hsl(var(--h) 58% 34%);
+  color: hsl(var(--h) 58% 30%);
 }
 :root[data-theme="dark"] .app__i { color: hsl(var(--h) 80% 76%); background: hsl(var(--h) 70% 60% / .17); }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .app__i { color: hsl(var(--h) 80% 76%); background: hsl(var(--h) 70% 60% / .17); }
 }
+/* the contributor list reuses `.apps` but holds four wide cards, not twenty
+   narrow ones, so it sizes its own tracks */
+#contributors .apps { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); align-items: stretch; }
+#contributors .apps > li > .app { height: 100%; }
 .apps__foot { font-size: 15px; color: var(--text-muted); max-width: var(--measure); text-wrap: pretty; }
 .apps__foot b { color: var(--text-primary); font-weight: 560; }
 
@@ -2249,7 +2305,9 @@ a.app:hover {
 }
 .qa summary::-webkit-details-marker { display: none; }
 /* the row tint is the site's disclosure signal — see `.model`, `.guide-list__item` */
-.qa summary:hover { background: var(--plate-hover); }
+@media (hover: hover) and (pointer: fine) {
+  .qa summary:hover { background: var(--plate-hover); }
+}
 .qa summary:focus-visible { outline-offset: -3px; }
 .qa summary::after {
   content: "";
@@ -2268,7 +2326,8 @@ a.app:hover {
   font-family: var(--mono);
   font-size: 12.5px;
   background: var(--surface-sunken);
-  padding: 2px 6px;
+  border: 1px solid var(--border);
+  padding: 2px 5px;
   border-radius: 5px;
   color: var(--text-secondary);
 }
@@ -2279,8 +2338,6 @@ a.app:hover {
 .get {
   position: relative;
   overflow: hidden;
-  /* an opaque surface, so the focus halo inside it is --surface, not --bg */
-  --focus-halo: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
   background: var(--surface);
@@ -2441,13 +2498,15 @@ a.app:hover {
 }
 
 /* ---------- Motion + contrast preferences ---------- */
-/* Every selector below names a class that actually ships, and each one sits
-   after the rule it disables, so it wins the cascade at equal specificity. */
+/* Each selector below is at least as specific as the rule it cancels and sits
+   after it, so it wins the cascade — a bare `a` cannot cancel `.foot a`, which
+   is why that one is listed separately. `.iconbtn` has no markup today; it is
+   kept in step with its ruleset above rather than silently drifting from it. */
 @media (prefers-reduced-motion: reduce) {
-  a, .btn, .brand, .iconbtn, .theme-toggle, .chip, .link,
+  a, .foot a, .btn, .brand, .iconbtn, .theme-toggle, .link,
   .nav, .nav__in, .nav__inner, .nav__links a, .nav__menu, .nav__menu-lines span, .nav__menu-trigger,
   .sticky-cta, .guide-list__item, .guide-list__chevron, .faq-item__q, .faq-item__chevron,
-  .app, .model, .card, .tag, .qa summary, .qa summary::after,
+  .app, .card, .tag, .qa summary, .qa summary::after,
   .win, .composer, .composer__send, .typed, .ov,
   .rail__node, .rail__fill, .beat h3, .beat > p:not([class]), .beat__no, .beat__note { transition: none; }
   .btn:active,
@@ -2474,6 +2533,7 @@ a.app:hover {
   .faq-item__q:focus-visible,
   .qa summary:focus-visible,
   .guide-list__item:focus-visible { outline-offset: -3px; }
+  .win:has(> video:focus-visible) { outline: 2px solid ButtonText; outline-offset: 2px; }
   .how__steps, .features__grid, .faq__list, .guide-list, .guide__steps, .guide__choice,
   .ai__transcript, .win, .ledger, .card, .app, .get, .ov--review, .ov--hud, .ov--toast { border: 1px solid CanvasText; }
   .nav { border-bottom: 1px solid CanvasText; }

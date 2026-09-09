@@ -53,8 +53,8 @@ export const viewport: Viewport = {
   // The page ground, not the HUD canvas, so the browser chrome matches the page
   // it sits above. ThemeToggle rewrites these when the visitor picks a theme.
   themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0B0C0F" },
-    { media: "(prefers-color-scheme: light)", color: "#F5F5F5" },
+    { media: "(prefers-color-scheme: dark)", color: "#13181F" },
+    { media: "(prefers-color-scheme: light)", color: "#F1F5FA" },
   ],
   colorScheme: "light dark",
 };

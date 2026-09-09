@@ -181,10 +181,11 @@
   text-decoration-color: currentColor;
 }
 
+/* Stacked, not split: a 3-word heading alone in a 260px column left 180-245px of
+   dead card under it and pushed the page's first heading off the type rail. */
 .summary {
   display: grid;
-  grid-template-columns: minmax(0, 0.55fr) minmax(0, 1fr);
-  gap: var(--space-6);
+  gap: var(--space-4);
   align-items: start;
   padding: clamp(var(--space-6), 5vw, var(--space-10));
   border: 1px solid var(--border-strong);
@@ -267,12 +268,23 @@
   margin-top: 0;
 }
 
+/* Scrolling shadows. The two `local` cover layers travel with the table and mask
+   the edge shade whenever that end is already in view, so the cue appears only
+   while there is genuinely more table to reach — no JS, and it self-clears. */
 .tableWrap {
+  --edge-shade: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  --edge-cover: color-mix(in srgb, var(--surface) 0%, transparent);
+
   overflow-x: auto;
   margin-top: var(--space-8);
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: var(--surface);
+  background:
+    linear-gradient(to right, var(--surface), var(--edge-cover)) left top / 34px 100% no-repeat local,
+    linear-gradient(to left, var(--surface), var(--edge-cover)) right top / 34px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--edge-shade), transparent) left top / 18px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, var(--edge-shade), transparent) right top / 18px 100% no-repeat,
+    var(--surface);
 }
 
 .tableWrap:focus-visible {
@@ -305,7 +317,9 @@
 }
 
 .comparisonTable thead th {
-  background: var(--surface-elevated);
+  /* A band INSIDE a --surface card has to recede: --surface-elevated cannot step
+     up from white, so it vanishes in light while banding hard in dark. */
+  background: var(--surface-sunken);
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;
@@ -439,7 +453,6 @@
 }
 
 @media (max-width: 820px) {
-  .summary,
   .sourceItem {
     grid-template-columns: 1fr;
   }

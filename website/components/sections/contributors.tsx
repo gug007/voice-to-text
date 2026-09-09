@@ -13,7 +13,7 @@ const CHIP: CSSProperties = { textDecoration: "none", flex: "1 1 auto", minWidth
 const CHIP_BODY: CSSProperties = { display: "grid", gap: "1px", minWidth: 0 };
 const CHIP_META: CSSProperties = { fontSize: "13px", lineHeight: 1.35 };
 const AVATAR: CSSProperties = { width: "26px", height: "26px", borderRadius: "8px", flex: "none" };
-const INVITE_HUE: HueStyle = { "--h": "255" };
+const INVITE_HUE: HueStyle = { "--h": "258" };
 const CTAS: CSSProperties = { display: "flex", flexWrap: "wrap", alignItems: "center", gap: "12px 18px", marginTop: "24px" };
 
 function commitLabel(count: number) {

@@ -127,6 +127,16 @@
   margin-bottom: var(--head-gap, clamp(38px, 5vw, 64px));
 }
 
+/* #picks and #matrix break their grid out to --maxw, but the page keeps ONE type
+   rail: indent their headings back onto the --container-narrow spine that every
+   other section uses. Collapses to 0 as soon as the container is padding-bound. */
+.wideContent > .sectionHeader {
+  margin-inline: max(
+    0px,
+    calc((100% - (var(--container-narrow) - 2 * var(--page-gutter))) / 2)
+  );
+}
+
 /* One kicker dialect site-wide: mirrors globals .kicker. */
 .sectionLabel {
   display: inline-flex;
@@ -210,9 +220,13 @@
   background: var(--surface);
 }
 
+/* The featured pick must out-rank its siblings in BOTH themes. --surface-elevated
+   only lifts against --bg; inside this --bg-deep band the siblings are white, so a
+   lift is impossible in light. An accent tint reads as "featured" either way. */
 .pickCard:first-child {
-  border-color: var(--border-strong);
-  background: var(--surface-elevated);
+  border-color: color-mix(in srgb, var(--accent) 38%, transparent);
+  background-color: var(--surface);
+  background-image: linear-gradient(var(--accent-soft), var(--accent-soft));
 }
 
 .pickTopline {
@@ -303,12 +317,23 @@
   font-size: var(--fs-caption);
 }
 
+/* Scrolling shadows. The two `local` cover layers travel with the table and mask
+   the edge shade whenever that end is already in view, so the cue appears only
+   while there is genuinely more table to reach — no JS, and it self-clears. */
 .tableWrap {
+  --edge-shade: color-mix(in srgb, var(--text-primary) 15%, transparent);
+  --edge-cover: color-mix(in srgb, var(--surface) 0%, transparent);
+
   max-height: min(76vh, 900px);
   overflow: auto;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
-  background: var(--surface);
+  background:
+    linear-gradient(to right, var(--surface), var(--edge-cover)) left top / 34px 100% no-repeat local,
+    linear-gradient(to left, var(--surface), var(--edge-cover)) right top / 34px 100% no-repeat local,
+    radial-gradient(farthest-side at 0 50%, var(--edge-shade), transparent) left top / 18px 100% no-repeat,
+    radial-gradient(farthest-side at 100% 50%, var(--edge-shade), transparent) right top / 18px 100% no-repeat,
+    var(--surface);
   overscroll-behavior: contain;
 }
 
@@ -317,9 +342,11 @@
   outline-offset: 2px;
 }
 
+/* 190px row-header + 7 x 230px = 1800px: the old 1960px floor forced 160px of
+   padding nobody asked for and hid an extra slice of the last column. */
 .matrix {
   width: 100%;
-  min-width: 1960px;
+  min-width: 1800px;
   border-collapse: separate;
   border-spacing: 0;
   text-align: left;
@@ -349,7 +376,9 @@
   position: sticky;
   top: 0;
   z-index: 2;
-  background: var(--surface-elevated);
+  /* A band INSIDE a --surface card has to recede: --surface-elevated cannot step
+     up from white, so it vanishes in light while banding hard in dark. */
+  background: var(--surface-sunken);
   color: var(--text-muted);
   font-family: var(--mono);
   font-size: 11px;
@@ -364,7 +393,7 @@
   z-index: 1;
   width: 190px;
   min-width: 190px;
-  background: var(--surface-elevated);
+  background: var(--surface-sunken);
 }
 
 .matrix thead th:first-child {
@@ -404,11 +433,24 @@
   border-right: 0;
 }
 
+/* The status card is a margin note, not a column of its own: the copy takes the
+   page's type rail and the card annotates it from the right, so the heading stops
+   starting 300px in and the card stops being an orphan above 330px of dead column. */
 .metricCallout {
   display: grid;
-  grid-template-columns: minmax(240px, 0.46fr) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 0.42fr);
   gap: clamp(var(--space-8), 7vw, var(--space-16));
   align-items: start;
+}
+
+.metricCallout > .metricStatus {
+  grid-row: 1;
+  grid-column: 2;
+}
+
+.metricCallout > div:last-child {
+  grid-row: 1;
+  grid-column: 1;
 }
 
 .metricStatus {
@@ -578,10 +620,13 @@
   line-height: 1.65;
 }
 
+/* Cards size to their own content: row-height equalisation was stranding up to
+   95px of blank card under the one-link vendors. */
 .sourceGrid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-4);
+  align-items: start;
 }
 
 .sourceGroup {
@@ -661,6 +706,13 @@
     grid-template-columns: 1fr;
   }
 
+  /* Single column: fall back to document order (status card, then copy). */
+  .metricCallout > .metricStatus,
+  .metricCallout > div:last-child {
+    grid-row: auto;
+    grid-column: 1;
+  }
+
   .pickGrid,
   .artifactGrid,
   .sourceGrid {
@@ -712,7 +764,7 @@
   }
 
   .matrix {
-    min-width: 1840px;
+    min-width: 1650px;
   }
 
   .matrix th,

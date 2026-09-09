@@ -7,7 +7,7 @@ type Theme = "light" | "dark";
 const STORAGE_KEY = "vtt-theme";
 
 /** Page ground per theme, used only if the live background cannot be read. */
-const GROUND: Record<Theme, string> = { light: "#F5F5F5", dark: "#0B0C0F" };
+const GROUND: Record<Theme, string> = { light: "#F1F5FA", dark: "#13181F" };
 
 /** Repaint the browser chrome to match the page.
  *

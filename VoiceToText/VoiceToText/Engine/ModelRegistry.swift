@@ -56,6 +56,13 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// Leaderboard English average (mid-2026). `nil` for cloud models, which have
     /// no comparable public leaderboard, and keep their curated `quality` rating.
     let benchmarkWER: Double?
+    /// Provider list price in USD per hour of audio, as published on the
+    /// provider's pricing page in September 2026. `0` for local models (they cost
+    /// nothing to run); `nil` when a price is not known, in which case the Models
+    /// row omits the segment rather than guessing. Cloud usage is billed by the
+    /// provider to the user's own API key, never by this app, so this is a
+    /// courtesy estimate — per-minute list prices multiplied by 60.
+    let pricePerHourUSD: Double?
 
     var isCloud: Bool { backend.isCloud }
     var isRealtime: Bool { backend.isStreaming }
@@ -73,7 +80,8 @@ enum ModelCatalog {
             notes: "Fastest on your Mac. Best for English and major European languages.",
             quality: 9,
             speed: 10,
-            benchmarkWER: 6.32
+            benchmarkWER: 6.32,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "whisper-large-v3-turbo",
@@ -85,7 +93,8 @@ enum ModelCatalog {
             notes: "Excellent accuracy in 99 languages. A great all-rounder.",
             quality: 8,
             speed: 7,
-            benchmarkWER: 7.75
+            benchmarkWER: 7.75,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "whisper-large-v3",
@@ -97,7 +106,8 @@ enum ModelCatalog {
             notes: "Extremely accurate offline. Noticeably slower than Turbo.",
             quality: 8,
             speed: 3,
-            benchmarkWER: 7.44
+            benchmarkWER: 7.44,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "whisper-small",
@@ -109,7 +119,8 @@ enum ModelCatalog {
             notes: "Smaller and faster, but makes more mistakes.",
             quality: 5,
             speed: 8,
-            benchmarkWER: 8.59
+            benchmarkWER: 8.59,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "whisper-base",
@@ -121,7 +132,8 @@ enum ModelCatalog {
             notes: "Very small. Quite a few mistakes — only worth it on slow Macs.",
             quality: 3,
             speed: 9,
-            benchmarkWER: 10.32
+            benchmarkWER: 10.32,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "whisper-tiny",
@@ -133,7 +145,8 @@ enum ModelCatalog {
             notes: "Smallest. Lots of mistakes — mainly useful for testing.",
             quality: 2,
             speed: 10,
-            benchmarkWER: 12.81
+            benchmarkWER: 12.81,
+            pricePerHourUSD: 0
         ),
         ModelDescriptor(
             id: "elevenlabs-scribe-v2-realtime",
@@ -145,7 +158,8 @@ enum ModelCatalog {
             notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
             quality: 9,
             speed: 10,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.39 // $0.39/hr list price
         ),
         ModelDescriptor(
             id: "openai-gpt-live-transcribe",
@@ -157,7 +171,8 @@ enum ModelCatalog {
             notes: "OpenAI's newest live streaming model — words appear as you speak. Audio goes to OpenAI.",
             quality: 9,
             speed: 10,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 1.02 // $0.017/min
         ),
         ModelDescriptor(
             id: "openai-gpt-realtime-whisper",
@@ -169,7 +184,8 @@ enum ModelCatalog {
             notes: "Live streaming built for the lowest latency. Audio goes to OpenAI.",
             quality: 9,
             speed: 10,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 1.02 // $0.017/min
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-realtime",
@@ -181,7 +197,10 @@ enum ModelCatalog {
             notes: "Live streaming — words appear as you speak. Audio goes to OpenAI.",
             quality: 9,
             speed: 9,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            // Realtime sessions bill at the same audio-token rate as the batch
+            // gpt-4o-transcribe model.
+            pricePerHourUSD: 0.36 // $0.006/min
         ),
         ModelDescriptor(
             id: "openai-gpt-transcribe",
@@ -200,7 +219,8 @@ enum ModelCatalog {
             notes: "OpenAI's recommended transcription model — newer and cheaper than GPT-4o Transcribe. Audio goes to OpenAI.",
             quality: 10,
             speed: 6,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.27 // $0.0045/min
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe",
@@ -218,7 +238,8 @@ enum ModelCatalog {
             notes: "Previous-generation cloud model, still very accurate. Audio goes to OpenAI.",
             quality: 9,
             speed: 5,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.36 // $0.006/min
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-diarize",
@@ -230,7 +251,8 @@ enum ModelCatalog {
             notes: "Labels who said what — best for meetings. Audio goes to OpenAI.",
             quality: 10,
             speed: 4,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.36 // $0.006/min, no diarization surcharge
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-mini-transcribe",
@@ -242,7 +264,8 @@ enum ModelCatalog {
             notes: "Nearly as accurate as GPT-4o Transcribe and cheaper to run.",
             quality: 9,
             speed: 7,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.18 // $0.003/min
         ),
         ModelDescriptor(
             id: "openai-whisper-1",
@@ -254,7 +277,8 @@ enum ModelCatalog {
             notes: "OpenAI's older online model. Cheapest, but less accurate than GPT-4o.",
             quality: 8,
             speed: 6,
-            benchmarkWER: nil
+            benchmarkWER: nil,
+            pricePerHourUSD: 0.36 // $0.006/min
         ),
     ]
 

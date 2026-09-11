@@ -313,33 +313,74 @@ private struct ModelRow: View {
     // MARK: The meta line
 
     /// The one Mono 11 line that replaced two gauges, a globe chip and a notes
-    /// paragraph: `Local · 632 MB · 7.8% WER · 99 languages`, or
-    /// `Cloud · 99+ languages`.
+    /// paragraph: `Local · Free · Quality 9/10 · 483 MB · 6.3% WER · 25 European
+    /// languages`, or `Cloud · $0.27/hr · Quality 10/10 · 99+ languages`.
     ///
-    /// Every segment comes from a field `ModelDescriptor` actually carries. The
-    /// spec's per-minute cloud price has no field behind it, so it is omitted
-    /// rather than invented; cloud models likewise carry no `benchmarkWER`
-    /// (there is no comparable public leaderboard) and no on-disk size.
+    /// Every segment comes from a field `ModelDescriptor` actually carries,
+    /// price included now that `pricePerHourUSD` backs it. Cloud models carry no
+    /// `benchmarkWER` (there is no comparable public leaderboard) and no on-disk
+    /// size, so those two segments are simply absent from a cloud row.
+    ///
+    /// Price and quality sit at the front, right after the provenance: they are
+    /// the two axes a reader is actually choosing between, and the tail (size,
+    /// WER, languages) is what a narrow window truncates away first.
     private var metaLine: String {
         var parts = [model.isCloud ? "Cloud" : "Local"]
+        if let priceAnnotation { parts.append(priceAnnotation) }
+        parts.append(qualityAnnotation)
         if let displaySize { parts.append(displaySize) }
         if let werAnnotation { parts.append(werAnnotation) }
         parts.append(ModelBadges.languagesLabel(model.languages))
         return parts.joined(separator: " · ")
     }
 
-    /// The descriptive notes the row no longer has the height to print, plus
-    /// the WER provenance the gauge's annotation used to carry.
+    /// The descriptive notes the row no longer has the height to print, plus the
+    /// provenance of every number the meta line prints bare — a curated rating
+    /// and a third party's price both need saying where they came from.
     private var metaLineHelp: String {
-        guard werAnnotation != nil else { return model.notes }
-        return model.notes
-            + "\nWord error rate — Open ASR Leaderboard (English average). Lower is better."
+        var lines = [model.notes]
+        if werAnnotation != nil {
+            lines.append("Word error rate — Open ASR Leaderboard (English average). Lower is better.")
+        }
+        lines.append(
+            "Quality is a curated 1–10 rating of transcript accuracy — "
+                + "the same figure the Quality sort uses."
+        )
+        if let priceHelp { lines.append(priceHelp) }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Who charges the price, and the reminder that it is never this app: cloud
+    /// usage bills to the user's own API key. Local models cost nothing, so they
+    /// say so instead of naming a provider.
+    private var priceHelp: String? {
+        guard model.pricePerHourUSD != nil else { return nil }
+        guard let provider = model.backend.cloudProvider?.displayName else {
+            return "Free — runs on this Mac, no per-minute cost."
+        }
+        return "Price is \(provider)'s list price per hour of audio (September 2026), "
+            + "billed by \(provider) to your own API key. Approximate."
     }
 
     /// "6.3% WER" for models with leaderboard data, else nil.
     private var werAnnotation: String? {
         guard let wer = model.benchmarkWER else { return nil }
         return String(format: "%.1f%% WER", wer)
+    }
+
+    /// "Free" for anything that runs on this Mac, "$0.27/hr" for a cloud model.
+    /// A model the catalog has no price for prints no price segment at all
+    /// rather than a guess — see `ModelDescriptor.pricePerHourUSD`.
+    private var priceAnnotation: String? {
+        guard let price = model.pricePerHourUSD else { return nil }
+        if price == 0 { return "Free" }
+        return String(format: "$%.2f/hr", price)
+    }
+
+    /// "Quality 9/10" — the curated rating, printed with its scale so the
+    /// number can't be mistaken for a percentage next to the WER segment.
+    private var qualityAnnotation: String {
+        "Quality \(model.quality)/10"
     }
 
     private var displaySize: String? {

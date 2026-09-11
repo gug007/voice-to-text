@@ -596,9 +596,11 @@ private struct ModelRow: View {
             // what made the old list unreadable.
             if !model.isCloud { localReadinessControl }
 
-            detailsButton
-
             if readiness.isInstalled, !model.isCloud { moreMenu }
+
+            // Last, so the one control every row has sits in the same column
+            // on every row — the ⋯ menu comes and goes with installation.
+            detailsButton
         }
     }
 
@@ -856,8 +858,8 @@ private struct ModelDetailsPopover: View {
 /// numbers; assembling them three times is how two of them go stale.
 private enum ModelFacts {
 
-    /// The row's one meta line: `Quality 8.9 · $0.27/hr · 99+ languages`, or
-    /// `Quality 8.7 · 483 MB · 25 European languages`.
+    /// The row's one meta line: `Quality 8.9/10 · $0.27/hr · 99+ languages`, or
+    /// `Quality 8.7/10 · 483 MB · 25 European languages`.
     ///
     /// "Cloud"/"Local" and "Free" are gone from it — the group header above the
     /// row already said both, and saying them again on 14 rows is what made the
@@ -883,13 +885,12 @@ private enum ModelFacts {
     /// "Quality 8.9" — the score derived from published word error rates. "≈"
     /// marks a score resting on indirect evidence rather than the model's own
     /// Artificial Analysis figure; a model nothing has benchmarked prints
-    /// "Quality —" rather than inventing a number. The "/10" the old line
-    /// carried moved to the popover's scale sentence, which explains the scale
-    /// instead of just asserting it.
+    /// "Quality —" rather than inventing a number. The "/10" stays on the row so
+    /// the figure can never be read as a percentage.
     static func quality(_ model: ModelDescriptor) -> String {
         guard let quality = model.quality else { return "Quality —" }
         let prefix = model.isQualityApproximate ? "≈" : ""
-        return "Quality \(prefix)\(String(format: "%.1f", quality))"
+        return "Quality \(prefix)\(String(format: "%.1f", quality))/10"
     }
 
     /// A model the catalog has no price for prints no price segment at all

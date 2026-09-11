@@ -118,6 +118,12 @@ swiftc -parse-as-library \
 "$TMPDIR/speaker-relabeler-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ModelQualityScore.swift \
+  Tests/ModelQualityScoreHarness.swift \
+  -o "$TMPDIR/model-quality-score-harness"
+"$TMPDIR/model-quality-score-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Audio/AudioChunker.swift \
   VoiceToText/VoiceToText/Audio/AudioChunkReader.swift \
   VoiceToText/VoiceToText/Audio/WAVEncoder.swift \

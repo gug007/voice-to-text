@@ -49,13 +49,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     let approxSizeMB: Int
     let languages: String
     let notes: String
-    /// 1...10 subjective rating surfaced in the Models list.
-    let quality: Int
     let speed: Int
-    /// Measured word error rate for LOCAL models, from the Hugging Face Open ASR
-    /// Leaderboard English average (mid-2026). `nil` for cloud models, which have
-    /// no comparable public leaderboard, and keep their curated `quality` rating.
-    let benchmarkWER: Double?
     /// Provider list price in USD per hour of audio, as published on the
     /// provider's pricing page in September 2026. `0` for local models (they cost
     /// nothing to run); `nil` when a price is not known, in which case the Models
@@ -63,9 +57,24 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// provider to the user's own API key, never by this app, so this is a
     /// courtesy estimate — per-minute list prices multiplied by 60.
     let pricePerHourUSD: Double?
+    /// Published word error rates for this model, one per benchmark, as of the
+    /// September 2026 snapshot. Local models come from the Hugging Face Open ASR
+    /// Leaderboard (English average); cloud models from Artificial Analysis
+    /// AA-WER, whose streaming board is the only one that measures the live APIs.
+    /// Whisper Large v3 appears on both, which is what lets the two sources share
+    /// one score — see `ModelQualityScore`. Empty when nothing published covers
+    /// the model, in which case it has no quality score rather than a guess.
+    let benchmarks: [WERMeasurement]
 
     var isCloud: Bool { backend.isCloud }
     var isRealtime: Bool { backend.isStreaming }
+
+    /// 1...10 accuracy score derived from `benchmarks`; `nil` when unmeasured.
+    var quality: Double? { ModelQualityScore.score(for: benchmarks) }
+
+    /// True when every figure behind `quality` was carried over from a sibling
+    /// model, so the Models row prefixes the score with "≈".
+    var isQualityEstimated: Bool { ModelQualityScore.isEstimate(benchmarks) }
 }
 
 enum ModelCatalog {
@@ -78,10 +87,16 @@ enum ModelCatalog {
             approxSizeMB: 470,
             languages: "25 European languages",
             notes: "Fastest on your Mac. Best for English and major European languages.",
-            quality: 9,
             speed: 10,
-            benchmarkWER: 6.32,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .openASRLeaderboard,
+                    percent: 6.32,
+                    isEstimate: false,
+                    note: "Artificial Analysis has not benchmarked v3; its predecessor Parakeet TDT 0.6B v2 scores 6.4% AA-WER, well behind Whisper Large v3's 4.1% there."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "whisper-large-v3-turbo",
@@ -91,10 +106,17 @@ enum ModelCatalog {
             approxSizeMB: 632,
             languages: "99",
             notes: "Excellent accuracy in 99 languages. A great all-rounder.",
-            quality: 8,
             speed: 7,
-            benchmarkWER: 7.75,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 7.75, isEstimate: false, note: nil),
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.6,
+                    isEstimate: false,
+                    note: "Best-host figure (Groq)."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "whisper-large-v3",
@@ -104,10 +126,17 @@ enum ModelCatalog {
             approxSizeMB: 626,
             languages: "99",
             notes: "Extremely accurate offline. Noticeably slower than Turbo.",
-            quality: 8,
             speed: 3,
-            benchmarkWER: 7.44,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 7.44, isEstimate: false, note: nil),
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.1,
+                    isEstimate: false,
+                    note: "Best-host figure (fal.ai)."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "whisper-small",
@@ -117,10 +146,11 @@ enum ModelCatalog {
             approxSizeMB: 244,
             languages: "99",
             notes: "Smaller and faster, but makes more mistakes.",
-            quality: 5,
             speed: 8,
-            benchmarkWER: 8.59,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 8.59, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "whisper-base",
@@ -130,10 +160,11 @@ enum ModelCatalog {
             approxSizeMB: 77,
             languages: "99",
             notes: "Very small. Quite a few mistakes — only worth it on slow Macs.",
-            quality: 3,
             speed: 9,
-            benchmarkWER: 10.32,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 10.32, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "whisper-tiny",
@@ -143,10 +174,11 @@ enum ModelCatalog {
             approxSizeMB: 39,
             languages: "99",
             notes: "Smallest. Lots of mistakes — mainly useful for testing.",
-            quality: 2,
             speed: 10,
-            benchmarkWER: 12.81,
-            pricePerHourUSD: 0
+            pricePerHourUSD: 0,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 12.81, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "elevenlabs-scribe-v2-realtime",
@@ -156,10 +188,16 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "90+",
             notes: "Live streaming — words appear as you speak. Audio goes to ElevenLabs.",
-            quality: 9,
             speed: 10,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.39 // $0.39/hr list price
+            pricePerHourUSD: 0.39, // $0.39/hr list price
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 3.6,
+                    isEstimate: false,
+                    note: "AA-WER Streaming, final transcript."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-live-transcribe",
@@ -169,10 +207,16 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99+",
             notes: "OpenAI's newest live streaming model — words appear as you speak. Audio goes to OpenAI.",
-            quality: 9,
             speed: 10,
-            benchmarkWER: nil,
-            pricePerHourUSD: 1.02 // $0.017/min
+            pricePerHourUSD: 1.02, // $0.017/min
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 3.9,
+                    isEstimate: false,
+                    note: "AA-WER Streaming, final transcript."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-realtime-whisper",
@@ -182,10 +226,16 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99+",
             notes: "Live streaming built for the lowest latency. Audio goes to OpenAI.",
-            quality: 9,
             speed: 10,
-            benchmarkWER: nil,
-            pricePerHourUSD: 1.02 // $0.017/min
+            pricePerHourUSD: 1.02, // $0.017/min
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.9,
+                    isEstimate: false,
+                    note: "AA-WER Streaming, final transcript (7.5% at first partial)."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-realtime",
@@ -195,12 +245,18 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99+",
             notes: "Live streaming — words appear as you speak. Audio goes to OpenAI.",
-            quality: 9,
             speed: 9,
-            benchmarkWER: nil,
             // Realtime sessions bill at the same audio-token rate as the batch
             // gpt-4o-transcribe model.
-            pricePerHourUSD: 0.36 // $0.006/min
+            pricePerHourUSD: 0.36, // $0.006/min
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.0,
+                    isEstimate: true,
+                    note: "Not on the streaming leaderboard; carried over from GPT-4o Transcribe's batch score."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-transcribe",
@@ -209,18 +265,19 @@ enum ModelCatalog {
             backendModelId: "gpt-transcribe",
             approxSizeMB: 0,
             languages: "99+",
-            // Top `quality`, and listed ahead of GPT-4o Transcribe so it takes
-            // the "Most accurate" chip (`ModelBadges` keeps the first of equal
-            // maxima). OpenAI's own guide is explicit: "Start with
+            // The highest-scoring cloud model on Artificial Analysis AA-WER
+            // (3.3% against GPT-4o Transcribe's 4.0%), so it takes the "Most
+            // accurate" chip. That matches OpenAI's own guide: "Start with
             // `gpt-transcribe`. This is the recommended model for transcribing
             // recorded speech in its original language" — GPT-4o Transcribe is
             // now reserved for speaker labels, timestamps, subtitles, or
             // translation. It is also cheaper ($0.0045 vs $0.006/min).
             notes: "OpenAI's recommended transcription model — newer and cheaper than GPT-4o Transcribe. Audio goes to OpenAI.",
-            quality: 10,
             speed: 6,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.27 // $0.0045/min
+            pricePerHourUSD: 0.27, // $0.0045/min
+            benchmarks: [
+                WERMeasurement(benchmark: .artificialAnalysis, percent: 3.3, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe",
@@ -229,17 +286,18 @@ enum ModelCatalog {
             backendModelId: "gpt-4o-transcribe",
             approxSizeMB: 0,
             languages: "99+",
-            // Was "the most accurate option overall" at quality 10 — OpenAI now
-            // names gpt-transcribe the recommended model for recorded speech, so
-            // neither the superlative nor the top slot holds. Kept at 9 (level
-            // with Mini, whose notes already call it "nearly as accurate") rather
-            // than demoted further: it is still a strong model, just no longer
-            // the one to reach for first.
+            // Was "the most accurate option overall" here. Artificial Analysis
+            // now measures it at 4.0% AA-WER against gpt-transcribe's 3.3%, so
+            // the superlative goes with the chip — it lands a few tenths of a
+            // point below, still a strong model, just no longer the one to reach
+            // for first. It is also the pricier of the two: $0.006/min against
+            // gpt-transcribe's $0.0045.
             notes: "Previous-generation cloud model, still very accurate. Audio goes to OpenAI.",
-            quality: 9,
             speed: 5,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.36 // $0.006/min
+            pricePerHourUSD: 0.36, // $0.006/min
+            benchmarks: [
+                WERMeasurement(benchmark: .artificialAnalysis, percent: 4.0, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-transcribe-diarize",
@@ -249,10 +307,16 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99+",
             notes: "Labels who said what — best for meetings. Audio goes to OpenAI.",
-            quality: 10,
             speed: 4,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.36 // $0.006/min, no diarization surcharge
+            pricePerHourUSD: 0.36, // $0.006/min, no diarization surcharge
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.0,
+                    isEstimate: true,
+                    note: "Not independently benchmarked; OpenAI calls it roughly comparable to GPT-4o Transcribe, whose score this is."
+                ),
+            ]
         ),
         ModelDescriptor(
             id: "openai-gpt-4o-mini-transcribe",
@@ -262,10 +326,11 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99+",
             notes: "Nearly as accurate as GPT-4o Transcribe and cheaper to run.",
-            quality: 9,
             speed: 7,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.18 // $0.003/min
+            pricePerHourUSD: 0.18, // $0.003/min
+            benchmarks: [
+                WERMeasurement(benchmark: .artificialAnalysis, percent: 4.5, isEstimate: false, note: nil),
+            ]
         ),
         ModelDescriptor(
             id: "openai-whisper-1",
@@ -275,10 +340,16 @@ enum ModelCatalog {
             approxSizeMB: 0,
             languages: "99",
             notes: "OpenAI's older online model. Cheapest, but less accurate than GPT-4o.",
-            quality: 8,
             speed: 6,
-            benchmarkWER: nil,
-            pricePerHourUSD: 0.36 // $0.006/min
+            pricePerHourUSD: 0.36, // $0.006/min
+            benchmarks: [
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.1,
+                    isEstimate: false,
+                    note: "Listed by Artificial Analysis as Whisper Large v2 (OpenAI)."
+                ),
+            ]
         ),
     ]
 

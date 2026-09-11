@@ -857,6 +857,19 @@ final class DictationController {
             return
         }
 
+        // A cloud model with no key can only fail deep inside `prepareModel`,
+        // with a message that sends the user hunting through Settings. Catch it
+        // here and put the key field one click away instead.
+        if let provider = descriptor.backend.cloudProvider, !provider.hasAPIKey {
+            AppLog.dictation.error("startRecording: \(descriptor.id) has no API key")
+            recordingStartGate.finish(startID)
+            enterFailureHUD(
+                message: "\(descriptor.displayName) needs an \(provider.displayName) API key.",
+                action: .addAPIKey { WindowOpener.shared.showMain(section: .cloud) }
+            )
+            return
+        }
+
         AppLog.dictation.info("startRecording: active model=\(descriptor.id)")
         guard recordingStartGate.accepts(startID) else { return }
         state = .preparing(modelDisplayName: descriptor.displayName)
@@ -1456,6 +1469,10 @@ final class DictationController {
 
         static func openSettings(_ run: @escaping @MainActor () -> Void) -> FailureAction {
             FailureAction(title: "Open Settings", icon: "gear", hint: nil, run: run)
+        }
+
+        static func addAPIKey(_ run: @escaping @MainActor () -> Void) -> FailureAction {
+            FailureAction(title: "Add API Key", icon: "key.fill", hint: nil, run: run)
         }
     }
 

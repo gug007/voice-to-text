@@ -21,6 +21,15 @@ nonisolated enum ElevenLabsAPIKey {
     static func clear() {
         UserDefaults.standard.removeObject(forKey: defaultsKey)
     }
+
+    /// Cheap client-side shape check, used to decide whether a paste is worth
+    /// verifying over the network. ElevenLabs keys carry no reliable prefix, so
+    /// this only asks for a single long token.
+    static func looksLikeKey(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 20 else { return false }
+        return trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+    }
 }
 
 @Observable
@@ -34,8 +43,14 @@ final class ElevenLabsAPIKeyStore {
 
     private(set) var hasKey: Bool
 
+    /// Last 4 characters of the stored key — enough to tell two keys apart in
+    /// the UI without ever showing one.
+    private(set) var keySuffix: String?
+
     private init() {
-        self.hasKey = ElevenLabsAPIKey.read() != nil
+        let stored = ElevenLabsAPIKey.read()
+        self.hasKey = stored != nil
+        self.keySuffix = Self.suffix(of: stored)
     }
 
     func setKey(_ rawValue: String) {
@@ -46,12 +61,19 @@ final class ElevenLabsAPIKeyStore {
         }
         ElevenLabsAPIKey.write(trimmed)
         hasKey = true
+        keySuffix = Self.suffix(of: trimmed)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     func clearKey() {
         ElevenLabsAPIKey.clear()
         hasKey = false
+        keySuffix = nil
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+
+    private nonisolated static func suffix(of key: String?) -> String? {
+        guard let key, key.count >= 4 else { return nil }
+        return String(key.suffix(4))
     }
 }

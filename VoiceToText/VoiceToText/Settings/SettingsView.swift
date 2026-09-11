@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var registry: ModelRegistry
     @State private var selection: Section = .general
+    @Bindable private var router = SettingsRouter.shared
     @Environment(\.motion) private var motion
 
     /// The sidebar, as data. Enum declaration order used to decide what the
@@ -67,6 +68,16 @@ struct SettingsView: View {
         // one interlocking hack and only came out together. Each pane declares
         // a real `.toolbar`, and `PaneScaffold` owns the scroll-edge effect.
         .frame(minWidth: 720, minHeight: 480)
+        // Two arrivals to cover: the window was already open (onChange), or it
+        // was just created for this request (task).
+        .task { consumePendingSection() }
+        .onChange(of: router.pendingSection) { _, _ in consumePendingSection() }
+    }
+
+    private func consumePendingSection() {
+        guard let pending = router.pendingSection else { return }
+        selection = pending
+        router.pendingSection = nil
     }
 
     @ViewBuilder

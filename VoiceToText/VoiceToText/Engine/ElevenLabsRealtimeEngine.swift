@@ -339,6 +339,12 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         guard let apiKey = ElevenLabsAPIKey.read() else {
             return .failed("No key configured.")
         }
+        return await testConnection(apiKey: apiKey)
+    }
+
+    /// The same probe against a key that has not been saved yet — what the
+    /// paste-to-connect field verifies before committing anything to storage.
+    static func testConnection(apiKey: String) async -> ElevenLabsConnectionTest {
         guard let url = URL(string: "https://api.elevenlabs.io/v1/user") else {
             return .failed("Test failed: bad URL.")
         }

@@ -9,6 +9,7 @@ struct ActionsPane: View {
     var onShowCloudSettings: () -> Void = {}
 
     @State private var editorDraft: ActionEditorDraft?
+    @State private var isShowingKeyEntry = false
     @Environment(\.motion) private var motion
 
     var body: some View {
@@ -56,10 +57,37 @@ struct ActionsPane: View {
                 title: "OpenAI API key required",
                 message: "Actions run on the OpenAI API and stay inactive until a key is added.",
                 actionTitle: "Add Key…",
-                action: onShowCloudSettings
+                action: { isShowingKeyEntry = true }
             )
         ])
         .transition(.opacity)
+        .popover(isPresented: $isShowingKeyEntry, arrowEdge: .bottom) {
+            keyEntryPopover
+        }
+    }
+
+    private var keyEntryPopover: some View {
+        VStack(alignment: .leading, spacing: Space.s5) {
+            Text("OpenAI API key")
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+
+            APIKeyEntryView(config: .openAI) {
+                isShowingKeyEntry = false
+            }
+
+            Button {
+                isShowingKeyEntry = false
+                onShowCloudSettings()
+            } label: {
+                Text("All cloud settings…")
+                    .typo(.captionMedium)
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(Palette.accent)
+        }
+        .padding(Space.s6)
+        .frame(width: 380)
     }
 
     // MARK: - Action list

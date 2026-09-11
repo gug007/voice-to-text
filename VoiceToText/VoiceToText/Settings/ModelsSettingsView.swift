@@ -78,14 +78,12 @@ struct ModelsPane: View {
         case .featured:
             return models
         case .quality:
-            // `quality` is recalibrated to match WER ordering, so it's the
-            // primary key; the benchmark WER (lower is better) breaks ties into
-            // a total, consistent order when both models have leaderboard data.
+            // `quality` is derived straight from published word error rates, so
+            // it is the whole key — there is nothing left to break ties with
+            // that isn't already in the number. Unscored models sort last, and
+            // the stable sort leaves genuine ties in catalog order.
             return models.sorted {
-                if $0.quality != $1.quality { return $0.quality > $1.quality }
-                let l = $0.benchmarkWER ?? .greatestFiniteMagnitude
-                let r = $1.benchmarkWER ?? .greatestFiniteMagnitude
-                return l < r
+                ($0.quality ?? -1) > ($1.quality ?? -1)
             }
         case .speed:
             return models.sorted { $0.speed > $1.speed }
@@ -217,8 +215,7 @@ private struct ModelRow: View {
     let model: ModelDescriptor
     @Bindable var registry: ModelRegistry
     let onShowCloudSettings: () -> Void
-    @Bindable private var openAIKeys = OpenAIAPIKeyStore.shared
-    @Bindable private var elevenLabsKeys = ElevenLabsAPIKeyStore.shared
+    @State private var isShowingKeyEntry = false
     @Environment(\.increaseContrast) private var increaseContrast
 
     private var isActive: Bool { registry.activeModelId == model.id }
@@ -313,41 +310,68 @@ private struct ModelRow: View {
     // MARK: The meta line
 
     /// The one Mono 11 line that replaced two gauges, a globe chip and a notes
-    /// paragraph: `Local · Free · Quality 9/10 · 483 MB · 6.3% WER · 25 European
-    /// languages`, or `Cloud · $0.27/hr · Quality 10/10 · 99+ languages`.
+    /// paragraph: `Local · Free · Quality 8.7/10 · 483 MB · 25 European
+    /// languages`, or `Cloud · $0.27/hr · Quality 8.9/10 · 99+ languages`.
     ///
     /// Every segment comes from a field `ModelDescriptor` actually carries,
-    /// price included now that `pricePerHourUSD` backs it. Cloud models carry no
-    /// `benchmarkWER` (there is no comparable public leaderboard) and no on-disk
-    /// size, so those two segments are simply absent from a cloud row.
+    /// price included now that `pricePerHourUSD` backs it. Cloud models have no
+    /// on-disk size, so that segment is simply absent from a cloud row.
+    ///
+    /// The raw word error rates stay in the tooltip rather than earning a
+    /// segment here: local and cloud models are measured on different
+    /// benchmarks, and two benchmarks' percentages sitting in one column would
+    /// invite exactly the comparison they don't support. The quality score is
+    /// the number that *is* comparable, because it is expressed against a model
+    /// both benchmarks measure.
     ///
     /// Price and quality sit at the front, right after the provenance: they are
     /// the two axes a reader is actually choosing between, and the tail (size,
-    /// WER, languages) is what a narrow window truncates away first.
+    /// languages) is what a narrow window truncates away first.
     private var metaLine: String {
         var parts = [model.isCloud ? "Cloud" : "Local"]
         if let priceAnnotation { parts.append(priceAnnotation) }
         parts.append(qualityAnnotation)
         if let displaySize { parts.append(displaySize) }
-        if let werAnnotation { parts.append(werAnnotation) }
         parts.append(ModelBadges.languagesLabel(model.languages))
         return parts.joined(separator: " · ")
     }
 
     /// The descriptive notes the row no longer has the height to print, plus the
-    /// provenance of every number the meta line prints bare — a curated rating
+    /// provenance of every number the meta line prints bare — a derived score
     /// and a third party's price both need saying where they came from.
+    ///
+    /// Each measurement names its own benchmark and prints Whisper Large v3's
+    /// score on that benchmark beside it, because that is the only figure that
+    /// makes one leaderboard's percentage mean anything next to another's.
     private var metaLineHelp: String {
         var lines = [model.notes]
-        if werAnnotation != nil {
-            lines.append("Word error rate — Open ASR Leaderboard (English average). Lower is better.")
+        for measurement in model.benchmarks {
+            let percent = String(format: "%.1f", measurement.percent)
+            let reference = String(format: "%.1f", measurement.benchmark.whisperLargeV3Percent)
+            var line = "\(percent)% WER on \(benchmarkPhrase(measurement.benchmark)) "
+                + "— Whisper Large v3: \(reference)%."
+            if measurement.isEstimate { line += " Estimate." }
+            lines.append(line)
+            if let note = measurement.note { lines.append(note) }
         }
         lines.append(
-            "Quality is a curated 1–10 rating of transcript accuracy — "
-                + "the same figure the Quality sort uses."
+            "Quality: Whisper Large v3 is 8.0; half its errors scores 10, "
+                + "twice its errors scores 5."
         )
         if let priceHelp { lines.append(priceHelp) }
         return lines.joined(separator: "\n")
+    }
+
+    /// The benchmark name as it reads mid-sentence. Open ASR needs the "(English
+    /// average)" qualifier spelled out — it is the one place the figure's scope
+    /// is narrower than the model's.
+    private func benchmarkPhrase(_ benchmark: WERMeasurement.Benchmark) -> String {
+        switch benchmark {
+        case .openASRLeaderboard:
+            return "the \(benchmark.displayName) (English average)"
+        case .artificialAnalysis:
+            return benchmark.displayName
+        }
     }
 
     /// Who charges the price, and the reminder that it is never this app: cloud
@@ -362,12 +386,6 @@ private struct ModelRow: View {
             + "billed by \(provider) to your own API key. Approximate."
     }
 
-    /// "6.3% WER" for models with leaderboard data, else nil.
-    private var werAnnotation: String? {
-        guard let wer = model.benchmarkWER else { return nil }
-        return String(format: "%.1f%% WER", wer)
-    }
-
     /// "Free" for anything that runs on this Mac, "$0.27/hr" for a cloud model.
     /// A model the catalog has no price for prints no price segment at all
     /// rather than a guess — see `ModelDescriptor.pricePerHourUSD`.
@@ -377,10 +395,14 @@ private struct ModelRow: View {
         return String(format: "$%.2f/hr", price)
     }
 
-    /// "Quality 9/10" — the curated rating, printed with its scale so the
-    /// number can't be mistaken for a percentage next to the WER segment.
+    /// "Quality 8.7/10" — the score derived from published word error rates,
+    /// printed with its scale so the number can't be read as a percentage.
+    /// "≈" marks a score carried over from a sibling model; a model nothing has
+    /// benchmarked prints "Quality —" rather than inventing a figure.
     private var qualityAnnotation: String {
-        "Quality \(model.quality)/10"
+        guard let quality = model.quality else { return "Quality —" }
+        let prefix = model.isQualityEstimated ? "≈" : ""
+        return "Quality \(prefix)\(String(format: "%.1f", quality))/10"
     }
 
     private var displaySize: String? {
@@ -411,11 +433,7 @@ private struct ModelRow: View {
     /// keys off `model.backend.cloudProvider`, which is the only thing that
     /// knows who the row belongs to.
     private var cloudProviderHasKey: Bool {
-        switch model.backend.cloudProvider {
-        case .openAI: return openAIKeys.hasKey
-        case .elevenLabs: return elevenLabsKeys.hasKey
-        case nil: return false
-        }
+        model.backend.cloudProvider?.hasAPIKey ?? false
     }
 
     @ViewBuilder
@@ -424,7 +442,7 @@ private struct ModelRow: View {
             StatusLabel(level: .ready, text: "Connected")
         } else {
             Button {
-                onShowCloudSettings()
+                isShowingKeyEntry = true
             } label: {
                 HStack(spacing: Space.s2) {
                     Text("Add API key")
@@ -441,7 +459,42 @@ private struct ModelRow: View {
                 )
             }
             .buttonStyle(.plain)
-            .help("Open Cloud settings to add your API key")
+            .help("Add your API key without leaving this list")
+            .popover(isPresented: $isShowingKeyEntry, arrowEdge: .bottom) {
+                keyEntryPopover
+            }
+        }
+    }
+
+    /// The key goes in right here, anchored to the button that asked for it —
+    /// no trip to the Cloud pane and back to find this row again.
+    @ViewBuilder
+    private var keyEntryPopover: some View {
+        if let provider = model.backend.cloudProvider {
+            VStack(alignment: .leading, spacing: Space.s5) {
+                Text("\(provider.displayName) API key")
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
+
+                APIKeyEntryView(config: .forProvider(provider)) {
+                    isShowingKeyEntry = false
+                    // The user asked for a key from THIS row's button, so this
+                    // is the model they want to dictate with.
+                    registry.setActive(model.id)
+                }
+
+                Button {
+                    isShowingKeyEntry = false
+                    onShowCloudSettings()
+                } label: {
+                    Text("All cloud settings…")
+                        .typo(.captionMedium)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(Palette.accent)
+            }
+            .padding(Space.s6)
+            .frame(width: 380)
         }
     }
 
@@ -628,20 +681,26 @@ private struct RealtimeBadge: View {
 /// from the static catalog. Kept in the Settings layer so `ModelRegistry`
 /// stays free of UI concerns.
 private enum ModelBadges {
-    /// The most accurate local model by benchmark WER (lower is better). When
-    /// this is also the Recommended model (as with parakeet, which leads on
-    /// WER), the "at most one chip" priority in `editorial(_:)` shows only
-    /// "Recommended" — so no separate local "Most accurate" chip appears, which
-    /// is the honest outcome rather than double-labelling the same model.
-    static let mostAccurateLocalId: String? = ModelCatalog.all
-        .filter { !$0.isCloud && $0.benchmarkWER != nil }
-        .min { ($0.benchmarkWER ?? .greatestFiniteMagnitude) < ($1.benchmarkWER ?? .greatestFiniteMagnitude) }?
-        .id
+    /// The highest-scoring local model. When this is also the Recommended model
+    /// (as with parakeet, which leads the local field on the Open ASR
+    /// Leaderboard), the "at most one chip" priority in `editorial(_:)` shows
+    /// only "Recommended" — so no separate local "Most accurate" chip appears,
+    /// which is the honest outcome rather than double-labelling the same model.
+    static let mostAccurateLocalId: String? = highestQualityId { !$0.isCloud }
 
-    /// The highest-quality cloud model, used for the "Most accurate" chip.
-    static let mostAccurateCloudId: String? = ModelCatalog.all
-        .filter { $0.isCloud }
-        .max { $0.quality < $1.quality }?.id
+    /// The highest-scoring cloud model, used for the "Most accurate" chip.
+    static let mostAccurateCloudId: String? = highestQualityId(\.isCloud)
+
+    /// `max(by:)` keeps the first of equal maxima, so a tie falls to whichever
+    /// model the catalog lists first — the curated order still breaks ties.
+    private static func highestQualityId(
+        _ isIncluded: (ModelDescriptor) -> Bool
+    ) -> String? {
+        ModelCatalog.all
+            .filter { isIncluded($0) && $0.quality != nil }
+            .max { ($0.quality ?? 0) < ($1.quality ?? 0) }?
+            .id
+    }
 
     /// At most one editorial chip per model. Priority: Recommended, then Most
     /// accurate, then Fastest.
@@ -652,7 +711,7 @@ private enum ModelBadges {
         if model.id == mostAccurateLocalId || model.id == mostAccurateCloudId {
             return ("Most accurate", "target", Palette.badgeIndigo)
         }
-        if model.speed == 10 && model.quality >= 8 {
+        if model.speed == 10 && (model.quality ?? 0) >= 8 {
             return ("Fastest", "bolt.fill", Palette.signalWarn)
         }
         return nil

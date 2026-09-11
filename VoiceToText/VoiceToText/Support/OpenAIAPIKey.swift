@@ -23,6 +23,15 @@ nonisolated enum OpenAIAPIKey {
     static func clear() {
         UserDefaults.standard.removeObject(forKey: defaultsKey)
     }
+
+    /// Cheap client-side shape check, used to decide whether a paste is worth
+    /// verifying over the network. OpenAI keys are `sk-…`, `sk-proj-…` or
+    /// `sk-svcacct-…`; the server is still the authority on validity.
+    static func looksLikeKey(_ raw: String) -> Bool {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix("sk-"), trimmed.count >= 20 else { return false }
+        return trimmed.rangeOfCharacter(from: .whitespacesAndNewlines) == nil
+    }
 }
 
 @Observable
@@ -36,8 +45,14 @@ final class OpenAIAPIKeyStore {
 
     private(set) var hasKey: Bool
 
+    /// Last 4 characters of the stored key — enough to tell two keys apart in
+    /// the UI without ever showing one.
+    private(set) var keySuffix: String?
+
     private init() {
-        self.hasKey = OpenAIAPIKey.read() != nil
+        let stored = OpenAIAPIKey.read()
+        self.hasKey = stored != nil
+        self.keySuffix = Self.suffix(of: stored)
     }
 
     func setKey(_ rawValue: String) {
@@ -48,12 +63,19 @@ final class OpenAIAPIKeyStore {
         }
         OpenAIAPIKey.write(trimmed)
         hasKey = true
+        keySuffix = Self.suffix(of: trimmed)
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     func clearKey() {
         OpenAIAPIKey.clear()
         hasKey = false
+        keySuffix = nil
         NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
+    }
+
+    private nonisolated static func suffix(of key: String?) -> String? {
+        guard let key, key.count >= 4 else { return nil }
+        return String(key.suffix(4))
     }
 }

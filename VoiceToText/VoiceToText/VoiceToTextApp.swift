@@ -89,8 +89,13 @@ final class WindowOpener {
         self.open = open
     }
 
-    /// Opens the main window and activates the app.
-    func showMain() {
+    /// Opens the main window and activates the app, optionally landing on a
+    /// specific settings pane. The section is parked in `SettingsRouter` so it
+    /// survives the window being created from scratch by `openWindow`.
+    func showMain(section: SettingsView.Section? = nil) {
+        if let section {
+            SettingsRouter.shared.pendingSection = section
+        }
         open?()
     }
 }

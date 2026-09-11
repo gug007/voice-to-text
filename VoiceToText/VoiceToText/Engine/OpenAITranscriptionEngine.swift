@@ -356,6 +356,12 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         guard let apiKey = OpenAIAPIKey.read() else {
             return .failed("No key configured.")
         }
+        return await testConnection(apiKey: apiKey)
+    }
+
+    /// The same probe against a key that has not been saved yet — what the
+    /// paste-to-connect field verifies before committing anything to storage.
+    static func testConnection(apiKey: String) async -> OpenAIConnectionTest {
         var request = authorizedRequest(url: OpenAIEndpoint.models, apiKey: apiKey)
         request.timeoutInterval = 15
         do {

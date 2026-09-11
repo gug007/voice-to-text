@@ -52,20 +52,29 @@ nonisolated struct WERMeasurement: Hashable, Sendable {
 /// squash every good model into the top point and spend most of its range on
 /// models nobody would pick.
 ///
+/// **Artificial Analysis is the primary scale.** It is the one benchmark that
+/// runs local models and cloud APIs over the same harder audio, so its numbers
+/// are the only ones that compare the two halves of the catalog on equal terms.
+/// A model with its own AA figure is scored on that alone.
+///
+/// Everything else — the Open ASR Leaderboard, and AA figures carried over from
+/// a sibling model — is indirect evidence, pooled only when nothing direct
+/// exists. Open ASR runs easier English audio and its rankings do not carry
+/// over: Parakeet beats Whisper there, while the Parakeet family trails Whisper
+/// badly on AA, which is the ordering users actually experience. Letting an
+/// Open ASR figure average against a direct AA figure would let the easier
+/// benchmark pull a model above models measured honestly on the harder one, so
+/// it no longer can. A pooled score is flagged approximate and the row prefixes
+/// it with "≈".
+///
 /// Whisper Large v3 anchors the scale at `referenceScore` on every benchmark by
 /// construction. It is the only model measured on both leaderboards we cite, so
 /// expressing each figure as a ratio against it is what makes an Open ASR
-/// number and an Artificial Analysis number comparable at all.
+/// number mean anything on the AA scale at all.
 ///
 /// `pointsPerDoubling` is 3, which puts the interesting range on screen: half
 /// Whisper Large v3's errors rounds to a 10, twice its errors is a 5, and four
 /// times its errors is a 2.
-///
-/// The two benchmarks do disagree for some model families — Parakeet leads
-/// Whisper on the Open ASR Leaderboard, while its predecessor trails Whisper
-/// badly on AA-WER — so a score is only as transferable as its source. That is
-/// why each row's tooltip names the benchmark behind every figure instead of
-/// presenting the score as a single settled truth.
 nonisolated enum ModelQualityScore {
     /// Whisper Large v3 scores exactly this on every benchmark by construction.
     static let referenceScore = 8.0
@@ -75,25 +84,43 @@ nonisolated enum ModelQualityScore {
 
     /// The 1–10 score for a set of measurements, or `nil` when there are none.
     ///
-    /// Each measurement becomes a ratio against its own benchmark's Whisper
-    /// Large v3 figure; the ratios combine by geometric mean, which is the right
-    /// average for a quantity read on a log scale (and keeps a model measured
-    /// twice from being dragged around by whichever benchmark runs harder).
-    /// Clamped to 1...10 and rounded to one decimal.
+    /// Scores from the model's own Artificial Analysis figures when it has any,
+    /// and otherwise pools every measurement it does have. Either way each
+    /// figure becomes a ratio against its own benchmark's Whisper Large v3
+    /// number, and the ratios combine by geometric mean — the right average for
+    /// a quantity read on a log scale, and the one that keeps a model measured
+    /// twice from being dragged around by whichever run went better. Clamped to
+    /// 1...10 and rounded to one decimal.
     static func score(for measurements: [WERMeasurement]) -> Double? {
-        guard !measurements.isEmpty else { return nil }
-        let logSum = measurements.reduce(0.0) { total, measurement in
+        let scoring = scoringMeasurements(measurements)
+        guard !scoring.isEmpty else { return nil }
+        let logSum = scoring.reduce(0.0) { total, measurement in
             total + log2(measurement.percent / measurement.benchmark.whisperLargeV3Percent)
         }
-        let meanLogRatio = logSum / Double(measurements.count)
+        let meanLogRatio = logSum / Double(scoring.count)
         let raw = referenceScore - pointsPerDoubling * meanLogRatio
         let clamped = min(10.0, max(1.0, raw))
         return (clamped * 10).rounded() / 10
     }
 
-    /// True when every measurement is an estimate, so the UI prefixes "≈".
-    /// One measured figure is enough to stand behind the number unqualified.
-    static func isEstimate(_ measurements: [WERMeasurement]) -> Bool {
-        !measurements.isEmpty && measurements.allSatisfy(\.isEstimate)
+    /// True when the score rests on indirect evidence — no Artificial Analysis
+    /// figure of the model's own — so the UI prefixes it with "≈". That covers
+    /// both a sibling's AA number carried over and an Open-ASR-only model: the
+    /// latter is genuinely measured, just not on the scale the score claims.
+    static func isApproximate(_ measurements: [WERMeasurement]) -> Bool {
+        !measurements.isEmpty && directMeasurements(measurements).isEmpty
+    }
+
+    /// The figures a score is actually built from: the direct ones when they
+    /// exist, the whole pool when they don't.
+    private static func scoringMeasurements(_ measurements: [WERMeasurement]) -> [WERMeasurement] {
+        let direct = directMeasurements(measurements)
+        return direct.isEmpty ? measurements : direct
+    }
+
+    /// Artificial Analysis figures measured on this model itself — not carried
+    /// over from a sibling, and not from the secondary leaderboard.
+    private static func directMeasurements(_ measurements: [WERMeasurement]) -> [WERMeasurement] {
+        measurements.filter { $0.benchmark == .artificialAnalysis && !$0.isEstimate }
     }
 }

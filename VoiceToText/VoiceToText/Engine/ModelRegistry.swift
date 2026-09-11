@@ -57,13 +57,15 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// provider to the user's own API key, never by this app, so this is a
     /// courtesy estimate — per-minute list prices multiplied by 60.
     let pricePerHourUSD: Double?
-    /// Published word error rates for this model, one per benchmark, as of the
-    /// September 2026 snapshot. Local models come from the Hugging Face Open ASR
-    /// Leaderboard (English average); cloud models from Artificial Analysis
-    /// AA-WER, whose streaming board is the only one that measures the live APIs.
-    /// Whisper Large v3 appears on both, which is what lets the two sources share
-    /// one score — see `ModelQualityScore`. Empty when nothing published covers
-    /// the model, in which case it has no quality score rather than a guess.
+    /// Published word error rates for this model, as of the September 2026
+    /// snapshot. Artificial Analysis AA-WER is the primary source — it is the
+    /// one benchmark that measures local models and cloud APIs on the same
+    /// audio, and its streaming board is the only one that covers the live APIs
+    /// at all. The Hugging Face Open ASR Leaderboard (English average) is the
+    /// fallback for open-weights models AA has not run, and Whisper Large v3
+    /// appears on both, which is what lets the two scales meet — see
+    /// `ModelQualityScore`. Empty when nothing published covers the model, in
+    /// which case it has no quality score rather than a guess.
     let benchmarks: [WERMeasurement]
 
     var isCloud: Bool { backend.isCloud }
@@ -72,9 +74,10 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     /// 1...10 accuracy score derived from `benchmarks`; `nil` when unmeasured.
     var quality: Double? { ModelQualityScore.score(for: benchmarks) }
 
-    /// True when every figure behind `quality` was carried over from a sibling
-    /// model, so the Models row prefixes the score with "≈".
-    var isQualityEstimated: Bool { ModelQualityScore.isEstimate(benchmarks) }
+    /// True when `quality` rests on indirect evidence rather than an
+    /// Artificial Analysis figure of this model's own, so the Models row
+    /// prefixes the score with "≈".
+    var isQualityApproximate: Bool { ModelQualityScore.isApproximate(benchmarks) }
 }
 
 enum ModelCatalog {
@@ -91,11 +94,12 @@ enum ModelCatalog {
             pricePerHourUSD: 0,
             benchmarks: [
                 WERMeasurement(
-                    benchmark: .openASRLeaderboard,
-                    percent: 6.32,
-                    isEstimate: false,
-                    note: "Artificial Analysis has not benchmarked v3; its predecessor Parakeet TDT 0.6B v2 scores 6.4% AA-WER, well behind Whisper Large v3's 4.1% there."
+                    benchmark: .artificialAnalysis,
+                    percent: 6.4,
+                    isEstimate: true,
+                    note: "Artificial Analysis has not benchmarked v3; this is its predecessor Parakeet TDT 0.6B v2's figure."
                 ),
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 6.32, isEstimate: false, note: nil),
             ]
         ),
         ModelDescriptor(

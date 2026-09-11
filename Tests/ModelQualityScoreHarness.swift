@@ -26,10 +26,12 @@ struct ModelQualityScoreHarness {
         try doublingErrorsCostsThreePoints()
         try quadrupleErrorsCostsSixPoints()
         try farWorseThanReferenceClampsAtOne()
-        try twoBenchmarksCombineByGeometricMean()
+        try directArtificialAnalysisOverridesOpenASR()
+        try indirectEvidencePoolsAcrossBenchmarks()
+        try pooledRatiosCombineByGeometricMean()
         try scoreRoundsToOneDecimal()
         try noMeasurementsHasNoScore()
-        try isEstimateOnlyWhenEveryMeasurementIsOne()
+        try approximateTracksDirectMeasurement()
         print("Model quality score harness passed")
     }
 
@@ -69,47 +71,77 @@ struct ModelQualityScoreHarness {
         try expect(score == 1.0, "sixteen times the reference errors clamps to 1.0, got \(score as Any)")
     }
 
-    /// Whisper Large v3 Turbo, the real case that motivates the geometric mean:
-    /// 7.75% on Open ASR and 4.6% on AA-WER, each against its own reference.
-    private static func twoBenchmarksCombineByGeometricMean() throws {
-        let score = ModelQualityScore.score(for: [
+    /// Whisper Large v3 Turbo, the case that motivates the primary scale: its
+    /// own AA figure decides the score outright, and the Open ASR number it also
+    /// has — the easier benchmark, where it looks better — cannot pull it up.
+    private static func directArtificialAnalysisOverridesOpenASR() throws {
+        let both = ModelQualityScore.score(for: [
             measurement(.openASRLeaderboard, 7.75),
             measurement(.artificialAnalysis, 4.6),
         ])
-        try expect(score == 7.7, "Turbo's two benchmarks combine to 7.7, got \(score as Any)")
+        let aaAlone = ModelQualityScore.score(for: [measurement(.artificialAnalysis, 4.6)])
+        try expect(both == 7.5, "Turbo scores 7.5 from AA alone, got \(both as Any)")
+        try expect(both == aaAlone, "the Open ASR figure changes nothing, got \(both as Any)")
+    }
 
-        // A ratio and its reciprocal cancel, landing back on the anchor.
-        let cancelling = ModelQualityScore.score(for: [
+    /// Parakeet TDT v3, the case that motivates pooling: no AA run of its own,
+    /// so its predecessor's AA figure and its own Open ASR figure are averaged,
+    /// and the result is flagged approximate.
+    private static func indirectEvidencePoolsAcrossBenchmarks() throws {
+        let measurements = [
+            measurement(.artificialAnalysis, 6.4, isEstimate: true),
+            measurement(.openASRLeaderboard, 6.32),
+        ]
+        let score = ModelQualityScore.score(for: measurements)
+        try expect(score == 7.4, "Parakeet pools to 7.4, got \(score as Any)")
+        try expect(ModelQualityScore.isApproximate(measurements), "a pooled score is approximate")
+    }
+
+    private static func pooledRatiosCombineByGeometricMean() throws {
+        // A ratio and its reciprocal cancel, landing back on the anchor. Neither
+        // figure is a direct AA measurement, so both are pooled.
+        let score = ModelQualityScore.score(for: [
             measurement(.openASRLeaderboard, WERMeasurement.Benchmark.openASRLeaderboard.whisperLargeV3Percent * 2),
-            measurement(.artificialAnalysis, WERMeasurement.Benchmark.artificialAnalysis.whisperLargeV3Percent / 2),
+            measurement(.artificialAnalysis, WERMeasurement.Benchmark.artificialAnalysis.whisperLargeV3Percent / 2, isEstimate: true),
         ])
-        try expect(cancelling == 8.0, "opposite ratios cancel to 8.0, got \(cancelling as Any)")
+        try expect(score == 8.0, "opposite ratios cancel to 8.0, got \(score as Any)")
     }
 
     private static func scoreRoundsToOneDecimal() throws {
         let score = ModelQualityScore.score(for: [measurement(.openASRLeaderboard, 6.32)])
-        try expect(score == 8.7, "Parakeet's 6.32% rounds to 8.7, got \(score as Any)")
+        try expect(score == 8.7, "6.32% on Open ASR alone rounds to 8.7, got \(score as Any)")
         guard let score else { throw ModelQualityScoreHarnessFailure(description: "expected a score") }
         try expect((score * 10).rounded() == score * 10, "score carries at most one decimal")
     }
 
     private static func noMeasurementsHasNoScore() throws {
         try expect(ModelQualityScore.score(for: []) == nil, "no measurements means no score")
-        try expect(!ModelQualityScore.isEstimate([]), "no measurements is not an estimate")
+        try expect(!ModelQualityScore.isApproximate([]), "no measurements is not approximate")
     }
 
-    private static func isEstimateOnlyWhenEveryMeasurementIsOne() throws {
-        let measured = measurement(.artificialAnalysis, 4.0)
-        let estimated = measurement(.artificialAnalysis, 4.0, isEstimate: true)
-        try expect(!ModelQualityScore.isEstimate([measured]), "a measured figure is not an estimate")
-        try expect(ModelQualityScore.isEstimate([estimated]), "a lone carried-over figure is an estimate")
+    /// "Approximate" tracks the absence of a direct AA figure, not whether a
+    /// number was measured — an Open-ASR-only model is measured, just not on the
+    /// scale the score claims.
+    private static func approximateTracksDirectMeasurement() throws {
+        let direct = measurement(.artificialAnalysis, 4.0)
+        let carriedOver = measurement(.artificialAnalysis, 4.0, isEstimate: true)
+        let secondary = measurement(.openASRLeaderboard, 8.59)
+        try expect(!ModelQualityScore.isApproximate([direct]), "a direct AA figure is not approximate")
         try expect(
-            !ModelQualityScore.isEstimate([measured, estimated]),
-            "one measured figure is enough to stand behind the score"
+            ModelQualityScore.isApproximate([carriedOver]),
+            "a sibling's AA figure is approximate"
         )
         try expect(
-            ModelQualityScore.isEstimate([estimated, estimated]),
-            "all-estimated measurements make an estimated score"
+            ModelQualityScore.isApproximate([secondary]),
+            "an Open-ASR-only score is approximate — measured, but on the secondary scale"
+        )
+        try expect(
+            !ModelQualityScore.isApproximate([secondary, direct]),
+            "one direct AA figure is enough to stand behind the score"
+        )
+        try expect(
+            !ModelQualityScore.isApproximate([carriedOver, direct]),
+            "a direct figure outranks a carried-over one"
         )
     }
 }

@@ -55,8 +55,43 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// ("Speaker 1" → "Kara"). Optional so older indexes decode (absent ⇒ none).
     let speakerNames: [String: String]?
 
+    /// The generated summary, or nil when none has been asked for. Optional so
+    /// indexes written before insights existed still decode — a synthesized
+    /// `Codable` decodes an absent key into an optional `let` as nil.
+    let summary: TranscriptSummary?
+
+    /// The generated checklist, same back-compat rule as `summary`.
+    let actionItems: TranscriptActionItems?
+
     /// Non-optional view of `isFavorite` for call sites.
     var isFavorited: Bool { isFavorite ?? false }
+
+    /// True when the row has anything to show beyond the transcript — the tab
+    /// bar only appears once this is true (or a generation is in flight).
+    var hasInsights: Bool { summary != nil || actionItems != nil }
+
+    func hasInsight(_ kind: InsightKind) -> Bool {
+        switch kind {
+        case .summary: return summary != nil
+        case .actionItems: return actionItems != nil
+        }
+    }
+
+    /// True when the transcript changed after the insight was generated — a
+    /// regeneration, or a variant being promoted or removed. Insights are kept
+    /// rather than deleted in that case (the old reading is usually still
+    /// mostly right), so the UI marks them stale and offers a re-run instead of
+    /// silently throwing the user's generated text away. No insight is never
+    /// stale: there is nothing to be out of date.
+    func isStale(_ kind: InsightKind) -> Bool {
+        let stored: String?
+        switch kind {
+        case .summary: stored = summary?.sourceDigest
+        case .actionItems: stored = actionItems?.sourceDigest
+        }
+        guard let stored else { return false }
+        return stored != TranscriptDigest.of(transcript)
+    }
 
     /// True when this recording has more than one transcript to show.
     var hasAlternateTranscripts: Bool { !(alternates ?? []).isEmpty }
@@ -103,7 +138,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         source: Source? = nil,
         isFavorite: Bool? = nil,
         alternates: [TranscriptVariant]? = nil,
-        speakerNames: [String: String]? = nil
+        speakerNames: [String: String]? = nil,
+        summary: TranscriptSummary? = nil,
+        actionItems: TranscriptActionItems? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -117,17 +154,32 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.isFavorite = isFavorite
         self.alternates = alternates
         self.speakerNames = speakerNames
+        self.summary = summary
+        self.actionItems = actionItems
     }
 
-    /// Returns a copy with the active transcript/model and the alternates list
-    /// replaced; all other fields (id, audio, timing, favorite, source,
-    /// speaker names) are kept. Speaker names survive a regeneration because the
-    /// canonical numbering is first-appearance order, so it usually matches.
-    func updatingTranscripts(
+    // MARK: - Copies
+    //
+    // Every mutation of a stored entry goes through one of the `updating…`
+    // helpers below, and all of them funnel through `replacing`. That funnel is
+    // the point: each call site spelling out the full initializer is how a newly
+    // added field gets silently dropped by an unrelated mutation (a star click
+    // erasing a summary, say). The identity fields — id, createdAt,
+    // audioFileName, durationSeconds, sampleRate, source — are never copied
+    // through because nothing may ever change them.
+
+    /// The single place an entry is re-assembled from its mutable fields.
+    /// Deliberately has no defaults: adding a field here forces every caller to
+    /// say what happens to it.
+    private func replacing(
         transcript: String,
         modelId: String?,
         modelName: String?,
-        alternates: [TranscriptVariant]?
+        alternates: [TranscriptVariant]?,
+        speakerNames: [String: String]?,
+        isFavorite: Bool?,
+        summary: TranscriptSummary?,
+        actionItems: TranscriptActionItems?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -141,26 +193,92 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             source: source,
             isFavorite: isFavorite,
             alternates: alternates,
-            speakerNames: speakerNames
+            speakerNames: speakerNames,
+            summary: summary,
+            actionItems: actionItems
+        )
+    }
+
+    /// Returns a copy with the active transcript/model and the alternates list
+    /// replaced; all other fields (id, audio, timing, favorite, source,
+    /// speaker names) are kept. Speaker names survive a regeneration because the
+    /// canonical numbering is first-appearance order, so it usually matches.
+    /// Insights survive too — they become *stale*, not wrong-headed, and
+    /// deleting the user's generated summary behind a regenerate would be a
+    /// nasty surprise. `isStale(_:)` is what surfaces the difference.
+    func updatingTranscripts(
+        transcript: String,
+        modelId: String?,
+        modelName: String?,
+        alternates: [TranscriptVariant]?
+    ) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems
         )
     }
 
     /// Returns a copy with the speaker-name mapping replaced; everything else is
     /// kept. `nil` clears all assigned names (speakers revert to "Speaker N").
     func updatingSpeakerNames(_ speakerNames: [String: String]?) -> RecordingHistoryEntry {
-        RecordingHistoryEntry(
-            id: id,
-            createdAt: createdAt,
+        replacing(
             transcript: transcript,
-            audioFileName: audioFileName,
-            durationSeconds: durationSeconds,
-            sampleRate: sampleRate,
             modelId: modelId,
             modelName: modelName,
-            source: source,
-            isFavorite: isFavorite,
             alternates: alternates,
-            speakerNames: speakerNames
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems
+        )
+    }
+
+    /// Returns a copy with the starred state replaced; everything else is kept.
+    func updatingFavorite(_ isFavorite: Bool?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems
+        )
+    }
+
+    /// Returns a copy with the summary replaced (`nil` removes it). Generating
+    /// over an existing summary replaces it — there is no history of summaries.
+    func updatingSummary(_ summary: TranscriptSummary?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems
+        )
+    }
+
+    /// Returns a copy with the action items replaced (`nil` removes them).
+    func updatingActionItems(_ actionItems: TranscriptActionItems?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems
         )
     }
 }

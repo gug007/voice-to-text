@@ -13,6 +13,10 @@ struct MeetingsPane: View {
     @Bindable private var hotkeyStore = HotkeyStore.shared
     @State private var screenGranted = ScreenCapturePermission.isGranted
     @State private var favoritesOnly = false
+    /// Which insight tab each conversation row is showing. Owned here rather
+    /// than by the row: the rows are laid out lazily, so a row's own `@State`
+    /// would not survive being scrolled out of view (see `RecordingsList`).
+    @State private var insightTabs: [UUID: InsightTab] = [:]
     /// True while a drag from Finder is hovering over the pane. Only turns into a
     /// visible drop affordance when the controller is idle (see `isDropActive`).
     @State private var isDropTargeted = false
@@ -137,6 +141,17 @@ struct MeetingsPane: View {
                     },
                     onRenameSpeakers: { entry, names in
                         store.setSpeakerNames(entryID: entry.id, names: names)
+                    },
+                    insightTabs: $insightTabs,
+                    onToggleActionItem: { entry, itemID in
+                        store.toggleActionItem(entryID: entry.id, itemID: itemID)
+                    },
+                    onRemoveInsight: { entry, kind in
+                        store.removeInsight(entryID: entry.id, kind: kind)
+                        // Forget the tab that pointed at it — see
+                        // `HistorySettingsView` for what a stale one does when the
+                        // insight is generated again.
+                        if insightTabs[entry.id] == kind.tab { insightTabs[entry.id] = nil }
                     }
                 )
             }

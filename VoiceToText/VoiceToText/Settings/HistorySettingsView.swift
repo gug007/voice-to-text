@@ -11,6 +11,10 @@ struct HistoryPane: View {
     @State private var confirmingClear = false
     @State private var favoritesOnly = false
     @State private var searchQuery = ""
+    /// Which insight tab each recording row is showing. Owned here rather than
+    /// by the row: the rows are laid out lazily, so a row's own `@State` would
+    /// not survive being scrolled out of view (see `RecordingsList`).
+    @State private var insightTabs: [UUID: InsightTab] = [:]
     @Environment(\.motion) private var motion
 
     private var hasFavorites: Bool { store.entries.contains { $0.isFavorited } }
@@ -189,6 +193,20 @@ struct HistoryPane: View {
                         },
                         onRenameSpeakers: { entry, names in
                             store.setSpeakerNames(entryID: entry.id, names: names)
+                        },
+                        insightTabs: $insightTabs,
+                        onToggleActionItem: { entry, itemID in
+                            store.toggleActionItem(entryID: entry.id, itemID: itemID)
+                        },
+                        onRemoveInsight: { entry, kind in
+                            store.removeInsight(entryID: entry.id, kind: kind)
+                            // Forget the tab that pointed at it. The row already
+                            // falls back to the transcript while the tab is gone,
+                            // but a remembered `.summary` would re-activate the
+                            // moment a later generation *starts* — yanking the
+                            // user off the transcript onto a spinner they did not
+                            // ask to watch, and back again if it fails.
+                            if insightTabs[entry.id] == kind.tab { insightTabs[entry.id] = nil }
                         }
                     )
                 }

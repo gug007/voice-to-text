@@ -25,6 +25,38 @@ nonisolated enum ActionRunner {
     static let modelId = "gpt-5.5"
 
     static func run(instruction: String, on text: String) async throws -> String {
+        guard OpenAIAPIKey.read() != nil else {
+            throw ActionRunnerError.noAPIKey
+        }
+        let body = try makeRequestBody(instruction: instruction, text: text, modelId: modelId)
+        return try await perform(body: body)
+    }
+
+    /// One chat-completions round trip: post `body`, and return the assistant's
+    /// message sanitized, or throw an `ActionRunnerError` describing what went
+    /// wrong in words a user can act on.
+    ///
+    /// Takes an already-encoded body so anything that speaks this endpoint can
+    /// share the transport, the error mapping and the cancellation handling —
+    /// `TranscriptInsightRequest`'s summary and action-item payloads are not
+    /// dictation actions, but they are the same HTTP call with the same key.
+    ///
+    /// `timeout` and `session` are parameters rather than constants because those
+    /// two callers ask very different things of the model. A dictation action is
+    /// one sentence rewritten and should give up quickly; an insight request is up
+    /// to a whole meeting transcript summarized, and chat completions is
+    /// non-streaming, so *nothing* arrives until the entire answer is written.
+    /// `timeoutInterval` is an idle timeout, which on this endpoint means a hard
+    /// wall-clock cap on the model's thinking time — 60s is right for the former
+    /// and cuts the latter off mid-answer, after the call has already been billed.
+    /// `URLSession.shared`'s own configuration also caps requests at 60s, so a
+    /// long call has to bring its own session (see
+    /// `TranscriptInsightGenerator.longCallSession`).
+    static func perform(
+        body: Data,
+        timeout: TimeInterval = 60,
+        session: URLSession = .shared
+    ) async throws -> String {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw ActionRunnerError.noAPIKey
         }
@@ -33,13 +65,13 @@ nonisolated enum ActionRunner {
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.timeoutInterval = 60
-        request.httpBody = try makeRequestBody(instruction: instruction, text: text, modelId: modelId)
+        request.timeoutInterval = timeout
+        request.httpBody = body
 
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await session.data(for: request)
         } catch is CancellationError {
             throw CancellationError()
         } catch let error as URLError where error.code == .cancelled {

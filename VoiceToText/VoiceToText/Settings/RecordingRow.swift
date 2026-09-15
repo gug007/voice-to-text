@@ -8,6 +8,13 @@ import SwiftUI
 /// enclosing `RecordingsList` draws the grouped card and the hairline separators
 /// between rows. Shared by the History pane (all recordings) and the
 /// Conversations pane (conversations only).
+///
+/// Once a recording has an AI summary or checklist — or one is being generated —
+/// the content area grows a tab bar and the transcript becomes one of three
+/// readings of the same recording. All of that chrome lives in
+/// `RecordingInsightsView.swift`; this row owns the *jobs*: starting one from
+/// the sparkles menu or the inline strip, following it to its tab, and showing
+/// what went wrong when it fails.
 struct RecordingRow: View {
     let entry: RecordingHistoryEntry
     let isPlaying: Bool
@@ -16,6 +23,10 @@ struct RecordingRow: View {
     /// The live History search query, so matched substrings can be marked in
     /// the transcript. Empty everywhere else.
     var highlight: String = ""
+    /// Which of Transcript / Summary / Action Items this row is showing. Owned
+    /// by the pane, not by this view — see `RecordingsList` for why a row that
+    /// scrolls out of view must not take its selection with it.
+    @Binding var selectedTab: InsightTab
     let onPlay: () -> Void
     let onDelete: () -> Void
     let onToggleFavorite: () -> Void
@@ -23,14 +34,20 @@ struct RecordingRow: View {
     let onRemoveTranscript: (UUID) -> Void
     /// Persists the canonical-label → name mapping for this recording.
     let onRenameSpeakers: ([String: String]) -> Void
+    /// Flips one action item's done state on this recording.
+    let onToggleActionItem: (UUID) -> Void
+    /// Drops one generated insight (summary or checklist) from this recording.
+    let onRemoveInsight: (InsightKind) -> Void
 
     @Environment(\.motion) private var motion
     @Environment(\.increaseContrast) private var increaseContrast
 
     @Bindable private var regenerator = TranscriptRegenerator.shared
+    @Bindable private var insights = TranscriptInsightGenerator.shared
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var showRegenerateMenu = false
+    @State private var showInsightMenu = false
     @State private var showRenameSpeakers = false
     /// Draft names shown in the rename popover, seeded from the entry on open and
     /// committed to the store when the popover closes.
@@ -87,7 +104,9 @@ struct RecordingRow: View {
                 actionButtons
             }
 
-            transcriptSection
+            contentSection
+
+            insightFailures
 
             if let failure = regenerator.failure, failure.id == entry.id {
                 HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
@@ -127,11 +146,12 @@ struct RecordingRow: View {
             // Popover-open states keep the anchor buttons mounted after the
             // pointer leaves the row — an anchor that unmounts (hover ends when
             // the cursor enters the popover) tears its popover down with it.
-            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu {
+            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu || showInsightMenu {
                 if !speakerLabels.isEmpty {
                     renameSpeakersControl
                 }
                 regenerateControl
+                insightControl
                 iconButton(
                     systemName: copied ? "checkmark" : "doc.on.doc",
                     help: "Copy transcript",
@@ -144,6 +164,150 @@ struct RecordingRow: View {
                     tint: Palette.inkMuted,
                     action: onDelete
                 )
+            }
+        }
+    }
+
+    // MARK: - Content
+
+    /// The row's content area. With no insights this is exactly the transcript
+    /// the row has always shown, so nothing regresses for a plain recording.
+    /// Once a summary or checklist exists — or one is in flight — a tab bar
+    /// appears above it and the transcript becomes the first of three tabs.
+    @ViewBuilder
+    private var contentSection: some View {
+        let tabs = InsightTab.visible(for: entry, generator: insights)
+        VStack(alignment: .leading, spacing: Space.s5) {
+            if tabs.count > 1 {
+                InsightTabBar(entry: entry, tabs: tabs, selection: tabBinding(in: tabs))
+            }
+            switch shownTab(in: tabs) {
+            case .transcript:
+                transcriptSection
+            case .summary:
+                insightPane(.summary)
+            case .actionItems:
+                insightPane(.actionItems)
+            }
+            generateStrip
+        }
+        // The pane swap and the row-height change it causes are a list mutation,
+        // not a selection: `layout` is smooth, where the tab bar's own `select`
+        // carries a bounce that would spring every row below this one. The bar
+        // applies `select` inside its own subtree, so the capsule still springs.
+        .animation(motion.layout, value: shownTab(in: tabs))
+    }
+
+    private func insightPane(_ kind: InsightKind) -> some View {
+        InsightPane(
+            entry: entry,
+            kind: kind,
+            onToggleActionItem: onToggleActionItem,
+            onRemove: { onRemoveInsight(kind) },
+            onRegenerate: { generate(kind) }
+        )
+    }
+
+    /// The tab actually drawn. The pane remembers one choice per recording id,
+    /// and that choice can outlive what it points at — the user removes the
+    /// summary while reading it — so a tab that is no longer on offer falls back
+    /// to the transcript instead of rendering an empty pane.
+    private func shownTab(in tabs: [InsightTab]) -> InsightTab {
+        tabs.contains(selectedTab) ? selectedTab : .transcript
+    }
+
+    private func tabBinding(in tabs: [InsightTab]) -> Binding<InsightTab> {
+        Binding(
+            get: { shownTab(in: tabs) },
+            set: { selectedTab = $0 }
+        )
+    }
+
+    /// The one-tap way in for a conversation with nothing generated yet.
+    ///
+    /// Conversations only. A five-second dictation has nothing to summarize and
+    /// commits nobody to anything, so on a History full of dictations this strip
+    /// would be pure noise under every row — and the sparkles menu is still
+    /// there for the rare dictation that is worth summarizing.
+    @ViewBuilder
+    private var generateStrip: some View {
+        if entry.source == .meeting, !entry.hasInsights, !hasRunningInsight {
+            HStack(spacing: Space.s4) {
+                generateChip(kind: .summary, title: "Summary", symbolName: "sparkles")
+                generateChip(kind: .actionItems, title: "Action items", symbolName: "checklist")
+            }
+        }
+    }
+
+    private var hasRunningInsight: Bool {
+        InsightKind.allCases.contains { insights.isRunning(entryID: entry.id, kind: $0) }
+    }
+
+    private func generateChip(kind: InsightKind, title: String, symbolName: String) -> some View {
+        Button {
+            generate(kind)
+        } label: {
+            HStack(spacing: Space.s3) {
+                Image(systemName: symbolName)
+                    .font(Typo.micro)
+                Text(title)
+                    .typo(.captionMedium)
+            }
+            .foregroundStyle(Palette.accent)
+            .padding(.horizontal, Space.s4)
+            .padding(.vertical, Space.s2)
+            .background(Capsule(style: .continuous).fill(Palette.wellFill))
+            .contentShape(Capsule(style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .help("Generate \(kind.commandNoun) from this conversation")
+    }
+
+    /// Starts a generation and, on success, brings its tab forward — the user
+    /// asked for the thing, so show them the thing. A failure leaves the current
+    /// tab alone and surfaces in `insightFailures`.
+    ///
+    /// The `Task` is started from the button action rather than from a `.task`
+    /// modifier on the row on purpose: `FlushPlate` is lazy, so scrolling this
+    /// row out of view tears it down, and a `.task` would be cancelled with it —
+    /// killing a paid-for request mid-flight because the user scrolled. A Task
+    /// created here is not tied to the view's lifetime.
+    private func generate(_ kind: InsightKind) {
+        Task {
+            if await insights.generate(entry: entry, kind: kind) {
+                selectedTab = kind.tab
+            }
+        }
+    }
+
+    /// One row per failing kind, in the same language as the regenerate failure
+    /// underneath it: what went wrong, and the way out of it.
+    @ViewBuilder
+    private var insightFailures: some View {
+        ForEach(InsightKind.allCases, id: \.self) { kind in
+            if let message = insights.failure(entryID: entry.id, kind: kind) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+                    Text(message)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.signalWarn)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Dismiss") { insights.dismissFailure(entryID: entry.id, kind: kind) }
+                        .buttonStyle(.plain)
+                        .typo(.captionMedium)
+                        .foregroundStyle(Palette.accent)
+                        .help("Hide this message")
+                    // The one failure the user cannot fix from this row is a
+                    // missing API key, so that one gets a door to the pane that
+                    // fixes it. Asked of the generator rather than matched
+                    // against the message text, which is copy, not an API.
+                    if !insights.hasAPIKey {
+                        Button("Open Cloud") { SettingsRouter.shared.pendingSection = .cloud }
+                            .buttonStyle(.plain)
+                            .typo(.captionMedium)
+                            .foregroundStyle(Palette.accent)
+                            .help("Open Cloud settings to add an OpenAI API key")
+                    }
+                }
             }
         }
     }
@@ -334,6 +498,50 @@ struct RecordingRow: View {
             ))
         }
         return sections
+    }
+
+    /// Hover control opening the Generate / Regenerate menu. A `.popover` over
+    /// `DropdownPopup` rather than a `Menu`, for the same reason the regenerate
+    /// picker is one: the stock NSMenu can't be restyled to this chrome, and the
+    /// two menus on a row must not look like they come from different apps.
+    private var insightControl: some View {
+        Button {
+            showInsightMenu.toggle()
+        } label: {
+            Image(systemName: "sparkles")
+                .font(Typo.body)
+                .foregroundStyle(Palette.inkMuted)
+                .frame(width: 24, height: 24)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("Generate a summary or action items")
+        .popover(isPresented: $showInsightMenu, arrowEdge: .bottom) {
+            DropdownPopup(
+                sections: insightMenuSections,
+                selected: nil,
+                width: 240
+            ) { kind in
+                showInsightMenu = false
+                generate(kind)
+            }
+        }
+    }
+
+    /// "Generate summary" until one exists, "Regenerate summary" after — one
+    /// command, named for what it will actually do to this recording. Nothing is
+    /// checkmarked: these are actions, not a selection.
+    private var insightMenuSections: [DropdownSection<InsightKind>] {
+        [
+            DropdownSection(items: InsightKind.allCases.map { kind in
+                DropdownItem(
+                    value: kind,
+                    title: entry.hasInsight(kind)
+                        ? "Regenerate \(kind.commandNoun)"
+                        : "Generate \(kind.commandNoun)"
+                )
+            })
+        ]
     }
 
     private func iconButton(

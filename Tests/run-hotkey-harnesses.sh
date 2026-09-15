@@ -81,11 +81,20 @@ swiftc -parse-as-library \
 "$TMPDIR/action-runner-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
   VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
   VoiceToText/VoiceToText/Meetings/MeetingTranscriptJoiner.swift \
   Tests/RecordingHistoryHarness.swift \
   -o "$TMPDIR/recording-history-harness"
 "$TMPDIR/recording-history-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/TranscriptInsightRequest.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  Tests/TranscriptInsightHarness.swift \
+  -o "$TMPDIR/transcript-insight-harness"
+"$TMPDIR/transcript-insight-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Audio/WAVEncoder.swift \

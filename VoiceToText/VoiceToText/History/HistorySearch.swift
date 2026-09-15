@@ -102,7 +102,12 @@ enum HistorySearch {
 
     /// Everything already in the entry that a query may match: transcript text
     /// (including the alternates a regenerated recording still shows), the
-    /// speaker names the user assigned, the model, and the recording type.
+    /// generated summary and action items, the speaker names the user assigned,
+    /// the model, and the recording type.
+    ///
+    /// The insights are searched because they are often the only place a
+    /// conversation's subject is named in plain words — a transcript says
+    /// "yeah, so, the thing with the invoices", the summary says "billing".
     ///
     /// Returned as separate fields rather than one joined string so a match
     /// can't straddle two of them, and so nothing is copied — Swift strings are
@@ -111,6 +116,11 @@ enum HistorySearch {
         var fields: [String] = [entry.transcript]
         for alternate in entry.alternates ?? [] {
             fields.append(alternate.text)
+        }
+        if let summary = entry.summary { fields.append(summary.text) }
+        for item in entry.actionItems?.items ?? [] {
+            fields.append(item.text)
+            if let owner = item.owner { fields.append(owner) }
         }
         if let names = entry.speakerNames {
             fields.append(contentsOf: names.values)

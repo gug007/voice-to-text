@@ -274,21 +274,7 @@ final class RecordingHistoryStore {
     /// persists the index. No audio is touched. Survives relaunch via index.json.
     func toggleFavorite(id: UUID) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        let old = entries[index]
-        entries[index] = RecordingHistoryEntry(
-            id: old.id,
-            createdAt: old.createdAt,
-            transcript: old.transcript,
-            audioFileName: old.audioFileName,
-            durationSeconds: old.durationSeconds,
-            sampleRate: old.sampleRate,
-            modelId: old.modelId,
-            modelName: old.modelName,
-            source: old.source,
-            isFavorite: !old.isFavorited,
-            alternates: old.alternates,
-            speakerNames: old.speakerNames
-        )
+        entries[index] = entries[index].updatingFavorite(!entries[index].isFavorited)
         persistIndex()
     }
 
@@ -334,6 +320,93 @@ final class RecordingHistoryStore {
         guard updated != entries[index] else { return }
         entries[index] = updated
         persistIndex()
+    }
+
+    // MARK: - Insights
+    //
+    // Generated summaries and action items are persisted with the recording, so
+    // they survive relaunch and cost the user's API budget only once. All four
+    // of these are no-ops on an id this store has never heard of, or on one whose
+    // deletion has already been *committed*: a generation that finishes after its
+    // recording is gone for good must not resurrect the row.
+    //
+    // A recording still inside its undo window is the opposite case — it is on
+    // disk, and one tap away from coming back — so `mutateEntry` looks in
+    // `pendingDeletion` as well. Writing there is what stops a long generation
+    // that lands during those five seconds from being dropped on the floor, paid
+    // for and unrecoverable, while Undo restores the transcript without it.
+
+    /// Applies `transform` to one entry wherever it currently lives — the visible
+    /// list, or the batch parked in the undo window — and rewrites the index.
+    /// A `nil` from `transform` means "nothing actually changed", which skips the
+    /// write; an id in neither place is ignored entirely.
+    ///
+    /// Rebuilding `PendingDeletion` here is safe for the commit timer:
+    /// `finalizePendingDeletion(expecting:)` matches on ids, which an in-place
+    /// replacement leaves untouched.
+    private func mutateEntry(
+        _ entryID: UUID,
+        _ transform: (RecordingHistoryEntry) -> RecordingHistoryEntry?
+    ) {
+        if let index = entries.firstIndex(where: { $0.id == entryID }) {
+            guard let updated = transform(entries[index]) else { return }
+            entries[index] = updated
+        } else if let pending = pendingDeletion,
+                  let index = pending.entries.firstIndex(where: { $0.id == entryID }) {
+            guard let updated = transform(pending.entries[index]) else { return }
+            var kept = pending.entries
+            kept[index] = updated
+            pendingDeletion = PendingDeletion(entries: kept)
+        } else {
+            return
+        }
+        persistIndex()
+    }
+
+    /// Stores (or replaces) the generated summary for one recording.
+    func setSummary(entryID: UUID, summary: TranscriptSummary) {
+        mutateEntry(entryID) { $0.updatingSummary(summary) }
+    }
+
+    /// Stores (or replaces) the generated action items for one recording, keeping
+    /// whatever the user had already checked off.
+    ///
+    /// The done flags are the only user-entered data the insights layer holds, and
+    /// they exist nowhere else — so a regeneration, which the stale banner
+    /// actively recommends and the sparkles menu offers in one click, must not
+    /// silently throw away a week of ticking items off. Carried across here rather
+    /// than in the generator because this is the moment the current list is
+    /// authoritative: a tick made while the request was in flight still survives.
+    func setActionItems(entryID: UUID, actionItems: TranscriptActionItems) {
+        mutateEntry(entryID) { entry in
+            entry.updatingActionItems(
+                TranscriptInsightRequest.carryingDoneFlags(from: entry.actionItems, onto: actionItems)
+            )
+        }
+    }
+
+    /// Checks or unchecks one action item. The user's own tick, kept alongside
+    /// the generated list; an unknown item id changes nothing and skips the write.
+    func toggleActionItem(entryID: UUID, itemID: UUID) {
+        mutateEntry(entryID) { entry in
+            guard let current = entry.actionItems else { return nil }
+            let updated = current.toggling(itemID: itemID)
+            guard updated != current else { return nil }
+            return entry.updatingActionItems(updated)
+        }
+    }
+
+    /// Discards one generated insight, taking the row back to transcript-only.
+    /// The audio and the transcript are untouched — this is the "I don't want
+    /// this summary" escape hatch, not a delete.
+    func removeInsight(entryID: UUID, kind: InsightKind) {
+        mutateEntry(entryID) { entry in
+            guard entry.hasInsight(kind) else { return nil }
+            switch kind {
+            case .summary: return entry.updatingSummary(nil)
+            case .actionItems: return entry.updatingActionItems(nil)
+            }
+        }
     }
 
     /// Removes every saved recording, deferred behind the undo window like a

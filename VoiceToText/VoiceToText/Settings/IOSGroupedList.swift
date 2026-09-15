@@ -72,6 +72,17 @@ struct RecordingsList: View {
     let onToggleFavorite: (RecordingHistoryEntry) -> Void
     let onRemoveTranscript: (RecordingHistoryEntry, UUID) -> Void
     let onRenameSpeakers: (RecordingHistoryEntry, [String: String]) -> Void
+    /// Which insight tab each row is showing, keyed by recording id.
+    ///
+    /// The map lives in the *pane*, not in `RecordingRow`, because `FlushPlate`
+    /// is lazy: a row scrolled out of view is torn down and any `@State` on it
+    /// dies with it. A per-row `@State` tab would therefore snap silently back
+    /// to Transcript every time the user scrolled past a summary they were
+    /// reading. An absent key means Transcript, so an empty map is the correct
+    /// initial state and nothing has to be seeded.
+    @Binding var insightTabs: [UUID: InsightTab]
+    let onToggleActionItem: (RecordingHistoryEntry, UUID) -> Void
+    let onRemoveInsight: (RecordingHistoryEntry, InsightKind) -> Void
 
     var body: some View {
         // `FlushPlate` is lazy, so opening a long History doesn't lay out every
@@ -83,13 +94,24 @@ struct RecordingsList: View {
                 isPlaying: isPlaying(entry),
                 showsTypeBadge: showsTypeBadge,
                 highlight: highlight,
+                selectedTab: tabBinding(for: entry),
                 onPlay: { onPlay(entry) },
                 onDelete: { onDelete(entry) },
                 onToggleFavorite: { onToggleFavorite(entry) },
                 onRemoveTranscript: { onRemoveTranscript(entry, $0) },
-                onRenameSpeakers: { onRenameSpeakers(entry, $0) }
+                onRenameSpeakers: { onRenameSpeakers(entry, $0) },
+                onToggleActionItem: { onToggleActionItem(entry, $0) },
+                onRemoveInsight: { onRemoveInsight(entry, $0) }
             )
         }
+    }
+
+    /// One row's slot in the pane-owned map, as a binding the row can write to.
+    private func tabBinding(for entry: RecordingHistoryEntry) -> Binding<InsightTab> {
+        Binding(
+            get: { insightTabs[entry.id] ?? .transcript },
+            set: { insightTabs[entry.id] = $0 }
+        )
     }
 }
 
@@ -134,15 +156,23 @@ struct FavoritesFilterButton: View {
 
 /// Filled or tinted capsule button in the iOS style — the primary affordance on
 /// the Conversations record card (Start, Stop & Transcribe, Cancel).
+///
+/// `.primary` is the ink capsule: `Palette.action` fill with `Palette.onAction`
+/// label, so it reads as the one solid object on the card. Hover steps the fill
+/// back a notch — darker in light mode, dimmer in dark — and the step is what
+/// the "lift" is; there is no shadow or scale.
 struct CapsuleActionButton: View {
     enum Style { case primary, secondary }
 
     let title: String
     var systemImage: String? = nil
     var style: Style = .primary
-    var tint: Color = Palette.accent
+    var tint: Color = Palette.action
     var isDisabled: Bool = false
     let action: () -> Void
+
+    @Environment(\.motion) private var motion
+    @State private var isHovering = false
 
     var body: some View {
         Button(action: action) {
@@ -156,17 +186,24 @@ struct CapsuleActionButton: View {
             }
             .padding(.horizontal, Space.s6)
             .padding(.vertical, Space.s4)
-            .foregroundStyle(style == .primary ? AnyShapeStyle(.white) : AnyShapeStyle(tint))
-            .background(
-                Capsule()
-                    .fill(style == .primary
-                          ? AnyShapeStyle(tint)
-                          : AnyShapeStyle(tint.opacity(0.14)))
-            )
+            .foregroundStyle(style == .primary ? AnyShapeStyle(Palette.onAction) : AnyShapeStyle(tint))
+            .background(Capsule().fill(fillColor))
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1)
+        .onHover { hovering in
+            guard !isDisabled else { return }
+            isHovering = hovering
+        }
+        .animation(motion.hover, value: isHovering)
+    }
+
+    private var fillColor: Color {
+        switch style {
+        case .primary: return tint.opacity(isHovering ? 0.86 : 1)
+        case .secondary: return tint.opacity(isHovering ? 0.20 : 0.14)
+        }
     }
 }

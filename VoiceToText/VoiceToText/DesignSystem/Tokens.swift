@@ -234,6 +234,17 @@ nonisolated enum Palette {
     /// The AppKit sibling of ``signalWarn`` — the menu-bar error glyph.
     static let signalWarnNS = Palette.nsDynamic("signalWarn", light: 0x9A5A00, dark: 0xFFB44A)
 
+    // MARK: Action
+
+    /// The primary capsule on the Conversations card — Start Recording and
+    /// Stop & Transcribe. Ink rather than `accent`: the record button is the
+    /// one solid object on its card, and colour stays with the app mark and the
+    /// status signals. 12.8:1 against the dark plate, 19.4:1 against the light.
+    static let action = Palette.dynamic("action", light: 0x0D0D10, dark: 0xF2F2F5)
+    /// The label that sits on ``action``: white on the light fill, ink on the
+    /// dark one. 19.4:1 light / 17.4:1 dark.
+    static let onAction = Palette.dynamic("onAction", light: 0xFFFFFF, dark: 0x0D0D10)
+
     // MARK: Editorial
 
     /// The "MOST ACCURATE" model badge, and nothing else. It sits outside the
@@ -309,7 +320,7 @@ nonisolated enum Palette {
     /// LEGAL IN EXACTLY TWO PLACES: the 88pt permission-gate hero tile and the
     /// 26pt sidebar app mark. NO TEXT MAY SIT ON IT — white on `#6194FF` is
     /// 2.92:1 and on `#7FA8FF` is 2.35:1, below even the 3:1 large-text floor.
-    /// Tinted controls (including the record button) use flat ``accent`` instead.
+    /// Tinted controls use flat ``accent``; the record capsule uses ``action``.
     static var brandGradient: LinearGradient {
         LinearGradient(
             colors: [brandGradientStart, brandGradientEnd],

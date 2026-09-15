@@ -2,14 +2,15 @@ import AppKit
 import SwiftUI
 
 /// Everything the AI-insight layer of a recording row draws: the
-/// Transcript | Summary | Action Items tab bar, and the two panes behind it.
+/// Transcript | Summary | Action Items | … tab bar, the panes behind it, and
+/// the "Format with AI" popover that collects a custom instruction.
 ///
 /// The row itself (`RecordingRow`) owns the *jobs* — starting a generation,
 /// switching to the tab it lands in, showing a failure — while this file owns
-/// the *reading* of what came back. Splitting it that way keeps the row's hover
-/// chrome and the insight chrome from growing into one 900-line view, and it
-/// means the panes take plain values (text, items) rather than reaching into the
-/// store themselves.
+/// the *reading* of what came back, and the form that asks for it. Splitting it
+/// that way keeps the row's hover chrome and the insight chrome from growing
+/// into one 900-line view, and it means the panes take plain values (text,
+/// items) rather than reaching into the store themselves.
 ///
 /// Nothing here holds state that must survive the row: `FlushPlate` is lazy, so
 /// a row scrolled out of view is torn down. Which tab is selected therefore
@@ -17,18 +18,27 @@ import SwiftUI
 
 // MARK: - Tabs
 
-/// The three views of one recording. `.transcript` always exists; the other two
-/// only appear once that insight has been generated (or is being generated).
+/// The views of one recording. `.transcript` always exists; the two built-in
+/// insights only appear once they have been generated (or are being generated),
+/// and each custom result the user asked for adds one more.
 nonisolated enum InsightTab: Hashable, Sendable {
     case transcript
     case summary
     case actionItems
+    /// One custom result, identified by the stored `CustomInsight`'s id rather
+    /// than by its title: the model names the result, and a re-run can rename
+    /// it, so a title-keyed tab would point at nothing the moment it landed.
+    case custom(UUID)
 
-    var title: String {
+    /// The tab's label. Custom results are named by the model, so the label has
+    /// to be looked up on the recording — and a job that has not landed yet has
+    /// no title to look up, which is what "Working…" stands in for.
+    func title(in entry: RecordingHistoryEntry) -> String {
         switch self {
         case .transcript: return "Transcript"
-        case .summary: return "Summary"
-        case .actionItems: return "Action Items"
+        case .summary: return InsightKind.summary.displayName
+        case .actionItems: return InsightKind.actionItems.displayName
+        case .custom(let id): return entry.customInsight(id: id)?.title ?? "Working…"
         }
     }
 
@@ -40,14 +50,16 @@ nonisolated enum InsightTab: Hashable, Sendable {
         case .transcript: return "text.quote"
         case .summary: return InsightKind.summary.symbolName
         case .actionItems: return InsightKind.actionItems.symbolName
+        case .custom(let id): return InsightKind.custom(id).symbolName
         }
     }
 
-    var help: String {
+    func help(in entry: RecordingHistoryEntry) -> String {
         switch self {
         case .transcript: return "Show the transcript"
         case .summary: return "Show the summary"
         case .actionItems: return "Show the action items"
+        case .custom: return "Show “\(title(in: entry))”"
         }
     }
 
@@ -57,7 +69,15 @@ nonisolated enum InsightTab: Hashable, Sendable {
         case .transcript: return nil
         case .summary: return .summary
         case .actionItems: return .actionItems
+        case .custom(let id): return .custom(id)
         }
+    }
+
+    /// True for a model-named custom result — the one label the bar cannot size
+    /// itself against, because this app did not write it.
+    var isCustom: Bool {
+        if case .custom = self { return true }
+        return false
     }
 
     /// The tabs a given recording actually has: the transcript always, then
@@ -73,11 +93,43 @@ nonisolated enum InsightTab: Hashable, Sendable {
         generator: TranscriptInsightGenerator
     ) -> [InsightTab] {
         var tabs: [InsightTab] = [.transcript]
-        for kind in InsightKind.allCases
+        for kind in InsightKind.builtIns
         where entry.hasInsight(kind) || generator.isRunning(entryID: entry.id, kind: kind) {
             tabs.append(kind.tab)
         }
+        // The jobs that have not landed anywhere yet come first, for the same
+        // reason the built-ins earn a tab while they run — and in the slot the
+        // result is going to take: History inserts a new custom result at the
+        // front of its list, so a pending tab drawn at the *end* of the group
+        // would jump past its neighbours the instant it landed, while the
+        // selection capsule was still sliding towards it.
+        for id in runningCustomIDs(entryID: entry.id, generator: generator)
+        where entry.customInsight(id: id) == nil {
+            tabs.append(.custom(id))
+        }
+        // Then the stored results, in the order History keeps them (newest
+        // first) — the bar is read left to right, so a new result arriving on
+        // the end would contradict the list it was inserted into.
+        for insight in entry.customInsightList {
+            tabs.append(.custom(insight.id))
+        }
         return tabs
+    }
+
+    /// Ids of the custom jobs in flight for one recording, in an order the tab
+    /// bar can rely on.
+    ///
+    /// The generator answers with a `Set` — it is asked "what is running", not
+    /// "in what order" — and a set's iteration order is not stable across
+    /// mutations, so two jobs started together would otherwise be free to swap
+    /// places in the bar on any redraw.
+    @MainActor
+    static func runningCustomIDs(
+        entryID: UUID,
+        generator: TranscriptInsightGenerator
+    ) -> [UUID] {
+        generator.runningCustomIDs(entryID: entryID)
+            .sorted { $0.uuidString < $1.uuidString }
     }
 }
 
@@ -87,16 +139,19 @@ extension InsightKind {
         switch self {
         case .summary: return .summary
         case .actionItems: return .actionItems
+        case .custom(let id): return .custom(id)
         }
     }
 
     /// Lowercase noun for menu commands — "Generate summary", "Regenerate
     /// action items". `displayName` is Title Case and would read as a shout
-    /// mid-sentence.
+    /// mid-sentence. A custom result has no fixed noun (the model names each
+    /// one), so it borrows the generic one the menu never actually uses.
     nonisolated var commandNoun: String {
         switch self {
         case .summary: return "summary"
         case .actionItems: return "action items"
+        case .custom: return "result"
         }
     }
 
@@ -106,6 +161,7 @@ extension InsightKind {
         switch self {
         case .summary: return "Summarizing…"
         case .actionItems: return "Finding action items…"
+        case .custom: return "Formatting…"
         }
     }
 }
@@ -113,8 +169,8 @@ extension InsightKind {
 // MARK: - Tab bar
 
 /// A compact capsule segmented control over one recording's views. Sized to its
-/// labels rather than the row width — it is a switch between three readings of
-/// the same content, not a toolbar, and a full-width bar would out-shout the
+/// labels rather than the row width — it is a switch between readings of the
+/// same content, not a toolbar, and a full-width bar would out-shout the
 /// transcript underneath it.
 struct InsightTabBar: View {
     let entry: RecordingHistoryEntry
@@ -125,33 +181,99 @@ struct InsightTabBar: View {
     @Environment(\.motion) private var motion
     @Namespace private var namespace
 
+    /// How wide a custom tab's label may get. Three words fit comfortably; the
+    /// cap exists for the model that ignores the three-word rule, which would
+    /// otherwise push Transcript and Summary off the row it is sitting in.
+    private static let customLabelMaxWidth: CGFloat = 110
+
+    /// How much of the right edge fades when there are more tabs than fit. Wide
+    /// enough to read as "this continues", narrow enough to leave the label
+    /// under it recognisable.
+    private static let overflowFadeWidth: CGFloat = 24
+
+    @State private var barWidth: CGFloat = 0
+    @State private var viewportWidth: CGFloat = 0
+
+    /// Whether the assembled bar is wider than the space it has.
+    ///
+    /// It genuinely can be. A full bar is six tabs — Transcript, Summary, Action
+    /// Items and three custom results — which measures well past 600pt with
+    /// typical model-written titles, against a viewport the pane caps at 608pt
+    /// in the default window and around 400pt at the minimum one. Four tabs
+    /// already overflow at the minimum width. So this is not a backstop: the
+    /// clip is a normal state that has to be visible, or the user is left with
+    /// a tab bar that silently ends mid-label and no gesture suggesting more.
+    private var isOverflowing: Bool { barWidth - viewportWidth > 0.5 }
+
     var body: some View {
-        HStack(spacing: Space.s1) {
-            ForEach(tabs, id: \.self) { tab in
-                InsightTabSegment(
-                    tab: tab,
-                    isSelected: tab == selection,
-                    isRunning: isRunning(tab),
-                    badge: badge(for: tab),
-                    namespace: namespace
-                ) {
-                    selection = tab
+        ScrollView(.horizontal) {
+            HStack(spacing: Space.s1) {
+                ForEach(tabs, id: \.self) { tab in
+                    InsightTabSegment(
+                        title: tab.title(in: entry),
+                        symbolName: tab.symbolName,
+                        help: tab.help(in: entry),
+                        maxTitleWidth: tab.isCustom ? Self.customLabelMaxWidth : nil,
+                        isSelected: tab == selection,
+                        isRunning: isRunning(tab),
+                        badge: badge(for: tab),
+                        namespace: namespace
+                    ) {
+                        selection = tab
+                    }
                 }
             }
+            // Scoped to the bar rather than wrapped around the write: `selection`
+            // writes through to the pane's tab map, so a `withAnimation` there would
+            // animate everything the swap causes — the pane swap and the row's whole
+            // height reflow, springing every row below it. `select` is the token for
+            // a selection capsule; the container's own reflow is `layout`, applied by
+            // `RecordingRow.contentSection`.
+            .animation(motion.select, value: selection)
+            .padding(Space.s1)
+            .background(Capsule(style: .continuous).fill(Palette.wellFill))
+            // Hug the labels: the track is the content, not the scroll area.
+            .fixedSize()
+            // macOS 15 geometry observer, as in `MinimalDropdown` — MainActor
+            // friendly, where a preference-key closure is not.
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { barWidth = $0 }
         }
-        // Scoped to the bar rather than wrapped around the write: `selection`
-        // writes through to the pane's tab map, so a `withAnimation` there would
-        // animate everything the swap causes — the pane swap and the row's whole
-        // height reflow, springing every row below it. `select` is the token for
-        // a selection capsule; the container's own reflow is `layout`, applied by
-        // `RecordingRow.contentSection`.
-        .animation(motion.select, value: selection)
-        .padding(Space.s1)
-        .background(Capsule(style: .continuous).fill(Palette.wellFill))
-        // Hug the labels: the bar is left-aligned inside the row's leading stack.
-        .fixedSize()
+        .scrollBounceBehavior(.basedOnSize)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
+        // The cue that there is more bar than window: without it the right-most
+        // label is simply cut, which reads as a rendering glitch rather than as
+        // something to scroll. A mouse-only user has no horizontal gesture, so
+        // the scroller above is the other half of this.
+        .mask(alignment: .leading) {
+            if isOverflowing {
+                LinearGradient(
+                    stops: [
+                        .init(color: .black, location: 0),
+                        .init(color: .black, location: fadeStart),
+                        .init(color: .clear, location: 1),
+                    ],
+                    startPoint: .leading,
+                    endPoint: .trailing
+                )
+            } else {
+                Rectangle()
+            }
+        }
+        // A horizontal ScrollView is greedy in both axes. Pin its height to the
+        // bar's own so the row does not grow a scroll gutter, and keep it
+        // left-aligned inside the row's leading stack.
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Recording views")
+    }
+
+    /// Where the trailing fade begins, as a fraction of the viewport. Derived
+    /// rather than fixed so the fade stays `overflowFadeWidth` points wide
+    /// whatever the window is doing to the bar.
+    private var fadeStart: CGFloat {
+        guard viewportWidth > Self.overflowFadeWidth else { return 0 }
+        return 1 - Self.overflowFadeWidth / viewportWidth
     }
 
     private func isRunning(_ tab: InsightTab) -> Bool {
@@ -170,8 +292,17 @@ struct InsightTabBar: View {
 
 /// One segment of the bar. Its own view so the hover lift is per-segment state
 /// rather than a dictionary in the bar.
+///
+/// Takes its label as a plain string rather than the tab: a custom result's
+/// title lives on the recording, and resolving it here would mean handing every
+/// segment the whole entry to read one word out of.
 private struct InsightTabSegment: View {
-    let tab: InsightTab
+    let title: String
+    let symbolName: String
+    let help: String
+    /// Set only for a model-named label, which is the one this app cannot size
+    /// itself against; `nil` lets the app's own titles size naturally.
+    let maxTitleWidth: CGFloat?
     let isSelected: Bool
     let isRunning: Bool
     let badge: Int?
@@ -185,8 +316,11 @@ private struct InsightTabSegment: View {
         Button(action: action) {
             HStack(spacing: Space.s2) {
                 leading
-                Text(tab.title)
+                Text(title)
                     .typo(.captionMedium)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: maxTitleWidth, alignment: .leading)
                 if let badge {
                     Text("\(badge)")
                         .typo(.mono)
@@ -224,12 +358,12 @@ private struct InsightTabSegment: View {
         .onHover { hovering in
             withAnimation(motion.hover) { isHovering = hovering }
         }
-        .help(tab.help)
+        .help(help)
         // The badge and the spinner are the two things this segment exists to
         // carry, and both are visual-only — an `accessibilityLabel` alone would
         // replace them with a bare title, announcing a seven-item checklist
         // exactly like an empty one.
-        .accessibilityLabel(badge.map { "\(tab.title), \($0) items" } ?? tab.title)
+        .accessibilityLabel(badge.map { "\(title), \($0) items" } ?? title)
         .accessibilityValue(isRunning ? "Generating" : "")
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
     }
@@ -247,7 +381,7 @@ private struct InsightTabSegment: View {
                 // the whole bar jumps wider the moment a job starts.
                 .frame(width: Space.s5, height: Space.s5)
         } else {
-            Image(systemName: tab.symbolName)
+            Image(systemName: symbolName)
                 .font(Typo.micro)
                 .frame(width: Space.s5, height: Space.s5)
         }
@@ -264,10 +398,11 @@ private struct InsightTabSegment: View {
 
 // MARK: - Pane
 
-/// The body behind the Summary or Action Items tab: a header strip (when it was
-/// generated, copy, remove), a stale banner when the transcript has moved on
-/// since, and the insight itself — or, when nothing has been generated yet, the
-/// running state.
+/// The body behind the Summary, Action Items or a custom tab: a header strip
+/// (when it was generated — or, for a custom result, what was asked — plus
+/// copy, remove and for a custom result a re-run), a stale banner when the
+/// transcript has moved on since, and the insight itself — or, when nothing has
+/// been generated yet, the running state.
 ///
 /// Content the user is reading is never blanked out for a spinner: a
 /// regeneration over an existing insight keeps the old one on screen and puts
@@ -279,7 +414,10 @@ struct InsightPane: View {
     let onToggleActionItem: (UUID) -> Void
     /// Drops just this insight from the recording.
     let onRemove: () -> Void
-    /// Re-runs the generator for this kind — the stale banner's way out.
+    /// Re-runs the generator for this kind — the stale banner's way out, and
+    /// the custom pane's "Run again". For a custom result the row re-runs the
+    /// *stored* instruction against the same id, so a re-run replaces this
+    /// result rather than spending another of the three slots.
     let onRegenerate: () -> Void
 
     @Bindable private var generator = TranscriptInsightGenerator.shared
@@ -289,6 +427,13 @@ struct InsightPane: View {
     @State private var copyResetTask: Task<Void, Never>?
 
     private var isRunning: Bool { generator.isRunning(entryID: entry.id, kind: kind) }
+
+    /// The stored custom result this pane is showing, or nil for a built-in
+    /// insight (and for a custom job whose first result has not landed yet).
+    private var custom: CustomInsight? {
+        guard let id = kind.customID else { return nil }
+        return entry.customInsight(id: id)
+    }
 
     private var progress: TranscriptInsightGenerator.Progress? {
         generator.progress(entryID: entry.id, kind: kind)
@@ -321,9 +466,7 @@ struct InsightPane: View {
             if isRunning {
                 spinner
             }
-            Text(caption)
-                .typo(.caption)
-                .foregroundStyle(faintInk)
+            captionLabel
             if isRunning, let progress {
                 Text(Self.progressLabel(progress))
                     .typo(.mono)
@@ -331,23 +474,62 @@ struct InsightPane: View {
                     .foregroundStyle(faintInk)
             }
             Spacer(minLength: Space.s4)
+            // Custom results are the only insight with no menu command of their
+            // own — the sparkles menu offers "Custom prompt…", not "Regenerate
+            // Meeting Minutes" — so the way to run one again lives here.
+            if kind.isCustom {
+                InsightIconButton(
+                    systemName: "arrow.clockwise",
+                    tint: Palette.inkMuted,
+                    help: regenerateHelp,
+                    action: onRegenerate
+                )
+                .disabled(isRunning)
+                .accessibilityLabel("Run this instruction again")
+            }
             InsightIconButton(
                 systemName: copied ? "checkmark" : "doc.on.doc",
                 tint: copied ? Palette.signalReady : Palette.inkMuted,
                 help: copyHelp,
                 action: copy
             )
+            .accessibilityLabel(copyHelp)
             InsightIconButton(
                 systemName: "trash",
                 tint: Palette.inkMuted,
                 help: "Remove this \(kind.commandNoun)",
                 action: onRemove
             )
+            .accessibilityLabel("Remove this \(kind.commandNoun)")
         }
     }
 
+    /// The header's tertiary line. For a custom result that line is the user's
+    /// own instruction, which is the one caption that can be longer than the
+    /// strip — so it clamps to a line and the whole of it stays reachable as a
+    /// tooltip. The app's own captions are short by construction and get no
+    /// tooltip, which would only repeat what is already on screen.
+    @ViewBuilder
+    private var captionLabel: some View {
+        if let instruction = custom?.instruction {
+            captionText.help(instruction)
+        } else {
+            captionText
+        }
+    }
+
+    private var captionText: some View {
+        Text(caption)
+            .typo(.caption)
+            .foregroundStyle(faintInk)
+            .lineLimit(1)
+            .truncationMode(.tail)
+    }
+
     /// "Summary · 3 min. ago" / "5 action items · 2 done" — what it is and how
-    /// fresh, in one tertiary line that never competes with the content.
+    /// fresh, in one tertiary line that never competes with the content. A
+    /// custom result says what was *asked* instead: its title is already on the
+    /// tab, and the instruction is the thing the user cannot otherwise see.
     private var caption: String {
         switch kind {
         case .summary:
@@ -359,6 +541,9 @@ struct InsightPane: View {
             let noun = count == 1 ? "1 action item" : "\(count) action items"
             guard actionItems.doneCount > 0 else { return noun }
             return "\(noun) · \(actionItems.doneCount) done"
+        case .custom:
+            guard let custom else { return kind.displayName }
+            return custom.instruction
         }
     }
 
@@ -366,6 +551,7 @@ struct InsightPane: View {
         switch kind {
         case .summary: return "Copy summary"
         case .actionItems: return "Copy action items"
+        case .custom: return "Copy this result"
         }
     }
 
@@ -383,13 +569,23 @@ struct InsightPane: View {
                 .typo(.caption)
                 .foregroundStyle(Palette.signalWarn)
                 .fixedSize(horizontal: false, vertical: true)
-            Button("Regenerate", action: onRegenerate)
+            Button(kind.isCustom ? "Run again" : "Regenerate", action: onRegenerate)
                 .buttonStyle(.plain)
                 .typo(.captionMedium)
                 .foregroundStyle(Palette.accent)
                 .disabled(isRunning)
-                .help("Generate the \(kind.commandNoun) again from the current transcript")
+                .help(regenerateHelp)
         }
+    }
+
+    /// One sentence for both ways back to a fresh result: the stale banner's
+    /// button and, on a custom result, the header's re-run. A custom result
+    /// re-runs the instruction the user already typed, so it says so rather
+    /// than talking about "regenerating" something the model named.
+    private var regenerateHelp: String {
+        kind.isCustom
+            ? "Run this instruction again on the current transcript"
+            : "Generate the \(kind.commandNoun) again from the current transcript"
     }
 
     /// First-run state: nothing to read yet, so the pane *is* the progress.
@@ -434,6 +630,13 @@ struct InsightPane: View {
             if let actionItems = entry.actionItems {
                 ActionItemsTabContent(items: actionItems.items, onToggle: onToggleActionItem)
             }
+        case .custom:
+            // Same renderer as the summary, because the custom prompt asks for
+            // exactly the summary's plain-text shape: paragraphs, "- " bullets
+            // and a heading as its own line ending in a colon.
+            if let custom {
+                SummaryTabContent(text: custom.text)
+            }
         }
     }
 
@@ -446,6 +649,8 @@ struct InsightPane: View {
             text = entry.summary?.text ?? ""
         case .actionItems:
             text = InsightClipboard.markdownChecklist(entry.actionItems?.items ?? [])
+        case .custom:
+            text = custom?.text ?? ""
         }
         guard !text.isEmpty else { return }
 
@@ -458,6 +663,269 @@ struct InsightPane: View {
             try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
             copied = false
+        }
+    }
+}
+
+// MARK: - Custom prompt
+
+/// The "Format with AI" form: one instruction, typed by the user, that the model
+/// applies to this recording's transcript. The result comes back as its own tab
+/// beside Summary and Action Items.
+///
+/// This view only *collects* the instruction — it hands the trimmed text to the
+/// row and closes. The row starts the job, for the lifetime reason its other
+/// generations are started from a button action rather than a `.task`.
+///
+/// Presented as a popover from the row's sparkles button, so it is glass surface
+/// #4 of the inventory in `GlassSurface.swift` and filled with a `Rectangle`:
+/// the popover already owns the corner radius.
+struct CustomPromptPopover: View {
+    /// How many of the recording's result slots are already spoken for —
+    /// stored results *plus* any job still generating one — and how many it has.
+    /// Passed in rather than read off the entry so the form has no opinion about
+    /// where the cap lives, and counted with the jobs in flight because a slot
+    /// something is on its way to filling is not free: without that the user can
+    /// type a fourth instruction while the third is still running, and pay for a
+    /// document the store will refuse.
+    let usedCount: Int
+    let maxCount: Int
+    /// The last thing that went wrong with a custom job on this recording, if
+    /// anything has. A refused *new* result has no tab to be shown on — it was
+    /// never stored — so the form it was typed in is where the user comes back
+    /// to and where the message has to be waiting.
+    let failureMessage: String?
+    /// Clears that message, here and on the recording.
+    let onDismissFailure: () -> Void
+    /// Called with the trimmed instruction when the user commits.
+    let onSubmit: (String) -> Void
+
+    @Bindable private var promptStore = InsightPromptStore.shared
+    @Environment(\.increaseContrast) private var increaseContrast
+
+    @State private var instruction = ""
+    @FocusState private var isFieldFocused: Bool
+
+    /// The popover's width. Wide enough for a sentence of instruction at three
+    /// lines, narrow enough to still read as a popover rather than a sheet.
+    private static let width: CGFloat = 300
+
+    private var trimmed: String {
+        instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var isFull: Bool { usedCount >= maxCount }
+
+    private var faintInk: Color { Palette.inkFaint(increaseContrast: increaseContrast) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s5) {
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Text("Format with AI")
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
+                Text("Applies your instruction to this recording's transcript and keeps the result in its own tab.")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            field
+
+            if let failureMessage {
+                failureNote(failureMessage)
+            }
+
+            if isFull {
+                capNote
+            }
+
+            HStack(spacing: Space.s4) {
+                Spacer(minLength: Space.s4)
+                CapsuleActionButton(
+                    title: "Format",
+                    systemImage: "wand.and.sparkles",
+                    isDisabled: trimmed.isEmpty || isFull,
+                    action: submit
+                )
+                // ⌘↩ rather than ↩: the field is multi-line, so Return belongs to
+                // the text being typed.
+                .keyboardShortcut(.return, modifiers: .command)
+                .help("Apply this instruction to the transcript (⌘↩)")
+            }
+
+            if !promptStore.prompts.isEmpty {
+                recentSection
+            }
+        }
+        .padding(Space.s6)
+        .frame(width: Self.width)
+        .glassSurface(in: Rectangle())
+        // Focus is taken after the first render rather than in `onAppear`: a
+        // popover is not key yet while its content is first being laid out, and
+        // focus asked for then is dropped on the floor.
+        .task { isFieldFocused = true }
+    }
+
+    // MARK: Field
+
+    private var field: some View {
+        TextField(
+            "Instruction",
+            text: $instruction,
+            prompt: Text("Rewrite this as meeting minutes…").foregroundStyle(faintInk),
+            axis: .vertical
+        )
+        .labelsHidden()
+        .textFieldStyle(.plain)
+        .font(Typo.body)
+        .foregroundStyle(Palette.ink)
+        .lineLimit(3...6)
+        .focused($isFieldFocused)
+        .padding(Space.s5)
+        .background {
+            // The app's own well rather than a stock bordered field, so the form
+            // reads as part of the row it opened from.
+            ConcentricRectangle(inset: Space.s3) { shape in
+                shape
+                    .fill(Palette.wellFill)
+                    .overlay(shape.strokeBorder(Palette.hairline))
+            }
+        }
+        // No `.onSubmit`: on macOS a vertical-axis field hands a plain Return to
+        // the submit action, which would send a half-typed instruction the moment
+        // the user reached for a second line — and spend a request and one of the
+        // three slots doing it. ⌘↩ on the Format button is the one commit path.
+        .accessibilityLabel("Formatting instruction")
+        .help("Tell the AI what to do with this transcript")
+    }
+
+    /// What went wrong last time, in the same warning language as the row's own
+    /// failure notes — and dismissible here, because this is often the only
+    /// place a refused new result was ever mentioned.
+    private func failureNote(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+            Text(message)
+                .typo(.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button("Dismiss", action: onDismissFailure)
+                .buttonStyle(.plain)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.accent)
+                .help("Hide this message")
+        }
+    }
+
+    /// Shown only at the cap. Warning-coloured because it is the reason the
+    /// button below it is dead, not a hint.
+    private var capNote: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(Typo.micro)
+                .foregroundStyle(Palette.signalWarn)
+            Text("This recording already has \(maxCount) formatted results. Remove one to add another.")
+                .typo(.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    // MARK: Recent
+
+    /// Instructions the user has typed before, newest first. A convenience, not
+    /// the main event: quiet type, no fills, and it is absent entirely until
+    /// there is something to remember.
+    private var recentSection: some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text("Recent")
+                .typo(.micro)
+                .textCase(.uppercase)
+                .foregroundStyle(faintInk)
+            VStack(alignment: .leading, spacing: Space.s1) {
+                ForEach(promptStore.prompts) { prompt in
+                    RecentPromptRow(
+                        instruction: prompt.instruction,
+                        onUse: {
+                            // Fills the field rather than running: a remembered
+                            // instruction is usually the *start* of the next one
+                            // ("…and in Russian"), and a one-tap run from a list
+                            // of similar-looking sentences is a mis-click that
+                            // costs a request.
+                            instruction = prompt.instruction
+                            isFieldFocused = true
+                        },
+                        onForget: { promptStore.forget(id: prompt.id) }
+                    )
+                }
+            }
+        }
+    }
+
+    private func submit() {
+        let text = trimmed
+        guard !text.isEmpty, !isFull else { return }
+        onSubmit(text)
+    }
+}
+
+/// One remembered instruction: tap the text to load it into the field, the
+/// xmark to forget it. Its own view so the hover wash is per-row state.
+private struct RecentPromptRow: View {
+    let instruction: String
+    let onUse: () -> Void
+    let onForget: () -> Void
+
+    @Environment(\.motion) private var motion
+    @Environment(\.increaseContrast) private var increaseContrast
+    @State private var isHovering = false
+    @FocusState private var isForgetFocused: Bool
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Button(action: onUse) {
+                Text(instruction)
+                    .typo(.caption)
+                    .foregroundStyle(isHovering ? Palette.ink : Palette.inkMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Use “\(instruction)”")
+            .accessibilityLabel("Use instruction: \(instruction)")
+
+            Button(action: onForget) {
+                Image(systemName: "xmark")
+                    .font(Typo.micro)
+                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                    // The 22pt hit area of the insight header's icon buttons, so
+                    // a 10pt glyph is still a real target.
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .focused($isForgetFocused)
+            // Revealed by hover *or* by focus. Keeping it in the tree made it
+            // reachable by keyboard, but at opacity 0 that meant Full Keyboard
+            // Access drawing a focus ring around blank space, and Space quietly
+            // forgetting an instruction the user was never shown a control for.
+            // Never hidden from VoiceOver either, for the same reason.
+            .opacity(isHovering || isForgetFocused ? 1 : 0)
+            .help("Forget this instruction")
+            .accessibilityLabel("Forget instruction: \(instruction)")
+            .accessibilityHidden(false)
+        }
+        .padding(.horizontal, Space.s3)
+        .padding(.vertical, Space.s1)
+        .background(
+            RoundedRectangle(cornerRadius: Radius.minimum, style: .continuous)
+                .fill(isHovering ? Palette.wellFill : Color.clear)
+        )
+        .onHover { hovering in
+            withAnimation(motion.hover) { isHovering = hovering }
         }
     }
 }

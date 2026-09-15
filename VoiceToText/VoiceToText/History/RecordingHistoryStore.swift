@@ -256,6 +256,14 @@ final class RecordingHistoryStore {
     private func commitRemoval(_ removed: [RecordingHistoryEntry]) {
         guard !removed.isEmpty else { return }
         removeAudioFiles(removed.map(\.audioFileName))
+        // Nothing can be written back to a recording that is gone for good, so
+        // whatever the insight generator is still holding for it — half-finished
+        // chunk results, failure notes, progress — is dead weight that would
+        // otherwise live until the app quits. A long meeting's checkpoint is a
+        // few hundred kilobytes of part text.
+        for entry in removed {
+            TranscriptInsightGenerator.shared.forgetRecording(entryID: entry.id)
+        }
         persistIndex()
         refreshDiskUsage()
     }
@@ -324,11 +332,12 @@ final class RecordingHistoryStore {
 
     // MARK: - Insights
     //
-    // Generated summaries and action items are persisted with the recording, so
-    // they survive relaunch and cost the user's API budget only once. All four
-    // of these are no-ops on an id this store has never heard of, or on one whose
-    // deletion has already been *committed*: a generation that finishes after its
-    // recording is gone for good must not resurrect the row.
+    // Generated summaries, action items and the results of the user's own
+    // instructions are persisted with the recording, so they survive relaunch
+    // and cost the user's API budget only once. Every one of these setters is a
+    // no-op on an id this store has never heard of, or on one whose deletion has
+    // already been *committed*: a generation that finishes after its recording
+    // is gone for good must not resurrect the row.
     //
     // A recording still inside its undo window is the opposite case — it is on
     // disk, and one tap away from coming back — so `mutateEntry` looks in
@@ -396,6 +405,53 @@ final class RecordingHistoryStore {
         }
     }
 
+    /// Stores the result of one of the user's own instructions: replaces the
+    /// result with the same id when there is one, otherwise inserts it at the
+    /// front (newest first, like the tab order).
+    ///
+    /// `replacingExisting` is the caller's *intent*, not a hint — and it is
+    /// deliberately not inferred from whether the id happens to be here. A
+    /// re-run holds its target's id across a request that takes minutes, and the
+    /// user is one click away from deleting that tab while it runs; inferring
+    /// would turn a result they threw away into a brand-new one at the front of
+    /// the bar, and inferring in the other direction would refuse a plain re-run
+    /// with the cap message the moment the freed slot had been filled. So a
+    /// replace whose target is gone writes nothing and returns false.
+    ///
+    /// Returns false when a *new* result would push the recording past
+    /// `maxCustomInsights` — the generator turns that into the "remove one
+    /// first" message. Replacing an existing result is never refused at the cap,
+    /// because a re-run of a tab that already exists adds no tabs.
+    ///
+    /// Also returns false for an id this store no longer knows (a recording
+    /// whose deletion has already committed), which is the same silent no-op
+    /// every other setter here performs; the caller has no row left to show a
+    /// message on either way.
+    @discardableResult
+    func setCustomInsight(
+        entryID: UUID,
+        insight: CustomInsight,
+        replacingExisting: Bool
+    ) -> Bool {
+        var stored = false
+        mutateEntry(entryID) { entry in
+            var list = entry.customInsightList
+            if let index = list.firstIndex(where: { $0.id == insight.id }) {
+                list[index] = insight
+            } else {
+                // The tab this was re-running went away while the request was in
+                // flight. Nothing to replace, and resurrecting it would undo a
+                // deletion the user asked for.
+                guard !replacingExisting else { return nil }
+                guard list.count < RecordingHistoryEntry.maxCustomInsights else { return nil }
+                list.insert(insight, at: 0)
+            }
+            stored = true
+            return entry.updatingCustomInsights(list)
+        }
+        return stored
+    }
+
     /// Discards one generated insight, taking the row back to transcript-only.
     /// The audio and the transcript are untouched — this is the "I don't want
     /// this summary" escape hatch, not a delete.
@@ -405,6 +461,13 @@ final class RecordingHistoryStore {
             switch kind {
             case .summary: return entry.updatingSummary(nil)
             case .actionItems: return entry.updatingActionItems(nil)
+            case .custom(let id):
+                // Emptied back to nil rather than to `[]`, so a recording that
+                // never had a custom result and one whose last was removed
+                // encode identically — and an entry stays byte-comparable with
+                // the `[CustomInsight]?` back-compat shape on disk.
+                let list = entry.customInsightList.filter { $0.id != id }
+                return entry.updatingCustomInsights(list.isEmpty ? nil : list)
             }
         }
     }

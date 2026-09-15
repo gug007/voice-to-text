@@ -63,17 +63,41 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// The generated checklist, same back-compat rule as `summary`.
     let actionItems: TranscriptActionItems?
 
+    /// Results of the user's own instructions, newest first. Optional for the
+    /// same index.json back-compat reason as the two above (absent ⇒ none).
+    let customInsights: [CustomInsight]?
+
+    /// How many custom results one recording may hold at once. The cap exists
+    /// for the tab bar, not for storage: four or five model-named tabs beside
+    /// Transcript, Summary and Action Items stop being scannable and start
+    /// wrapping. Adding one past this is refused with a message telling the
+    /// user to remove one, rather than silently evicting the oldest — these
+    /// cost the user's API budget, so the app does not throw one away.
+    nonisolated static let maxCustomInsights = 3
+
     /// Non-optional view of `isFavorite` for call sites.
     var isFavorited: Bool { isFavorite ?? false }
 
+    /// Non-optional view of `customInsights`, newest first.
+    var customInsightList: [CustomInsight] { customInsights ?? [] }
+
+    /// One stored custom result by id, or nil once it has been removed — which
+    /// a tab or an in-flight job can outlive.
+    func customInsight(id: UUID) -> CustomInsight? {
+        customInsightList.first { $0.id == id }
+    }
+
     /// True when the row has anything to show beyond the transcript — the tab
     /// bar only appears once this is true (or a generation is in flight).
-    var hasInsights: Bool { summary != nil || actionItems != nil }
+    var hasInsights: Bool {
+        summary != nil || actionItems != nil || !customInsightList.isEmpty
+    }
 
     func hasInsight(_ kind: InsightKind) -> Bool {
         switch kind {
         case .summary: return summary != nil
         case .actionItems: return actionItems != nil
+        case .custom(let id): return customInsight(id: id) != nil
         }
     }
 
@@ -88,6 +112,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         switch kind {
         case .summary: stored = summary?.sourceDigest
         case .actionItems: stored = actionItems?.sourceDigest
+        case .custom(let id): stored = customInsight(id: id)?.sourceDigest
         }
         guard let stored else { return false }
         return stored != TranscriptDigest.of(transcript)
@@ -140,7 +165,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         alternates: [TranscriptVariant]? = nil,
         speakerNames: [String: String]? = nil,
         summary: TranscriptSummary? = nil,
-        actionItems: TranscriptActionItems? = nil
+        actionItems: TranscriptActionItems? = nil,
+        customInsights: [CustomInsight]? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -156,6 +182,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.speakerNames = speakerNames
         self.summary = summary
         self.actionItems = actionItems
+        self.customInsights = customInsights
     }
 
     // MARK: - Copies
@@ -179,7 +206,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         speakerNames: [String: String]?,
         isFavorite: Bool?,
         summary: TranscriptSummary?,
-        actionItems: TranscriptActionItems?
+        actionItems: TranscriptActionItems?,
+        customInsights: [CustomInsight]?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -195,7 +223,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             alternates: alternates,
             speakerNames: speakerNames,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 
@@ -220,7 +249,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             isFavorite: isFavorite,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 
@@ -235,7 +265,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             isFavorite: isFavorite,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 
@@ -249,7 +280,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             isFavorite: isFavorite,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 
@@ -264,7 +296,27 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             isFavorite: isFavorite,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
+        )
+    }
+
+    /// Returns a copy with the custom results replaced (`nil`, or an empty
+    /// array normalized to `nil` by the store, removes them all). The list is
+    /// newest first, and the caller — `RecordingHistoryStore.setCustomInsight`
+    /// — is what enforces `maxCustomInsights`; this helper stores what it is
+    /// given, so a re-run replacing an existing result is never refused.
+    func updatingCustomInsights(_ customInsights: [CustomInsight]?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 
@@ -278,7 +330,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             isFavorite: isFavorite,
             summary: summary,
-            actionItems: actionItems
+            actionItems: actionItems,
+            customInsights: customInsights
         )
     }
 }

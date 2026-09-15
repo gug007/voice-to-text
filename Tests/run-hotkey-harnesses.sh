@@ -92,6 +92,7 @@ swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/TranscriptInsight.swift \
   VoiceToText/VoiceToText/History/TranscriptInsightRequest.swift \
   VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/InsightPromptStore.swift \
   Tests/TranscriptInsightHarness.swift \
   -o "$TMPDIR/transcript-insight-harness"
 "$TMPDIR/transcript-insight-harness"

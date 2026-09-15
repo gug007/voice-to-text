@@ -102,12 +102,17 @@ enum HistorySearch {
 
     /// Everything already in the entry that a query may match: transcript text
     /// (including the alternates a regenerated recording still shows), the
-    /// generated summary and action items, the speaker names the user assigned,
-    /// the model, and the recording type.
+    /// generated summary and action items, every custom result's title and
+    /// body, the speaker names the user assigned, the model, and the recording
+    /// type.
     ///
     /// The insights are searched because they are often the only place a
     /// conversation's subject is named in plain words — a transcript says
     /// "yeah, so, the thing with the invoices", the summary says "billing".
+    /// A custom result is the strongest case of all: its title is three words
+    /// the model chose to describe the whole recording ("Meeting Minutes"), and
+    /// its text is often a translation, which is the one place a search in the
+    /// reader's own language can match a conversation held in another.
     ///
     /// Returned as separate fields rather than one joined string so a match
     /// can't straddle two of them, and so nothing is copied — Swift strings are
@@ -121,6 +126,10 @@ enum HistorySearch {
         for item in entry.actionItems?.items ?? [] {
             fields.append(item.text)
             if let owner = item.owner { fields.append(owner) }
+        }
+        for custom in entry.customInsightList {
+            fields.append(custom.title)
+            fields.append(custom.text)
         }
         if let names = entry.speakerNames {
             fields.append(contentsOf: names.values)

@@ -1,6 +1,19 @@
 import AppKit
 import SwiftUI
 
+/// One command in the row's sparkles menu. The two built-in insights are named
+/// by the kind they generate; "Custom prompt…" opens a form instead of starting
+/// anything, which is exactly why it cannot be an `InsightKind` — there is no
+/// id to name until the user has typed an instruction and the model has answered.
+///
+/// `nonisolated` because it is a `DropdownItem`'s value: its `Hashable`
+/// witnesses are called by the dropdown's `ForEach` and comparisons, which a
+/// MainActor-isolated type could not satisfy under Swift 6.
+private nonisolated enum InsightMenuCommand: Hashable {
+    case generate(InsightKind)
+    case customPrompt
+}
+
 /// A single saved-recording row: leading play tile, timestamp + metadata, copy
 /// and delete controls, and the transcript(s) below. After a regeneration a
 /// recording can hold more than one transcript; each version is then shown in
@@ -9,12 +22,12 @@ import SwiftUI
 /// between rows. Shared by the History pane (all recordings) and the
 /// Conversations pane (conversations only).
 ///
-/// Once a recording has an AI summary or checklist — or one is being generated —
-/// the content area grows a tab bar and the transcript becomes one of three
-/// readings of the same recording. All of that chrome lives in
-/// `RecordingInsightsView.swift`; this row owns the *jobs*: starting one from
-/// the sparkles menu or the inline strip, following it to its tab, and showing
-/// what went wrong when it fails.
+/// Once a recording has an AI summary, a checklist or a custom result — or one
+/// is being generated — the content area grows a tab bar and the transcript
+/// becomes one of several readings of the same recording. All of that chrome
+/// lives in `RecordingInsightsView.swift`; this row owns the *jobs*: starting
+/// one from the sparkles menu, the custom-prompt popover or the inline strip,
+/// following it to its tab, and showing what went wrong when it fails.
 struct RecordingRow: View {
     let entry: RecordingHistoryEntry
     let isPlaying: Bool
@@ -48,6 +61,14 @@ struct RecordingRow: View {
     @State private var copyResetTask: Task<Void, Never>?
     @State private var showRegenerateMenu = false
     @State private var showInsightMenu = false
+    /// The "Format with AI" popover, anchored to the same sparkles button as the
+    /// menu that offers it.
+    @State private var showCustomPrompt = false
+    /// True only during the menu-to-form handoff, where neither popover flag is
+    /// set and the pointer is off the row. Without it the sparkles button — the
+    /// anchor the form is about to be presented from — unmounts for those two
+    /// frames and the popover is asked to present on a brand-new view.
+    @State private var isOpeningCustomPrompt = false
     @State private var showRenameSpeakers = false
     /// Draft names shown in the rename popover, seeded from the entry on open and
     /// committed to the store when the popover closes.
@@ -146,7 +167,8 @@ struct RecordingRow: View {
             // Popover-open states keep the anchor buttons mounted after the
             // pointer leaves the row — an anchor that unmounts (hover ends when
             // the cursor enters the popover) tears its popover down with it.
-            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu || showInsightMenu {
+            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu
+                || showInsightMenu || showCustomPrompt || isOpeningCustomPrompt {
                 if !speakerLabels.isEmpty {
                     renameSpeakersControl
                 }
@@ -188,6 +210,8 @@ struct RecordingRow: View {
                 insightPane(.summary)
             case .actionItems:
                 insightPane(.actionItems)
+            case .custom(let id):
+                insightPane(.custom(id))
             }
             generateStrip
         }
@@ -198,6 +222,12 @@ struct RecordingRow: View {
         .animation(motion.layout, value: shownTab(in: tabs))
     }
 
+    /// `.id(kind)` because two custom results share this branch of
+    /// `contentSection`'s switch: without it SwiftUI keeps one pane across the
+    /// swap from one custom tab to another, and with it the pane's own state —
+    /// the copy confirmation and the task that clears it — so copying one result
+    /// and then switching tabs shows a checkmark on a result nothing was copied
+    /// from. The built-in tabs get this for free from the switch's structure.
     private func insightPane(_ kind: InsightKind) -> some View {
         InsightPane(
             entry: entry,
@@ -206,6 +236,7 @@ struct RecordingRow: View {
             onRemove: { onRemoveInsight(kind) },
             onRegenerate: { generate(kind) }
         )
+        .id(kind)
     }
 
     /// The tab actually drawn. The pane remembers one choice per recording id,
@@ -231,22 +262,44 @@ struct RecordingRow: View {
     /// there for the rare dictation that is worth summarizing.
     @ViewBuilder
     private var generateStrip: some View {
-        if entry.source == .meeting, !entry.hasInsights, !hasRunningInsight {
+        if entry.source == .meeting,
+           !entry.hasInsights,
+           entry.customInsightList.isEmpty,
+           !hasRunningInsight {
             HStack(spacing: Space.s4) {
-                generateChip(kind: .summary, title: "Summary", symbolName: "sparkles")
-                generateChip(kind: .actionItems, title: "Action items", symbolName: "checklist")
+                insightChip(title: "Summary", symbolName: "sparkles",
+                            help: "Generate \(InsightKind.summary.commandNoun) from this conversation") {
+                    generate(.summary)
+                }
+                insightChip(title: "Action items", symbolName: "checklist",
+                            help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation") {
+                    generate(.actionItems)
+                }
+                // The third way in: the user's own instruction, opening the same
+                // popover the sparkles menu opens. The glyph is spelled out like
+                // its two neighbours, and is the one `InsightKind.custom` wears.
+                insightChip(title: "Custom", symbolName: "wand.and.sparkles",
+                            help: "Format this transcript with your own instruction") {
+                    showCustomPrompt = true
+                }
             }
         }
     }
 
+    /// True while any job for this recording is in flight — the built-ins, or a
+    /// custom result the user asked for.
     private var hasRunningInsight: Bool {
-        InsightKind.allCases.contains { insights.isRunning(entryID: entry.id, kind: $0) }
+        InsightKind.builtIns.contains { insights.isRunning(entryID: entry.id, kind: $0) }
+            || !InsightTab.runningCustomIDs(entryID: entry.id, generator: insights).isEmpty
     }
 
-    private func generateChip(kind: InsightKind, title: String, symbolName: String) -> some View {
-        Button {
-            generate(kind)
-        } label: {
+    private func insightChip(
+        title: String,
+        symbolName: String,
+        help: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             HStack(spacing: Space.s3) {
                 Image(systemName: symbolName)
                     .font(Typo.micro)
@@ -260,7 +313,8 @@ struct RecordingRow: View {
             .contentShape(Capsule(style: .continuous))
         }
         .buttonStyle(.plain)
-        .help("Generate \(kind.commandNoun) from this conversation")
+        .help(help)
+        .accessibilityLabel(help)
     }
 
     /// Starts a generation and, on success, brings its tab forward — the user
@@ -272,6 +326,10 @@ struct RecordingRow: View {
     /// row out of view tears it down, and a `.task` would be cancelled with it —
     /// killing a paid-for request mid-flight because the user scrolled. A Task
     /// created here is not tied to the view's lifetime.
+    ///
+    /// A custom tab's "Run again" comes through here unchanged: the generator
+    /// replays the instruction stored with that result, in place, so a re-run
+    /// keeps its tab and does not spend another of the three slots.
     private func generate(_ kind: InsightKind) {
         Task {
             if await insights.generate(entry: entry, kind: kind) {
@@ -280,18 +338,41 @@ struct RecordingRow: View {
         }
     }
 
-    /// One row per failing kind, in the same language as the regenerate failure
+    /// Runs a newly typed instruction over this recording's transcript — the one
+    /// path `generate(_:)` cannot serve, because there is no kind to name with
+    /// until the result exists.
+    ///
+    /// On success the row selects the tab it landed in, using the id the
+    /// generator hands back. Not "whichever result is newest in History": that
+    /// is only the right answer by accident today, and it is already the wrong
+    /// one for a recording sitting in its undo window, whose results are written
+    /// into the pending batch rather than into `entries`.
+    ///
+    /// The instruction itself is not remembered here: the generator does that,
+    /// as soon as the request is actually spent.
+    private func runCustom(instruction: String) {
+        Task {
+            guard let id = await insights.generateCustom(
+                entry: entry,
+                instruction: instruction,
+                replacing: nil
+            ) else { return }
+            selectedTab = .custom(id)
+        }
+    }
+
+    /// One row per failing job, in the same language as the regenerate failure
     /// underneath it: what went wrong, and the way out of it.
     @ViewBuilder
     private var insightFailures: some View {
-        ForEach(InsightKind.allCases, id: \.self) { kind in
+        ForEach(failedKinds, id: \.self) { kind in
             if let message = insights.failure(entryID: entry.id, kind: kind) {
                 HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
                     Text(message)
                         .typo(.caption)
                         .foregroundStyle(Palette.signalWarn)
                         .fixedSize(horizontal: false, vertical: true)
-                    Button("Dismiss") { insights.dismissFailure(entryID: entry.id, kind: kind) }
+                    Button("Dismiss") { dismissFailure(kind) }
                         .buttonStyle(.plain)
                         .typo(.captionMedium)
                         .foregroundStyle(Palette.accent)
@@ -309,6 +390,51 @@ struct RecordingRow: View {
                     }
                 }
             }
+        }
+    }
+
+    /// Which jobs this row currently has a failure for, in a stable order: the
+    /// built-ins first, then the custom results in tab order, then whatever is
+    /// left.
+    ///
+    /// That last group is the point of asking the generator instead of walking
+    /// the recording: a *new* custom result that was refused — the cap, a
+    /// missing key, a request that failed — is not stored anywhere and is no
+    /// longer running, so the one failure the user most needs to read would be
+    /// the only one with no row to appear in.
+    private var failedKinds: [InsightKind] {
+        var ordered = InsightKind.builtIns.filter {
+            insights.failure(entryID: entry.id, kind: $0) != nil
+        }
+        let customFailures = insights.customFailures(entryID: entry.id)
+        guard !customFailures.isEmpty else { return ordered }
+
+        let storedIDs = entry.customInsightList.map(\.id)
+        ordered += storedIDs
+            .filter { customFailures[$0] != nil }
+            .map(InsightKind.custom)
+        // Sorted only so the rows cannot reshuffle between redraws: a
+        // dictionary's key order is not stable, and there is no meaningful
+        // order to give ids the recording has never seen.
+        ordered += customFailures.keys
+            .filter { !storedIDs.contains($0) }
+            .sorted { $0.uuidString < $1.uuidString }
+            .map(InsightKind.custom)
+        return ordered
+    }
+
+    /// Hides one failure message.
+    ///
+    /// A custom failure is parked twice — once on its job, once on the
+    /// recording, where the instruction field reads it — so dismissing it here
+    /// has to clear both, or the same sentence greets the user the next time
+    /// they open the form. Clearing the recording's copy clears every custom
+    /// job's message with it, which is right: they are the same note, and the
+    /// user has just said they have read it.
+    private func dismissFailure(_ kind: InsightKind) {
+        insights.dismissFailure(entryID: entry.id, kind: kind)
+        if kind.isCustom {
+            insights.dismissCustomFailure(entryID: entry.id)
         }
     }
 
@@ -500,10 +626,12 @@ struct RecordingRow: View {
         return sections
     }
 
-    /// Hover control opening the Generate / Regenerate menu. A `.popover` over
-    /// `DropdownPopup` rather than a `Menu`, for the same reason the regenerate
-    /// picker is one: the stock NSMenu can't be restyled to this chrome, and the
-    /// two menus on a row must not look like they come from different apps.
+    /// Hover control opening the Generate / Regenerate menu, and — from that
+    /// menu or from the inline "Custom" chip — the custom-prompt form. A
+    /// `.popover` over `DropdownPopup` rather than a `Menu`, for the same reason
+    /// the regenerate picker is one: the stock NSMenu can't be restyled to this
+    /// chrome, and the two menus on a row must not look like they come from
+    /// different apps.
     private var insightControl: some View {
         Button {
             showInsightMenu.toggle()
@@ -515,33 +643,97 @@ struct RecordingRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Generate a summary or action items")
+        .help("Summarize, list action items, or format with your own instruction")
         .popover(isPresented: $showInsightMenu, arrowEdge: .bottom) {
             DropdownPopup(
                 sections: insightMenuSections,
                 selected: nil,
                 width: 240
-            ) { kind in
-                showInsightMenu = false
-                generate(kind)
+            ) { command in
+                switch command {
+                case .generate(let kind):
+                    showInsightMenu = false
+                    generate(kind)
+                case .customPrompt:
+                    openCustomPrompt()
+                }
             }
+        }
+        // A second popover on the same anchor rather than a second anchor: the
+        // form belongs to the sparkles button, which is where the menu that
+        // offers it lives, and where the inline "Custom" chip points too.
+        .popover(isPresented: $showCustomPrompt, arrowEdge: .bottom) {
+            CustomPromptPopover(
+                usedCount: insights.usedCustomSlots(for: entry),
+                maxCount: RecordingHistoryEntry.maxCustomInsights,
+                failureMessage: insights.customFailure(entryID: entry.id),
+                onDismissFailure: { insights.dismissCustomFailure(entryID: entry.id) }
+            ) { instruction in
+                showCustomPrompt = false
+                runCustom(instruction: instruction)
+            }
+        }
+    }
+
+    /// Hands the anchor over from the menu to the form.
+    ///
+    /// A popover presented in the same turn as another is dismissed never
+    /// appears — AppKit is still tearing the first one down on the anchor view —
+    /// so the form waits out the menu's dismissal.
+    ///
+    /// `isOpeningCustomPrompt` is what keeps the anchor alive across that wait.
+    /// During it the pointer is inside the menu's own window (so the row is not
+    /// hovered), the menu flag has just been cleared and the form's is not set
+    /// yet — every term of the mount condition in `actionButtons` is false at
+    /// once, and the sparkles button the form is anchored to would be destroyed
+    /// and rebuilt a frame later. `showCustomPrompt` holds the condition from the
+    /// moment it is set, so the handoff flag can be dropped immediately after,
+    /// including when the sleep is cancelled.
+    private func openCustomPrompt() {
+        isOpeningCustomPrompt = true
+        showInsightMenu = false
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(120))
+            showCustomPrompt = true
+            isOpeningCustomPrompt = false
         }
     }
 
     /// "Generate summary" until one exists, "Regenerate summary" after — one
     /// command, named for what it will actually do to this recording. Nothing is
     /// checkmarked: these are actions, not a selection.
-    private var insightMenuSections: [DropdownSection<InsightKind>] {
-        [
-            DropdownSection(items: InsightKind.allCases.map { kind in
-                DropdownItem(
-                    value: kind,
-                    title: entry.hasInsight(kind)
-                        ? "Regenerate \(kind.commandNoun)"
-                        : "Generate \(kind.commandNoun)"
-                )
-            })
-        ]
+    ///
+    /// "Custom prompt…" is always offered, cap or no cap. `DropdownItem` has no
+    /// disabled state to give it (the dropdown is a shared control, and growing
+    /// one for a single call site would be a change to every menu in the app),
+    /// so the cap is said twice instead: as this row's detail line, and — in the
+    /// only place that can also stop the request — inside the form itself, where
+    /// the message sits next to a dead Format button.
+    private var insightMenuSections: [DropdownSection<InsightMenuCommand>] {
+        var items = InsightKind.builtIns.map { kind in
+            DropdownItem<InsightMenuCommand>(
+                value: .generate(kind),
+                title: entry.hasInsight(kind)
+                    ? "Regenerate \(kind.commandNoun)"
+                    : "Generate \(kind.commandNoun)"
+            )
+        }
+        items.append(DropdownItem(
+            value: .customPrompt,
+            title: "Custom prompt…",
+            detail: isCustomInsightFull
+                ? "Remove one of the \(RecordingHistoryEntry.maxCustomInsights) results first"
+                : "Format this transcript your way"
+        ))
+        return [DropdownSection(items: items)]
+    }
+
+    /// True when the recording has as many custom results as it may — counting
+    /// the ones still being generated, so the menu's detail line agrees with the
+    /// form's dead Format button rather than inviting a request that would be
+    /// refused after it had been paid for.
+    private var isCustomInsightFull: Bool {
+        insights.usedCustomSlots(for: entry) >= RecordingHistoryEntry.maxCustomInsights
     }
 
     private func iconButton(

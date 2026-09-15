@@ -474,40 +474,105 @@ struct MeetingsPane: View {
         }
     }
 
-    /// Loads the dropped file URL off the (arbitrary-queue) item provider, hops
-    /// to the main actor, revalidates, and hands it to the controller.
-    /// `isSupportedMedia` is the *only* media gate — the drop registration
-    /// accepts any file URL, so the overlay lights up for a PDF too.
+    /// Hands the dropped file to the controller. Two provider shapes arrive
+    /// here, and the drop has to survive both:
     ///
-    /// Every rejection that isn't self-evident now says why. Dropping a
-    /// non-media file, or several files at once, used to hit a bare `return`:
-    /// the overlay had just said "Drop to transcribe", the drag was accepted,
-    /// and then nothing happened at all. Busy is the one silent case — the drag
-    /// visibly bounces, and `rejectImport` deliberately won't disturb a
-    /// recording in flight.
+    ///   • A `public.file-url` provider — what a Finder drag yields when the
+    ///     drop registers `.fileURL` alone. `loadObject(ofClass: URL.self)`
+    ///     returns the original path.
+    ///   • A content-type-only provider (`public.aiff-audio`, `public.mpeg-4`…).
+    ///     Because the drop also registers the media types, macOS 26+ keeps
+    ///     only the most specific matching representation and drops the file
+    ///     URL, so `canLoadObject(ofClass: URL.self)` is false. That was the
+    ///     whole bug: a URL-only filter found no provider and returned false —
+    ///     overlay, accepted drag, then nothing. `loadItem` for that type still
+    ///     yields the original file URL for a Finder drag, and raw data for an
+    ///     app that drags content rather than a file, which is staged in a
+    ///     temp file for the import.
+    ///
+    /// Every rejection that isn't self-evident says why. Busy is the one silent
+    /// case — the drag visibly bounces, and `rejectImport` deliberately won't
+    /// disturb a recording in flight.
     private func handleDrop(_ providers: [NSItemProvider]) -> Bool {
         guard !controller.isBusy else { return false }
-        let fileProviders = providers.filter { $0.canLoadObject(ofClass: URL.self) }
-        guard let provider = fileProviders.first else { return false }
-        guard fileProviders.count == 1 else {
+        guard let provider = providers.first else { return false }
+        guard providers.count == 1 else {
             controller.rejectImport("Drop one audio or video file at a time.")
             return false
         }
-        _ = provider.loadObject(ofClass: URL.self) { url, _ in
-            guard let url else { return }
-            Task { @MainActor in
-                let controller = MeetingController.shared
-                // Re-check on the main actor: state may have changed since the
-                // drop landed.
-                guard !controller.isBusy else { return }
-                guard Self.isSupportedMedia(url) else {
-                    controller.rejectImport("“\(url.lastPathComponent)” isn't an audio or video file.")
-                    return
+        // Captured up front: the completion closures below are @Sendable and
+        // must not hold the provider itself.
+        let name = provider.suggestedName ?? "That file"
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            _ = provider.loadObject(ofClass: URL.self) { url, _ in
+                Task { @MainActor in
+                    guard let url else {
+                        MeetingController.shared.rejectImport("Couldn't read “\(name)”.")
+                        return
+                    }
+                    await Self.importDropped(url: url, stagedCopy: false)
                 }
-                await controller.importMedia(url: url)
+            }
+            return true
+        }
+
+        guard let typeID = provider.registeredTypeIdentifiers.first(where: Self.isMediaType) else {
+            controller.rejectImport("“\(name)” isn't an audio or video file.")
+            return false
+        }
+        provider.loadItem(forTypeIdentifier: typeID) { item, _ in
+            let url = (item as? NSURL).map { $0 as URL }
+            let data = (item as? NSData).map { Data(referencing: $0) }
+            Task { @MainActor in
+                if let url {
+                    await Self.importDropped(url: url, stagedCopy: false)
+                } else if let data, let staged = Self.stage(data, typeID: typeID, name: name) {
+                    await Self.importDropped(url: staged, stagedCopy: true)
+                } else {
+                    MeetingController.shared.rejectImport("Couldn't read “\(name)”.")
+                }
             }
         }
         return true
+    }
+
+    /// Revalidates on the main actor — state may have changed since the drop
+    /// landed — then runs the import. A staged temp copy is removed afterwards.
+    private static func importDropped(url: URL, stagedCopy: Bool) async {
+        defer { if stagedCopy { try? FileManager.default.removeItem(at: url) } }
+        let controller = MeetingController.shared
+        guard !controller.isBusy else { return }
+        guard isSupportedMedia(url) else {
+            controller.rejectImport("“\(url.lastPathComponent)” isn't an audio or video file.")
+            return
+        }
+        await controller.importMedia(url: url)
+    }
+
+    /// Writes dragged content that arrived as bytes to a temp file the extractor
+    /// can open, named with the type's extension so AVFoundation can sniff it.
+    private static func stage(_ data: Data, typeID: String, name: String) -> URL? {
+        let ext = UTType(typeID)?.preferredFilenameExtension
+            ?? (name.contains(".") ? URL(fileURLWithPath: name).pathExtension : "bin")
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceToText-drop-\(UUID().uuidString)")
+            .appendingPathExtension(ext)
+        do {
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Pure and nonisolated: called from the nonisolated provider closures.
+    nonisolated private static func isMediaType(_ identifier: String) -> Bool {
+        UTType(identifier).map(isMedia) ?? false
+    }
+
+    nonisolated private static func isMedia(_ type: UTType) -> Bool {
+        type.conforms(to: .audio) || type.conforms(to: .movie) || type.conforms(to: .audiovisualContent)
     }
 
     /// Whether a URL points at audio or video we can import — mirrors the open
@@ -515,10 +580,7 @@ struct MeetingsPane: View {
     private static func isSupportedMedia(_ url: URL) -> Bool {
         let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
             ?? UTType(filenameExtension: url.pathExtension)
-        guard let type else { return false }
-        return type.conforms(to: .audio)
-            || type.conforms(to: .movie)
-            || type.conforms(to: .audiovisualContent)
+        return type.map(isMedia) ?? false
     }
 
     private var recordingCard: some View {

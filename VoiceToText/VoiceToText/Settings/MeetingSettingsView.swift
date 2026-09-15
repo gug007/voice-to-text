@@ -50,7 +50,7 @@ struct MeetingsPane: View {
         PaneScaffold {
             PaneHeader(
                 title: "Conversations",
-                subtitle: "Record a long conversation in the background — your mic and everyone you hear — then get a transcript."
+                subtitle: "Your mic plus everything you hear, transcribed when you stop."
             )
 
             if !screenGranted && !controller.isBusy {
@@ -71,7 +71,6 @@ struct MeetingsPane: View {
         }
         .animation(motion.layout, value: controller.state)
         .animation(motion.layout, value: conversations)
-        .toolbar { toolbarContent }
         // The whole pane is a drop target for a single audio/video file.
         // Because Finder drags register as `public.file-url`, the overlay flips
         // for any file hover; a non-media file is silently rejected by the
@@ -104,61 +103,11 @@ struct MeetingsPane: View {
         .overlay { UndoDeletionBar(store: store) }
     }
 
-    // MARK: - Toolbar
-    //
-    // Start Recording was a `SplitCapsuleButton` wedged into the right edge of
-    // the idle state card — where it disappeared the moment the card changed
-    // state, and where its chevron menu was the only route to Upload File….
-    // Start Recording is a prominent toolbar item now (flat `accent`, never the
-    // brand gradient: white on #6194FF is 2.92:1).
-    //
-    // Upload File… was `.secondaryAction`, which on macOS means the system
-    // overflow "⋯" — two clicks and no glyph for one of this pane's two ways in.
-    // The idle card advertises file transcription ("or drop an audio or video
-    // file here"), so the affordance it names has to be visible. It's a plain
-    // `.primaryAction` bordered button now: declared first, so it sits to the
-    // left of the prominent record button at the trailing edge.
-    //
-    // Its icon was `square.and.arrow.up` — the system *share* glyph, which reads
-    // as "send this somewhere" and is exactly wrong for a local-only import that
-    // uploads nothing anywhere. It's `waveform.badge.plus` now, the same glyph
-    // the drop overlay uses, so the two routes to the same action look alike.
-    //
-    // NOT USED: `.visibilityPriority(1)`. It does not exist in the macOS 26.5
-    // SDK this builds against — it is a macOS 27 API.
-
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                chooseAndImportFile()
-            } label: {
-                Label("Upload File…", systemImage: "waveform.badge.plus")
-                    .labelStyle(.titleAndIcon)
-            }
-            .disabled(controller.isBusy)
-            .help("Transcribe an audio or video file already on this Mac")
-        }
-
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
-        }
-
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                Task { await controller.start() }
-            } label: {
-                Label("Start Recording", systemImage: "record.circle")
-                    // Toolbar buttons default to icon-only on macOS. The pane's
-                    // primary action does not get to be a mystery glyph.
-                    .labelStyle(.titleAndIcon)
-            }
-            .buttonStyle(.borderedProminent)
-            .tint(Palette.accent)
-            .disabled(controller.isBusy)
-            .help(startRecordingHelp)
-        }
-    }
+    // Start Recording and Upload File… are not toolbar items. They live in the
+    // session card, which is on screen in every state — the card *is* the
+    // recorder, and both actions are disabled whenever it is busy. (They were
+    // toolbar items while the idle card vanished on state change; see the
+    // session card's note for why it no longer does.)
 
     // MARK: - Recorded conversations
 
@@ -226,12 +175,8 @@ struct MeetingsPane: View {
     @ViewBuilder
     private var stateCard: some View {
         switch controller.state {
-        case .idle, .error:
-            idleCard
-        case .recording:
-            recordingCard
-        case .transcribing:
-            transcribingCard
+        case .idle, .error, .recording, .transcribing:
+            sessionCard
         case .importing:
             importingCard
         }
@@ -322,59 +267,172 @@ struct MeetingsPane: View {
         )
     }
 
-    private var idleCard: some View {
+    // MARK: - Session card
+    //
+    // One plate for the whole record → transcribe cycle. Ready is the recording
+    // card at rest: a grey dot where the live one pulses, the clock at zero, a
+    // flat meter, and Start Recording in the slot Stop & Transcribe will take.
+    // Starting a recording changes the card's contents in place rather than
+    // swapping one card for another, so the geometry never jumps and the eye
+    // stays where it was. Stopping freezes the meter and hands the clock to the
+    // transcription chunk counter in the same row.
+
+    private var isRecording: Bool { controller.state == .recording }
+    private var isTranscribing: Bool { controller.state == .transcribing }
+
+    private var sessionCard: some View {
         Plate {
-            HStack(spacing: Space.s5) {
-                Image(systemName: "mic.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(Palette.accent)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(Palette.accent.opacity(0.12)))
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Record a conversation")
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text("Keeps recording in the background while you work — or drop an audio or video file here.")
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    conversationShortcutHint
-                    if case .error(let message) = controller.state {
-                        VStack(alignment: .leading, spacing: Space.s3) {
-                            Text(message)
-                                .typo(.caption)
-                                .foregroundStyle(Palette.signalWarn)
-                                .fixedSize(horizontal: false, vertical: true)
-                            Button("Dismiss") { controller.dismissError() }
-                                .buttonStyle(.plain)
-                                .typo(.captionMedium)
-                                .foregroundStyle(Palette.accent)
-                        }
-                        .padding(.top, Space.s1)
-                    }
+            VStack(alignment: .leading, spacing: Space.s6) {
+                sessionHeader
+
+                // Faint and flat until recording starts; desaturates in place
+                // when it stops. The same freeze the dictation HUD uses.
+                LevelBars(
+                    samples: controller.levelHistory,
+                    tint: Palette.ink,
+                    isFrozen: !isRecording
+                )
+                .frame(height: 56)
+
+                sessionActions
+
+                if case .error(let message) = controller.state {
+                    sessionError(message)
                 }
-                Spacer(minLength: Space.s5)
-                // Start Recording and Upload File… live in the toolbar now, so
-                // they stay reachable in every state instead of vanishing with
-                // this card.
             }
         }
     }
 
-    /// One line under the idle caption. Background recording is meant to be
-    /// started and then left alone, so the shortcut that does it from another
-    /// app belongs here — and when there isn't one, the way to set it.
+    private var sessionHeader: some View {
+        HStack(spacing: Space.s5) {
+            if isTranscribing {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                SessionDot(isLive: isRecording)
+            }
+            Text(sessionTitle)
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+            if isTranscribing, controller.totalChunks > 1 {
+                Text("\(controller.transcribedChunks)/\(controller.totalChunks)")
+                    .typo(.mono)
+                    .foregroundStyle(Palette.inkFaint)
+                    .contentTransition(.numericText())
+            }
+            Spacer()
+            // The clock reads zero at rest, counts while recording, and holds
+            // the recording's length while it is transcribed.
+            Text(sessionClock)
+                .font(Typo.clockLarge)
+                .foregroundStyle(isRecording ? Palette.ink : Palette.inkFaint)
+                .contentTransition(.numericText())
+        }
+    }
+
+    private var sessionTitle: String {
+        switch controller.state {
+        case .recording: return "Recording"
+        case .transcribing: return "Transcribing…"
+        case .idle, .error, .importing: return "Ready"
+        }
+    }
+
+    private var sessionClock: String {
+        switch controller.state {
+        case .recording, .transcribing: return controller.elapsed.formattedClock
+        case .idle, .error, .importing: return TimeInterval(0).formattedClock
+        }
+    }
+
     @ViewBuilder
-    private var conversationShortcutHint: some View {
+    private var sessionActions: some View {
+        switch controller.state {
+        case .idle, .error:
+            HStack(spacing: Space.s5) {
+                CapsuleActionButton(
+                    title: "Start Recording",
+                    systemImage: "record.circle"
+                ) {
+                    Task { await controller.start() }
+                }
+                .help(startRecordingHelp)
+
+                CapsuleActionButton(
+                    title: "Upload File…",
+                    systemImage: "waveform.badge.plus",
+                    style: .secondary,
+                    tint: Palette.ink
+                ) {
+                    chooseAndImportFile()
+                }
+                .help("Transcribe an audio or video file already on this Mac")
+
+                Spacer(minLength: Space.s5)
+                conversationShortcutHint(verb: "from any app")
+            }
+        case .recording:
+            HStack(spacing: Space.s5) {
+                CapsuleActionButton(
+                    title: "Stop & Transcribe",
+                    systemImage: "stop.fill"
+                ) {
+                    Task { await controller.stop() }
+                }
+
+                CapsuleActionButton(
+                    title: "Cancel",
+                    style: .secondary,
+                    tint: Palette.ink
+                ) {
+                    Task { await controller.cancel() }
+                }
+
+                Spacer(minLength: Space.s5)
+                conversationShortcutHint(verb: "to stop")
+            }
+        case .transcribing:
+            Text(transcribingDetail)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                // Holds the capsule row's height so the card doesn't shrink
+                // for the few seconds this state lasts.
+                .frame(maxWidth: .infinity, minHeight: Space.s8, alignment: .leading)
+        case .importing:
+            EmptyView()
+        }
+    }
+
+    private func sessionError(_ message: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+            Text(message)
+                .typo(.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .fixedSize(horizontal: false, vertical: true)
+            Button("Dismiss") { controller.dismissError() }
+                .buttonStyle(.plain)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.accent)
+        }
+    }
+
+    /// The shortcut, at the trailing end of the action row. Background
+    /// recording is meant to be started and then left alone, so the key that
+    /// does it from another app sits next to the button that does it here —
+    /// and when there isn't one, the way to set it.
+    @ViewBuilder
+    private func conversationShortcutHint(verb: String) -> some View {
         if let binding = hotkeyStore.meetingBinding {
             HStack(spacing: Space.s3) {
-                Text("Press")
+                Text("or press")
                 KeyCap(keys: binding.displayKeys)
-                Text("from any app to start or stop.")
+                Text(verb)
             }
             .typo(.caption)
             .foregroundStyle(Palette.inkMuted)
-        } else {
+            .fixedSize()
+        } else if !isRecording {
             Button("Set a shortcut to start from any app") {
                 SettingsRouter.shared.pendingSection = .hotkey
             }
@@ -583,70 +641,6 @@ struct MeetingsPane: View {
         return type.map(isMedia) ?? false
     }
 
-    private var recordingCard: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s6) {
-                HStack(spacing: Space.s5) {
-                    RecordingDot()
-                    Text("Recording")
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Spacer()
-                    Text(controller.elapsed.formattedClock)
-                        .font(Typo.clockLarge)
-                        .foregroundStyle(Palette.ink)
-                        .contentTransition(.numericText())
-                }
-
-                LevelBars(samples: controller.levelHistory, tint: Palette.ink)
-                    .frame(height: 56)
-
-                HStack(spacing: Space.s5) {
-                    CapsuleActionButton(
-                        title: "Stop & Transcribe",
-                        systemImage: "stop.fill"
-                    ) {
-                        Task { await controller.stop() }
-                    }
-
-                    CapsuleActionButton(
-                        title: "Cancel",
-                        style: .secondary,
-                        tint: Palette.ink
-                    ) {
-                        Task { await controller.cancel() }
-                    }
-
-                    Spacer()
-                }
-            }
-        }
-    }
-
-    private var transcribingCard: some View {
-        Plate {
-            HStack(spacing: Space.s6) {
-                ProgressView()
-                    .controlSize(.small)
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Transcribing…")
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text(transcribingDetail)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                }
-                Spacer()
-                if controller.totalChunks > 1 {
-                    Text("\(controller.transcribedChunks)/\(controller.totalChunks)")
-                        .typo(.mono)
-                        .foregroundStyle(Palette.inkFaint)
-                        .contentTransition(.numericText())
-                }
-            }
-        }
-    }
-
     private var transcribingDetail: String {
         if controller.totalChunks > 1 {
             return "Processing a long recording in segments — this can take a moment."
@@ -741,23 +735,42 @@ struct MeetingsPane: View {
     }
 }
 
-/// Softly pulsing dot in `signalLive` — the standard "recording now"
-/// affordance. Under Reduce Motion it holds still at 0.85 opacity rather than
-/// looping forever.
-private struct RecordingDot: View {
+/// The session card's state dot. Live: softly pulsing `signalLive`, the
+/// standard "recording now" affordance. At rest: still, in `inkFaint`. One
+/// view for both so the swap animates in place with the rest of the card.
+/// Under Reduce Motion the live dot holds at 0.85 opacity instead of looping.
+private struct SessionDot: View {
+    let isLive: Bool
     @State private var on = false
     @Environment(\.motion) private var motion
 
     var body: some View {
         Circle()
-            .fill(Palette.signalLive)
+            .fill(isLive ? Palette.signalLive : Palette.inkFaint)
             .frame(width: 10, height: 10)
-            .opacity(motion.repeatsAllowed ? (on ? 1.0 : 0.35) : 0.85)
-            .onAppear {
-                guard motion.repeatsAllowed else { return }
-                withAnimation(.smooth(duration: 0.9).repeatForever(autoreverses: true)) {
-                    on = true
-                }
+            .opacity(liveOpacity)
+            .onAppear { syncPulse() }
+            .onChange(of: isLive) { _, _ in syncPulse() }
+    }
+
+    private var liveOpacity: Double {
+        guard isLive else { return 1 }
+        guard motion.repeatsAllowed else { return 0.85 }
+        return on ? 1.0 : 0.35
+    }
+
+    /// Starts the pulse when the dot goes live and parks it when it doesn't.
+    /// `on` has to return to false without animation so the next live flip
+    /// has a state change to animate — `repeatForever` on a no-op is no pulse.
+    private func syncPulse() {
+        if isLive && motion.repeatsAllowed {
+            withAnimation(.smooth(duration: 0.9).repeatForever(autoreverses: true)) {
+                on = true
             }
+        } else {
+            var still = Transaction()
+            still.disablesAnimations = true
+            withTransaction(still) { on = false }
+        }
     }
 }

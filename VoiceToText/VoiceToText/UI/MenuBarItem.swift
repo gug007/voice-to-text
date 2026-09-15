@@ -2,20 +2,23 @@ import AppKit
 import Observation
 import Symbols
 
-/// Status-bar item: opens the main window, starts/stops dictation, and doubles
-/// as the recording indicator. Optional on its own; mandatory while the Dock
-/// icon is hidden, since it's then the app's only visible affordance. Owned and
-/// driven solely by `AppPresenceController`, which decides when it's visible.
+/// Status-bar item: opens the main window, starts/stops dictation and
+/// conversation recording, and doubles as the recording indicator. Optional on
+/// its own; mandatory while the Dock icon is hidden, since it's then the app's
+/// only visible affordance. Owned and driven solely by `AppPresenceController`,
+/// which decides when it's visible.
 ///
-/// The glyph is an *instrument*, not a logo: every dictation state gets its own
-/// symbol, tint and animation, so preparing / recording / transcribing /
-/// reviewing / error are all distinguishable from outside the app. It renders
-/// into an `NSImageView` hosted in the status button rather than
-/// `button.image`, because symbol effects (`.variableColor`, `.pulse`,
-/// `.bounce`) and the `.replace.downUp` content transition exist on
+/// The glyph is an *instrument*, not a logo: every state gets its own symbol,
+/// tint and animation, so preparing / recording / transcribing / reviewing /
+/// error — dictation's and a conversation's alike — are all distinguishable
+/// from outside the app. That matters most for a conversation, which is
+/// normally started by shortcut from another app and has no other visible
+/// confirmation. It renders into an `NSImageView` hosted in the status button
+/// rather than `button.image`, because symbol effects (`.variableColor`,
+/// `.pulse`, `.bounce`) and the `.replace.downUp` content transition exist on
 /// `NSImageView` only — `NSButton` has no such API in the macOS 26 SDK.
 ///
-/// The elapsed clock lives in the **menu**, never in the status-item title. An
+/// The elapsed clocks live in the **menu**, never in the status-item title. An
 /// item whose title changes width every second forces AppKit to relayout the
 /// status bar on every tick, which visibly reflows every extra to its left.
 @MainActor
@@ -27,9 +30,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// What the glyph currently draws, so a redundant refresh doesn't restart a
     /// running animation (which reads as a stutter every time the HUD updates).
     private var renderedGlyph: Glyph?
-    /// Whether an observation chain for the dictation state is live. The chain
-    /// re-arms itself after every change, so it must only be started once.
-    private var isTrackingDictationState = false
+    /// Whether an observation chain for the two controllers' states is live. The
+    /// chain re-arms itself after every change, so it must only be started once.
+    private var isTrackingState = false
 
     /// The disabled "Recording · 1:23" row, retained while the menu is open so
     /// the clock can tick in place.
@@ -39,12 +42,18 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// CGEventTap, which — unlike a Carbon hotkey — still fires during menu
     /// tracking), and the row has to follow the state instead of freezing.
     private var dictationMenuItem: NSMenuItem?
+    /// The conversation's own "Conversation · 1:23" clock row.
+    private var conversationElapsedItem: NSMenuItem?
+    /// The conversation action row. Its shortcut is a Carbon hotkey, so it can't
+    /// fire during menu tracking — but a recording started earlier keeps
+    /// running, and its transcription can finish, while the menu is up.
+    private var conversationMenuItem: NSMenuItem?
     /// Whether the menu is currently tracking. `menuNeedsUpdate` and
     /// `menuWillOpen` have both already run by then and will not run again
     /// until the next open, so a state change arriving mid-tracking is the only
     /// thing that can keep the open menu honest.
     private var isMenuOpen = false
-    /// Drives that tick. A `Timer` on `.common` run-loop modes, because menu
+    /// Drives those ticks. A `Timer` on `.common` run-loop modes, because menu
     /// tracking runs the main loop in `NSEventTrackingRunLoopMode` and a plain
     /// default-mode timer would simply stop for as long as the menu is open.
     private var elapsedTimer: Timer?
@@ -69,13 +78,13 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
         let menu = NSMenu()
         menu.delegate = self
-        // Items are enabled/disabled from the live dictation state below;
+        // Items are enabled/disabled from the live controller states below;
         // automatic enabling would override that.
         menu.autoenablesItems = false
         item.menu = menu
         statusItem = item
         refreshGlyph(animated: false)
-        startTrackingDictationState()
+        startTrackingState()
     }
 
     private func remove() {
@@ -86,6 +95,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         renderedGlyph = nil
         elapsedItem = nil
         dictationMenuItem = nil
+        conversationElapsedItem = nil
+        conversationMenuItem = nil
         guard let statusItem else { return }
         NSStatusBar.system.removeStatusItem(statusItem)
         self.statusItem = nil
@@ -93,8 +104,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     // MARK: - Glyph
 
-    /// One row per dictation state. Symbol, tint and animation are derived
-    /// together so a state can never end up looking like a different one.
+    /// One row per state the status item can show. Symbol, tint and animation
+    /// are derived together so a state can never end up looking like a
+    /// different one.
     private enum Glyph: Equatable {
         case idle
         case preparing
@@ -102,26 +114,29 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         case transcribing
         case reviewing
         case error
+        case conversationRecording
+        case conversationTranscribing
 
         var symbol: String {
             switch self {
             case .idle, .recording: return "waveform"
             case .preparing: return "arrow.down.circle"
-            case .transcribing: return "waveform.badge.magnifyingglass"
+            case .transcribing, .conversationTranscribing: return "waveform.badge.magnifyingglass"
             case .reviewing: return "text.cursor"
             case .error: return "exclamationmark.triangle.fill"
+            case .conversationRecording: return "record.circle"
             }
         }
 
         /// nil = the system label colour, i.e. whatever the menu bar wants.
-        /// Only the two states that need to be readable across the room are
-        /// tinted; `reviewing` deliberately is not — the review HUD already
-        /// carries that state and the menu bar must not compete with it.
+        /// Only the states that need to be readable across the room are tinted;
+        /// `reviewing` deliberately is not — the review HUD already carries that
+        /// state and the menu bar must not compete with it.
         var tint: NSColor? {
             switch self {
-            case .recording: return Palette.signalLiveNS
+            case .recording, .conversationRecording: return Palette.signalLiveNS
             case .error: return Palette.signalWarnNS
-            case .idle, .preparing, .transcribing, .reviewing: return nil
+            case .idle, .preparing, .transcribing, .reviewing, .conversationTranscribing: return nil
             }
         }
 
@@ -129,7 +144,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             switch self {
             case .preparing: return .variableColorCumulative
             case .recording: return .variableColorIterative
-            case .transcribing: return .pulse
+            case .transcribing, .conversationRecording, .conversationTranscribing: return .pulse
             case .error: return .bounce
             case .idle, .reviewing: return .none
             }
@@ -144,6 +159,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             case .transcribing: return "VoiceToText — transcribing"
             case .reviewing: return "VoiceToText — reviewing transcript"
             case .error: return "VoiceToText — needs attention"
+            case .conversationRecording: return "VoiceToText — recording conversation"
+            case .conversationTranscribing: return "VoiceToText — transcribing conversation"
             }
         }
 
@@ -166,6 +183,22 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             case .error: self = .error
             }
         }
+
+        /// Dictation wins whenever it is doing anything: it's the foreground
+        /// interaction the user is standing there waiting on, while a
+        /// conversation runs in the background for an hour at a time.
+        init(dictation: DictationController.State, meeting: MeetingController.State) {
+            guard case .idle = dictation else {
+                self.init(dictation)
+                return
+            }
+            switch meeting {
+            case .recording: self = .conversationRecording
+            case .transcribing, .importing: self = .conversationTranscribing
+            case .error: self = .error
+            case .idle: self = .idle
+            }
+        }
     }
 
     /// Hosts the symbol in the status button. The button keeps drawing its own
@@ -186,12 +219,15 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         glyphView = view
     }
 
-    /// Swaps the glyph, tint and animation to match the live dictation state.
-    /// A no-op when nothing changed, so a repeated refresh can't restart a
-    /// running `.variableColor` cycle mid-stroke.
+    /// Swaps the glyph, tint and animation to match the live state. A no-op when
+    /// nothing changed, so a repeated refresh can't restart a running
+    /// `.variableColor` cycle mid-stroke.
     private func refreshGlyph(animated: Bool) {
         guard let button = statusItem?.button, let view = glyphView else { return }
-        let glyph = Glyph(DictationController.shared.state)
+        let glyph = Glyph(
+            dictation: DictationController.shared.state,
+            meeting: MeetingController.shared.state
+        )
         guard glyph != renderedGlyph else { return }
         let isFirstDraw = renderedGlyph == nil
         renderedGlyph = glyph
@@ -243,15 +279,16 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
     }
 
-    private func startTrackingDictationState() {
-        guard !isTrackingDictationState else { return }
-        isTrackingDictationState = true
-        trackNextDictationStateChange()
+    private func startTrackingState() {
+        guard !isTrackingState else { return }
+        isTrackingState = true
+        trackNextStateChange()
     }
 
-    private func trackNextDictationStateChange() {
+    private func trackNextStateChange() {
         withObservationTracking {
             _ = DictationController.shared.state
+            _ = MeetingController.shared.state
         } onChange: { [weak self] in
             // `guard let` first: an inner Task capturing the weak `self` *var*
             // is a concurrent capture of a mutable binding, which Swift 6 makes
@@ -262,30 +299,32 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             // onChange fires *before* the value is written, so read it back on
             // the next main-actor turn — and re-arm, since tracking is one-shot.
             Task { @MainActor in
-                self.handleDictationStateChange()
+                self.handleStateChange()
             }
         }
     }
 
-    private func handleDictationStateChange() {
+    private func handleStateChange() {
         guard statusItem != nil else {
-            isTrackingDictationState = false
+            isTrackingState = false
             return
         }
         refreshGlyph(animated: true)
         // The menu can be open across a state change (Stop Dictation is one
-        // click away from `.transcribing`, and the standalone-modifier hotkey
-        // fires straight through menu tracking); keep its rows honest.
-        refreshElapsedItem()
+        // click away from `.transcribing`, the standalone-modifier hotkey fires
+        // straight through menu tracking, and a conversation keeps recording or
+        // transcribing underneath); keep its rows honest.
+        refreshElapsedItems()
         if isMenuOpen {
             refreshDictationItem()
+            refreshConversationItem()
             // `menuWillOpen` already ran and won't run again, so a recording
             // that begins while the menu is up has to start its own ticker —
             // and one that ends has to stop it. `startElapsedTicker` does both:
             // it invalidates first and bails out when nothing is recording.
             startElapsedTicker()
         }
-        trackNextDictationStateChange()
+        trackNextStateChange()
     }
 
     // MARK: - Menu
@@ -294,6 +333,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.removeAllItems()
         elapsedItem = nil
         dictationMenuItem = nil
+        conversationElapsedItem = nil
+        conversationMenuItem = nil
 
         menu.addItem(item(
             title: "Open VoiceToText",
@@ -308,7 +349,6 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         elapsed.isEnabled = false
         menu.addItem(elapsed)
         elapsedItem = elapsed
-        refreshElapsedItem()
 
         let dictation = item(
             title: dictationItem.title,
@@ -319,6 +359,27 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         dictation.toolTip = "Or press \(HotkeyStore.shared.binding.displayKeys.joined()) from any app."
         menu.addItem(dictation)
         dictationMenuItem = dictation
+
+        let conversationElapsed = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        conversationElapsed.image = Self.menuIcon("record.circle")
+        conversationElapsed.isEnabled = false
+        menu.addItem(conversationElapsed)
+        conversationElapsedItem = conversationElapsed
+
+        let conversation = item(
+            title: conversationItem.title,
+            symbol: conversationItem.symbol,
+            action: #selector(toggleConversation)
+        )
+        conversation.isEnabled = conversationItem.isEnabled
+        // Only when there is one — the conversation shortcut is opt-in.
+        if let meetingBinding = HotkeyStore.shared.meetingBinding {
+            conversation.toolTip = "Or press \(meetingBinding.displayKeys.joined()) from any app."
+        }
+        menu.addItem(conversation)
+        conversationMenuItem = conversation
+
+        refreshElapsedItems()
 
         menu.addItem(.separator())
         let quit = item(title: "Quit VoiceToText", symbol: "power", action: #selector(quit))
@@ -369,6 +430,17 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         }
     }
 
+    /// The same, for the conversation row. Mirrors `MeetingHotkeyPolicy`: the
+    /// row is only enabled where a press would actually do something.
+    private var conversationItem: (title: String, symbol: String, isEnabled: Bool) {
+        switch MeetingController.shared.state {
+        case .idle, .error: return ("Start Conversation Recording", "record.circle", true)
+        case .recording: return ("Stop & Transcribe Conversation", "stop.circle.fill", true)
+        case .transcribing: return ("Transcribing Conversation…", "waveform.badge.magnifyingglass", false)
+        case .importing: return ("Transcribing File…", "waveform.badge.magnifyingglass", false)
+        }
+    }
+
     /// Rewrites the dictation row in place from the live state, for when it
     /// changes while the menu is already on screen. Same tuple that built the
     /// row, so title, icon and enablement still can't drift apart.
@@ -380,33 +452,60 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         dictationMenuItem.isEnabled = spec.isEnabled
     }
 
-    // MARK: - Elapsed clock
+    private func refreshConversationItem() {
+        guard let conversationMenuItem else { return }
+        let spec = conversationItem
+        conversationMenuItem.title = spec.title
+        conversationMenuItem.image = Self.menuIcon(spec.symbol)
+        conversationMenuItem.isEnabled = spec.isEnabled
+    }
 
-    /// Rewrites the clock row in place. Hidden outside `.recording`, so the menu
-    /// never carries a stale time.
-    private func refreshElapsedItem() {
-        guard let elapsedItem else { return }
-        guard let elapsed = DictationController.shared.recordingElapsedSeconds else {
-            elapsedItem.isHidden = true
+    // MARK: - Elapsed clocks
+
+    /// Rewrites both clock rows in place. Each is hidden outside its own
+    /// recording, so the menu never carries a stale time.
+    private func refreshElapsedItems() {
+        refreshClock(
+            elapsedItem,
+            prefix: "Recording",
+            seconds: DictationController.shared.recordingElapsedSeconds
+        )
+        refreshClock(
+            conversationElapsedItem,
+            prefix: "Conversation",
+            seconds: Self.conversationElapsedSeconds
+        )
+    }
+
+    private func refreshClock(_ menuItem: NSMenuItem?, prefix: String, seconds: TimeInterval?) {
+        guard let menuItem else { return }
+        guard let seconds else {
+            menuItem.isHidden = true
             return
         }
-        elapsedItem.isHidden = false
+        menuItem.isHidden = false
         // An attributed title: a disabled row's plain title is drawn dimmed,
-        // and the recording clock is the one thing in this menu that has to
-        // stay readable. SF Mono with monospaced digits so it doesn't jitter.
-        let title = NSMutableAttributedString(
-            string: "Recording · \(elapsed.formattedClock)",
+        // and a running clock is the one thing in this menu that has to stay
+        // readable. Monospaced digits so it doesn't jitter.
+        menuItem.attributedTitle = NSAttributedString(
+            string: "\(prefix) · \(seconds.formattedClock)",
             attributes: [
                 .font: NSFont.monospacedDigitSystemFont(ofSize: 13, weight: .medium),
                 .foregroundColor: Palette.signalLiveNS
             ]
         )
-        elapsedItem.attributedTitle = title
+    }
+
+    private static var conversationElapsedSeconds: TimeInterval? {
+        guard MeetingController.shared.state == .recording else { return nil }
+        return MeetingController.shared.elapsed
     }
 
     private func startElapsedTicker() {
         stopElapsedTicker()
-        guard DictationController.shared.recordingElapsedSeconds != nil else { return }
+        // Either clock running is enough to keep the ticker alive.
+        guard DictationController.shared.recordingElapsedSeconds != nil
+                || Self.conversationElapsedSeconds != nil else { return }
         // Target/action rather than the block form: the block is `@Sendable`,
         // and capturing this MainActor-isolated object in one is a Swift 6
         // concurrency error.
@@ -427,7 +526,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     }
 
     @objc private func tickElapsed() {
-        refreshElapsedItem()
+        refreshElapsedItems()
     }
 
     // MARK: - Actions
@@ -438,6 +537,10 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func toggleDictation() {
         DictationController.shared.toggle()
+    }
+
+    @objc private func toggleConversation() {
+        MeetingController.shared.handleHotkeyPress()
     }
 
     @objc private func quit() {

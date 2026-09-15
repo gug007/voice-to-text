@@ -117,48 +117,51 @@ struct PaneHeader: View {
 
 struct HotkeyPane: View {
     @Bindable private var store = HotkeyStore.shared
-    @State private var isRecording = false
+    @State private var capturing: CaptureTarget?
     @State private var monitor: Any?
     @State private var errorMessage: String?
     @State private var captureSession = HotkeyCaptureSession()
+
+    /// Which of the two shortcuts a live capture belongs to. Only one can be
+    /// capturing at a time — there is a single local event monitor.
+    private enum CaptureTarget {
+        case dictation
+        case meeting
+    }
 
     var body: some View {
         PaneScaffold {
             PaneHeader(
                 title: "Shortcut",
-                subtitle: "The keyboard shortcut to start and stop dictation."
+                subtitle: "Keyboard shortcuts for dictation and conversation recording."
             )
 
             Plate {
                 HStack(alignment: .center, spacing: Space.s6) {
                     VStack(alignment: .leading, spacing: Space.s2) {
-                        Text("Recording shortcut")
+                        Text("Dictation shortcut")
                             .typo(.headline)
                             .foregroundStyle(Palette.ink)
-                        Text(subtitle)
+                        Text(dictationSubtitle)
                             .typo(.caption)
                             .foregroundStyle(Palette.inkMuted)
                     }
                     Spacer()
-                    if isRecording {
-                        Text("Press a shortcut…")
-                            .typo(.captionMedium)
-                            .foregroundStyle(Palette.inkMuted)
-                            .padding(.horizontal, Space.s5)
-                            .padding(.vertical, Space.s3)
-                            .background(
-                                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                                    .strokeBorder(Palette.accent, lineWidth: 1.5)
-                            )
+                    if capturing == .dictation {
+                        capturePrompt
                     } else {
                         KeyCap(keys: store.binding.displayKeys)
                     }
-                    Button(isRecording ? "Cancel" : "Change") {
-                        if isRecording { stopRecording(cancelled: true) } else { startRecording() }
+                    Button(capturing == .dictation ? "Cancel" : "Change") {
+                        if capturing == .dictation {
+                            stopCapture(cancelled: true)
+                        } else {
+                            startCapture(.dictation)
+                        }
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    .keyboardShortcut(isRecording ? .cancelAction : .defaultAction)
+                    .keyboardShortcut(dictationButtonShortcut)
                 }
             }
 
@@ -184,6 +187,52 @@ struct HotkeyPane: View {
                 }
             }
 
+            Plate {
+                HStack(alignment: .center, spacing: Space.s6) {
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text("Conversation shortcut")
+                            .typo(.headline)
+                            .foregroundStyle(Palette.ink)
+                        Text(meetingSubtitle)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    Spacer()
+                    if capturing == .meeting {
+                        capturePrompt
+                    } else if let meetingBinding = store.meetingBinding {
+                        KeyCap(keys: meetingBinding.displayKeys)
+                    } else {
+                        Text("Not set")
+                            .typo(.captionMedium)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    Button(meetingButtonTitle) {
+                        if capturing == .meeting {
+                            stopCapture(cancelled: true)
+                        } else {
+                            startCapture(.meeting)
+                        }
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .keyboardShortcut(capturing == .meeting ? .cancelAction : nil)
+                    if store.meetingBinding != nil && capturing != .meeting {
+                        Button("Remove") { store.clearMeetingBinding() }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+                }
+            }
+
+            Plate {
+                SettingsToggleRow(
+                    title: "Esc cancels dictation",
+                    subtitle: "While recording or transcribing, Esc discards the dictation instead of reaching the app you're in. Turn off if you often press Esc in other apps while dictating.",
+                    isOn: escapeCancelsDictationBinding
+                )
+            }
+
             if let errorMessage {
                 Text(errorMessage)
                     .typo(.caption)
@@ -196,17 +245,48 @@ struct HotkeyPane: View {
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
-                Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧), a function key, or Right Control.")
+                Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧) or a function key. Right Control on its own works for dictation.")
                     .typo(.caption)
                     .foregroundStyle(Palette.inkFaint)
             }
         }
-        .onDisappear { stopRecording(cancelled: true) }
+        .onDisappear { stopCapture(cancelled: true) }
     }
 
-    private var subtitle: String {
-        if isRecording { return "Press a key combination, or Esc to cancel." }
+    /// The outline shown in place of the key caps while a capture is live.
+    private var capturePrompt: some View {
+        Text("Press a shortcut…")
+            .typo(.captionMedium)
+            .foregroundStyle(Palette.inkMuted)
+            .padding(.horizontal, Space.s5)
+            .padding(.vertical, Space.s3)
+            .background(
+                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+                    .strokeBorder(Palette.accent, lineWidth: 1.5)
+            )
+    }
+
+    private var dictationSubtitle: String {
+        if capturing == .dictation { return "Press a key combination, or Esc to cancel." }
         return "Used for hold-to-record or press-to-toggle dictation."
+    }
+
+    private var meetingSubtitle: String {
+        if capturing == .meeting { return "Press a key combination, or Esc to cancel." }
+        return "Starts or stops a conversation recording from any app."
+    }
+
+    private var meetingButtonTitle: String {
+        if capturing == .meeting { return "Cancel" }
+        return store.meetingBinding == nil ? "Set" : "Change"
+    }
+
+    /// Return cancels the live capture and otherwise confirms the dictation
+    /// change — but only while nothing is capturing, so the two Cancel buttons
+    /// can never both claim Esc or Return.
+    private var dictationButtonShortcut: KeyboardShortcut? {
+        if capturing == .dictation { return .cancelAction }
+        return capturing == nil ? .defaultAction : nil
     }
 
     private var modeSubtitle: String {
@@ -220,33 +300,74 @@ struct HotkeyPane: View {
         )
     }
 
-    private func startRecording() {
-        errorMessage = nil
-        captureSession.reset()
-        isRecording = true
+    private var escapeCancelsDictationBinding: Binding<Bool> {
+        Binding(
+            get: { store.escapeCancelsDictation },
+            set: { store.updateEscapeCancelsDictation($0) }
+        )
+    }
+
+    private func startCapture(_ target: CaptureTarget) {
+        // Starting one capture drops whichever was live: a single monitor.
+        stopCapture(cancelled: true)
+        captureSession = makeCaptureSession(for: target)
+        capturing = target
         monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { event in
             handle(event: event)
             return nil
         }
     }
 
+    /// Each capture refuses what the other owns: the conversation shortcut can't
+    /// take standalone Right Control (dictation's event tap owns it), and
+    /// neither can take the key already bound to the other.
+    private func makeCaptureSession(for target: CaptureTarget) -> HotkeyCaptureSession {
+        switch target {
+        case .dictation:
+            let reserved = store.meetingBinding.map {
+                [HotkeyCaptureSession.ReservedBinding(
+                    binding: $0,
+                    message: "That shortcut is already used for conversation recording."
+                )]
+            }
+            return HotkeyCaptureSession(
+                allowsStandaloneModifier: true,
+                reservedBindings: reserved ?? []
+            )
+        case .meeting:
+            return HotkeyCaptureSession(
+                allowsStandaloneModifier: false,
+                reservedBindings: [
+                    HotkeyCaptureSession.ReservedBinding(
+                        binding: store.binding,
+                        message: "That shortcut is already used for dictation."
+                    )
+                ]
+            )
+        }
+    }
+
     private func handle(event: NSEvent) {
+        guard let target = capturing else { return }
         switch captureSession.handle(event: event) {
         case .ignored, .pendingStandaloneModifier:
             break
         case .cancelled:
-            stopRecording(cancelled: true)
+            stopCapture(cancelled: true)
         case .captured(let candidate):
             errorMessage = nil
-            store.update(to: candidate)
-            stopRecording(cancelled: false)
+            switch target {
+            case .dictation: store.update(to: candidate)
+            case .meeting: store.updateMeetingBinding(to: candidate)
+            }
+            stopCapture(cancelled: false)
         case .rejected(let message):
             errorMessage = message
         }
     }
 
-    private func stopRecording(cancelled: Bool) {
-        isRecording = false
+    private func stopCapture(cancelled: Bool) {
+        capturing = nil
         captureSession.reset()
         if let m = monitor {
             NSEvent.removeMonitor(m)
@@ -256,7 +377,9 @@ struct HotkeyPane: View {
     }
 }
 
-private struct KeyCap: View {
+/// Internal, not private: the Conversations pane shows the conversation
+/// shortcut's keys with the same caps.
+struct KeyCap: View {
     let keys: [String]
     var body: some View {
         HStack(spacing: Space.s2) {
@@ -391,6 +514,7 @@ struct GeneralPane: View {
 
     private func retryHotkeyRegistration() {
         DictationController.shared.retryHotkeyRegistrationIfNeeded()
+        MeetingController.shared.retryHotkeyRegistrationIfNeeded()
         hotkeyRegistrationRefreshID += 1
     }
 
@@ -618,22 +742,30 @@ struct GeneralPane: View {
 
     private var hotkeyStatusItem: StatusItem {
         let isRegistered = HotkeyManager.shared.isRegistered
+        let meetingBinding = HotkeyStore.shared.meetingBinding
+        // A conversation shortcut that failed to register is invisible
+        // everywhere else — the app looks fine and the key just does nothing —
+        // so this one row speaks for both shortcuts.
+        let meetingIsRegistered = meetingBinding == nil || HotkeyManager.shared.isMeetingRegistered
+        let allRegistered = isRegistered && meetingIsRegistered
         let usesStandaloneRightControl = HotkeyStore.shared.binding == .rightControlBinding
-        let needsListenEventAccess = usesStandaloneRightControl && !listenEventGranted
+        let needsListenEventAccess = !isRegistered && usesStandaloneRightControl && !listenEventGranted
 
         return StatusItem(
             id: "hotkey",
-            level: isRegistered ? .ready : .warning,
+            level: allRegistered ? .ready : .warning,
             title: "Global hotkey",
             message: hotkeyStatusMessage(
                 isRegistered: isRegistered,
+                meetingIsRegistered: meetingIsRegistered,
+                meetingBinding: meetingBinding,
                 usesStandaloneRightControl: usesStandaloneRightControl,
                 listenEventGranted: listenEventGranted
             ),
-            actionTitle: isRegistered
+            actionTitle: allRegistered
                 ? nil
                 : (needsListenEventAccess ? PermissionCopy.openSettingsShortButton : "Retry"),
-            action: isRegistered ? nil : {
+            action: allRegistered ? nil : {
                 if needsListenEventAccess {
                     _ = ListenEventPermission.request()
                     refreshPermissions()
@@ -678,11 +810,20 @@ struct GeneralPane: View {
 
     private func hotkeyStatusMessage(
         isRegistered: Bool,
+        meetingIsRegistered: Bool,
+        meetingBinding: HotkeyBinding?,
         usesStandaloneRightControl: Bool,
         listenEventGranted: Bool
     ) -> String {
-        if isRegistered {
-            return "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
+        if isRegistered && meetingIsRegistered {
+            let dictation = "\(HotkeyStore.shared.binding.displayKeys.joined()) is registered and will work from any app."
+            guard let meetingBinding else { return dictation }
+            return "\(dictation) Conversation shortcut \(meetingBinding.displayKeys.joined()) is registered too."
+        }
+        // Dictation is fine, so the only thing that can have failed is the
+        // conversation shortcut — usually a key another app already owns.
+        if isRegistered, let meetingBinding {
+            return "Conversation shortcut \(meetingBinding.displayKeys.joined()) could not be registered. Retry, or choose a different key in Shortcut."
         }
         if usesStandaloneRightControl && !listenEventGranted {
             return PermissionCopy.inputMonitoringNeeded
@@ -739,11 +880,13 @@ struct GeneralPane: View {
             return "Click Start, or use \(hk) from any app."
         case .preparing: return "Downloading or loading the active model."
         case .recording:
+            // Esc only earns a mention while it actually cancels.
+            let esc = HotkeyStore.shared.escapeCancelsDictation ? "press Esc to cancel, " : ""
             switch HotkeyStore.shared.mode {
             case .hold:
-                return "Release the shortcut, press Esc to cancel, or click Stop."
+                return "Release the shortcut, \(esc)or click Stop."
             case .toggle:
-                return "Press the shortcut again, press Esc to cancel, or click Stop."
+                return "Press the shortcut again, \(esc)or click Stop."
             }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."

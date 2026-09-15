@@ -10,6 +10,7 @@ struct MeetingsPane: View {
     @Bindable private var store = RecordingHistoryStore.shared
     @Bindable private var player = HistoryAudioPlayer.shared
     @Bindable private var registry = ModelRegistry.shared
+    @Bindable private var hotkeyStore = HotkeyStore.shared
     @State private var screenGranted = ScreenCapturePermission.isGranted
     @State private var favoritesOnly = false
     /// True while a drag from Finder is hovering over the pane. Only turns into a
@@ -155,7 +156,7 @@ struct MeetingsPane: View {
             .buttonStyle(.borderedProminent)
             .tint(Palette.accent)
             .disabled(controller.isBusy)
-            .help("Record a conversation — your mic plus everything you hear")
+            .help(startRecordingHelp)
         }
     }
 
@@ -337,6 +338,7 @@ struct MeetingsPane: View {
                         .typo(.caption)
                         .foregroundStyle(Palette.inkMuted)
                         .fixedSize(horizontal: false, vertical: true)
+                    conversationShortcutHint
                     if case .error(let message) = controller.state {
                         VStack(alignment: .leading, spacing: Space.s3) {
                             Text(message)
@@ -357,6 +359,35 @@ struct MeetingsPane: View {
                 // this card.
             }
         }
+    }
+
+    /// One line under the idle caption. Background recording is meant to be
+    /// started and then left alone, so the shortcut that does it from another
+    /// app belongs here — and when there isn't one, the way to set it.
+    @ViewBuilder
+    private var conversationShortcutHint: some View {
+        if let binding = hotkeyStore.meetingBinding {
+            HStack(spacing: Space.s3) {
+                Text("Press")
+                KeyCap(keys: binding.displayKeys)
+                Text("from any app to start or stop.")
+            }
+            .typo(.caption)
+            .foregroundStyle(Palette.inkMuted)
+        } else {
+            Button("Set a shortcut to start from any app") {
+                SettingsRouter.shared.pendingSection = .hotkey
+            }
+            .buttonStyle(.plain)
+            .typo(.caption)
+            .foregroundStyle(Palette.accent)
+        }
+    }
+
+    private var startRecordingHelp: String {
+        let base = "Record a conversation — your mic plus everything you hear"
+        guard let binding = hotkeyStore.meetingBinding else { return base }
+        return "\(base) (\(binding.displayKeys.joined()) from any app)"
     }
 
     /// Lets the user pick an audio or video file, then transcribes it into the

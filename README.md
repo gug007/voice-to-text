@@ -13,7 +13,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Free with public source** — no app paywall, required VoiceToText account, or app telemetry; inspect the implementation on GitHub
 - **Local by default** — Parakeet runs on-device by default; local Whisper models are also available through WhisperKit
 - **Offline after setup** — downloaded local models can transcribe without sending audio to a speech provider
-- **Configurable recording shortcut** — press `⌥ Space` to toggle dictation, or switch to hold-to-record
+- **Configurable recording shortcut** — press `⌥ Space` to toggle dictation, or switch to hold-to-record. A second optional shortcut starts and stops conversation recording from any app.
 - **Built for Apple Silicon** — local Core ML speech engines are optimized for M1 and newer Macs
 - **Optional cloud models** — use OpenAI or ElevenLabs transcription with your own API key when you want a hosted or realtime engine
 - **Meeting recording** — capture microphone and system audio together, transcribe when you stop, and save the recording and transcript to local History

@@ -133,9 +133,20 @@ final class HotkeyStore {
 
     private let bindingStorageKey = "hotkey.binding.v1"
     private let modeStorageKey = "hotkey.recordingMode.v1"
+    private let meetingBindingStorageKey = "hotkey.meetingBinding.v1"
+    private let escapeCancelsDictationStorageKey = "hotkey.escapeCancelsDictation.v1"
     private(set) var binding: HotkeyBinding = .defaultBinding
     private(set) var mode: RecordingShortcutMode = .toggle
+    /// The conversation shortcut. Optional and off by default — conversation
+    /// recording is a deliberate, occasional act, so it gets no key until the
+    /// user asks for one.
+    private(set) var meetingBinding: HotkeyBinding?
+    /// Whether Esc discards an in-flight dictation. On by default. Off means Esc
+    /// is never swallowed while recording or transcribing, so it reaches the app
+    /// the user is actually working in.
+    private(set) var escapeCancelsDictation = true
     @ObservationIgnored var onChange: (() -> Void)?
+    @ObservationIgnored var onMeetingChange: (() -> Void)?
 
     private init() { load() }
 
@@ -156,6 +167,23 @@ final class HotkeyStore {
         update(to: .defaultBinding)
     }
 
+    func updateMeetingBinding(to new: HotkeyBinding?) {
+        guard new != meetingBinding else { return }
+        meetingBinding = new
+        saveMeetingBinding()
+        onMeetingChange?()
+    }
+
+    func clearMeetingBinding() {
+        updateMeetingBinding(to: nil)
+    }
+
+    func updateEscapeCancelsDictation(_ new: Bool) {
+        guard new != escapeCancelsDictation else { return }
+        escapeCancelsDictation = new
+        UserDefaults.standard.set(new, forKey: escapeCancelsDictationStorageKey)
+    }
+
     private func load() {
         if let data = UserDefaults.standard.data(forKey: bindingStorageKey),
            let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
@@ -165,6 +193,17 @@ final class HotkeyStore {
         if let rawMode = UserDefaults.standard.string(forKey: modeStorageKey),
            let decodedMode = RecordingShortcutMode(rawValue: rawMode) {
             mode = decodedMode
+        }
+
+        if let data = UserDefaults.standard.data(forKey: meetingBindingStorageKey),
+           let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
+            meetingBinding = decoded
+        }
+
+        // `object(forKey:)`, not `bool(forKey:)`: a missing key has to read as
+        // on, and `bool(forKey:)` would call it off for everyone upgrading.
+        if let stored = UserDefaults.standard.object(forKey: escapeCancelsDictationStorageKey) as? Bool {
+            escapeCancelsDictation = stored
         }
     }
 
@@ -176,5 +215,15 @@ final class HotkeyStore {
 
     private func saveMode() {
         UserDefaults.standard.set(mode.rawValue, forKey: modeStorageKey)
+    }
+
+    /// A cleared conversation shortcut removes the key outright rather than
+    /// storing a null, so "never set" and "set then removed" read identically.
+    private func saveMeetingBinding() {
+        guard let meetingBinding, let data = try? JSONEncoder().encode(meetingBinding) else {
+            UserDefaults.standard.removeObject(forKey: meetingBindingStorageKey)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: meetingBindingStorageKey)
     }
 }

@@ -501,8 +501,14 @@ final class DictationController {
         state = .idle
     }
 
+    /// The "Esc cancels dictation" setting is read once here, as the phase
+    /// begins: a change in Settings takes effect on the next dictation rather
+    /// than arming or tearing down a session-wide tap mid-recording. Off means
+    /// neither the tap nor the local monitor is installed, so Esc reaches the
+    /// frontmost app untouched — and there is nothing to fail, hence `true`.
     private func installRecordingEscMonitors() -> Bool {
         removeRecordingEscMonitors()
+        guard HotkeyStore.shared.escapeCancelsDictation else { return true }
         let escapeSwallowState = recordingEscapeSwallowState
         let allowedModifierFlags = recordingEscapeAllowedModifierFlags
         let recordingShortcutKeyCode = recordingEscapeShortcutKeyCode
@@ -639,8 +645,13 @@ final class DictationController {
     /// by this point and the panel deliberately isn't key here (the caret has to
     /// stay in the target app), so the global tap does the real work and the
     /// local monitor only covers the case where our app happens to be active.
+    /// Skipped entirely when "Esc cancels dictation" is off, read once as this
+    /// phase begins for the same reason `installRecordingEscMonitors` does.
+    /// Review and failure Esc handling is deliberately unaffected: the review
+    /// panel is our own key window, and the failure HUD has nothing to lose.
     private func installTranscribingEscMonitor() {
         removeTranscribingEscMonitor()
+        guard HotkeyStore.shared.escapeCancelsDictation else { return }
         transcribingEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             guard event.keyCode == UInt16(kVK_Escape) else { return event }
             Task { @MainActor in self?.cancelTranscription() }

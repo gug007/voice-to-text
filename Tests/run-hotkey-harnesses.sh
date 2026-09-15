@@ -14,6 +14,12 @@ swiftc -parse-as-library \
 "$TMPDIR/hotkey-behavior-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/MeetingHotkeyPolicy.swift \
+  Tests/MeetingHotkeyPolicyHarness.swift \
+  -o "$TMPDIR/meeting-hotkey-policy-harness"
+"$TMPDIR/meeting-hotkey-policy-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Dictation/RecordingStartGate.swift \
   Tests/RecordingStartGateHarness.swift \
   -o "$TMPDIR/recording-start-gate-harness"

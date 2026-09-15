@@ -14,17 +14,28 @@ private final class StandaloneModifierEventTapContext {
     }
 }
 
+/// Which global shortcut a Carbon registration belongs to. The raw value is the
+/// `EventHotKeyID.id` the OS hands back when a hotkey fires, so the shared
+/// Carbon event handler can tell the two apart.
+nonisolated enum HotkeySlot: UInt32 {
+    case dictation = 1
+    case meeting = 2
+}
+
 final class HotkeyManager {
     typealias Handler = (DictationHotkeyEvent) -> Void
 
-    private var hotKeyRef: EventHotKeyRef?
+    private var carbonHotKeyRefs: [HotkeySlot: EventHotKeyRef] = [:]
     private var eventHandler: EventHandlerRef?
     private var modifierEventTap: CFMachPort?
     private var modifierRunLoopSource: CFRunLoopSource?
     private var modifierEventTapContext: StandaloneModifierEventTapContext?
     private let signature: OSType = OSType(0x56544C48)
-    private let hotKeyId: UInt32 = 1
     private var handler: Handler?
+    private var meetingHandler: (() -> Void)?
+    /// The dictation binding as last registered, so the meeting slot can refuse
+    /// a colliding binding without reaching into the store.
+    private var dictationBinding: HotkeyBinding?
     private var registrationGeneration: UInt64 = 0
     private var standaloneModifierState = StandaloneModifierHotkeyState(
         modifierKeyCode: UInt16(kVK_RightControl)
@@ -32,6 +43,7 @@ final class HotkeyManager {
     private var standaloneActiveInputTracker = StandaloneActiveInputTracker()
     private var standaloneModifierPressWorkItem: DispatchWorkItem?
     private(set) var isRegistered = false
+    private(set) var isMeetingRegistered = false
     private let rightControlDeviceMask = UInt64(NX_DEVICERCTLKEYMASK)
     private let otherModifierDeviceMask = UInt64(
         NX_DEVICELCTLKEYMASK
@@ -57,22 +69,116 @@ final class HotkeyManager {
         return CFMachPortIsValid(modifierEventTap) && CGEvent.tapIsEnabled(tap: modifierEventTap)
     }
 
+    // MARK: - Dictation slot
+
     func register(binding: HotkeyBinding, handler: @escaping Handler) {
         unregister()
         registrationGeneration &+= 1
         self.handler = handler
+        dictationBinding = binding
 
         if binding.isStandaloneModifier {
             registerStandaloneModifier(binding: binding, generation: registrationGeneration)
-        } else {
-            registerCarbonHotkey(
-                keyCode: binding.keyCode,
-                modifiers: binding.modifiers
-            )
+        } else if registerCarbonHotkey(
+            slot: .dictation,
+            keyCode: binding.keyCode,
+            modifiers: binding.modifiers
+        ) {
+            isRegistered = true
+            AppLog.app.info("Hotkey registered: keyCode=\(binding.keyCode) modifiers=\(binding.modifiers)")
         }
     }
 
-    private func registerCarbonHotkey(keyCode: UInt32, modifiers: UInt32) {
+    func unregister() {
+        let generation = registrationGeneration
+        unregisterCarbonHotkey(slot: .dictation)
+        if let modifierRunLoopSource {
+            CFRunLoopRemoveSource(CFRunLoopGetMain(), modifierRunLoopSource, .commonModes)
+            self.modifierRunLoopSource = nil
+        }
+        if let modifierEventTap {
+            CFMachPortInvalidate(modifierEventTap)
+            self.modifierEventTap = nil
+        }
+        modifierEventTapContext = nil
+        standaloneActiveInputTracker.reset()
+        applyStandaloneModifierEffects(standaloneModifierState.reset(), generation: generation)
+        standaloneModifierPressWorkItem?.cancel()
+        standaloneModifierPressWorkItem = nil
+        registrationGeneration &+= 1
+        handler = nil
+        dictationBinding = nil
+        isRegistered = false
+    }
+
+    // MARK: - Meeting slot
+
+    /// Registers the conversation shortcut. Carbon-only by design: the
+    /// standalone-modifier path owns a process-wide CGEvent tap and a single
+    /// press/release state machine, both of which belong to dictation.
+    func registerMeeting(binding: HotkeyBinding, handler: @escaping () -> Void) {
+        unregisterMeeting()
+
+        guard !binding.isStandaloneModifier else {
+            AppLog.app.error("Conversation hotkey can't be a standalone modifier; Right Control is reserved for dictation")
+            return
+        }
+        guard binding != dictationBinding else {
+            AppLog.app.error("Conversation hotkey matches the dictation hotkey; refusing to register it")
+            return
+        }
+        guard registerCarbonHotkey(
+            slot: .meeting,
+            keyCode: binding.keyCode,
+            modifiers: binding.modifiers
+        ) else { return }
+
+        meetingHandler = handler
+        isMeetingRegistered = true
+        AppLog.app.info("Conversation hotkey registered: keyCode=\(binding.keyCode) modifiers=\(binding.modifiers)")
+    }
+
+    func unregisterMeeting() {
+        unregisterCarbonHotkey(slot: .meeting)
+        meetingHandler = nil
+        isMeetingRegistered = false
+    }
+
+    // MARK: - Carbon plumbing
+
+    private func registerCarbonHotkey(slot: HotkeySlot, keyCode: UInt32, modifiers: UInt32) -> Bool {
+        guard installCarbonEventHandlerIfNeeded() else { return false }
+
+        var ref: EventHotKeyRef?
+        let hotKeyId = EventHotKeyID(signature: signature, id: slot.rawValue)
+        let registerStatus = RegisterEventHotKey(
+            keyCode,
+            modifiers,
+            hotKeyId,
+            GetApplicationEventTarget(),
+            0,
+            &ref
+        )
+
+        guard registerStatus == noErr, let ref else {
+            AppLog.app.error("RegisterEventHotKey failed with status \(registerStatus)")
+            return false
+        }
+        carbonHotKeyRefs[slot] = ref
+        return true
+    }
+
+    private func unregisterCarbonHotkey(slot: HotkeySlot) {
+        guard let ref = carbonHotKeyRefs.removeValue(forKey: slot) else { return }
+        UnregisterEventHotKey(ref)
+    }
+
+    /// Installed once and kept for the app's lifetime. Both slots are delivered
+    /// through this one handler, so tearing it down when either unregisters
+    /// would silently deafen the other.
+    private func installCarbonEventHandlerIfNeeded() -> Bool {
+        guard eventHandler == nil else { return true }
+
         let eventTypes = [
             EventTypeSpec(
                 eventClass: OSType(kEventClassKeyboard),
@@ -103,26 +209,51 @@ final class HotkeyManager {
 
         guard installStatus == noErr else {
             AppLog.app.error("InstallEventHandler failed with status \(installStatus)")
-            return
+            eventHandler = nil
+            return false
         }
+        return true
+    }
 
-        let hotKeyId = EventHotKeyID(signature: signature, id: self.hotKeyId)
-        let registerStatus = RegisterEventHotKey(
-            keyCode,
-            modifiers,
-            hotKeyId,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
+    private func handleCarbonEvent(_ event: EventRef) {
+        // With two hotkeys sharing one handler, the fired id is the only thing
+        // that says which shortcut the user pressed.
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
         )
+        guard status == noErr,
+              hotKeyID.signature == signature,
+              let slot = HotkeySlot(rawValue: hotKeyID.id) else { return }
 
-        if registerStatus == noErr {
-            isRegistered = true
-            AppLog.app.info("Hotkey registered: keyCode=\(keyCode) modifiers=\(modifiers)")
-        } else {
-            AppLog.app.error("RegisterEventHotKey failed with status \(registerStatus)")
+        let eventKind = GetEventKind(event)
+        switch slot {
+        case .dictation:
+            switch eventKind {
+            case UInt32(kEventHotKeyPressed):
+                AppLog.app.info("Hotkey pressed")
+                handler?(.pressed)
+            case UInt32(kEventHotKeyReleased):
+                AppLog.app.info("Hotkey released")
+                handler?(.released)
+            default:
+                break
+            }
+        case .meeting:
+            // Press-only: conversations have no hold mode, so a release is noise.
+            guard eventKind == UInt32(kEventHotKeyPressed) else { return }
+            AppLog.app.info("Conversation hotkey pressed")
+            meetingHandler?()
         }
     }
+
+    // MARK: - Standalone modifier (dictation only)
 
     private func registerStandaloneModifier(binding: HotkeyBinding, generation: UInt64) {
         guard binding == .rightControlBinding else { return }
@@ -292,47 +423,5 @@ final class HotkeyManager {
 
     private func isCurrentRegistration(_ generation: UInt64) -> Bool {
         isRegistered && registrationGeneration == generation
-    }
-
-    private func handleCarbonEvent(_ event: EventRef) {
-        let eventKind = GetEventKind(event)
-        switch eventKind {
-        case UInt32(kEventHotKeyPressed):
-            AppLog.app.info("Hotkey pressed")
-            handler?(.pressed)
-        case UInt32(kEventHotKeyReleased):
-            AppLog.app.info("Hotkey released")
-            handler?(.released)
-        default:
-            break
-        }
-    }
-
-    func unregister() {
-        let generation = registrationGeneration
-        if let hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
-            self.hotKeyRef = nil
-        }
-        if let eventHandler {
-            RemoveEventHandler(eventHandler)
-            self.eventHandler = nil
-        }
-        if let modifierRunLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetMain(), modifierRunLoopSource, .commonModes)
-            self.modifierRunLoopSource = nil
-        }
-        if let modifierEventTap {
-            CFMachPortInvalidate(modifierEventTap)
-            self.modifierEventTap = nil
-        }
-        modifierEventTapContext = nil
-        standaloneActiveInputTracker.reset()
-        applyStandaloneModifierEffects(standaloneModifierState.reset(), generation: generation)
-        standaloneModifierPressWorkItem?.cancel()
-        standaloneModifierPressWorkItem = nil
-        registrationGeneration &+= 1
-        handler = nil
-        isRegistered = false
     }
 }

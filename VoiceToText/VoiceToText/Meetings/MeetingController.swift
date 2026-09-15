@@ -68,6 +68,66 @@ final class MeetingController {
         }
     }
 
+    // MARK: - Conversation shortcut
+
+    /// Registers the optional conversation shortcut and keeps it in step with
+    /// the store. Mirrors `DictationController.installHotkey()`. Call once at
+    /// launch — a nil binding (the default) simply registers nothing.
+    func installHotkey() {
+        registerCurrentHotkey()
+        HotkeyStore.shared.onMeetingChange = { [weak self] in
+            Task { @MainActor in self?.registerCurrentHotkey() }
+        }
+    }
+
+    func retryHotkeyRegistrationIfNeeded() {
+        guard HotkeyStore.shared.meetingBinding != nil,
+              !HotkeyManager.shared.isMeetingRegistered else { return }
+        registerCurrentHotkey()
+    }
+
+    private func registerCurrentHotkey() {
+        guard let binding = HotkeyStore.shared.meetingBinding else {
+            HotkeyManager.shared.unregisterMeeting()
+            return
+        }
+        HotkeyManager.shared.registerMeeting(binding: binding) { [weak self] in
+            Task { @MainActor in self?.handleHotkeyPress() }
+        }
+    }
+
+    var hotkeyState: MeetingHotkeyState {
+        if transitioning { return .busy }
+        switch state {
+        case .idle, .error: return .idle
+        case .recording: return .recording
+        case .transcribing, .importing: return .busy
+        }
+    }
+
+    /// One press of the conversation shortcut (or of the menu bar's matching
+    /// row), routed through the same policy so the two can't diverge.
+    func handleHotkeyPress() {
+        switch MeetingHotkeyPolicy.action(state: hotkeyState) {
+        case .start:
+            AppLog.audio.info("Conversation shortcut: starting recording")
+            Task { @MainActor in
+                await start()
+                // A start can fail on a permission or recorder error, and the
+                // user is in another app with nothing but the menu bar glyph to
+                // go on. Surface the pane, where the error card explains it.
+                if case .error = state {
+                    WindowOpener.shared.showMain(section: .meetings)
+                }
+            }
+        case .stopAndTranscribe:
+            AppLog.audio.info("Conversation shortcut: stopping and transcribing")
+            Task { await stop() }
+        case .none:
+            AppLog.audio.info("Conversation shortcut ignored while busy")
+        }
+    }
+
     // MARK: - Start
 
     func start() async {

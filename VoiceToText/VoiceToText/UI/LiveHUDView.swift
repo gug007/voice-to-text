@@ -374,7 +374,7 @@ private struct HUDControlRow: View {
                     HUDClock(seconds: state.elapsedSeconds)
                 }
                 Spacer(minLength: Space.s4)
-                cancelButton(title: "Cancel")
+                cancelButton(title: "Cancel", hint: escCancelHint)
                 primaryButton(title: "Finish", hint: finishHint) { state.onStop?() }
 
             case .transcribing:
@@ -387,8 +387,9 @@ private struct HUDControlRow: View {
                 Spacer(minLength: Space.s4)
                 // Finish is gone — there is nothing left to finish — but a
                 // hung cloud request has to have a way out, so Cancel stays
-                // exactly where recording left it and keeps its `esc` hint.
-                cancelButton(title: "Cancel")
+                // exactly where recording left it, with the same `esc` hint
+                // recording showed.
+                cancelButton(title: "Cancel", hint: escCancelHint)
 
             case .reviewing:
                 cancelButton(title: "Cancel")
@@ -428,9 +429,17 @@ private struct HUDControlRow: View {
         .animation(motion.layout, value: state.actionRevertStack.count)
     }
 
-    private func cancelButton(title: String) -> some View {
-        HUDButton(title: title, hint: "esc", role: .secondary) { state.onCancel?() }
+    private func cancelButton(title: String, hint: String? = "esc") -> some View {
+        HUDButton(title: title, hint: hint, role: .secondary) { state.onCancel?() }
             .matchedGeometryEffect(id: "hud.cancel", in: namespace)
+    }
+
+    /// Cancel promises `esc` only where Esc really cancels. With "Esc cancels
+    /// dictation" off, recording and transcribing stop swallowing Esc, so the
+    /// button must not advertise it — the review panel and the failure HUD are
+    /// unaffected and keep theirs.
+    private var escCancelHint: String? {
+        HotkeyStore.shared.escapeCancelsDictation ? "esc" : nil
     }
 
     private func primaryButton(

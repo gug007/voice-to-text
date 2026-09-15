@@ -52,7 +52,146 @@ struct HotkeyCaptureHarness {
         try existingLeftControlSuppressesStandaloneRightControlCapture()
         try capturesRightControlReleaseEvenWhenAnotherControlKeyIsDown()
         try escapeCancelsCapture()
+        try conversationCaptureRefusesTheDictationShortcut()
+        try conversationCaptureRefusesStandaloneRightControl()
+        try bareKeyMessageDropsRightControlForTheConversationCapture()
+        try dictationCaptureRefusesTheConversationShortcut()
         print("Hotkey capture harness passed")
+    }
+
+    // MARK: - Two shortcuts
+
+    private static let dictationBinding = HotkeyBinding(
+        keyCode: UInt32(kVK_Space),
+        modifiers: UInt32(optionKey),
+        keyLabel: "Space"
+    )
+
+    private static let conversationBinding = HotkeyBinding(
+        keyCode: UInt32(kVK_ANSI_R),
+        modifiers: UInt32(optionKey | shiftKey),
+        keyLabel: "R"
+    )
+
+    /// How `HotkeyPane` configures the capture for the conversation shortcut.
+    private static func conversationSession() -> HotkeyCaptureSession {
+        HotkeyCaptureSession(
+            allowsStandaloneModifier: false,
+            reservedBindings: [
+                HotkeyCaptureSession.ReservedBinding(
+                    binding: dictationBinding,
+                    message: "That shortcut is already used for dictation."
+                )
+            ]
+        )
+    }
+
+    private static func conversationCaptureRefusesTheDictationShortcut() throws {
+        var session = conversationSession()
+
+        let optionSpace = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_Space,
+            modifiers: .option,
+            characters: " "
+        )
+        try expect(
+            session.handle(event: optionSpace) == .rejected("That shortcut is already used for dictation."),
+            "a combination already bound to dictation is refused"
+        )
+
+        let optionShiftR = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_ANSI_R,
+            modifiers: [.option, .shift],
+            characters: "r"
+        )
+        try expect(
+            session.handle(event: optionShiftR) == .captured(conversationBinding),
+            "the capture stays open after a rejection and takes the next free combination"
+        )
+    }
+
+    private static func conversationCaptureRefusesStandaloneRightControl() throws {
+        var session = conversationSession()
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: rightControlModifierFlags
+        )
+        try expect(
+            session.handle(event: rightControlDown)
+                == .rejected(HotkeyCaptureSession.standaloneModifierReservedMessage),
+            "Right Control is refused on the press when the capture can't use it"
+        )
+
+        let rightControlUp = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: []
+        )
+        try expect(
+            session.handle(event: rightControlUp) == .ignored,
+            "the matching release leaves no pending standalone capture behind"
+        )
+    }
+
+    private static func bareKeyMessageDropsRightControlForTheConversationCapture() throws {
+        let bareR = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_ANSI_R,
+            modifiers: [],
+            characters: "r"
+        )
+
+        var conversation = conversationSession()
+        try expect(
+            conversation.handle(event: bareR)
+                == .rejected("Add at least one modifier (⌘ ⌥ ⌃ ⇧) or pick a function key."),
+            "the conversation capture never offers Right Control"
+        )
+
+        var dictation = HotkeyCaptureSession()
+        try expect(
+            dictation.handle(event: bareR)
+                == .rejected("Add at least one modifier (⌘ ⌥ ⌃ ⇧), pick a function key, or press Right Control."),
+            "the dictation capture still offers Right Control"
+        )
+    }
+
+    private static func dictationCaptureRefusesTheConversationShortcut() throws {
+        var session = HotkeyCaptureSession(
+            allowsStandaloneModifier: true,
+            reservedBindings: [
+                HotkeyCaptureSession.ReservedBinding(
+                    binding: conversationBinding,
+                    message: "That shortcut is already used for conversation recording."
+                )
+            ]
+        )
+
+        let optionShiftR = try keyEvent(
+            type: .keyDown,
+            keyCode: kVK_ANSI_R,
+            modifiers: [.option, .shift],
+            characters: "r"
+        )
+        try expect(
+            session.handle(event: optionShiftR)
+                == .rejected("That shortcut is already used for conversation recording."),
+            "the dictation capture refuses the conversation shortcut"
+        )
+
+        let rightControlDown = try keyEvent(
+            type: .flagsChanged,
+            keyCode: kVK_RightControl,
+            modifiers: rightControlModifierFlags
+        )
+        try expect(
+            session.handle(event: rightControlDown) == .pendingStandaloneModifier,
+            "the dictation capture still accepts Right Control"
+        )
     }
 
     private static func capturesRightControlAsStandaloneOnlyOnRelease() throws {

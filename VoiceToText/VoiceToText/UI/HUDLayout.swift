@@ -84,12 +84,20 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     let hasBanner: Bool
     /// This session came out of a review (Resume), so it keeps the review width.
     let resumedSession: Bool
+    /// The failed take captured some audio, so the card says how much instead
+    /// of claiming there is nothing to review. It does not imply the samples
+    /// were retained — usually they were not.
+    let hasSalvagedAudio: Bool
+    /// How much, for the card to name.
+    let salvagedSeconds: Double
 
     @MainActor
     init(state: LiveHUDState) {
         mode = state.mode
         showsLiveText = state.showsLiveText
         showsChips = state.reviewShowsActions
+        hasSalvagedAudio = state.salvagedSampleCount > 0
+        salvagedSeconds = Double(state.salvagedSampleCount) / AudioConfig.targetSampleRate
         hasBanner = switch state.mode {
         case .reviewing, .resumeRecording: state.reviewBanner != nil
         case .failed: true
@@ -149,6 +157,10 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         mode == .reviewing
     }
 
+    /// One slot on the failure card, filled either by the empty state or by
+    /// what the take managed to keep — `hasSalvagedAudio` picks which. Same
+    /// absorbed height either way, so the control row's bottom edge does not
+    /// move.
     var showsEmptyState: Bool {
         mode == .failed
     }

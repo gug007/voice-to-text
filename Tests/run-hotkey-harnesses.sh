@@ -146,3 +146,9 @@ swiftc -parse-as-library \
   Tests/AudioChunkReaderHarness.swift \
   -o "$TMPDIR/audio-chunk-reader-harness"
 "$TMPDIR/audio-chunk-reader-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/AudioConfigChangePolicy.swift \
+  Tests/AudioConfigChangePolicyHarness.swift \
+  -o "$TMPDIR/audio-config-change-policy-harness"
+"$TMPDIR/audio-config-change-policy-harness"

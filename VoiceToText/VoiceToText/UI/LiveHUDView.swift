@@ -142,7 +142,9 @@ private struct HUDCard: View {
             }
 
             if layout.showsEmptyState {
-                Text("Nothing to review.")
+                Text(layout.hasSalvagedAudio
+                     ? "\(Self.capturedDuration(layout.salvagedSeconds)) captured."
+                     : "Nothing to review.")
                     .typo(.body)
                     .foregroundStyle(Palette.inkMuted)
                     // Sized to absorb the card's slack, so the control row still
@@ -160,6 +162,15 @@ private struct HUDCard: View {
             HUDControlRow(state: state, layout: layout, namespace: hudNamespace)
                 .frame(height: HUDMetrics.controlRowHeight)
         }
+    }
+
+    /// Tenths below a minute, where the difference between 0.3s and 8.6s is
+    /// the whole point; the clock format above it, because "180.0s captured."
+    /// is a number to decode rather than a duration to read. This line shows
+    /// under every failure card, not just an interrupted one — including an
+    /// ordinary long take that tripped the speech gate.
+    private static func capturedDuration(_ seconds: Double) -> String {
+        seconds < 60 ? String(format: "%.1fs", seconds) : seconds.formattedClock
     }
 
     // MARK: Banner

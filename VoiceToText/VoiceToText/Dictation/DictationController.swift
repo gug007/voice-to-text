@@ -114,6 +114,18 @@ final class DictationController {
     /// reads as a dead hotkey — which is exactly what a first-run 470MB download
     /// used to look like.
     private static let preparingRevealDelay: Duration = .milliseconds(250)
+    /// How much audio a take may lose to mid-recording restarts before the
+    /// review card says so.
+    ///
+    /// Measured restarts run 64–2240 ms. The cheap in-place re-wire lands in
+    /// ~330 ms, which costs at most a syllable and is inaudible as a splice;
+    /// the fallback rebuild took 2240 ms, which reliably swallows whole words.
+    /// At ordinary speech rates a second is two or three words — the point at
+    /// which the two halves stop sounding clipped and start joining into a
+    /// fluent sentence that is simply wrong. Below it the app stays quiet: a
+    /// Bluetooth take renegotiates on essentially every recording, and a
+    /// banner that fires every time is a banner nobody reads.
+    private static let interruptionBannerThreshold: TimeInterval = 1.0
     private static let preparingProgressInterval: Duration = .milliseconds(200)
     private var preparingEscMonitor: Any?
     private var transcribingEscMonitor: Any?
@@ -133,6 +145,13 @@ final class DictationController {
     @ObservationIgnored
     private let recordingEscapeSwallowState = RecordingEscapeSwallowState()
     private var recordingStartGate = RecordingStartGate()
+    /// Identifies the recording a stop belongs to. `stopAndTranscribe` leaves
+    /// `state == .recording` across `flushAndStop`, which can suspend for the
+    /// recorder's full 5 s stop timeout when CoreAudio wedges — long enough
+    /// for the user to give up, start again, and have a stale stop resume and
+    /// take the new take's outcome.
+    @ObservationIgnored
+    private var takeRunID: UInt64 = 0
     private var standaloneModifierEventCoordinator = StandaloneModifierEventCoordinator()
     private var resumeContext: ResumeContext?
     /// Audio kept around after a recoverable transcription failure so the
@@ -142,6 +161,30 @@ final class DictationController {
     /// success, dismissal, paste, review cancel, or when a new recording
     /// starts.
     private var lastFailedSamples: [Float]?
+
+    /// A note the next review card must carry, set by a path that ended the
+    /// recording early. A take cut short by a device change still produces a
+    /// perfectly normal-looking transcript, and a user who is not told it was
+    /// cut short will paste it believing it is complete. Kept as a field rather
+    /// than threaded through `runTranscriptionPipeline`, which has no business
+    /// knowing why its samples stop where they do.
+    ///
+    /// Setting it also forces the review card for that take, review-before-paste
+    /// or not: a notice nobody is shown is not a notice.
+    ///
+    /// It belongs to the take, not to one card or one attempt: a Resume whose
+    /// transcription fails restores the *prior* transcript, and that card must
+    /// neither display this note nor destroy it, or the Retry that finally
+    /// produces the take's text loses the warning for good. Cleared where the
+    /// take itself ends — a new recording, a dismissal, a cancelled review.
+    private var pendingReviewBanner: String?
+
+    /// The note this take owes its review, consumed as that review is shown.
+    /// Called only where the card is showing *this take's* transcript.
+    private func takeReviewBanner() -> String? {
+        defer { pendingReviewBanner = nil }
+        return pendingReviewBanner
+    }
 
     /// In-flight AI action transform on the review text. Cancelled whenever
     /// the review session ends (paste, cancel, resume) so a slow response
@@ -429,11 +472,7 @@ final class DictationController {
 
     private func stopRecording(cancelledByEscape: Bool) {
         standaloneModifierEventCoordinator.reset()
-        recordingStartGate.reset()
-        stopElapsedTicker()
-        if !cancelledByEscape {
-            removeRecordingEscMonitors()
-        }
+        endRecordingPhase(removeEscMonitors: !cancelledByEscape)
         // Fire and forget: the UI must return to idle immediately, and the
         // engine teardown is blocking CoreAudio work with its own timeout.
         Task { _ = await recorder.stop() }
@@ -468,6 +507,7 @@ final class DictationController {
         cancelReviewAction()
         removeReviewEscMonitor()
         lastFailedSamples = nil
+        pendingReviewBanner = nil
         // The user discarded this dictation — pull its takes back out of History.
         discardPendingHistory()
         LiveHUDPanel.shared.hide()
@@ -495,6 +535,7 @@ final class DictationController {
         AppLog.dictation.info("Failure HUD dismissed")
         removeFailureEscMonitor()
         lastFailedSamples = nil
+        pendingReviewBanner = nil
         // Safety net: a discarded session shouldn't leave takes behind.
         discardPendingHistory()
         LiveHUDPanel.shared.hide()
@@ -844,6 +885,7 @@ final class DictationController {
         guard recordingStartGate.accepts(startID) else { return }
         removeFailureEscMonitor()
         lastFailedSamples = nil
+        pendingReviewBanner = nil
         // A fresh dictation (not a Resume) starts a new review session: forget
         // any uncommitted history ids left over from a prior session so they
         // aren't retracted by this one's Cancel. (Resume keeps accumulating.)
@@ -900,8 +942,8 @@ final class DictationController {
 
         do {
             guard recordingStartGate.accepts(startID) else { return }
-            recorder.onConfigurationChange = { [weak self] in
-                self?.handleAudioConfigurationChange()
+            recorder.onConfigurationChange = { [weak self] samples in
+                Task { await self?.handleAudioConfigurationChange(salvagedSamples: samples) }
             }
             recorder.onLevel = { level in
                 LiveHUDPanel.shared.setLevel(level)
@@ -942,6 +984,7 @@ final class DictationController {
                 return
             }
             state = .recording
+            takeRunID &+= 1
             // Before the recording card and its own Esc tap go up: the preparing
             // card hands over to them, and two session taps must never coexist.
             endPreparingPhase()
@@ -976,7 +1019,7 @@ final class DictationController {
                 return
             }
             startElapsedTicker(from: start)
-            AppLog.dictation.info("startRecording: recording started")
+            AppLog.dictation.notice("startRecording: recording started")
         } catch {
             recordingStartGate.finish(startID)
             cancelStreamingSession()
@@ -1192,15 +1235,132 @@ final class DictationController {
         transcribingWatchdog = nil
     }
 
-    private func handleAudioConfigurationChange() {
-        guard state == .recording else { return }
-        AppLog.dictation.warning("Audio configuration changed mid-recording; bailing out")
+    /// A device change the recorder could not restart capture through. The
+    /// benign ones — a Bluetooth mic switching into its voice profile, which is
+    /// most of them — never reach here; the recorder re-wires and the take
+    /// carries on. This is the genuinely fatal remainder, and it arrives
+    /// carrying everything that was captured before the device went.
+    private func handleAudioConfigurationChange(salvagedSamples samples: [Float]) async {
+        let seconds = Double(samples.count) / AudioConfig.targetSampleRate
+        AppLog.dictation.warning("Audio configuration change ended the take; salvaged \(samples.count) samples (\(seconds, format: .fixed(precision: 2))s)")
+        guard state == .recording else {
+            // A concurrent Stop reached the controller first. Only one of the
+            // two drained the buffer, and if it was us we are holding the only
+            // copy — returning here is how a long take became "Recording too
+            // short" with nothing to retry.
+            handOffLateSamples(samples, note: "Microphone disconnected — the recording stopped early.")
+            return
+        }
+        // Cleared here and nowhere else on this path. `endRecordingPhase`
+        // leaves the latch alone because on a *normal* stop the user's pending
+        // key release is what ends the take — but this take is already over,
+        // so the release has nothing left to stop and would instead replay as
+        // a fresh press into whatever card the salvage puts up.
         standaloneModifierEventCoordinator.reset()
+        endRecordingPhase()
+
+        switch RecordingSalvage.outcome(
+            sampleCount: samples.count,
+            minTranscribeSamples: DictationConfig.minTranscribeSamples
+        ) {
+        case .transcribe:
+            // Deliberately not `cancelStreamingSession()`: the pipeline's own
+            // branch detaches the stream and calls `finishStream()`, which
+            // returns the server's transcript of everything fed before the
+            // change — strictly better than re-transcribing a buffer that
+            // stops at the same moment.
+            pendingReviewBanner = "Microphone disconnected — transcribed what was captured."
+            await runTranscriptionPipeline(samples: samples)
+
+        case .failWithSalvagedAudio:
+            // No special case for a live partial transcript here. Routing one
+            // into review would be the only path that reaches the editor
+            // without `TranscriptPostProcessor` and without a History entry,
+            // so Paste would commit nothing and hand over raw stream text —
+            // and it needs under half a second of audio to have produced a
+            // non-empty partial in the first place.
+            cancelStreamingSession()
+            enterFailureHUD(
+                message: "Microphone disconnected after \(String(format: "%.1f", seconds))s — too short to transcribe.",
+                samples: samples
+            )
+
+        case .failEmpty:
+            cancelStreamingSession()
+            enterFailureHUD(message: "Audio input device changed. Try again.")
+        }
+    }
+
+    /// A take that survived a device change still lost the audio the hardware
+    /// spent renegotiating, spliced silently out of the middle of the buffer.
+    /// A truncated take at least reads as truncated; a hole in the middle is
+    /// invisible, and the model bridges it into a sentence that is fluent and
+    /// wrong.
+    ///
+    /// Only the normal stop path calls this. A take that ended *because* the
+    /// device went already sets its own banner saying so, which subsumes this
+    /// one — the interruption wins rather than stacking with it.
+    private func noteInterruptionGapIfSignificant() {
+        let gap = recorder.interruptionGapSeconds()
+        guard gap >= Self.interruptionBannerThreshold, pendingReviewBanner == nil else { return }
+        AppLog.dictation.warning("Take lost \(gap, format: .fixed(precision: 2))s to mid-recording restarts; flagging the review")
+        pendingReviewBanner = "Microphone dropped out for \(String(format: "%.1f", gap))s mid-recording — some words may be missing."
+    }
+
+    /// Audio that arrived after its take had already moved on. Both stop
+    /// paths can be in flight at once — a user Stop landing as the recorder
+    /// gives up on a device change — and the buffer drains exactly once, so
+    /// the loser of that race is the one holding the audio. Hand it to the
+    /// card the winner already put up rather than dropping it.
+    private func handOffLateSamples(_ samples: [Float], note: String) {
+        guard !samples.isEmpty else { return }
+        let retryable = samples.count >= DictationConfig.minTranscribeSamples
+        switch state {
+        case .error:
+            AppLog.dictation.warning("Recovered \(samples.count) late samples onto the failure card")
+            enterFailureHUD(message: note, samples: samples, canRetry: retryable)
+
+        // A resumed take has no failure card: `enterFailureHUD` restores the
+        // review it came from instead, so the loser of the race arrives to
+        // find `.reviewing` and used to drop the only copy of the audio. The
+        // banner's Retry is the same one a failed Resume offers, and it
+        // rebuilds the splice from whatever the editor holds now — so it stays
+        // correct even though this take's own text never existed.
+        case .reviewing:
+            guard retryable else {
+                AppLog.dictation.warning("Dropped \(samples.count) late samples; too short to offer a retry")
+                return
+            }
+            AppLog.dictation.warning("Recovered \(samples.count) late samples onto the resumed review")
+            lastFailedSamples = samples
+            enterReview(
+                text: LiveHUDPanel.shared.currentReviewText,
+                cursorLocation: LiveHUDPanel.shared.currentCursorLocation,
+                banner: note,
+                bannerRetry: { [weak self] in self?.retryFailedResumeTranscription() }
+            )
+
+        case .idle, .preparing, .recording, .transcribing:
+            AppLog.dictation.warning("Dropped \(samples.count) late samples; the take had already moved on")
+        }
+    }
+
+    /// The teardown every exit from `.recording` shares.
+    ///
+    /// Deliberately without `standaloneModifierEventCoordinator.reset()`: in
+    /// toggle mode with a standalone-modifier binding, the press that started
+    /// the take set a latch and the matching release is what stops it, so
+    /// clearing the latch mid-gesture swallows the user's stop. The normal stop
+    /// path resets it at its own call site, where the gesture is already done.
+    ///
+    /// `removeEscMonitors` is false only for a cancel that came *from* Escape:
+    /// the monitor that delivered the keystroke tears itself down, and pulling
+    /// the session tap out from under an event it is still dispatching is what
+    /// that path has always avoided.
+    private func endRecordingPhase(removeEscMonitors: Bool = true) {
         recordingStartGate.reset()
         stopElapsedTicker()
-        removeRecordingEscMonitors()
-        cancelStreamingSession()
-        enterFailureHUD(message: "Audio input device changed. Try again.")
+        if removeEscMonitors { removeRecordingEscMonitors() }
     }
 
     private func preparationErrorMessage(for descriptor: ModelDescriptor) -> String {
@@ -1213,20 +1373,39 @@ final class DictationController {
     // MARK: - Stop
 
     private func stopAndTranscribe() async {
+        guard state == .recording else { return }
+        let takeRunID = self.takeRunID
         standaloneModifierEventCoordinator.reset()
-        recordingStartGate.reset()
-        stopElapsedTicker()
-        removeRecordingEscMonitors()
+        endRecordingPhase()
         let samples = await recorder.flushAndStop()
-        AppLog.dictation.info("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
-
-        guard !samples.isEmpty,
-              samples.count >= DictationConfig.minTranscribeSamples else {
-            enterFailureHUD(message: "Recording too short — try again.")
+        AppLog.dictation.notice("Captured \(samples.count) samples (\(Double(samples.count) / AudioConfig.targetSampleRate, format: .fixed(precision: 2))s)")
+        // `state` is still `.recording` across the await above, so the salvage
+        // path can have taken this take while we were draining. It owns the
+        // outcome from here — running our own pipeline would clobber its state
+        // and clear the interruption banner it set.
+        // Noted before the guard, not after: this take lost the audio either
+        // way, and the path below hands its samples to a card that can still
+        // paste them. Skipped silently if the salvage already set its own.
+        noteInterruptionGapIfSignificant()
+        guard state == .recording, self.takeRunID == takeRunID else {
+            handOffLateSamples(samples, note: "Microphone disconnected — the recording stopped early.")
             return
         }
 
-        await runTranscriptionPipeline(samples: samples)
+        switch RecordingSalvage.outcome(
+            sampleCount: samples.count,
+            minTranscribeSamples: DictationConfig.minTranscribeSamples
+        ) {
+        case .transcribe:
+            await runTranscriptionPipeline(samples: samples)
+        case .failWithSalvagedAudio:
+            // Handed over even though Retry is withheld, purely so the card
+            // can report how much was captured: telling a user who just spoke
+            // that there is "nothing to review" is a lie.
+            enterFailureHUD(message: "Recording too short — try again.", samples: samples)
+        case .failEmpty:
+            enterFailureHUD(message: "Recording too short — try again.")
+        }
     }
 
     private func retryTranscription() {
@@ -1294,7 +1473,10 @@ final class DictationController {
         guard voiced else {
             AppLog.dictation.info("Full buffer VAD silent; dropping")
             cancelStreamingSession()
-            enterFailureHUD(message: "No speech detected — try again.")
+            // Same reason as the too-short branch: a salvaged fragment is
+            // exactly the kind of clip that trips the gate, and the card must
+            // not claim there is nothing to review while its audio exists.
+            enterFailureHUD(message: "No speech detected — try again.", samples: samples)
             return
         }
 
@@ -1382,13 +1564,19 @@ final class DictationController {
         }
 
         // Resume always returns to review with the new transcript spliced at
-        // the original caret; otherwise honor the user's review preference.
+        // the original caret; otherwise honor the user's review preference —
+        // unless this take carries a notice the user has to see. A take cut
+        // short by a device change produces a perfectly normal-looking
+        // transcript, and pasting it straight into their document gives them
+        // no moment at which they could notice it stops mid-sentence. The
+        // setting means "don't slow me down", and it is answering the normal
+        // case; this one is already abnormal.
         if let resume = resumeContext {
             resumeContext = nil
             let spliced = resume.splicing(processed)
-            enterReview(text: spliced.text, cursorLocation: spliced.caret)
-        } else if reviewBeforePaste {
-            enterReview(text: processed)
+            enterReview(text: spliced.text, cursorLocation: spliced.caret, banner: takeReviewBanner())
+        } else if reviewBeforePaste || pendingReviewBanner != nil {
+            enterReview(text: processed, banner: takeReviewBanner())
         } else {
             // No review step: the text is delivered and kept right away.
             commitPendingHistory()
@@ -1459,6 +1647,10 @@ final class DictationController {
             actionTitle: resolvedAction?.title,
             actionIcon: resolvedAction?.icon ?? "arrow.clockwise",
             actionHint: resolvedAction?.hint,
+            // Independent of `retryAvailable`, and only ever a count: the
+            // card states how much was captured, which stays true whether
+            // those samples were retained for Retry or dropped just above.
+            salvagedSampleCount: samples?.count ?? 0,
             onRetry: { resolvedAction?.run() },
             onCancel: { [weak self] in self?.dismissFailure() }
         )
@@ -1640,6 +1832,10 @@ final class DictationController {
     /// was in flight (so the prior text isn't lost), otherwise hides the
     /// HUD and returns to idle. Failures go through `enterFailureHUD` instead.
     private func finishRecordingSession(fallbackTo fallbackState: State) {
+        // The take produced no transcript, so its note describes audio nobody
+        // will ever see — and the review restored below is the *prior* text,
+        // which the note would be flatly wrong about.
+        pendingReviewBanner = nil
         if let resume = resumeContext {
             resumeContext = nil
             enterReview(

@@ -154,6 +154,16 @@ final class LiveHUDState {
     /// again cannot fix it and the message alone leaves the user hunting.
     var failureActionTitle: String?
     var failureActionIcon: String = "arrow.clockwise"
+    /// Samples the failed take captured, at the target rate. Non-zero replaces
+    /// the card's "Nothing to review." with how much was captured — the empty
+    /// state is for failures that recorded nothing, and a take cut short
+    /// mid-sentence is not one of them.
+    ///
+    /// Deliberately says nothing about whether that audio was *retained*.
+    /// Most failures that reach this card cannot offer Retry, so the app has
+    /// already dropped the samples by the time it renders; a note promising
+    /// they were kept would be a lie on the commonest card in the app.
+    var salvagedSampleCount: Int = 0
     /// Key hint on that button — only set where the key is really bound
     /// (Return runs Retry; nothing is bound to Open Settings).
     var failureActionHint: String?
@@ -433,6 +443,7 @@ final class LiveHUDPanel {
         actionTitle: String?,
         actionIcon: String = "arrow.clockwise",
         actionHint: String? = nil,
+        salvagedSampleCount: Int = 0,
         onRetry: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
@@ -443,6 +454,7 @@ final class LiveHUDPanel {
         state.failureActionTitle = actionTitle
         state.failureActionIcon = actionIcon
         state.failureActionHint = actionHint
+        state.salvagedSampleCount = salvagedSampleCount
         state.preparingMessage = ""
         state.preparingFraction = nil
         state.transcribingElapsedSeconds = 0
@@ -505,6 +517,7 @@ final class LiveHUDPanel {
         state.transcribingProgress = nil
         state.failureMessage = ""
         state.failureActionTitle = nil
+        state.salvagedSampleCount = 0
         state.preparingModelName = ""
         state.preparingMessage = ""
         state.preparingFraction = nil

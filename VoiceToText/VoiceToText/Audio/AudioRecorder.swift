@@ -395,18 +395,47 @@ final class AudioRecorder: @unchecked Sendable {
     /// left to finish (or not) in its own sandbox; it tears down whatever it
     /// built once it notices its generation is stale.
     private func abandonEngine(staleGeneration: UInt64) {
-        let observer: NSObjectProtocol? = stateLock.withLock {
-            guard engineGeneration == staleGeneration else { return nil }
+        // The retired engine leaves the lock alive and dies in `retire`: this
+        // runs on main, where its dealloc is exactly what must not happen.
+        let (observer, retired) = stateLock.withLock { () -> (NSObjectProtocol?, AVAudioEngine?) in
+            guard engineGeneration == staleGeneration else { return (nil, nil) }
             engineGeneration &+= 1
             engineQueue = DispatchQueue(label: "AudioRecorder.engine.\(engineGeneration)")
             let observer = configChangeObserver
+            let previous = engine
             configChangeObserver = nil
             engine = nil
             needsFreshEngine = true
             isRecording = false
-            return observer
+            return (observer, previous)
         }
         if let observer { NotificationCenter.default.removeObserver(observer) }
+        Self.retire(retired)
+    }
+
+    /// How long a retired engine is held before its last reference is dropped.
+    /// Longer than the HAL's burst of configuration changes for one route
+    /// switch, which is what a notification still in flight is riding on.
+    private static let retireGrace: DispatchTimeInterval = .seconds(3)
+
+    /// Drops a retired engine's last reference on a thread nothing waits on.
+    ///
+    /// `-[AVAudioEngine dealloc]` does a `dispatch_sync` onto the engine's own
+    /// private queue, and that queue may be blocked posting an
+    /// `AVAudioEngineConfigurationChange` to our `queue: .main` observer. So the
+    /// release may never happen on main, which the post is waiting for, nor
+    /// under `stateLock`, which the observer takes to answer, nor on
+    /// `engineQueue`, where a dealloc blocked in CoreAudio would stall the next
+    /// start. The grace keeps our own reference alive past the burst, so a
+    /// notification still in flight is never left holding the last one.
+    private static func retire(_ engine: AVAudioEngine?) {
+        guard let engine else { return }
+        // `unsafe` only because `Unmanaged` carries a non-Sendable instance. The
+        // +1 is what stops the caller from ever owning the final release.
+        nonisolated(unsafe) let handoff = Unmanaged.passRetained(engine)
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.retireGrace) {
+            handoff.release()
+        }
     }
 
     // MARK: - Engine queue work
@@ -599,14 +628,16 @@ final class AudioRecorder: @unchecked Sendable {
         // `.superseded` — leaving an in-progress recording with no
         // device-change detection at all. Every restart path routes through
         // here, so this is newly reachable.
-        let staleObserver: NSObjectProtocol? = try stateLock.withLock {
+        let (staleObserver, staleEngine) = try stateLock.withLock { () throws -> (NSObjectProtocol?, AVAudioEngine?) in
             guard engineGeneration == generation else { throw AudioRecorderError.superseded }
             let observer = configChangeObserver
+            let retired = engine
             configChangeObserver = nil
             engine = nil
-            return observer
+            return (observer, retired)
         }
         if let staleObserver { NotificationCenter.default.removeObserver(staleObserver) }
+        Self.retire(staleEngine)
 
         let fresh = AVAudioEngine()
         let observer = NotificationCenter.default.addObserver(

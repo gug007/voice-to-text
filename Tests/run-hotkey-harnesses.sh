@@ -152,3 +152,15 @@ swiftc -parse-as-library \
   Tests/AudioConfigChangePolicyHarness.swift \
   -o "$TMPDIR/audio-config-change-policy-harness"
 "$TMPDIR/audio-config-change-policy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Dictation/PasteFocusPolicy.swift \
+  Tests/PasteFocusPolicyHarness.swift \
+  -o "$TMPDIR/paste-focus-policy-harness"
+"$TMPDIR/paste-focus-policy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Dictation/ReviewResumeShortcut.swift \
+  Tests/ReviewResumeShortcutHarness.swift \
+  -o "$TMPDIR/review-resume-shortcut-harness"
+"$TMPDIR/review-resume-shortcut-harness"

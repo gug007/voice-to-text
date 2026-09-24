@@ -93,6 +93,19 @@ struct HotkeyBehaviorHarness {
             "cancel outside preparation or recording is ignored"
         )
 
+        // `.delivering` is the window between confirming a review and the
+        // paste landing. A press there used to find `.reviewing` and paste the
+        // same text a second time; now nothing in it may act.
+        for mode in RecordingShortcutMode.allCases {
+            for event in [DictationHotkeyEvent.pressed, .released, .escape, .cancel] {
+                try expect(
+                    DictationHotkeyPolicy.action(mode: mode, state: .delivering, event: event),
+                    .none,
+                    "\(mode) \(event) while delivering does nothing"
+                )
+            }
+        }
+
         print("Hotkey behavior harness passed")
     }
 }

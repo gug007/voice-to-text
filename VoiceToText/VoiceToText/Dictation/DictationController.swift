@@ -55,6 +55,13 @@ final class DictationController {
         case recording
         case transcribing
         case reviewing(text: String)
+        /// The transcript is committed and on its way into the target app. The
+        /// card is already gone, but delivery waits out the hotkey chord and
+        /// may hand focus back first — up to about a second in which a second
+        /// ⌥Space, Return or toggle used to find `.reviewing` and paste twice.
+        /// Always ends in `.idle`, or `.error` when the text fell back to the
+        /// clipboard.
+        case delivering
         case error(String)
     }
 
@@ -179,6 +186,23 @@ final class DictationController {
     /// take itself ends — a new recording, a dismissal, a cancelled review.
     private var pendingReviewBanner: String?
 
+    /// The app that was frontmost when this dictation started — where the
+    /// user's caret was, and so where ⌘V is meant to land. Captured on a fresh
+    /// start only: a resumed take belongs to the same dictation, and by then
+    /// the review card is key. Consulted at delivery by `PasteFocusPolicy`,
+    /// which hands activation back to it if something (an update alert, a
+    /// Settings window) left *us* as the active app. Cleared where the session
+    /// ends.
+    @ObservationIgnored
+    private var pasteTarget: NSRunningApplication?
+
+    /// The last app other than us to become active. When a dictation starts
+    /// with *us* frontmost and nothing of ours on screen — the Settings window
+    /// closed, an update alert dismissed with "Later" — this is the app the
+    /// user is actually looking at, and the paste is aimed at it instead.
+    @ObservationIgnored
+    private var lastExternalApp: NSRunningApplication?
+
     /// The note this take owes its review, consumed as that review is shown.
     /// Called only where the card is showing *this take's* transcript.
     private func takeReviewBanner() -> String? {
@@ -279,6 +303,25 @@ final class DictationController {
             Task { @MainActor in self?.registerCurrentBinding() }
         }
         installHotkeyHealthObservers()
+        installExternalAppTracking()
+    }
+
+    /// Keeps `lastExternalApp` current. Seeded from whatever is frontmost now,
+    /// then updated on every activation that isn't ours.
+    private func installExternalAppTracking() {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != ownPID {
+            lastExternalApp = front
+        }
+        NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier != ownPID else { return }
+            MainActor.assumeIsolated { self?.lastExternalApp = app }
+        }
     }
 
     /// Headless recovery for the standalone-modifier event tap, which the OS can
@@ -420,6 +463,7 @@ final class DictationController {
         case .recording: return .recording
         case .transcribing: return .transcribing
         case .reviewing: return .reviewing
+        case .delivering: return .delivering
         case .error: return .error
         }
     }
@@ -508,6 +552,7 @@ final class DictationController {
         removeReviewEscMonitor()
         lastFailedSamples = nil
         pendingReviewBanner = nil
+        pasteTarget = nil
         // The user discarded this dictation — pull its takes back out of History.
         discardPendingHistory()
         LiveHUDPanel.shared.hide()
@@ -536,6 +581,7 @@ final class DictationController {
         removeFailureEscMonitor()
         lastFailedSamples = nil
         pendingReviewBanner = nil
+        pasteTarget = nil
         // Safety net: a discarded session shouldn't leave takes behind.
         discardPendingHistory()
         LiveHUDPanel.shared.hide()
@@ -718,8 +764,18 @@ final class DictationController {
                 return nil
             }
             // ⌘R resumes recording with the new transcript spliced at the caret.
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
-               event.charactersIgnoringModifiers?.lowercased() == "r" {
+            // Matched like a menu key equivalent, so it survives a Cyrillic
+            // layout (whose R key types "к") without breaking Dvorak.
+            // ⌘ and nothing else that changes a shortcut. Caps Lock (and the
+            // numeric-pad / fn bits) are ignored, as menu key equivalents
+            // ignore them.
+            let isCommandOnly = event.modifierFlags
+                .intersection([.command, .option, .control, .shift]) == .command
+            if ReviewResumeShortcut.matches(
+                isCommandOnly: isCommandOnly,
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                commandLayerCharacters: event.characters(byApplyingModifiers: .command)
+            ) {
                 Task { @MainActor in self?.resumeRecording() }
                 return nil
             }
@@ -729,7 +785,7 @@ final class DictationController {
             // the shortcut always mirrors the visible chips and the event
             // passes through untouched otherwise; scoped to the review panel
             // so keystrokes in Settings can't rewrite the transcript.
-            if event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+            if isCommandOnly,
                let digit = Self.reviewActionDigitKeyCodes[event.keyCode] {
                 let handlesDigit = MainActor.assumeIsolated {
                     LiveHUDPanel.shared.isReviewPanelEvent(event)
@@ -890,6 +946,11 @@ final class DictationController {
         // any uncommitted history ids left over from a prior session so they
         // aren't retracted by this one's Cancel. (Resume keeps accumulating.)
         if resumeContext == nil { pendingHistoryIDs.removeAll() }
+        // Where this dictation is aimed, taken before the first await so a
+        // slow permission prompt or model load can't change the answer. A
+        // Resume keeps the original: the review card is key by now, and the
+        // resumed take pastes wherever the first one was going.
+        if resumeContext == nil { pasteTarget = capturePasteTarget() }
         AppLog.dictation.info("startRecording: requesting mic permission (current=\(String(describing: MicPermission.status.rawValue)))")
         let granted = await MicPermission.request()
         AppLog.dictation.info("startRecording: mic permission granted=\(granted)")
@@ -1340,7 +1401,7 @@ final class DictationController {
                 bannerRetry: { [weak self] in self?.retryFailedResumeTranscription() }
             )
 
-        case .idle, .preparing, .recording, .transcribing:
+        case .idle, .preparing, .recording, .transcribing, .delivering:
             AppLog.dictation.warning("Dropped \(samples.count) late samples; the take had already moved on")
         }
     }
@@ -1581,8 +1642,9 @@ final class DictationController {
             // No review step: the text is delivered and kept right away.
             commitPendingHistory()
             removeTranscribingEscMonitor()
+            state = .delivering
             LiveHUDPanel.shared.hide()
-            deliver(text: processed)
+            await deliver(text: processed, path: .direct, modifierWait: nil)
         }
     }
 
@@ -1604,7 +1666,8 @@ final class DictationController {
         message: String,
         samples: [Float]? = nil,
         canRetry: Bool = false,
-        action: FailureAction? = nil
+        action: FailureAction? = nil,
+        detail: String? = nil
     ) {
         // A start that failed before recording began still has its preparing
         // card up (and its Esc route armed); this hands both over.
@@ -1651,6 +1714,7 @@ final class DictationController {
             // card states how much was captured, which stays true whether
             // those samples were retained for Retry or dropped just above.
             salvagedSampleCount: samples?.count ?? 0,
+            detail: detail,
             onRetry: { resolvedAction?.run() },
             onCancel: { [weak self] in self?.dismissFailure() }
         )
@@ -1844,6 +1908,9 @@ final class DictationController {
             )
             return
         }
+        // No resume to return to, so the dictation is over and its paste
+        // target with it.
+        pasteTarget = nil
         LiveHUDPanel.shared.hide()
         state = fallbackState
     }
@@ -1856,25 +1923,93 @@ final class DictationController {
         commitPendingHistory()
         let edited = LiveHUDPanel.shared.currentReviewText
         removeReviewEscMonitor()
+        // Out of `.reviewing` now, not when delivery finishes: everything
+        // that can confirm a paste (the hotkey, Return, the Paste button, the
+        // menu, a URL toggle) is gated on `.reviewing`, and delivery is about
+        // to spend up to a second awaiting.
+        state = .delivering
         LiveHUDPanel.shared.hide()
 
         // Wait for the hotkey-chord modifiers to release first — otherwise
         // Cmd+V lands as Cmd+Opt+V (or similar) and most apps drop it.
         Task { @MainActor [weak self] in
-            await Self.waitForModifiersClear()
-            self?.deliver(text: edited)
+            let modifierWait = await Self.waitForModifiersClear()
+            await self?.deliver(text: edited, path: .review, modifierWait: modifierWait)
         }
     }
 
-    private static func waitForModifiersClear() async {
-        let deadline = ContinuousClock.now.advanced(by: PasteTiming.maxModifierWait)
+    private static func waitForModifiersClear() async -> PasteDeliveryReport.ModifierWait {
+        let start = ContinuousClock.now
+        let deadline = start.advanced(by: PasteTiming.maxModifierWait)
         while !NSEvent.modifierFlags.intersection(PasteTiming.trackedModifiers).isEmpty,
               ContinuousClock.now < deadline {
             try? await Task.sleep(for: PasteTiming.pollInterval)
         }
+        let held = NSEvent.modifierFlags.intersection(PasteTiming.trackedModifiers)
+        let wait = PasteDeliveryReport.ModifierWait(
+            elapsedMs: Self.milliseconds(ContinuousClock.now - start),
+            timedOut: !held.isEmpty,
+            held: Self.symbols(for: held)
+        )
         // Lets the previously-focused app fully accept first-responder
         // status before the synthetic Cmd+V key event lands.
         try? await Task.sleep(for: PasteTiming.focusSettleDelay)
+        return wait
+    }
+
+    /// The frontmost app — unless that is us with nothing on screen, in which
+    /// case the last other app the user was in (see
+    /// `PasteFocusPolicy.aimsAtLastExternalApp`). Delivery then finds us
+    /// holding activation with the target elsewhere and hands it back.
+    private func capturePasteTarget() -> NSRunningApplication? {
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let front = NSWorkspace.shared.frontmostApplication
+        guard front?.processIdentifier == ownPID else { return front }
+        let ownFocusIsEditable = Self.keyWindowAcceptsText()
+        let focusedAppPID = ownFocusIsEditable ? nil : Self.axFocusedApplicationPID()
+        let last = lastExternalApp.flatMap { $0.isTerminated ? nil : $0 }
+        guard PasteFocusPolicy.aimsAtLastExternalApp(
+            ownPID: ownPID,
+            frontmostPID: front?.processIdentifier,
+            ownWindowOnScreen: Self.ownWindowOnScreen(),
+            ownFocusIsEditable: ownFocusIsEditable,
+            focusedAppPID: focusedAppPID,
+            lastExternalPID: last?.processIdentifier
+        ), let last else { return front }
+        AppLog.dictation.notice(
+            "Paste target: we were frontmost with nowhere to type; aiming at \(Self.appLabel(last), privacy: .public)"
+        )
+        return last
+    }
+
+    /// Whether the user can see a window of ours: an alert, or a window that
+    /// can be main (Settings). The status item and the HUD panel can't be
+    /// main, so they don't count.
+    private static func ownWindowOnScreen() -> Bool {
+        NSApp.modalWindow != nil
+            || NSApp.windows.contains { $0.isVisible && !$0.isMiniaturized && $0.canBecomeMain }
+    }
+
+    /// Whether our key window's first responder can take a paste. The field
+    /// editor behind a SwiftUI TextField / SecureField and a TextEditor are
+    /// both NSTextViews.
+    private static func keyWindowAcceptsText() -> Bool {
+        (NSApp.keyWindow?.firstResponder as? NSTextView)?.isEditable == true
+    }
+
+    /// The app holding keyboard focus according to Accessibility — unlike
+    /// `frontmostApplication`, this sees another app's nonactivating panel
+    /// (Spotlight, Raycast) sitting over ours. Nil if it can't be read.
+    private static func axFocusedApplicationPID() -> pid_t? {
+        let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, 0.25)
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(
+            systemWide, kAXFocusedApplicationAttribute as CFString, &value
+        ) == .success,
+            let value, CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        var pid: pid_t = 0
+        return AXUIElementGetPid(value as! AXUIElement, &pid) == .success ? pid : nil
     }
 
     private enum PasteTiming {
@@ -1882,14 +2017,35 @@ final class DictationController {
         static let pollInterval: Duration = .milliseconds(15)
         static let maxModifierWait: Duration = .milliseconds(400)
         static let focusSettleDelay: Duration = .milliseconds(40)
+        /// How long a handed-back activation may take to show up as the
+        /// frontmost app. Cooperative activation normally lands in one or two
+        /// polls; past this, something is holding on to activation and a ⌘V
+        /// posted anyway would go wherever that is.
+        static let maxHandOffWait: Duration = .milliseconds(500)
     }
 
     // MARK: - Output
 
-    private func deliver(text: String) {
+    /// Posts ⌘V into the app the dictation was aimed at, or — when that can't
+    /// be done safely — leaves the transcript on the clipboard and says so.
+    /// Shared by the review path and the no-review path; both enter
+    /// `.delivering` before calling, and every exit below leaves it for
+    /// `.idle` or `.error`.
+    ///
+    /// Everything that decides where ⌘V goes is read *after* the last await
+    /// that precedes the post, never carried across one.
+    private func deliver(
+        text: String,
+        path: PasteDeliveryReport.Path,
+        modifierWait: PasteDeliveryReport.ModifierWait?
+    ) async {
+        // Spent whatever happens below: this dictation is over.
+        let target = pasteTarget
+        pasteTarget = nil
+
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
-            AppLog.dictation.warning("Missing Accessibility permission, could not type: \(text)")
+            AppLog.dictation.warning("Missing Accessibility permission, could not type \(text.count) characters")
             enterFailureHUD(
                 message: PermissionCopy.accessibilityHUDMessage,
                 action: .openSettings { AccessibilityPermission.openSystemSettings() }
@@ -1897,7 +2053,151 @@ final class DictationController {
             return
         }
 
-        KeystrokeOutput.type(text)
-        state = .idle
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let ownAppActive = NSApp.isActive
+        // The review panel is already ordered out, so this reads a Settings
+        // window of ours, or nothing.
+        let ownFocusIsEditable = Self.keyWindowAcceptsText()
+        // Only the aimed-at-us branch of the policy reads it, so the ordinary
+        // paste never pays for the Accessibility round trip.
+        let aimedAtUsOrNowhere = target == nil || target?.processIdentifier == ownPID
+        let focusedApp = aimedAtUsOrNowhere ? Self.axFocusedApplicationPID() : nil
+        let decision = PasteFocusPolicy.decide(
+            ownPID: ownPID,
+            targetPID: target?.processIdentifier,
+            targetTerminated: target?.isTerminated ?? false,
+            frontmostPID: frontmost?.processIdentifier,
+            ownAppActive: ownAppActive,
+            ownFocusIsEditable: ownFocusIsEditable,
+            focusedAppPID: focusedApp
+        )
+        var report = PasteDeliveryReport(
+            path: path,
+            target: Self.appLabel(target),
+            frontmost: Self.appLabel(frontmost),
+            ownAppActive: ownAppActive,
+            decision: decision,
+            ownFocusIsEditable: ownFocusIsEditable,
+            focusedApp: aimedAtUsOrNowhere
+                ? PasteDeliveryReport.appLabel(
+                    bundleID: focusedApp.flatMap { NSRunningApplication(processIdentifier: $0)?.bundleIdentifier },
+                    pid: focusedApp
+                )
+                : nil,
+            modifierWait: modifierWait,
+            postEventAccess: CGPreflightPostEventAccess(),
+            secureInput: IsSecureEventInputEnabled(),
+            textLength: text.count
+        )
+
+        switch decision {
+        case .post, .postAfterAppSwitch, .postToSelf:
+            break
+        case .handOff:
+            guard let target else { break }
+            let handOff = await handActivationBack(to: target)
+            report.handOff = handOff
+            guard handOff.arrived else {
+                fallBackToClipboard(text: text, appName: target.localizedName ?? "the other app", report: report)
+                return
+            }
+        case .copyOnly:
+            // Aimed at us or nowhere: there is no other app to name.
+            let appName = aimedAtUsOrNowhere ? nil : (target?.localizedName ?? "the other app")
+            fallBackToClipboard(text: text, appName: appName, report: report)
+            return
+        }
+
+        report.eventsCreated = KeystrokeOutput.type(text)
+        AppLog.dictation.notice("\(report.description, privacy: .public)")
+        // Guarded rather than assigned: nothing reachable from `.delivering`
+        // can move the state today, but if something ever does, it owns it.
+        if state == .delivering { state = .idle }
+    }
+
+    /// Gives activation back to the dictation's target and waits until it is
+    /// really frontmost. Cooperative activation (macOS 14+): yielding first is
+    /// what lets the target's `activate()` succeed without the old
+    /// ignoring-other-apps hammer.
+    private func handActivationBack(
+        to target: NSRunningApplication
+    ) async -> PasteDeliveryReport.HandOff {
+        let start = ContinuousClock.now
+        let deadline = start.advanced(by: PasteTiming.maxHandOffWait)
+        NSApp.yieldActivation(to: target)
+        let requested = target.activate()
+        var frontmost = NSWorkspace.shared.frontmostApplication
+        while frontmost?.processIdentifier != target.processIdentifier,
+              ContinuousClock.now < deadline {
+            try? await Task.sleep(for: PasteTiming.pollInterval)
+            frontmost = NSWorkspace.shared.frontmostApplication
+        }
+        let arrivedDuringWait = frontmost?.processIdentifier == target.processIdentifier
+        if arrivedDuringWait {
+            // Let the target's key window take first responder, then read
+            // again: ⌘V is posted right after this returns with no further
+            // await, so this is the reading it actually goes out against.
+            // Activation that bounced back to us during the settle shows up
+            // here as frontmost ≠ target.
+            try? await Task.sleep(for: PasteTiming.focusSettleDelay)
+            frontmost = NSWorkspace.shared.frontmostApplication
+        }
+        let arrived = frontmost?.processIdentifier == target.processIdentifier
+        return PasteDeliveryReport.HandOff(
+            elapsedMs: Self.milliseconds(ContinuousClock.now - start),
+            requested: requested,
+            arrived: arrived,
+            lostAfterSettle: arrivedDuringWait && !arrived,
+            frontmostAfter: Self.appLabel(frontmost)
+        )
+    }
+
+    /// The paste had nowhere safe to go. Posting ⌘V anyway would drop it into
+    /// our own process and the clipboard restore would then erase it, so the
+    /// transcript stays on the clipboard — no ⌘V, no restore — and the card
+    /// says where it is. Close only: re-running the audio can't fix focus.
+    ///
+    /// `appName` nil means the paste was aimed at us or nowhere known, so
+    /// there is no other app to name.
+    private func fallBackToClipboard(
+        text: String,
+        appName: String?,
+        report: PasteDeliveryReport
+    ) {
+        KeystrokeOutput.copyOnly(text)
+        AppLog.dictation.error("\(report.description, privacy: .public)")
+        // The card takes key, and we may well still be the active app, so a
+        // ⌘V pressed straight away would land on the card: the user has to
+        // click into the destination first.
+        enterFailureHUD(
+            message: Self.pasteFallbackMessage(appName: appName),
+            detail: "Click where it goes, then press ⌘V."
+        )
+    }
+
+    private static func pasteFallbackMessage(appName: String?) -> String {
+        guard let appName else {
+            return "Nothing had keyboard focus to paste into — the text is on your clipboard."
+        }
+        return "Couldn't paste into \(appName) — the text is on your clipboard."
+    }
+
+    private static func appLabel(_ app: NSRunningApplication?) -> String {
+        PasteDeliveryReport.appLabel(bundleID: app?.bundleIdentifier, pid: app?.processIdentifier)
+    }
+
+    private static func symbols(for modifiers: NSEvent.ModifierFlags) -> String {
+        var symbols = ""
+        if modifiers.contains(.control) { symbols += "⌃" }
+        if modifiers.contains(.option) { symbols += "⌥" }
+        if modifiers.contains(.shift) { symbols += "⇧" }
+        if modifiers.contains(.command) { symbols += "⌘" }
+        return symbols
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int {
+        let (seconds, attoseconds) = duration.components
+        return Int(seconds) * 1000 + Int(attoseconds / 1_000_000_000_000_000)
     }
 }

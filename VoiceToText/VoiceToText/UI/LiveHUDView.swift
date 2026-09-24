@@ -142,9 +142,9 @@ private struct HUDCard: View {
             }
 
             if layout.showsEmptyState {
-                Text(layout.hasSalvagedAudio
+                Text(state.failureDetail ?? (layout.hasSalvagedAudio
                      ? "\(Self.capturedDuration(layout.salvagedSeconds)) captured."
-                     : "Nothing to review.")
+                     : "Nothing to review."))
                     .typo(.body)
                     .foregroundStyle(Palette.inkMuted)
                     // Sized to absorb the card's slack, so the control row still

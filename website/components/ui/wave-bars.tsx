@@ -19,7 +19,7 @@ function barStyle(i: number): BarVars {
 /** Decorative level meter behind hero sections, in the spirit of the app's recording HUD. */
 export function WaveBars() {
   return (
-    <div className="dictation-wave" aria-hidden="true">
+    <div className="dictation-wave" aria-hidden="true" data-pause-offscreen>
       <div className="bars">
         {Array.from({ length: WAVE_BAR_COUNT }, (_, i) => (
           <i key={i} style={barStyle(i)} />

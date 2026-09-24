@@ -12,13 +12,12 @@
   background-size: auto, 28px 28px;
 }
 
-.heroInner,
-.content {
+/* Every section shares the nav's edge (the plain .container grid). Reading
+   measure comes from max-width on the blocks themselves, never from a narrower,
+   re-centred container, so a heading always starts on the same x as the cards
+   and table beneath it. */
+.content > * {
   max-width: var(--container-narrow);
-}
-
-.wideContent {
-  max-width: var(--maxw);
 }
 
 .eyebrow {
@@ -27,13 +26,14 @@
   gap: var(--space-2);
   margin-bottom: var(--space-5);
   padding: 6px var(--space-3);
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   border-radius: var(--radius-full);
   background: var(--surface);
-  color: var(--text-secondary);
-  font-size: var(--fs-caption);
-  font-weight: var(--fw-medium);
-  letter-spacing: var(--ls-label);
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: var(--fw-regular);
+  letter-spacing: .13em;
   text-transform: uppercase;
 }
 
@@ -125,16 +125,6 @@
 .sectionHeader {
   max-width: 760px;
   margin-bottom: var(--head-gap, clamp(38px, 5vw, 64px));
-}
-
-/* #picks and #matrix break their grid out to --maxw, but the page keeps ONE type
-   rail: indent their headings back onto the --container-narrow spine that every
-   other section uses. Collapses to 0 as soon as the container is padding-bound. */
-.wideContent > .sectionHeader {
-  margin-inline: max(
-    0px,
-    calc((100% - (var(--container-narrow) - 2 * var(--page-gutter))) / 2)
-  );
 }
 
 /* One kicker dialect site-wide: mirrors globals .kicker. */
@@ -300,9 +290,45 @@
   line-height: 1.65;
 }
 
+.pickLinks {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin-top: auto;
+}
+
+.compareLink {
+  color: var(--accent);
+  font-size: var(--fs-body-sm);
+  font-weight: var(--fw-semibold);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-underline-offset: 3px;
+}
+
+.compareLink:hover {
+  text-decoration-color: currentColor;
+}
+
+.pickChecked {
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+
+.answerCopy a {
+  color: var(--text-primary);
+  text-decoration: underline;
+  text-decoration-color: var(--border-strong);
+  text-underline-offset: 3px;
+}
+
+.answerCopy a:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
+}
+
 .vendorLink {
   width: fit-content;
-  margin-top: auto;
   color: var(--text-secondary);
   font-size: var(--fs-body-sm);
   font-weight: var(--fw-semibold);
@@ -311,10 +337,20 @@
   text-underline-offset: 3px;
 }
 
-.scrollHint {
-  margin: calc(var(--space-4) * -1) 0 var(--space-3);
+/* Caption and hint live outside the scroller, so they stay readable while the
+   columns slide. */
+.matrixMeta {
+  display: grid;
+  gap: var(--space-2);
+  max-width: var(--measure, 34em);
+  margin: calc(var(--space-4) * -1) 0 var(--space-4);
   color: var(--text-muted);
   font-size: var(--fs-caption);
+  line-height: 1.55;
+}
+
+.scrollHint {
+  color: var(--text-muted);
 }
 
 /* Scrolling shadows. The two `local` cover layers travel with the table and mask
@@ -324,8 +360,10 @@
   --edge-shade: color-mix(in srgb, var(--text-primary) 15%, transparent);
   --edge-cover: color-mix(in srgb, var(--surface) 0%, transparent);
 
-  max-height: min(76vh, 900px);
-  overflow: auto;
+  /* Horizontal only: a vertical scroller here trapped the wheel and showed ~3 of
+     the 7 rows at 1440x900. The page scrolls; the table only slides sideways. */
+  overflow-x: auto;
+  overflow-y: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background:
@@ -334,7 +372,7 @@
     radial-gradient(farthest-side at 0 50%, var(--edge-shade), transparent) left top / 18px 100% no-repeat,
     radial-gradient(farthest-side at 100% 50%, var(--edge-shade), transparent) right top / 18px 100% no-repeat,
     var(--surface);
-  overscroll-behavior: contain;
+  overscroll-behavior-x: contain;
 }
 
 .tableWrap:focus-visible {
@@ -352,15 +390,6 @@
   text-align: left;
 }
 
-.matrix caption {
-  padding: var(--space-4) var(--space-5);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-muted);
-  font-size: var(--fs-caption);
-  line-height: 1.55;
-  text-align: left;
-}
-
 .matrix th,
 .matrix td {
   width: 230px;
@@ -373,9 +402,6 @@
 }
 
 .matrix thead th {
-  position: sticky;
-  top: 0;
-  z-index: 2;
   /* A band INSIDE a --surface card has to recede: --surface-elevated cannot step
      up from white, so it vanishes in light while banding hard in dark. */
   background: var(--surface-sunken);
@@ -776,6 +802,13 @@
   .matrix th:first-child {
     width: 152px;
     min-width: 152px;
+  }
+}
+
+@media (max-width: 520px) {
+  .eyebrow {
+    font-size: 13px;
+    letter-spacing: .05em;
   }
 }
 

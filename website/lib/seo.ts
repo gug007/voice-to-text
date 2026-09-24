@@ -1,22 +1,61 @@
 import {
+  APP_REQUIREMENTS,
+  BUILT_IN_ACTIONS,
+  MODEL_CATALOG,
+  cloudModels,
+  defaultModel,
+  liveTextModelNames,
+  localModels,
+} from "./app-facts";
+import {
   AUTHOR_URL,
   DMG_URL,
   GUIDE_URL,
   REPO_URL,
   SITE_URL,
 } from "./constants";
+import { page } from "./pages";
+import {
+  HOME_PAGE_ID,
+  PERSON_ID,
+  SOFTWARE_ID,
+  VIDEO_ID,
+  WEBSITE_ID,
+  type FaqEntry,
+} from "./seo-ids";
 
-export const SOFTWARE_ID = `${SITE_URL}/#software`;
-export const WEBSITE_ID = `${SITE_URL}/#website`;
-export const PERSON_ID = `${SITE_URL}/#creator`;
-export const HOME_PAGE_ID = `${SITE_URL}/#webpage`;
-export const VIDEO_ID = `${SITE_URL}/#product-demo-video`;
+// lib/seo.ts is the home page's structured data. The shared @ids and the other
+// pages' JSON-LD live in their own modules and are re-exported here, so
+// existing `@/lib/seo` imports keep working.
+export * from "./seo-ids";
+export * from "./seo-meeting";
+export * from "./seo-guide";
 
 export const HOME_TITLE = "Free Voice-to-Text App for Mac — Offline & No Account";
 export const HOME_DESCRIPTION =
-  "Press Option+Space and dictate into any Mac app. VoiceToText is free, runs offline with local models, needs no account, and has source available on GitHub.";
+  "Free voice to text for Mac. Press Option+Space to dictate into any app, or record meetings and transcribe them. Works offline by default, no account.";
 export const HOME_TWITTER_DESCRIPTION =
-  "Press Option+Space, speak, and type into any Mac app. Free, offline with local models, no required account, and source available on GitHub.";
+  "Dictate into any Mac app with Option+Space, or record calls and get a transcript. Free, works offline by default, no account, source on GitHub.";
+
+const NUMBER_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+
+/** "Six", "Nine" — a sentence should not open on a digit. */
+export function countWord(n: number): string {
+  return NUMBER_WORDS[n] ?? String(n);
+}
+
+const LOCAL = localModels();
+const CLOUD = cloudModels();
+const DEFAULT_MODEL = defaultModel();
+const joinList = (xs: readonly string[]) =>
+  new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(xs);
+const lower = (n: number) => countWord(n).toLowerCase();
+const CLOUD_BY_PROVIDER = [...new Set(CLOUD.map((m) => m.provider))].map(
+  (p) => `${p} ${joinList(CLOUD.filter((m) => m.provider === p).map((m) => m.name))}`,
+);
+// GPT Realtime Whisper is live but only shows its text when you stop.
+const LIVE_WORDS = liveTextModelNames("word by word");
+const LIVE_PHRASES = liveTextModelNames("phrase by phrase");
 
 // This describes the product entity. Do not add aggregateRating/review until
 // a genuine review is visible on the page and can be represented faithfully.
@@ -26,10 +65,9 @@ export const softwareApplicationJsonLd = {
   "@id": SOFTWARE_ID,
   name: "VoiceToText",
   alternateName: "VoiceToText for Mac",
-  description:
-    "Free voice to text and speech to text app for Mac, with source available on GitHub. Press a hotkey in any app, speak, and your words are typed at the cursor — transcribed offline on the Apple Neural Engine, with optional OpenAI and ElevenLabs cloud models, live streaming transcription, one-click AI transcript actions, and meeting recording with optional speaker diarization.",
+  description: `Free voice to text and speech to text app for Mac, with source available on GitHub. Press Option+Space in any app, speak, check the text, and it is pasted at your cursor. Record meetings and calls (microphone plus system audio) or import an audio or video file, and keep every transcript in a searchable local history. Transcription runs on your Mac with ${lower(LOCAL.length)} local models after a one-time download, or with ${lower(CLOUD.length)} optional OpenAI and ElevenLabs cloud models under your own API key. Optional AI actions, summaries, and action items use your own OpenAI key.`,
   keywords:
-    "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, real-time transcription mac, whisper mac app",
+    "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, meeting transcription mac, whisper mac app",
   url: `${SITE_URL}/`,
   sameAs: REPO_URL,
   downloadUrl: DMG_URL,
@@ -37,8 +75,8 @@ export const softwareApplicationJsonLd = {
   softwareHelp: { "@id": `${GUIDE_URL}#webpage` },
   applicationCategory: "UtilitiesApplication",
   applicationSubCategory: "Speech to Text",
-  operatingSystem: "macOS 15.0 or later",
-  processorRequirements: "Apple Silicon (M1 or newer)",
+  operatingSystem: APP_REQUIREMENTS.os,
+  processorRequirements: APP_REQUIREMENTS.processor,
   offers: {
     "@type": "Offer",
     price: 0,
@@ -52,24 +90,29 @@ export const softwareApplicationJsonLd = {
   mainEntityOfPage: { "@id": HOME_PAGE_ID },
   image: `${SITE_URL}/opengraph-image`,
   featureList: [
-    "Voice to text on Mac with a global hotkey (Option+Space by default) — press to toggle or hold to record, fully customizable including Right Control",
-    "Speech to text that runs offline on-device after a one-time model download, accelerated by the Apple Neural Engine",
-    "Six local models: Parakeet TDT v3 (FluidAudio) and Whisper Large v3 Turbo, Large v3, Small, Base, Tiny (WhisperKit)",
-    "Nine optional cloud models across OpenAI (GPT Transcribe, GPT Live Transcribe, GPT Realtime Whisper, GPT-4o Transcribe, GPT-4o Transcribe Realtime, GPT-4o Transcribe Diarize, GPT-4o Mini Transcribe, Whisper-1) and ElevenLabs (Scribe v2 Realtime)",
-    "Real-time streaming transcription — words appear live as you speak with Scribe v2 Realtime, GPT Live Transcribe, GPT Realtime Whisper, or GPT-4o Transcribe Realtime",
-    "Review before pasting: edit the transcript in a floating panel, then confirm — or turn review off for instant paste",
-    "One-click AI actions on the transcript: Clean transcript, To English, Improve prompt, Fix grammar, Summarize, Essentials only, plus your own custom actions",
-    "Resume dictation at the caret to append to a take",
-    "Types transcribed text into any focused macOS app",
-    "Record meetings and conversations — captures your microphone plus system audio in the background via ScreenCaptureKit",
-    "Optional speaker diarization with GPT-4o Transcribe Diarize, with editable display names for detected speakers",
-    "Long recordings transcribed in segments; interrupted recordings are recovered on next launch",
-    "Rolling on-device recording history (200 most recent) with audio playback and favorites — deletes come with an undo",
-    "Regenerate any transcript with a different model and keep both versions side by side to compare",
-    "Import existing audio or video files and transcribe them on-device",
-    "Automate dictation from any app via the voicetotext:// URL scheme",
-    "Built-in updater installs new versions straight from GitHub Releases",
-    "Native SwiftUI app for Mac — no Electron",
+    "Dictate into any Mac app with a global shortcut (Option+Space by default): press to toggle or hold to record, and rebind it to any key with a modifier, a lone F1–F20 key, or Right Control on its own",
+    "Recording HUD with a live level meter and a timer; Esc cancels",
+    "Review before pasting, on by default: edit the transcript, then press Return or the shortcut again to paste, or turn review off to paste right away",
+    "Resume with Command-R to record another take at the caret",
+    "Text is pasted at the cursor with a standard Command-V, and your previous clipboard is put back",
+    "Speech to text on your Mac after a one-time model download; with a local model, audio never leaves the Mac, and the default Parakeet model works with the network off",
+    `${MODEL_CATALOG.length} transcription models: ${lower(LOCAL.length)} local and ${lower(CLOUD.length)} optional cloud models`,
+    `${countWord(LOCAL.length)} local models: ${DEFAULT_MODEL.name} (the default, ${DEFAULT_MODEL.languagesInApp}) and ${joinList(LOCAL.filter((m) => !m.isDefault).map((m) => m.name))}`,
+    `${countWord(CLOUD.length)} optional cloud models with your own API key: ${CLOUD_BY_PROVIDER.join("; ")}`,
+    `Live text while you speak with streaming cloud models: word by word with ${joinList(LIVE_WORDS)}, phrase by phrase with ${joinList(LIVE_PHRASES)}`,
+    "Models pane with a 1–10 quality score based on published word error rates, and the per-hour list price of each cloud model",
+    `Optional AI actions in the review panel, off by default: ${BUILT_IN_ACTIONS.join(", ")}, and your own custom actions, run with Command-1 to Command-9 on your own OpenAI key`,
+    "Record conversations and meetings from any app: your microphone plus system audio via ScreenCaptureKit, with no bot joining the call; start from the app, the menu bar, or an optional conversation shortcut",
+    "Transcribe an audio or video file (MP3, M4A, WAV, AIFF, MP4, MOV, and other formats macOS can read) — on-device by default",
+    "Speaker labels (Speaker 1, Speaker 2, …) from the optional cloud model GPT-4o Transcribe Diarize on your own OpenAI key, with names you can assign to each speaker",
+    "AI summaries, action-item checklists, and custom-prompt results for any recording, using your own OpenAI key",
+    "Local history of up to 200 recordings, with search across transcripts, summaries, action items, and speaker names, plus favorites, playback, copy, and undoable deletes",
+    "Regenerate any transcript with a different model and keep every version side by side",
+    "Conversation recordings interrupted by a crash or power loss are recovered into History on next launch",
+    "Menu bar item with dictation and conversation controls, and an optional menu-bar-only mode",
+    "Automate dictation from Raycast, Shortcuts, or scripts with the voicetotext:// URL scheme (toggle, start, stop, cancel)",
+    "Checks GitHub Releases for updates and installs them when you confirm",
+    "Native SwiftUI app — no Electron",
   ],
 } as const;
 
@@ -92,6 +135,8 @@ export const homePageJsonLd = {
   url: `${SITE_URL}/`,
   name: HOME_TITLE,
   description: HOME_DESCRIPTION,
+  datePublished: page("/").published,
+  dateModified: page("/").modified,
   isPartOf: { "@id": WEBSITE_ID },
   mainEntity: { "@id": SOFTWARE_ID },
   primaryImageOfPage: {
@@ -123,50 +168,59 @@ export const videoObjectJsonLd = {
   mainEntityOfPage: { "@id": HOME_PAGE_ID },
 } as const;
 
-type FaqEntry = { question: string; answer: string };
-
-// KEEP IN SYNC with the visible FAQ in components/sections/faq.tsx — Google
-// requires FAQPage JSON-LD to match on-page content. Edit both together.
-const faqEntries: FaqEntry[] = [
+// The home FAQ's single source: components/sections/faq.tsx renders these
+// entries as-is and faqPageJsonLd below serialises the same array, so the
+// visible answers and the FAQPage JSON-LD cannot drift apart.
+export const faqEntries: FaqEntry[] = [
   {
     question: "Is VoiceToText free?",
     answer:
-      "Yes — completely free, forever. VoiceToText has no paid tiers, accounts, or in-app purchases, and its source is available on GitHub for inspection. Download it free.",
+      "Yes. VoiceToText has no paid tier, no account, and no in-app purchases, and its source is available on GitHub. The optional cloud models and AI features bill your own OpenAI or ElevenLabs account at the provider's prices.",
   },
   {
     question: "Does it work offline? Is my voice data sent anywhere?",
     answer:
-      "Yes, transcription works fully offline by default. Local models (Whisper, Parakeet) run on the Apple Neural Engine — your audio never leaves your Mac. The app's only network traffic is one-time model downloads and a daily update check against GitHub Releases. Cloud models are strictly opt-in: audio is sent directly to the provider (OpenAI or ElevenLabs) under your own API key only when you explicitly select a cloud engine, and AI transcript actions use your OpenAI key the same way. VoiceToText itself never receives your audio.",
+      "Yes, with Parakeet, the default model: after a one-time download it works with the network off. With any local model, Parakeet or Whisper, your audio is transcribed on your Mac and never leaves it. The current version does contact Hugging Face each time it loads a Whisper model, so for a fully offline Mac, use Parakeet. Apart from model downloads and an update check, nothing leaves your Mac unless you opt in: a cloud model sends audio directly to OpenAI or ElevenLabs under your own API key, and AI actions, summaries, and action items send the transcript text to OpenAI. VoiceToText has no servers of its own, so it never receives your audio or your text.",
   },
   {
     question: "How do I use voice to text on my Mac?",
     answer:
-      "Install from the DMG, grant Microphone and Accessibility permissions, then press Option+Space in any app, speak, and press it again. The transcript pops up for a quick review — hit Return and it's pasted at the cursor. Prefer zero friction? Turn review off in Settings and text lands instantly. Prefer hold-to-talk? Switch the shortcut to hold-to-record. Works identically on MacBook Air, MacBook Pro, iMac, Mac mini, and Mac Studio.",
-  },
-  {
-    question: "Why does it need Accessibility permission?",
-    answer:
-      "Accessibility permission is how macOS lets one app type into another. VoiceToText uses it to paste transcribed text at the cursor, register the global shortcut, and catch Esc so you can cancel a recording — it does not log your keystrokes, read your screen, or access any other app's data. (Only the optional Right Control shortcut needs the separate Input Monitoring permission.) The source code is public if you want to verify exactly how the permissions are used.",
-  },
-  {
-    question: "What are the system requirements?",
-    answer:
-      "The current builds require macOS 15.0 or later and an Apple Silicon Mac (M1 or newer). Intel Macs are not supported because the local models rely on the Apple Neural Engine. Cloud models work on any supported Mac with an internet connection.",
-  },
-  {
-    question: "How accurate is it? Which models does it use?",
-    answer:
-      "You choose from six local models: Parakeet TDT v3 is the fastest on-device option, Whisper Large v3 is the most accurate offline option, and Whisper Large v3 Turbo is the best balance — plus Small, Base, and Tiny for older or space-constrained Macs. For the highest accuracy across accents and technical jargon, bring your own API key and switch to GPT Transcribe, GPT-4o Transcribe, or GPT-4o Mini Transcribe (OpenAI), or Scribe v2 Realtime (ElevenLabs) in Settings.",
+      "Install from the DMG and allow Microphone and Accessibility. Then press Option+Space in any app, speak, and press it again. The transcript opens in a small review panel: press Return, or the shortcut again, to paste it at your cursor, or Esc to discard it. You can turn review off to paste right away, or switch the shortcut to hold-to-record. It works the same on any Apple Silicon MacBook Air, MacBook Pro, iMac, Mac mini, or Mac Studio.",
   },
   {
     question: "What apps does VoiceToText work in?",
     answer:
-      "Any Mac app with a text field. Apple Notes, Notion, Obsidian, Bear, Pages, Google Docs, Microsoft Word, Slack, Messages, Mail, Gmail, Outlook, WhatsApp, Discord, Safari and Chrome address bars, ChatGPT, Claude.ai — if macOS puts a cursor there, your voice types into it. No app-specific setup.",
+      "Any app where Command-V pastes text: Notes, Notion, Obsidian, Google Docs, Word, Slack, Messages, Mail, Gmail, Outlook, WhatsApp, Discord, browser address bars, ChatGPT, Claude, Cursor, and Terminal. VoiceToText puts the transcript on the clipboard, sends a standard Command-V, and then puts your previous clipboard back, so there is no per-app setup. A field that blocks pasting won't receive the text.",
+  },
+  {
+    question: "Why does it need Accessibility permission?",
+    answer:
+      "macOS asks for Accessibility whenever one app sends keystrokes to another. VoiceToText uses it to paste with Command-V, to run the global shortcut, and to catch Esc so you can cancel, so recording won't start without it. It does not log your typing, read your screen, or read other apps' content. A Right Control shortcut also needs Input Monitoring, and recording calls needs Screen Recording to capture the other participants' audio (audio only, never the screen).",
+  },
+  {
+    question: "What are the system requirements?",
+    answer:
+      "macOS 15.0 or later on an Apple Silicon Mac (M1 or newer). Current builds are Apple Silicon only, so Intel Macs are not supported. The default local model is a one-time download of about 470 MB; cloud models need an internet connection and your own API key.",
+  },
+  {
+    question: "How accurate is it? Which models does it use?",
+    answer:
+      "You choose from 15 models. Parakeet TDT v3 is the recommended default: fast, on-device, and 25 European languages. Whisper Large v3 is the most accurate local model; Large v3 Turbo, Small, Base, and Tiny trade accuracy for size. With your own API key, GPT Transcribe tops the cloud list, followed by Scribe v2 Realtime, and GPT-4o Mini Transcribe is the cheapest at $0.18 per hour. The Models pane shows a 1–10 quality score for each, based on published word error rates rather than our own tests, so try two or three on your own voice.",
+  },
+  {
+    question: "Which languages does it support?",
+    answer:
+      "It depends on the model, and there is no language setting to change. Parakeet TDT v3, the default, recognizes 25 European languages automatically. The local Whisper models transcribe English in VoiceToText. For any other language, use a cloud model with your own key: OpenAI's models cover 99 or more languages and ElevenLabs Scribe v2 Realtime more than 90, detected automatically.",
+  },
+  {
+    question: "Can it record meetings and write summaries or action items?",
+    answer:
+      "Yes. Conversations records your microphone and the call's system audio from any app, such as Zoom, Meet, Teams, or FaceTime, with no bot joining, and transcribes it when you stop, on your Mac by default. You can also drop in an audio or video file. With your own OpenAI key, any recording can get a summary, an action-item checklist, or the result of your own prompt; that sends the transcript text to OpenAI. Speaker labels need the cloud model GPT-4o Transcribe Diarize.",
   },
   {
     question: "Do you collect any usage data or telemetry?",
     answer:
-      "The app collects nothing: no accounts, no analytics, no first-party servers. With a local model your audio generates zero network traffic — the only connections the app makes are model downloads and an update check against GitHub Releases. If you opt in to a cloud model, audio goes directly from your Mac to the provider — VoiceToText is never in that path. The repo is public; verify it yourself or watch traffic with Little Snitch. (This website uses Google Analytics to count visits; the app itself contains no analytics code.)",
+      "No. The app has no analytics, no accounts, and no servers of its own. Without API keys, its only connections are to Hugging Face, for model downloads and each time a Whisper model loads, and an update check against GitHub Releases at launch and once a day. Adding a key sends a one-time verification request to that provider; after that, a cloud model sends audio, and AI actions or summaries send transcript text, directly from your Mac to the provider. The source is on GitHub if you want to check, or watch the traffic with a tool like Little Snitch. This website uses Google Analytics to count visits; the app contains no analytics code.",
   },
 ];
 
@@ -190,161 +244,6 @@ export const personJsonLd = {
   name: "Gurgen Abagyan",
   url: AUTHOR_URL,
   sameAs: [AUTHOR_URL],
-} as const;
-
-/* ---------- Meeting recording page ---------- */
-
-export const MEETING_PATH = "/meeting-recording";
-export const MEETING_URL = `${SITE_URL}${MEETING_PATH}`;
-export const MEETING_PUBLISHED = "2026-06-30";
-export const MEETING_UPDATED = "2026-07-27";
-
-export const meetingFaqEntries: FaqEntry[] = [
-  {
-    question: "Can I record and transcribe meetings on my Mac for free?",
-    answer:
-      "Yes. VoiceToText is free, with source available on GitHub and no app subscription or per-minute app fee. Local transcription has no provider charge; optional cloud models may charge usage under your own API key. The same app also does hotkey dictation into any text field.",
-  },
-  {
-    question: "Does it record the other participants, or just my microphone?",
-    answer:
-      "Both. VoiceToText captures your microphone and your Mac's system audio at the same time, so the people on the other end of a Zoom, Google Meet, Microsoft Teams, FaceTime, Webex, or Discord call are recorded along with you. System-audio capture uses Apple's ScreenCaptureKit, so it works with any app that plays sound — no meeting-specific plugin or bot in the call.",
-  },
-  {
-    question: "Can VoiceToText identify and label different speakers?",
-    answer:
-      "Yes, with the optional GPT-4o Transcribe Diarize model. It separates the transcript into turns labeled Speaker 1, Speaker 2, and so on; you can rename those labels in the recording history, and the names are used when you view or copy the transcript. Diarization is a cloud-only OpenAI feature: it requires your own OpenAI API key and sends the recording directly to OpenAI. Local Whisper and Parakeet models do not separate speakers.",
-  },
-  {
-    question: "Is meeting recording private? Does my audio stay on my Mac?",
-    answer:
-      "Yes. With a local model (Whisper or Parakeet on the Apple Neural Engine) the recording is transcribed entirely on-device and never leaves your Mac. The audio file and transcript are saved to a local history under Application Support. Cloud transcription is strictly opt-in: only if you choose an OpenAI or ElevenLabs model is audio sent — directly to that provider under your own API key.",
-  },
-  {
-    question: "Which permissions does meeting recording need?",
-    answer:
-      "Two: Microphone (to record your voice) and Screen Recording (which is how macOS exposes system audio through ScreenCaptureKit — VoiceToText never records the screen, only the audio). Accessibility is only used by the dictation feature (typing at the cursor, the global shortcut, Esc to cancel) and is not needed to record meetings. You grant these once in System Settings and can revoke them anytime.",
-  },
-  {
-    question: "What happens with long meetings — or if the app crashes mid-recording?",
-    answer:
-      "Long recordings are split into segments at the quietest moments and transcribed piece by piece with progress shown, so an hour-long call transcribes reliably. The audio streams straight to disk while recording, and if the app is interrupted — crash, force-quit, power loss — the recording is repaired and filed into your history on the next launch, so a long recording isn't lost.",
-  },
-  {
-    question: "Can I transcribe an existing audio or video file?",
-    answer:
-      "Yes. Open Conversations and choose Upload File to drop in an existing recording — audio or video, in any common format. VoiceToText extracts the audio track, transcribes it on-device, and saves it to your history alongside your live recordings.",
-  },
-  {
-    question: "Can I re-transcribe a recording with a more accurate model?",
-    answer:
-      "Yes. Every recording keeps its audio, so you can regenerate the transcript with a different engine — for example switch from fast on-device Parakeet to OpenAI GPT-4o Transcribe for a tricky recording. The new transcript becomes active and the previous one is kept as an alternate, so you can compare both and remove whichever you don't want.",
-  },
-];
-
-export const meetingFaqPageJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  "@id": `${MEETING_URL}#faq-page`,
-  url: `${MEETING_URL}#faq`,
-  isPartOf: { "@id": `${MEETING_URL}#webpage` },
-  mainEntity: meetingFaqEntries.map(({ question, answer }) => ({
-    "@type": "Question",
-    name: question,
-    acceptedAnswer: { "@type": "Answer", text: answer },
-  })),
-} as const;
-
-export const meetingPageJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  "@id": `${MEETING_URL}#webpage`,
-  name: "Record and transcribe meetings on Mac",
-  description:
-    "Free meeting recorder for Mac with source available on GitHub. Records microphone and system audio together, transcribes on-device by default, and offers optional cloud speaker diarization with editable speaker names.",
-  url: MEETING_URL,
-  datePublished: MEETING_PUBLISHED,
-  dateModified: MEETING_UPDATED,
-  isPartOf: { "@id": WEBSITE_ID },
-  about: { "@id": SOFTWARE_ID },
-  mainEntity: { "@id": SOFTWARE_ID },
-  author: {
-    "@id": PERSON_ID,
-  },
-  breadcrumb: { "@id": `${MEETING_URL}#breadcrumb` },
-  primaryImageOfPage: {
-    "@type": "ImageObject",
-    url: `${MEETING_URL}/opengraph-image`,
-    width: 1200,
-    height: 630,
-  },
-  inLanguage: "en",
-} as const;
-
-export const meetingBreadcrumbJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "@id": `${MEETING_URL}#breadcrumb`,
-  itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
-    { "@type": "ListItem", position: 2, name: "Meeting recording", item: MEETING_URL },
-  ],
-} as const;
-
-/* ---------- Mac voice-to-text guide ---------- */
-
-export const GUIDE_PUBLISHED = "2026-07-11";
-export const GUIDE_UPDATED = "2026-07-27";
-
-export const guideArticleJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "Article",
-  "@id": `${GUIDE_URL}#article`,
-  headline: "How to use voice to text on Mac — in any app, offline",
-  description:
-    "A practical guide to setting up voice typing on a Mac, choosing a shortcut and local model, reviewing transcripts, and dictating into any app.",
-  url: GUIDE_URL,
-  mainEntityOfPage: { "@id": `${GUIDE_URL}#webpage` },
-  image: {
-    "@type": "ImageObject",
-    url: `${GUIDE_URL}/opengraph-image`,
-    width: 1200,
-    height: 630,
-  },
-  datePublished: GUIDE_PUBLISHED,
-  dateModified: GUIDE_UPDATED,
-  author: { "@id": PERSON_ID },
-  publisher: { "@id": PERSON_ID },
-  about: { "@id": SOFTWARE_ID },
-  articleSection: "Mac dictation",
-  inLanguage: "en",
-} as const;
-
-export const guidePageJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "WebPage",
-  "@id": `${GUIDE_URL}#webpage`,
-  url: GUIDE_URL,
-  name: "How to use voice to text on Mac",
-  description:
-    "Set up voice to text on a Mac, grant the right permissions, choose an offline model and language, troubleshoot the shortcut, and dictate into any app.",
-  datePublished: GUIDE_PUBLISHED,
-  dateModified: GUIDE_UPDATED,
-  isPartOf: { "@id": WEBSITE_ID },
-  mainEntity: { "@id": `${GUIDE_URL}#article` },
-  about: { "@id": SOFTWARE_ID },
-  breadcrumb: { "@id": `${GUIDE_URL}#breadcrumb` },
-  inLanguage: "en",
-} as const;
-
-export const guideBreadcrumbJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "BreadcrumbList",
-  "@id": `${GUIDE_URL}#breadcrumb`,
-  itemListElement: [
-    { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
-    { "@type": "ListItem", position: 2, name: "Mac voice-to-text guide", item: GUIDE_URL },
-  ],
 } as const;
 
 export const themeInitScript = `(function () {

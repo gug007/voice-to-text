@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import { DMG_URL, GUIDE_PATH, REPO_URL } from "@/lib/constants";
+import { DownloadButton } from "@/components/ui/download-button";
 import { ExternalLink } from "@/components/ui/external-link";
 import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -21,7 +22,7 @@ const ROUTE_LINKS = [
   { href: GUIDE_PATH, label: "Guide" },
   { href: "/offline-speech-to-text-mac", label: "Offline" },
   { href: "/meeting-recording", label: "Meetings" },
-  { href: "/compare/best-dictation-apps-for-mac", label: "Compare" },
+  { href: "/compare", label: "Compare" },
 ] as const;
 
 /* The desktop bar has no room for a tenth item: measured at 1181-1440px, adding
@@ -47,7 +48,8 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
     <header className="nav" id="nav" data-scrolled="false">
       <div className="wrap nav__in">
         <a className="brand" href={`${linkPrefix}#top`} aria-label="VoiceToText home">
-          <Image className="brand__mark" src="/app-icon.png" width={26} height={26} alt="" priority />
+          {/* Eager, not preloaded: the 26px mark is never the LCP element. */}
+          <Image className="brand__mark" src="/app-icon.png" width={26} height={26} alt="" loading="eager" />
           <span>VoiceToText</span>
         </a>
         <nav className="nav__links nav__primary" aria-label="Sections">
@@ -89,14 +91,15 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
             linkPrefix={linkPrefix}
           />
           <ThemeToggle />
-          <a
-            className="btn btn--primary btn--sm"
-            href={DMG_URL}
-            data-analytics-event="download_click"
-            data-analytics-placement="desktop_nav"
-          >
-            Download for Mac<span className="btn__k">free</span>
-          </a>
+          {/* Also the only CTA an iPad sees between 641 and 1180px, so it gets
+              the "Send to your Mac" swap too. */}
+          <DownloadButton
+            placement="desktop_nav"
+            size="md"
+            className="btn--sm"
+            icon={false}
+            label={<>Download for Mac <span className="btn__k">free</span></>}
+          />
         </div>
       </div>
     </header>

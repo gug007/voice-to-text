@@ -2,6 +2,9 @@
 
 import { useEffect } from "react";
 
+/** Page-wide effects that need the DOM: the nav's scrolled hairline, reduced-motion
+ *  video pausing, and pausing decorative loops (anything marked
+ *  `data-pause-offscreen`) while they are out of view. */
 export function ScrollEffects() {
   useEffect(() => {
     const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -26,60 +29,26 @@ export function ScrollEffects() {
       document.addEventListener("scroll", syncScrolled, { passive: true });
     }
 
-    const revealTargets = document.querySelectorAll<HTMLElement>(".reveal");
-    let revealIo: IntersectionObserver | null = null;
-    if (revealTargets.length) {
-      if (reducedMotion.matches || !("IntersectionObserver" in window)) {
-        revealTargets.forEach((el) => el.classList.add("is-visible"));
-      } else {
-        revealIo = new IntersectionObserver(
-          (entries, obs) => {
-            for (const entry of entries) {
-              if (entry.isIntersecting) {
-                entry.target.classList.add("is-visible");
-                obs.unobserve(entry.target);
+    // `.is-offscreen` pauses every CSS animation inside the element (globals.css),
+    // so the hero wave and the HUD stop costing compositor time once scrolled past.
+    const loops = document.querySelectorAll<HTMLElement>("[data-pause-offscreen]");
+    const loopIo =
+      loops.length && "IntersectionObserver" in window
+        ? new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                entry.target.classList.toggle("is-offscreen", !entry.isIntersecting);
               }
-            }
-          },
-          { threshold: 0.15, rootMargin: "0px 0px -40px 0px" },
-        );
-        revealTargets.forEach((el) => revealIo!.observe(el));
-      }
-    }
-
-    let childIo: IntersectionObserver | null = null;
-    if (!reducedMotion.matches && "IntersectionObserver" in window) {
-      const CHILD_SELECTORS = ".how__step, .feature-card, .compare__card";
-      const childGroups = document.querySelectorAll<HTMLElement>(
-        ".how__steps, .features__grid, .compare__mobile",
-      );
-      childIo = new IntersectionObserver(
-        (entries, obs) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              entry.target
-                .querySelectorAll<HTMLElement>(".reveal-child")
-                .forEach((child) => child.classList.add("is-visible"));
-              obs.unobserve(entry.target);
-            }
-          }
-        },
-        { threshold: 0.1, rootMargin: "0px 0px -30px 0px" },
-      );
-      childGroups.forEach((group) => {
-        const children = group.querySelectorAll<HTMLElement>(CHILD_SELECTORS);
-        children.forEach((child, idx) => {
-          child.classList.add("reveal-child");
-          child.style.transitionDelay = `${idx * 60}ms`;
-        });
-        childIo!.observe(group);
-      });
-    }
+            },
+            { rootMargin: "120px 0px" },
+          )
+        : null;
+    loops.forEach((el) => loopIo?.observe(el));
 
     return () => {
       if (nav) document.removeEventListener("scroll", syncScrolled);
-      revealIo?.disconnect();
-      childIo?.disconnect();
+      loopIo?.disconnect();
+      loops.forEach((el) => el.classList.remove("is-offscreen"));
     };
   }, []);
 

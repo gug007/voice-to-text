@@ -36,7 +36,7 @@ function hudBarStyle(i: number): BarVars {
 
 function HudBars() {
   return (
-    <span className="hud__bars">
+    <span className="hud__bars" data-pause-offscreen>
       {Array.from({ length: HUD_BAR_COUNT }, (_, i) => (
         <i key={i} style={hudBarStyle(i)} />
       ))}
@@ -66,20 +66,27 @@ function Tick() {
 function EmptyFieldArt() {
   return (
     <div className="mini">
-      <span className="mini__field">
-        <span className="mini__ph" />
-        <span className="caret" />
+      <span className="mini__setting">
+        <span className="mini__label">#design — Slack</span>
+        <span className="mini__field">
+          <span className="caret" />
+          <span className="mini__hint">Message #design</span>
+        </span>
       </span>
     </div>
   );
 }
 
-function KeysArt() {
+/** Beat 02's heading already shows the keys, so its art shows the choice behind them. */
+function ShortcutArt() {
   return (
     <div className="mini">
-      <span className="mini__keys">
-        <kbd>⌥</kbd>
-        <kbd>Space</kbd>
+      <span className="mini__setting">
+        <span className="mini__label">Dictation shortcut</span>
+        <span className="mini__seg">
+          <span className="is-on">Press to toggle</span>
+          <span>Hold to record</span>
+        </span>
       </span>
     </div>
   );
@@ -107,10 +114,22 @@ function ReviewArt() {
     <div className="mini">
       <span className="mini__card">
         <span className="rv__text">{TRANSCRIPT}</span>
+        <span className="rv__chips">
+          <span className="hud__btn">
+            Clean transcript <em>⌘1</em>
+          </span>
+          <span className="hud__btn">
+            Fix grammar <em>⌘2</em>
+          </span>
+        </span>
         <span className="rv__foot">
-          <span className="rv__key">⏎</span>
-          <span className="rv__hint">paste</span>
-          <span className="rv__key rv__key--end">esc</span>
+          <span className="hud__spacer" />
+          <span className="hud__btn">
+            Resume <em>⌘R</em>
+          </span>
+          <span className="hud__btn">
+            Paste <em>⌥Space</em>
+          </span>
         </span>
       </span>
     </div>
@@ -141,8 +160,8 @@ const BEATS: Beat[] = [
     step: 1,
     title: "You’re already in the app.",
     body:
-      "There is no window to open and no tab to find. VoiceToText sits in the background while you work in Slack, Mail, Cursor, a browser address bar — anything with a text field.",
-    note: "Nothing to launch. No per-app setup, ever.",
+      "You don’t switch to VoiceToText to use it. It keeps running in the background, in the Dock and the menu bar (hide the Dock icon to run from the menu bar alone), while you work in Slack, Mail, Cursor, a browser address bar — anything with a text field.",
+    note: "Nothing to launch first, and no per-app setup.",
     art: <EmptyFieldArt />,
   },
   {
@@ -153,31 +172,31 @@ const BEATS: Beat[] = [
       </>
     ),
     body:
-      "One global hotkey, and it is rebindable — even to Right Control on its own, if that is the key your hands already reach for. That one asks for Input Monitoring permission.",
-    note: "Toggle by default. Prefer hold to talk? Push-to-talk is a switch in Settings.",
-    art: <KeysArt />,
+      "One global shortcut starts and stops a take. It toggles by default; switch it to hold-to-record if you prefer push to talk. Rebind it to any key with a modifier, a lone F-key, or Right Control on its own, which also needs Input Monitoring.",
+    note: "In the review panel, pressing the shortcut again pastes.",
+    art: <ShortcutArt />,
   },
   {
     step: 3,
     title: "Say what you mean.",
     body:
-      "A small HUD with a live waveform appears over whatever you are doing. Speak in full sentences, casual or technical — punctuation is inferred. With a streaming model, the words appear as you say them.",
-    note: "Esc cancels at any time, and in local mode the audio never leaves the Mac.",
+      "A small HUD floats over whatever you are doing, with a live level meter and a timer. Speak in full sentences, casual or technical; punctuation is inferred. Esc cancels at any point.",
+    note: "With a local model the audio never leaves your Mac. Text appears while you speak only with the streaming cloud models.",
     art: <HudArt />,
   },
   {
     step: 4,
     title: "Read it before anyone else does.",
     body:
-      "The transcript pops up for a quick edit. Fix a name, cut a sentence, or just glance at it and move on — you see the text before your colleagues do.",
-    note: "In a hurry? Turn review off and it pastes instantly.",
+      "The transcript opens in a review panel. Fix a name, cut a sentence, or press ⌘R to resume and add another take at the caret. Optional AI actions such as Clean transcript, Fix grammar, and Improve prompt run with ⌘1–⌘9 on your own OpenAI key, and Undo steps back through them; they stay off until you turn them on.",
+    note: "In a hurry? Turn review off and it pastes right away.",
     art: <ReviewArt />,
   },
   {
     step: 5,
-    title: "It types where your cursor was.",
+    title: "It pastes where your cursor was.",
     body:
-      "Return pastes the text into the field you were already in — the composer, the terminal, the address bar. macOS calls the ability to do that Accessibility. It is how one app is allowed to type into another; it is not keylogging.",
+      "Return pastes the text into the field you were in: the composer, the terminal, the address bar. VoiceToText saves your clipboard, pastes with ⌘V, then puts the clipboard back. macOS calls the permission for that Accessibility; it is also what lets the global shortcut and Esc work anywhere. It is not keylogging.",
     note: "Back to work — you never left the app you were in.",
     art: <PastedArt />,
   },
@@ -197,7 +216,7 @@ const MESSAGES: ReadonlyArray<{ name: string; initials: string; avatar?: string;
 /** Decorative: everything the stage illustrates is written out in the beats. */
 function Stage({ step }: { step: number }) {
   return (
-    <div className="stage" data-state={step}>
+    <div className="stage" data-state={step} data-pause-offscreen>
       <div className="win">
         <div className="win__bar">
           <span className="dot dot--r" />
@@ -257,25 +276,34 @@ function Stage({ step }: { step: number }) {
       </div>
 
       <div className="ov ov--review">
-        <p className="rv__head">
-          <span>Transcript</span>
-          <em>parakeet · local</em>
-        </p>
         <p className="rv__text">
           Ship the release notes<u>,</u> then ping design<u>.</u>
         </p>
+        <p className="rv__chips">
+          <span className="hud__btn">
+            Clean transcript <em>⌘1</em>
+          </span>
+          <span className="hud__btn">
+            Fix grammar <em>⌘2</em>
+          </span>
+          <span className="hud__btn">
+            Improve prompt <em>⌘3</em>
+          </span>
+        </p>
         <p className="rv__foot">
-          <span className="rv__key">⏎</span>
-          <span className="rv__hint">paste at cursor</span>
-          <span className="rv__key rv__key--end">esc</span>
-          <span className="rv__hint">discard</span>
+          <span className="hud__btn">
+            Cancel <em>esc</em>
+          </span>
+          <span className="hud__spacer" />
+          <span className="hud__btn">
+            Resume <em>⌘R</em>
+          </span>
+          <span className="hud__btn hud__btn--primary">
+            Paste <em>⌥Space</em>
+          </span>
         </p>
       </div>
 
-      <div className="ov ov--toast">
-        <Tick />
-        Pasted at your cursor
-      </div>
     </div>
   );
 }
@@ -329,7 +357,7 @@ export function Story() {
             <span className="kicker__n" aria-hidden="true">
               01
             </span>
-            <span>Chapter one · five beats</span>
+            <span>Chapter one · dictation, in five beats</span>
           </p>
           <h2 id="story-title">What happens when you speak.</h2>
           <p className="lede">
@@ -382,7 +410,6 @@ export function Story() {
         </div>
 
         <p className="lede muted" style={{ marginTop: "clamp(24px, 4vw, 40px)" }}>
-          Prefer push to talk? Switch to hold-to-record in Settings.{" "}
           <Link className="link" href={GUIDE_PATH}>
             Every setting is explained in the Mac setup guide
           </Link>

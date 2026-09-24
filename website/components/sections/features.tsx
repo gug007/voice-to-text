@@ -11,19 +11,24 @@ type PrivacyCard = {
 const CARDS: PrivacyCard[] = [
   {
     icon: "bolt",
-    title: "The engines run on the Neural Engine",
-    body: "WhisperKit and FluidAudio run Whisper and Parakeet directly on Apple Silicon. Six local models, downloaded once, then yours offline forever.",
+    title: "Transcription runs on your Mac",
+    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on Apple Silicon, so your audio never leaves the Mac. Parakeet, the default, works with the network off after its one-time download. Whisper models need a connection each time they load, because the current version checks with Hugging Face first.",
   },
   {
     icon: "cloud",
     title: "Cloud is opt-in, with your own key",
-    body: "Choose a cloud model and the audio goes straight from your Mac to OpenAI or ElevenLabs using your key. VoiceToText is never in that path — there are no first-party servers to be in it.",
+    body: "Pick a cloud model and the audio goes straight from your Mac to OpenAI or ElevenLabs on your key. AI actions and recording summaries send transcript text to OpenAI the same way. VoiceToText has no servers of its own to sit in that path.",
   },
-  {
-    icon: "lock",
-    title: "Two permissions, both explainable",
-    body: "Microphone, so it can hear you. Accessibility, because that is the only way macOS lets one app type into another. Only if you rebind the shortcut to Right Control on its own does macOS also ask for Input Monitoring.",
-  },
+];
+
+type Permission = { name: string; when: string };
+
+// Settings/PermissionCopy.swift, Audio/Permissions.swift, Meetings/MeetingController.swift
+const PERMISSIONS: Permission[] = [
+  { name: "Microphone", when: "so it can hear you" },
+  { name: "Accessibility", when: "for the global shortcut, Esc and pasting — dictation won’t start without it" },
+  { name: "Input Monitoring", when: "only if your shortcut is Right Control on its own" },
+  { name: "Screen Recording", when: "only for Conversations — it carries the call audio; the screen is never recorded" },
 ];
 
 type LedgerRow = {
@@ -40,32 +45,39 @@ const LEDGER: LedgerRow[] = [
     happens: true,
     icon: "download",
     label: "Model download",
-    note: "once per model, then never again",
+    note: "once per model, from Hugging Face",
     tag: "once",
+  },
+  {
+    happens: true,
+    icon: "box",
+    label: "Whisper model load",
+    note: "a Hugging Face check each time one loads, after every launch; Parakeet loads offline",
+    tag: "on load",
   },
   {
     happens: true,
     icon: "cloud",
     label: "Update check",
-    note: "against GitHub Releases",
+    note: "GitHub Releases, at launch and every 24 h; you confirm installs",
     tag: "daily",
   },
   {
     happens: false,
     label: "Your audio",
-    note: "transcribed on the Neural Engine",
+    note: "transcribed on your Mac",
     tag: "never leaves",
   },
   {
     happens: false,
     label: "Your transcripts",
-    note: "kept on device, in History",
-    tag: "never leaves",
+    note: "saved in History on your Mac; saving dictations can be switched off",
+    tag: "stays local",
   },
   {
     happens: false,
     label: "App telemetry",
-    note: "no analytics SDK, no crash pings",
+    note: "no analytics, no crash-reporting SDK",
     tag: "none",
   },
   {
@@ -76,20 +88,67 @@ const LEDGER: LedgerRow[] = [
   },
 ];
 
+/** What adds a destination, and only when you turn it on. */
+const OPT_IN: LedgerRow[] = [
+  {
+    happens: true,
+    icon: "cloud",
+    label: "Cloud transcription",
+    note: "audio to OpenAI or ElevenLabs",
+    tag: "your key",
+  },
+  {
+    happens: true,
+    icon: "sparkle",
+    label: "AI actions & summaries",
+    note: "transcript text, not audio, to OpenAI",
+    tag: "your key",
+  },
+  {
+    happens: true,
+    icon: "lock",
+    label: "Adding an API key",
+    note: "one request to verify it with that provider",
+    tag: "once",
+  },
+];
+
+/** `optIn` rows are drawn in the accent, not the "happens" green: they are
+    connections you switch on, not ones the app makes by itself. */
+function LedgerRows({ rows, optIn = false }: { rows: LedgerRow[]; optIn?: boolean }) {
+  const yes = optIn ? "opt" : "yes";
+  return (
+    <ul>
+      {rows.map(({ happens, icon, label, note, tag }) => (
+        <li key={label} className={happens ? undefined : "no"}>
+          <span className={happens ? `lg-i ${yes}` : "lg-i no"} aria-hidden="true">
+            {happens && icon ? <Icon name={icon} size="sm" /> : "×"}
+          </span>
+          <span>
+            <b>{label}</b>{" "}
+            <br />
+            <em>{note}</em>
+          </span>
+          <span className={happens ? `lg-tag lg-tag--${yes}` : "lg-tag"}>{tag}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function Features() {
   return (
     <section className="section" id="features" aria-labelledby="features-title">
       <div className="wrap">
         <div className="sec-head">
           <p className="kicker kicker--ch">
-            <span className="kicker__n" aria-hidden="true">02</span>
-            <span>Chapter two · where the audio goes</span>
+            <span className="kicker__n" aria-hidden="true">03</span>
+            <span>Chapter three · where the audio goes</span>
           </p>
-          <h2 id="features-title">Private by architecture,<br />not by promise.</h2>
+          <h2 id="features-title">Private by architecture,{" "}<br />not by promise.</h2>
           <p className="lede">
-            In local mode your voice is turned into text on your own machine. That is not a policy you
-            have to take on faith — it is simply where the code runs, and you can watch the network to
-            confirm it.
+            In local mode your voice is turned into text on your own Mac. That is not a policy you have to take
+            on faith — it is simply where the code runs, and you can watch the network to confirm it.
           </p>
         </div>
 
@@ -103,6 +162,17 @@ export function Features() {
                   <p>{body}</p>
                 </article>
               ))}
+              <article className="card">
+                <span className="card__ico" aria-hidden="true"><Icon name="lock" /></span>
+                <h3>Permissions, and what each is for</h3>
+                <ul className="perms">
+                  {PERMISSIONS.map(({ name, when }) => (
+                    <li key={name}>
+                      <b>{name}</b> <span>{when}</span>
+                    </li>
+                  ))}
+                </ul>
+              </article>
             </div>
 
             <p className="priv__quote" id="source">
@@ -116,7 +186,7 @@ export function Features() {
                 public on GitHub
               </ExternalLink>
               , and you can point <code>Little Snitch</code> at the app and watch it stay quiet while
-              you dictate.
+              you dictate with Parakeet, the default model.
             </p>
           </div>
 
@@ -125,24 +195,12 @@ export function Features() {
               <span className="ledger__led" aria-hidden="true" /> Network activity — local mode
               <span className="ledger__top-r">traffic</span>
             </p>
-            <ul>
-              {LEDGER.map(({ happens, icon, label, note, tag }) => (
-                <li key={label} className={happens ? undefined : "no"}>
-                  <span className={happens ? "lg-i yes" : "lg-i no"} aria-hidden="true">
-                    {happens && icon ? <Icon name={icon} size="sm" /> : "×"}
-                  </span>
-                  <span>
-                    <b>{label}</b>
-                    <br />
-                    <em>{note}</em>
-                  </span>
-                  <span className={happens ? "lg-tag lg-tag--yes" : "lg-tag"}>{tag}</span>
-                </li>
-              ))}
-            </ul>
+            <LedgerRows rows={LEDGER} />
+            <p className="ledger__sub">Only if you opt in</p>
+            <LedgerRows rows={OPT_IN} optIn />
             <p className="ledger__foot">
-              That is the complete list for local mode. Add a cloud model with your own API key and one
-              more destination appears — the provider you chose, reached directly from your Mac.
+              With local models and no API keys, the first list is complete. Every opt-in connection goes
+              straight from your Mac to the provider you chose, on your own key.
             </p>
           </div>
         </div>

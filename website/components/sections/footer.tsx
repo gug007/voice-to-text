@@ -47,7 +47,10 @@ const COLUMNS: FooterColumn[] = [
       { kind: "route", href: "/whisper-vs-parakeet-mac", label: "Whisper vs. Parakeet" },
       { kind: "route", href: "/superwhisper-alternative", label: "Superwhisper alternative" },
       { kind: "route", href: "/wispr-flow-alternative", label: "Wispr Flow alternative" },
+      { kind: "route", href: "/macwhisper-alternative", label: "MacWhisper alternative" },
+      { kind: "route", href: "/granola-alternative", label: "Granola alternative" },
       { kind: "route", href: "/compare/best-dictation-apps-for-mac", label: "Best dictation apps for Mac" },
+      { kind: "route", href: "/compare", label: "All comparisons" },
     ],
   },
   {
@@ -67,7 +70,13 @@ function FooterLinkView({ link, linkPrefix }: { link: FooterLink; linkPrefix: st
     return <ExternalLink href={link.href}>{link.label}</ExternalLink>;
   }
   if (link.kind === "route") {
-    return <Link href={link.href}>{link.label}</Link>;
+    // No prefetch: a dozen footer routes scrolling into view would otherwise
+    // pull every one of their payloads on a visit that rarely follows them.
+    return (
+      <Link href={link.href} prefetch={false}>
+        {link.label}
+      </Link>
+    );
   }
   return <a href={`${linkPrefix}${link.href}`}>{link.label}</a>;
 }

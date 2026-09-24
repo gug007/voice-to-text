@@ -870,6 +870,7 @@ struct GeneralPane: View {
         case .recording: return "Recording…"
         case .transcribing: return "Transcribing…"
         case .reviewing: return "Review transcript"
+        case .delivering: return "Pasting…"
         }
     }
 
@@ -890,6 +891,7 @@ struct GeneralPane: View {
             }
         case .transcribing: return "Waiting for transcription…"
         case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
+        case .delivering: return "Pasting into the app you were using."
         case .error(let message): return message
         }
     }

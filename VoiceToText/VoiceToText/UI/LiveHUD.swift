@@ -164,6 +164,10 @@ final class LiveHUDState {
     /// already dropped the samples by the time it renders; a note promising
     /// they were kept would be a lie on the commonest card in the app.
     var salvagedSampleCount: Int = 0
+    /// Replaces the failure card's empty-state line ("Nothing to review." /
+    /// "N s captured.") when the failure has something more useful to say
+    /// there — the paste fallback's "click where it goes" instruction.
+    var failureDetail: String?
     /// Key hint on that button — only set where the key is really bound
     /// (Return runs Retry; nothing is bound to Open Settings).
     var failureActionHint: String?
@@ -444,6 +448,7 @@ final class LiveHUDPanel {
         actionIcon: String = "arrow.clockwise",
         actionHint: String? = nil,
         salvagedSampleCount: Int = 0,
+        detail: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
     ) {
@@ -455,6 +460,7 @@ final class LiveHUDPanel {
         state.failureActionIcon = actionIcon
         state.failureActionHint = actionHint
         state.salvagedSampleCount = salvagedSampleCount
+        state.failureDetail = detail
         state.preparingMessage = ""
         state.preparingFraction = nil
         state.transcribingElapsedSeconds = 0
@@ -518,6 +524,7 @@ final class LiveHUDPanel {
         state.failureMessage = ""
         state.failureActionTitle = nil
         state.salvagedSampleCount = 0
+        state.failureDetail = nil
         state.preparingModelName = ""
         state.preparingMessage = ""
         state.preparingFraction = nil

@@ -180,6 +180,10 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             case .recording: self = .recording
             case .transcribing: self = .transcribing
             case .reviewing: self = .reviewing
+            // Idle, not transcribing: the card is already gone and the paste
+            // lands within a second, so a pulse here would only flash between
+            // the review glyph and the resting one.
+            case .delivering: self = .idle
             case .error: self = .error
             }
         }
@@ -187,8 +191,14 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         /// Dictation wins whenever it is doing anything: it's the foreground
         /// interaction the user is standing there waiting on, while a
         /// conversation runs in the background for an hour at a time.
+        /// A paste in flight counts as done here: it reads as idle anyway, and
+        /// letting it win would blink a running conversation's glyph away for
+        /// the second it takes.
         init(dictation: DictationController.State, meeting: MeetingController.State) {
-            guard case .idle = dictation else {
+            switch dictation {
+            case .idle, .delivering:
+                break
+            case .preparing, .recording, .transcribing, .reviewing, .error:
                 self.init(dictation)
                 return
             }
@@ -427,6 +437,9 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         case .recording: return ("Stop Dictation", "stop.circle.fill", true)
         case .transcribing: return ("Transcribing…", "waveform.badge.magnifyingglass", false)
         case .reviewing: return ("Reviewing Transcript…", "text.cursor", false)
+        // Disabled like the other busy rows: the hotkey policy ignores a
+        // toggle here, so an enabled row would be a button that does nothing.
+        case .delivering: return ("Pasting…", "doc.on.clipboard", false)
         }
     }
 

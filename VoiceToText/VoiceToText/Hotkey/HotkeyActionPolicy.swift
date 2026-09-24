@@ -29,6 +29,10 @@ enum DictationHotkeyState {
     case recording
     case transcribing
     case reviewing
+    /// The review card is gone and the paste is on its way (waiting out the
+    /// hotkey chord, handing focus back, posting ⌘V). Busy: a press here used
+    /// to find the controller still `.reviewing` and paste a second time.
+    case delivering
     case error
 }
 
@@ -55,7 +59,7 @@ enum DictationHotkeyPolicy {
             switch state {
             case .preparing: return .cancelPendingRecording
             case .recording: return .cancelRecording
-            case .idle, .transcribing, .reviewing, .error: return .none
+            case .idle, .transcribing, .reviewing, .delivering, .error: return .none
             }
         }
 
@@ -98,7 +102,7 @@ enum DictationHotkeyPolicy {
             return .stopAndTranscribe
         case .reviewing:
             return .confirmPaste
-        case .preparing, .transcribing:
+        case .preparing, .transcribing, .delivering:
             return .none
         }
     }

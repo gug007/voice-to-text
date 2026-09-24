@@ -27,7 +27,7 @@ final class TranscriptRegenerator {
         if MeetingController.shared.isBusy { return true }
         switch DictationController.shared.state {
         case .preparing, .recording, .transcribing: return true
-        case .idle, .reviewing, .error: return false
+        case .idle, .reviewing, .delivering, .error: return false
         }
     }
 

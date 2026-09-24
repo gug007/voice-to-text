@@ -22,9 +22,14 @@ export type Product = {
   languages: string;
   price: string;
   sourceHref: string;
+  /**
+   * ISO date this row was last re-checked against the vendor's own pages (or,
+   * for VoiceToText, the app source). Falls back to the page's sourcesReviewed.
+   */
+  reviewed?: string;
+  /** This site's dedicated head-to-head page, when there is one. */
+  comparePath?: string;
 };
-
-export const REVIEW_DATE = "2026-08-12";
 
 export const products: Product[] = [
   {
@@ -32,23 +37,27 @@ export const products: Product[] = [
     name: "VoiceToText",
     label: "Best free local bundle",
     verdict:
-      "The strongest no-cost fit when you want Mac dictation, reviewed paste, file import, and local meeting capture in one small app.",
+      "The strongest no-cost fit when you want Mac dictation with reviewed paste, plus meeting recording, file import and a searchable history, in one app.",
     wins:
-      "Free, no app account, source available on GitHub, and a first-class review-before-paste workflow.",
+      "Free, no account, source on GitHub, a first-class review-before-paste workflow, and bot-free meeting recording with optional AI summaries and action items on your own key.",
     tradeoff:
-      "Mac-only, Apple-silicon-only, no cross-device sync, no enterprise controls, and local meetings do not label speakers.",
+      "Mac-only and Apple Silicon only, no cross-device sync or team controls, no voice commands, and speaker labels only through an optional cloud model.",
     dictation:
-      "System-wide hotkey; buffered local dictation by default, with optional cloud realtime models.",
-    files: "Imports audio and video formats macOS can read; keeps transcript and media in local History.",
+      "System-wide hotkey (⌥Space by default); review, then paste. Local models transcribe when you stop; three optional streaming cloud models show text as you speak, word by word or phrase by phrase.",
+    files:
+      "Imports one audio or video file at a time in formats macOS can read (not MKV, WebM or AVI). History keeps the transcript and an extracted audio-only copy, not the original video.",
     meetings:
-      "Captures microphone plus system audio without a bot. Local transcription is unlabeled; OpenAI diarization is optional and cloud-based.",
+      "Records microphone plus system audio without a bot. Optional AI summaries, action-item checklists and custom prompts on your OpenAI key; searchable local history. Speaker labels need the cloud model GPT-4o Transcribe Diarize.",
     correction:
-      "Not yet timed. Edit the complete transcript before paste, or disable review for instant paste; optional AI actions are separate.",
+      "Not yet timed. Edit the complete transcript before paste, add a take at the caret with ⌘R, or turn review off for instant paste. Opt-in AI actions (⌘1–⌘9) run on your OpenAI key.",
     privacy:
-      "Parakeet and Whisper run on-device. Choosing OpenAI or ElevenLabs sends audio to that provider with your key; AI actions send text to OpenAI.",
-    languages: "Model-dependent: Parakeet lists 25 European languages; local Whisper options list 99.",
-    price: "Free. No paid tier; provider charges apply only when you choose a BYOK cloud model.",
+      "Parakeet and Whisper run on-device. An OpenAI or ElevenLabs model sends audio to that provider with your key; AI actions and summaries send transcript text to OpenAI.",
+    languages:
+      "Model-dependent: Parakeet (local, default) covers 25 European languages; local Whisper currently transcribes English; optional cloud models detect 90–99+ automatically.",
+    price:
+      "Free, no paid tier. Your own OpenAI or ElevenLabs key is billed for cloud transcription, AI actions and AI summaries.",
     sourceHref: "https://github.com/gug007/voice-to-text",
+    reviewed: "2026-09-23",
   },
   {
     id: "apple-dictation",
@@ -70,6 +79,7 @@ export const products: Product[] = [
     languages: "Broad locale support, but Dictation, on-device processing, punctuation, and emoji each cover different subsets.",
     price: "Included with macOS.",
     sourceHref: "https://support.apple.com/guide/mac-help/use-dictation-mh40584/26/mac/26",
+    comparePath: "/apple-dictation-alternative",
   },
   {
     id: "wispr-flow",
@@ -78,21 +88,23 @@ export const products: Product[] = [
     verdict:
       "The strongest cross-device and enterprise fit, with polished dictation plus the richest integrated meeting intelligence in this set.",
     wins:
-      "Mac, Windows, iPhone, and Android; named-speaker meetings, live catch-up, summaries, search, team controls, and compliance options.",
+      "Mac, Windows, iPhone, and Android; a Notetaker with named speakers, summaries and cross-meeting search; team controls and compliance options.",
     tradeoff:
-      "Transcription is cloud-only. Meeting Notetaker is currently Mac and English only, and it requires Cloud Sync.",
+      "Transcription is cloud-only and needs an account. Notetaker runs on Mac and Windows and depends on Dictation Cloud Storage.",
     dictation:
-      "System-wide cloud dictation with formatting, filler removal, backtracking, commands, and up to 20-minute desktop sessions.",
+      "System-wide cloud dictation with auto punctuation, filler removal, backtracking, dictionary, snippets and styles.",
     files: "A general audio/video file-import workflow was not found in current official app documentation; not tested.",
     meetings:
-      "Mac Notetaker captures on-device without a visible bot, then provides live transcripts, named speakers, summaries, Q&A, and meeting search.",
+      "Notetaker (Mac and Windows) captures audio on the device without a visible bot; cloud transcripts with named speakers, summaries, action items, and search across meetings.",
     correction:
-      "Not yet timed. Dictionary, deterministic replacements, edit learning, spoken backtracking, commands, and selected-text workflows.",
+      "Not yet timed. A personal dictionary that learns your spellings, snippets, styles, and spoken backtracking (“at 2… actually 3”).",
     privacy:
-      "Cloud transcription. Privacy Mode controls training; Cloud Sync separately controls storage. Zero-retention dictation needs both configured, while Notetaker requires sync.",
-    languages: "100+ for dictation; current Notetaker is English only. Code-switching has documented limits.",
-    price: "Free plan; Pro $15/month or $12/month billed annually; Enterprise is quote-based.",
+      "Cloud transcription. “Improve the model for everyone” controls training; “Dictation Cloud Storage” separately controls server storage. Zero-retention dictation needs both off; Notetaker and AI summaries rely on cloud storage.",
+    languages: "100+ for dictation; Notetaker transcribes 21 languages.",
+    price: "Free plan (2,000 words a week on desktop); Pro $15/user/month or $12 billed annually; Growth and Enterprise for teams.",
     sourceHref: "https://wisprflow.ai/features",
+    reviewed: "2026-09-23",
+    comparePath: "/wispr-flow-alternative",
   },
   {
     id: "superwhisper",
@@ -105,7 +117,7 @@ export const products: Product[] = [
     tradeoff:
       "The many modes and model combinations add setup decisions, and privacy depends on both the speech and post-processing model selected.",
     dictation:
-      "System-wide on Mac, Windows, and iOS; local or cloud speech plus context-aware modes and optional rewriting.",
+      "System-wide on Mac, Windows, iOS and Android; local or cloud speech plus context-aware modes and optional rewriting.",
     files: "Imports common audio/video formats and applies the active mode's transcription and formatting pipeline.",
     meetings: "Records meeting-app audio locally without a bot; supports file transcription and optional speaker separation.",
     correction:
@@ -115,6 +127,7 @@ export const products: Product[] = [
     languages: "Model-dependent: many Whisper/cloud choices cover 100+; individual local models may cover fewer.",
     price: "Free tier; Pro $8.49/month, $84.99/year, or $249.99 lifetime.",
     sourceHref: "https://superwhisper.com/models",
+    comparePath: "/superwhisper-alternative",
   },
   {
     id: "macwhisper",
@@ -131,14 +144,15 @@ export const products: Product[] = [
     files:
       "Drag-and-drop, batch, watch folders, media URLs, subtitles, many exports, speaker output, recursive folders, and structured CLI JSON.",
     meetings:
-      "Records mic/system audio locally, detects supported meeting apps, and offers speaker recognition; verify beta behavior on critical calls.",
+      "Records the mic locally, with system-audio recording and speaker recognition on Pro; detects supported meeting apps. Verify beta behavior on critical calls.",
     correction:
       "Not yet timed. Full transcript editor, find/replace rules, AI prompts, synchronized playback, and local Ollama/LM Studio options.",
     privacy:
       "Local Whisper/Parakeet transcription and speaker identification by default. Cloud transcription, translation, or hosted AI sends data to the chosen provider.",
     languages: "100 languages documented across multilingual local and cloud models.",
-    price: "Free tier; Pro is currently listed at €64 once with lifetime updates.",
+    price: "Free tier; Pro is a one-time license with lifetime updates, listed at €64 on macwhisper.com (€65 at Gumroad checkout).",
     sourceHref: "https://www.macwhisper.com/",
+    comparePath: "/macwhisper-alternative",
   },
   {
     id: "aqua-voice",
@@ -209,7 +223,7 @@ export const sourceGroups = [
       ["Notetaker", "https://wisprflow.ai/notetaker"],
       ["Privacy", "https://wisprflow.ai/privacy"],
       ["Data controls", "https://docs.wisprflow.ai/articles/9609615338-private-cloud-sync-and-data-sharing-preferences-in-wispr-flow"],
-      ["Pricing", "https://wisprflow.ai/business"],
+      ["Pricing", "https://wisprflow.ai/pricing"],
     ],
   },
   {

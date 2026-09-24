@@ -5,9 +5,13 @@ import { Nav } from "@/components/sections/nav";
 import { ScrollEffects } from "@/components/scroll-effects";
 import { Icon } from "@/components/ui/icon";
 
+// A segment not-found file can't export metadata, so the page names itself
+// with React's hoisted <title>. Next still answers with a 404 status and adds
+// <meta name="robots" content="noindex"> on its own.
 export default function NotFound() {
   return (
     <>
+      <title>Page not found · VoiceToText</title>
       <Nav linkPrefix="/" />
       <main id="main" tabIndex={-1}>
         <section className="section hero" aria-labelledby="nf-title">

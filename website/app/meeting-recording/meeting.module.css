@@ -1,0 +1,381 @@
+/* /meeting-recording only. Everything reads the Clear Coat tokens in
+   globals.css, so light and dark themes follow without overrides here. */
+
+/* ---------- Hero: trust row, byline and the Conversations pane ---------- */
+.heroMeta:global(.hero__meta) {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-5);
+  padding: 0;
+  list-style: none;
+}
+.heroByline { margin-top: var(--space-3); }
+.heroByline > * { white-space: nowrap; }
+
+/* The hero is text-align: center; the mockup is a left-aligned window. */
+.heroStage {
+  position: relative;
+  z-index: 10;
+  width: min(100%, 760px);
+  margin-top: var(--space-12);
+  text-align: left;
+}
+@media (max-width: 640px) {
+  .heroStage { margin-top: var(--space-10); }
+}
+
+/* ---------- How it captures: the example transcript ---------- */
+.transcriptBody {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: var(--space-6);
+  list-style: none;
+  background: var(--surface-sunken);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.transcriptBody b { font-weight: var(--fw-semibold); color: var(--text-primary); }
+@media (max-width: 640px) {
+  .transcriptBody { padding: var(--space-5); }
+}
+
+/* ---------- How to record: four steps as a 2 × 2 plate ---------- */
+.steps:global(.how__steps) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+@media (max-width: 800px) {
+  .steps:global(.how__steps) { grid-template-columns: 1fr; }
+}
+
+.stepBody {
+  font-size: 15px;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  max-width: var(--measure);
+}
+.stepBody p + p,
+.stepBody p + ul,
+.stepBody ul + p { margin-top: var(--space-3); }
+
+.ways {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ways li {
+  position: relative;
+  padding-left: var(--space-5);
+}
+.ways li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: .62em;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  opacity: .8;
+}
+.ways strong { color: var(--text-primary); font-weight: var(--fw-semibold); }
+
+/* ---------- After the call ---------- */
+.afterGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr);
+  gap: var(--space-12);
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .afterGrid { grid-template-columns: 1fr; gap: var(--space-10); }
+}
+
+.insightList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.insightList li {
+  padding: var(--space-5) 0;
+  border-top: 1px solid var(--divider);
+}
+.insightList li:first-child { padding-top: 0; border-top: 0; }
+.insightList h3 {
+  margin-bottom: var(--space-2);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-heading);
+  color: var(--text-primary);
+}
+.insightList p {
+  font-size: 15px;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  max-width: var(--measure);
+}
+.insightList code,
+.scope code {
+  font-family: var(--mono);
+  font-size: .88em;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--well);
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+/* The decorative recording row. It mirrors the app's History row: a header
+   line, the Transcript / Summary / Action Items tab bar and a checklist. */
+.mock {
+  margin: 0;
+  background: var(--surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--plate-ring), var(--shadow-md);
+  overflow: hidden;
+  font-size: 14px;
+  line-height: var(--lh-tight);
+  user-select: none;
+}
+.mockHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--divider);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.mockPlay {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.mockPlay svg { width: 10px; height: 10px; margin-left: 2px; }
+.mockDate { color: var(--text-primary); font-weight: var(--fw-medium); }
+.mockBadge {
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: var(--well);
+  color: var(--text-secondary);
+  font-weight: var(--fw-medium);
+}
+.mockSpacer { flex: 1; }
+.mockMono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.mockTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  margin: var(--space-4) var(--space-5) 0;
+  padding: 3px;
+  width: fit-content;
+  max-width: calc(100% - var(--space-5) * 2);
+  border-radius: var(--radius-md);
+  background: var(--well);
+}
+.mockTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 7px;
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+  font-weight: var(--fw-medium);
+  white-space: nowrap;
+}
+.mockTabActive {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: var(--plate-ring), var(--shadow-sm);
+}
+.mockCount {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-full);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 11px;
+  line-height: 18px;
+  text-align: center;
+}
+
+.mockList {
+  display: grid;
+  margin: var(--space-3) 0 0;
+  padding: 0 var(--space-5);
+  list-style: none;
+}
+.mockItem {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-top: 1px solid var(--divider);
+}
+.mockItem:first-child { border-top: 0; }
+.mockBox {
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  border: 1.5px solid var(--border-strong);
+  color: var(--accent-ink);
+}
+.mockBox svg { width: 11px; height: 11px; }
+.mockItemDone .mockBox {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.mockTask { color: var(--text-primary); font-weight: var(--fw-medium); }
+.mockItemDone .mockTask {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--border-strong);
+}
+.mockMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.mockChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px 2px 6px;
+  border-radius: var(--radius-full);
+  background: var(--well);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.mockChip svg { width: 11px; height: 11px; color: var(--text-muted); }
+
+.mockFoot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--divider);
+  background: var(--surface-elevated);
+  color: var(--text-muted);
+  font-size: var(--fs-caption);
+}
+.mockCopy {
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  box-shadow: var(--plate-ring);
+  background: var(--surface);
+  color: var(--text-primary);
+  font-weight: var(--fw-medium);
+}
+
+@media (max-width: 640px) {
+  .mockHead { gap: var(--space-2); padding-inline: var(--space-4); }
+  .mockDate { white-space: nowrap; }
+  .mockTabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: auto;
+    max-width: none;
+  }
+  .mockTab { justify-content: center; }
+}
+
+.mockCaption {
+  margin-top: var(--space-4);
+  font-size: var(--fs-body-sm);
+  line-height: var(--lh-caption);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* Honest scope: what the insights send, and where. */
+.scope {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: var(--space-4);
+  margin-top: var(--space-12);
+  padding: var(--space-6);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--plate-ring);
+}
+.scopeIcon {
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.scope h3 {
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-heading);
+}
+.scopeList {
+  display: block;
+  columns: 2;
+  column-gap: var(--space-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 15px;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+}
+.scopeList li {
+  position: relative;
+  padding-left: var(--space-5);
+  break-inside: avoid;
+  margin-bottom: var(--space-2);
+}
+.scopeList li:last-child { margin-bottom: 0; }
+.scopeList li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: .62em;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--text-muted);
+  opacity: .7;
+}
+@media (max-width: 720px) {
+  .scope { grid-template-columns: 1fr; padding: var(--space-5); }
+  .scopeList { columns: 1; }
+}
+
+/* The same plate, reused for the permissions & privacy list. */
+.privacyScope { margin-top: var(--space-8); align-items: start; }
+
+.inlineLink { margin-top: var(--space-6); }
+.inlineLink,
+.sectionNote {
+  font-size: 15px;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  max-width: var(--measure);
+}
+.sectionNote { margin-top: var(--space-6); }

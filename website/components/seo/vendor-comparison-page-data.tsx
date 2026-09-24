@@ -1,32 +1,66 @@
+import Link from "next/link";
+
+import { formatDisplayDate, page, type PagePath } from "@/lib/pages";
+
 import type { SeoLandingConfig } from "./seo-landing";
+
+/** The date a page's vendor sources were last re-checked, as display text. */
+function sourcesChecked(path: PagePath): string {
+  const record = page(path);
+  return formatDisplayDate(record.sourcesReviewed ?? record.published);
+}
+
+const SUPERWHISPER_CHECKED = sourcesChecked("/superwhisper-alternative");
+const WISPR_CHECKED = sourcesChecked("/wispr-flow-alternative");
 
 export const superwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/superwhisper-alternative",
+  parent: { name: "Compare", path: "/compare" },
   title: "Superwhisper Alternative for Mac — Free & Local",
   description:
-    "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, file workflows, source access, requirements, and who each app suits.",
+    "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, meetings and files, source access, requirements, and price.",
   breadcrumb: "Superwhisper alternative",
   eyebrow: "Balanced comparison",
-  readingTime: "10 min",
+  readingTime: "6 min",
   h1: "A Superwhisper alternative for Mac users who prioritize free, inspectable, local-first software.",
   lead:
-    "Superwhisper is a mature, cross-platform voice product with local and cloud models, AI formatting, and a wider ecosystem. VoiceToText is a narrower Mac app: free, local by default, with source available on GitHub, and built around reviewed paste plus meeting capture.",
+    "Superwhisper is a mature, cross-platform voice product with local and cloud models, AI formatting, and a wider ecosystem. VoiceToText is a narrower Mac app: free, local by default, with source on GitHub, and built around reviewed paste, meeting recording and a searchable history.",
   heroPoints: [
-    "Reviewed July 27, 2026",
-    "No unverifiable prices",
     "Official vendor sources",
+    "No unverifiable prices",
     "Both products credited",
+    "Local mode vs local mode",
   ],
   summaryTitle: "Which one should you try?",
   summary: (
     <>
-      Choose Superwhisper when cross-platform availability, its Super Mode formatting, broad model catalog,
-      iOS continuity, and an established commercial product matter. Choose VoiceToText when you want a
-      no-cost Mac utility with source available on GitHub, no app account, a simple review-before-paste flow,
-      and local meeting or file transcription. Test both with your language and vocabulary; this page does
-      not claim one model is universally more accurate.
+      Choose Superwhisper when cross-platform availability, its Super Mode formatting, a broad model catalog,
+      iOS continuity, and an established commercial product matter. Choose VoiceToText when you want a free
+      Mac app with source on GitHub, no account, a review-before-paste flow, and local meeting and file
+      transcription with optional AI summaries on your own key. Test both with your language and vocabulary;
+      this page does not claim either is more accurate.
     </>
   ),
+  disclosure: (
+    <>
+      This is VoiceToText’s own website, written by its developer. There are no affiliate links or
+      sponsorships. Superwhisper facts come from its official pages, checked {SUPERWHISPER_CHECKED} and
+      linked below.
+    </>
+  ),
+  atAGlance: {
+    title: "VoiceToText vs Superwhisper at a glance.",
+    caption: `Superwhisper as documented on its official site (checked ${SUPERWHISPER_CHECKED}).`,
+    columns: ["VoiceToText", "Superwhisper"],
+    rows: [
+      { label: "Platforms", cells: ["Mac (Apple Silicon, macOS 15+)", "macOS, Windows, iOS and Android"] },
+      { label: "Local transcription", cells: ["Yes: Parakeet and 5 Whisper sizes", "Yes: on-device models"] },
+      { label: "AI formatting", cells: ["Opt-in actions in review, on your OpenAI key", "Super Mode and modes, built in"] },
+      { label: "Meetings", cells: ["Mic + system audio, no bot; AI summaries on your key", "Records meetings from the device without a bot, with speaker labels"] },
+      { label: "Source", cells: ["Public on GitHub", "Proprietary"] },
+      { label: "Price", cells: ["Free, no paid tier", "Free tier plus paid plans"] },
+    ],
+  },
   sections: [
     {
       id: "superwhisper-case",
@@ -34,7 +68,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "It covers more platforms and more layers of the writing workflow.",
       paragraphs: [
         <>
-          Superwhisper’s official site describes system-wide dictation for macOS, Windows, and iOS. It can
+          Superwhisper’s official site describes system-wide dictation for macOS, Windows, iOS and Android. It can
           place text at the cursor, run with a global shortcut or push-to-talk, transcribe files, and use
           on-device models without an internet connection. Its model catalog also documents optional cloud
           transcription.
@@ -61,22 +95,37 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Free, with source on GitHub",
           body:
-            "The application source is public and the release has no paid tier, account, or in-app subscription. You can inspect how audio, permissions, history, and paste behavior are implemented.",
+            "The source is public, and there is no paid tier, account or subscription. You can read how audio, permissions, history and paste behavior are implemented.",
         },
         {
           title: "Local by default",
           body:
-            "Parakeet and Whisper run on Apple Silicon after model download. Optional cloud models require your own provider key and are a deliberate selection rather than the default path.",
+            "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on Apple Silicon after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
         },
         {
           title: "Review as the core workflow",
           body:
-            "Stop dictation, correct the complete transcript in a floating panel, and press Return to paste. You can turn review off, but the safe staged workflow remains first-class.",
+            "Stop dictation, correct the complete transcript in a floating panel, add a take at the caret with ⌘R, and press Return to paste. Opt-in AI actions such as Clean transcript or Improve prompt run on ⌘1–⌘9.",
         },
         {
           title: "Meetings without a bot",
+          body: (
+            <>
+              Record your microphone and the Mac’s system audio, or drop in a file, and transcribe locally.
+              Each recording can get an AI summary, an action-item checklist or your own prompt’s result, on
+              your OpenAI key. See <Link href="/meeting-recording">meeting recording</Link>.
+            </>
+          ),
+        },
+        {
+          title: "Search everything you said",
           body:
-            "Capture the Mac’s microphone and system audio, transcribe locally, keep the recording in history, and regenerate with another model when needed.",
+            "History keeps dictations, meetings and imports on the Mac with their audio. Search covers transcripts, summaries, action items and speaker names, and any recording can be regenerated with another model.",
+        },
+        {
+          title: "Scriptable",
+          body:
+            "A voicetotext:// URL scheme starts, stops or cancels dictation from Raycast, Shortcuts, Stream Deck or a script.",
         },
       ],
     },
@@ -86,26 +135,33 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "VoiceToText is not a drop-in copy of the broader product.",
       paragraphs: [
         <>
-          VoiceToText currently targets macOS 15 or later on Apple Silicon. It does not offer Windows or iOS
-          clients, a cross-device sync story, or the same catalog of vendor-hosted and local engines described
-          by Superwhisper. If you dictate across phone and desktop, platform reach may decide the comparison
-          immediately.
+          VoiceToText targets macOS 15 or later on Apple Silicon. It has no Windows, iOS or Android app and
+          no cross-device sync. If you dictate on your phone and your desktop, platform reach may decide the
+          comparison immediately.
         </>,
         <>
-          VoiceToText includes optional AI transcript actions, but its primary local flow preserves what was
-          transcribed for review. Superwhisper’s marketing emphasizes context-aware cleanup and formatting.
-          Users who want an assistant to reshape every utterance may prefer that product; users who want to
-          see and edit the raw result may prefer a simpler boundary.
+          VoiceToText’s AI actions are opt-in and manual: you run one per dictation from the review panel,
+          and nothing is rewritten automatically. There is no filler-word removal or voice command handling
+          unless you run an action. Superwhisper’s marketing emphasizes context-aware cleanup and formatting.
+          If you want every utterance reshaped for you, you may prefer that; if you want to see and edit the
+          raw result, you may prefer the simpler boundary.
         </>,
         <>
-          Publicly viewable source is valuable for inspection, but visibility alone does not grant permission
-          to modify or redistribute and is not the same as a support contract or security certification.
-          Review the repository terms, maintenance model, release cadence, and support expectations that
-          apply to your organization.
+          Public source is valuable for inspection, but visibility alone does not grant permission to modify
+          or redistribute, and it is not a support contract or a security certification. Check the
+          repository, its maintenance and release cadence, and the support your organization expects.
         </>,
       ],
-      note:
-        "Both products offer local transcription. “Superwhisper alternative” here means a different product and governance model, not a claim that Superwhisper is cloud-only.",
+      note: (
+        <>
+          Both products offer local transcription. “Superwhisper alternative” here means a different product
+          and governance model, not a claim that Superwhisper is cloud-only. For a cloud-only comparison, see{" "}
+          <Link href="/wispr-flow-alternative">VoiceToText vs Wispr Flow</Link>; for a file-transcription
+          specialist, see <Link href="/macwhisper-alternative">VoiceToText vs MacWhisper</Link>; for the
+          dictation built into macOS, see{" "}
+          <Link href="/apple-dictation-alternative">VoiceToText vs Apple Dictation</Link>.
+        </>
+      ),
     },
     {
       id: "decision",
@@ -115,65 +171,70 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Pick Superwhisper for reach",
           body:
-            "You need supported clients beyond one Mac, want its context-aware formatting and model catalog, or prefer a commercial product ecosystem.",
+            "You need clients beyond one Mac, want its context-aware formatting and model catalog, or prefer a commercial product ecosystem.",
         },
         {
           title: "Pick VoiceToText for inspectability",
           body:
-            "You want an open repository, no app account, a free feature set, explicit local-model selection, and a Mac-native review workflow.",
+            "You want a public repository, no account, no paid tier, an explicit choice of local model, a review step, and meeting transcripts you can search.",
         },
         {
           title: "Compare local mode to local mode",
           body:
-            "Do not compare a small local model in one product with a cloud model in the other and call it a product verdict. Match the privacy and processing mode first.",
+            "Don’t compare a small local model in one product with a cloud model in the other and call it a product verdict. Match the privacy and processing mode first.",
         },
         {
           title: "Use a personal test set",
-          body:
-            "Dictate the same names, technical terms, accent, and sentence lengths into both. Measure corrections and total time—not just the first impressive sample.",
+          body: (
+            <>
+              Dictate the same names, technical terms, accent and sentence lengths into both. Measure
+              corrections and total time, not just the first impressive sample. The{" "}
+              <Link href="/compare">comparison hub</Link> lists the other apps worth testing.
+            </>
+          ),
         },
       ],
     },
   ],
   comparison: {
-    caption:
-      "Documented product behavior reviewed on July 27, 2026. Plans, models, and requirements can change.",
+    title: "VoiceToText vs Superwhisper, in detail.",
+    caption: `Superwhisper behavior as documented on ${SUPERWHISPER_CHECKED}. Plans, models, and requirements can change.`,
     columns: ["VoiceToText", "Superwhisper"],
     rows: [
       {
         label: "Platforms",
-        cells: ["macOS.", "Official site lists macOS, Windows, and iOS."],
+        cells: ["macOS.", "Official site lists macOS, Windows, iOS and Android."],
       },
       {
         label: "Source model",
-        cells: ["Application source is public on GitHub.", "Commercial proprietary application."],
+        cells: ["Source is public on GitHub.", "Commercial proprietary application."],
       },
       {
         label: "Local transcription",
         cells: [
-          "Parakeet and Whisper options run on the Mac after download.",
+          "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on the Mac after download. Parakeet also works with the network off; loading a Whisper model needs a connection.",
           "Official model catalog lists on-device models that work without internet.",
         ],
       },
       {
         label: "Cloud transcription",
         cells: [
-          "Optional OpenAI and ElevenLabs choices use the user’s provider key.",
+          "Nine optional OpenAI and ElevenLabs models on your own key, including live text and speaker labels.",
           "Official catalog lists vendor-proxied cloud models as well as on-device choices.",
         ],
       },
       {
         label: "Output workflow",
         cells: [
-          "Review the complete transcript before paste, or enable instant paste; optional transcript actions.",
+          "Review the complete transcript before paste, or paste instantly; opt-in AI actions on your OpenAI key.",
           "System-wide dictation plus modes and AI/context-aware formatting promoted by the vendor.",
         ],
       },
       {
-        label: "Recorded media",
+        label: "Meetings and files",
         cells: [
-          "File import plus microphone and system-audio meeting capture with local history.",
-          "Official site documents file transcription; check the current app for the exact meeting workflow.",
+          "Records microphone plus system audio and imports audio or video files. Optional AI summaries, action items and custom prompts on your OpenAI key; searchable local history.",
+          "Official site documents file transcription and a Meetings mode that records meeting-app audio on your device without a bot, with speaker labels.",
         ],
       },
       {
@@ -186,7 +247,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       {
         label: "Payment model",
         cells: [
-          "Free with no paid tier.",
+          "Free with no paid tier. Cloud models and AI features bill your own provider key.",
           "Free tier plus paid features; verify current plan details with the vendor.",
         ],
       },
@@ -194,6 +255,28 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     note:
       "Neither column is an accuracy score. Model selection, audio, language, hardware, and formatting settings can change the result more than the product name alone.",
   },
+  faq: [
+    {
+      question: "Is there a free alternative to Superwhisper for Mac?",
+      answer:
+        "VoiceToText is free with no paid tier or account. It runs Parakeet and Whisper models on Apple Silicon Macs, pastes reviewed text into any app, and records meetings. Superwhisper covers more platforms and formatting features.",
+    },
+    {
+      question: "Do both apps work offline?",
+      answer:
+        "Yes, with local models. Superwhisper documents on-device models that work without internet. In VoiceToText, Parakeet, the default, works with the network off after a one-time download. Its Whisper models also run on the Mac, but loading one needs an internet connection.",
+    },
+    {
+      question: "Does VoiceToText have AI formatting like Super Mode?",
+      answer:
+        "Not automatically. VoiceToText has opt-in AI actions, such as Clean transcript, Fix grammar and Improve prompt, that you run per dictation from the review panel. They use your OpenAI key and send the transcript text to OpenAI.",
+    },
+    {
+      question: "Can VoiceToText summarize meetings?",
+      answer:
+        "Yes, with your OpenAI key. Any recording can get a summary, an action-item checklist or the result of your own prompt. Transcription itself can stay local; only the transcript text goes to OpenAI for the summary.",
+    },
+  ],
   sources: [
     {
       label: "Superwhisper: Voice to text for Mac",
@@ -214,6 +297,11 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         "Vendor explanation of local model downloads, offline operation, hardware considerations, and its browser-versus-app privacy distinction.",
     },
     {
+      label: "Superwhisper: Meeting transcription",
+      href: "https://superwhisper.com/meeting-transcription",
+      detail: "Vendor page for on-device meeting recording without a bot, speaker labels and file transcription.",
+    },
+    {
       label: "Superwhisper: Changelog",
       href: "https://superwhisper.com/changelog",
       detail:
@@ -229,18 +317,18 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
   related: [
     {
       href: "/wispr-flow-alternative",
-      title: "Wispr Flow alternative",
-      description: "Compare a local-first Mac app with source on GitHub against a cloud transcription product and its privacy controls.",
-    },
-    {
-      href: "/offline-speech-to-text-mac",
-      title: "Offline speech to text on Mac",
-      description: "Verify what local transcription means and where optional network features begin.",
+      title: "VoiceToText vs Wispr Flow",
+      description: "A local-first Mac app compared with a cloud dictation service and its privacy controls.",
     },
     {
       href: "/whisper-vs-parakeet-mac",
       title: "Whisper vs. Parakeet",
-      description: "Choose between the two local model families available in VoiceToText.",
+      description: "Benchmark figures, languages and download sizes for the local models in VoiceToText.",
+    },
+    {
+      href: "/compare/best-dictation-apps-for-mac",
+      title: "Best dictation apps for Mac",
+      description: "Seven Mac dictation apps side by side on dictation, files, meetings, privacy, languages and price.",
     },
   ],
   ctaTitle: "Compare the workflow, not just the feature list.",
@@ -251,81 +339,128 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
 
 export const wisprFlowAlternativeConfig: SeoLandingConfig = {
   path: "/wispr-flow-alternative",
-  title: "Wispr Flow Alternative for Mac — Local & Free",
+  parent: { name: "Compare", path: "/compare" },
+  title: "Wispr Flow Alternative for Mac: Free, Offline, No Account",
   description:
-    "Compare VoiceToText and Wispr Flow for Mac dictation: local versus cloud transcription, privacy controls, platforms, accounts, formatting, and tradeoffs.",
+    "VoiceToText vs Wispr Flow on Mac: local vs cloud transcription, meetings and AI summaries, privacy controls, price, and which app suits whom.",
   breadcrumb: "Wispr Flow alternative",
   eyebrow: "Balanced comparison",
-  readingTime: "11 min",
+  readingTime: "8 min",
   h1: "A Wispr Flow alternative for Mac users who want transcription to run locally.",
   lead:
-    "Wispr Flow is a polished cross-platform cloud dictation product with AI editing, context, personalization, and enterprise controls. VoiceToText is a free Mac app with source available on GitHub whose Parakeet and Whisper engines can transcribe without sending audio to a server.",
+    "Wispr Flow is a polished cross-platform cloud dictation product with AI editing, a meeting notetaker and team controls. VoiceToText is a free Mac app with source on GitHub: its local models transcribe without sending audio anywhere, and it needs no account.",
   heroPoints: [
-    "Reviewed July 27, 2026",
-    "Current privacy docs",
-    "No stale pricing table",
+    `Wispr docs checked ${WISPR_CHECKED}`,
+    "Current pricing",
+    "No account needed",
     "Cloud strengths acknowledged",
   ],
   summaryTitle: "The deciding difference",
   summary: (
     <>
-      If audio must be transcribed on the Mac, choose VoiceToText with a local model: Wispr’s official privacy
-      page says Flow transcription always happens in the cloud. If you value Flow’s cross-device clients,
-      context-aware polishing, personalization, notetaking ecosystem, and managed enterprise controls, its
-      cloud architecture may be an acceptable trade. Privacy settings and cloud storage are separate
-      decisions in Flow, so inspect both before dictating sensitive material.
+      If audio must be transcribed on the Mac, choose VoiceToText with a local model: Wispr’s privacy page says
+      “Transcription always happens in the cloud.” If you value Flow’s clients for Windows, iPhone and
+      Android, automatic polishing, personalization, Notetaker and managed team controls, its cloud design may
+      be an acceptable trade. In Flow, training use and cloud storage are separate settings, so check both
+      before dictating sensitive material.
     </>
   ),
+  disclosure: (
+    <>
+      This is VoiceToText’s own website, written by its developer, so we have a stake in the outcome. There
+      are no affiliate links or sponsorships. Every Wispr Flow fact comes from Wispr’s official pages, checked{" "}
+      {WISPR_CHECKED} and linked below.
+    </>
+  ),
+  atAGlance: {
+    title: "VoiceToText vs Wispr Flow",
+    caption: `Wispr Flow as documented on its official site and help center (checked ${WISPR_CHECKED}).`,
+    columns: ["VoiceToText", "Wispr Flow"],
+    rows: [
+      {
+        label: "Where speech is transcribed",
+        cells: ["On your Mac with a local model; cloud only if you pick one", "Wispr’s cloud, always"],
+      },
+      { label: "Works offline", cells: ["Yes, with the default Parakeet model, after its download", "No"] },
+      { label: "Account", cells: ["None", "Required"] },
+      {
+        label: "Price",
+        cells: [
+          "Free, no paid tier",
+          "Free plan (2,000 words a week on desktop); Pro $15/user/month, or $12 billed annually",
+        ],
+      },
+      {
+        label: "Platforms",
+        cells: ["Mac: Apple Silicon, macOS 15+", "Mac (macOS 12+, Intel or Apple Silicon), Windows, iPhone, Android"],
+      },
+      {
+        label: "AI editing",
+        cells: ["Opt-in actions in the review panel, on your OpenAI key", "Built in: auto punctuation, filler removal, backtrack, styles"],
+      },
+      {
+        label: "Meetings",
+        cells: [
+          "Records mic + system audio, no bot; AI summaries and action items on your OpenAI key",
+          "Notetaker on Mac and Windows, no visible bot; cloud transcripts, speaker names, summaries",
+        ],
+      },
+      { label: "Source", cells: ["Public on GitHub", "Proprietary"] },
+    ],
+  },
   sections: [
     {
       id: "flow-case",
       eyebrow: "The case for Wispr Flow",
-      title: "A cloud service can coordinate features that a single-device utility does not attempt.",
+      title: "A cloud service can coordinate features that a single-device app does not attempt.",
       paragraphs: [
         <>
-          Wispr’s official documentation lists clients for Mac, Windows, iOS, and Android (Beta). Its product combines
-          dictation with AI commands and automatic edits, context awareness, a dictionary, snippets,
-          personalization, and a Scratchpad/notetaking workflow. Those features are designed to make output
-          ready for the destination rather than simply expose a raw transcript.
+          Wispr’s documentation lists Flow for Mac, Windows, iPhone and Android. Dictation comes with
+          automatic punctuation, filler-word removal, backtracking (“let’s meet at 2… actually 3”), a personal
+          dictionary, snippets and styles, and Wispr says it covers 100+ languages. The goal is text that is
+          ready for its destination without a separate cleanup pass. In September 2026 Wispr also announced
+          Canto, its own speech model, which runs in its cloud like the rest of Flow.
         </>,
         <>
-          The cloud design supports consistent service behavior across devices and organization-level
-          controls. Wispr documents SSO/SAML for enterprise plans, administrator-enforced privacy settings,
-          and security and compliance materials. Because attestation status can change, verify the current
-          scope and status in Wispr’s Trust Center. Teams that require managed controls may prefer a vendor
-          service over a community-maintained desktop utility.
+          Notetaker, Wispr’s meeting tool, runs on Mac and, since September 15, 2026, on Windows. Wispr says it
+          captures audio on your device without joining the call as a visible bot, then provides transcripts
+          with speaker names, summaries organized by topic, action items and search across meetings, in 21
+          languages. It relies on Wispr’s cloud storage.
         </>,
         <>
-          Flow also supports Intel Macs and older macOS versions than current VoiceToText releases, according
-          to Wispr’s July 2026 “What is Flow?” documentation. Platform and deployment fit can matter more than
-          whether a speech model is local.
+          For teams, Wispr documents SAML single sign-on on its Growth and Enterprise plans, SCIM provisioning
+          and audit logs on Enterprise, admin-locked settings, HIPAA with a signed BAA, and SOC 2 Type II and
+          ISO 27001 materials in its Trust Center. Flow also supports Intel Macs and macOS 12 or later, which
+          VoiceToText doesn’t. Platform and deployment fit can matter more than where the speech model runs.
         </>,
       ],
     },
     {
       id: "privacy",
       eyebrow: "Read the controls carefully",
-      title: "Cloud processing, training choice, and server storage are three different questions.",
+      title: "Cloud processing, training use, and server storage are three different questions.",
       paragraphs: [
         <>
-          Wispr’s privacy page says transcription always happens in the cloud. Privacy Mode controls whether
-          dictation data is used to train or improve models; turning it on does not, by itself, move inference
-          onto the device.
+          Wispr’s privacy page says transcription always happens in the cloud “to provide the best speed and
+          accuracy.” No Flow setting moves recognition onto your device.
         </>,
         <>
-          Private Cloud Sync separately controls server-side storage and features that depend on it. Wispr’s
-          July 2026 documentation says that enabling Privacy Mode and disabling Private Cloud Sync provides
-          zero data retention for dictation data, while some notetaking, sync, and personalization features
-          require cloud storage.
+          Settings → Data and Privacy then has separate controls. “Improve the model for everyone” decides
+          whether your dictation audio, transcripts and edits may be used to train or evaluate models.
+          “Dictation Cloud Storage” decides whether dictation data is kept on Wispr’s servers; Scratchpad
+          sync, iPhone Notes sync, AI summaries and Notetaker depend on it. On desktop, a local-storage setting
+          also lets you keep history normally, delete it after 24 hours, or not store it at all.
         </>,
         <>
-          These are meaningful controls, not evidence that Flow is careless. They simply solve a different
-          problem from on-device inference. An organization may prefer a contractually managed cloud service;
-          another may have a policy that recordings cannot be sent to any transcription server at all.
+          Wispr’s help center says that for zero data retention on dictation, both “Improve the model for
+          everyone” and “Dictation Cloud Storage” must be off. That is a meaningful control, and it solves a
+          different problem from on-device transcription: the audio is still processed in Wispr’s cloud, then
+          not kept. Some organizations are fine with that under a contract; others have a policy that
+          recordings may not reach any transcription server.
         </>,
       ],
       note:
-        "Flow’s two-control privacy experience was rolling out gradually in July 2026. Check the exact settings visible in your account and current vendor documentation instead of assuming a screenshot from another device applies.",
+        "Wispr split these controls on June 17, 2026, when they were called Privacy Mode and Cloud Sync, and its current help center uses the names above. Check the settings in your own account rather than assuming a screenshot from another device applies.",
     },
     {
       id: "vtt-case",
@@ -333,24 +468,39 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       title: "Local-first design reduces the number of parties in the audio path.",
       cards: [
         {
-          title: "On-device engines",
+          title: "On-device transcription",
           body:
-            "Parakeet and Whisper run on Apple Silicon after the model download. The recording is not sent to VoiceToText because the project operates no transcription server.",
+            "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on Apple Silicon after the model download. VoiceToText runs no server, so there is nowhere for it to send your recording.",
         },
         {
-          title: "No app account",
+          title: "No account",
           body:
-            "Install from GitHub Releases and use local dictation without signing in. Optional cloud engines and AI actions use API keys you provide directly.",
+            "Download from GitHub Releases and dictate without signing in. Optional cloud models and AI features use API keys you paste in, billed by OpenAI or ElevenLabs.",
+        },
+        {
+          title: "Review before paste",
+          body:
+            "The transcript waits in a panel: fix it, press ⌘R to add another take at the caret, then Return to paste. Opt-in AI actions (Clean transcript, Improve prompt, Fix grammar and more) run on ⌘1–⌘9.",
+        },
+        {
+          title: "Meetings with AI summaries",
+          body: (
+            <>
+              Conversations records your microphone and the Mac’s system audio with no bot, and transcribes
+              locally when you stop. Each recording can get a summary, an action-item checklist or your own
+              prompt’s result, on your OpenAI key. See <Link href="/meeting-recording">meeting recording</Link>.
+            </>
+          ),
+        },
+        {
+          title: "A history you can search",
+          body:
+            "Dictations, meetings and imported files stay on the Mac with their audio. Search covers transcripts, summaries, action items and speaker names; you can regenerate any recording with another model.",
         },
         {
           title: "Inspectable implementation",
           body:
-            "The Swift source is public. Users and security teams can review permissions, storage, update checks, model code paths, and paste behavior.",
-        },
-        {
-          title: "Local recording history",
-          body:
-            "Meeting and file audio can remain with their transcripts on the Mac. That keeps control close, but also makes local disk protection and retention the user’s responsibility.",
+            "The Swift source is public. Users and security teams can review permissions, storage, update checks, model code paths and paste behavior.",
         },
       ],
     },
@@ -360,20 +510,20 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       title: "Privacy architecture is only one dimension of product fit.",
       paragraphs: [
         <>
-          VoiceToText supports one platform: current builds require macOS 15 or later and Apple Silicon. It
-          does not provide Flow’s Windows, iOS, or Android clients, organization dashboard, enterprise identity
-          features, or a cross-device cloud notebook.
+          VoiceToText runs on one platform: macOS 15 or later on Apple Silicon. It has no Windows, iPhone or
+          Android app, no team dashboard, no single sign-on, and no cross-device sync.
         </>,
         <>
-          Flow’s product is built around AI rewriting, context, and personalization. VoiceToText offers a
-          review editor and optional transcript actions, but users who expect every dictation to be
-          automatically adapted to an app and personal style may find the local-first utility intentionally
-          simpler.
+          Flow polishes every dictation automatically. VoiceToText doesn’t: with a local model you get the
+          model’s punctuated transcript, with no filler removal or voice commands, and AI cleanup happens only
+          when you run an action on your own OpenAI key. With a local model the text also appears when you
+          stop, not as you speak. Live text needs one of the cloud streaming models.
         </>,
         <>
-          VoiceToText has no first-party service charge, but local models consume disk and processing resources,
-          and the project does not promise a commercial SLA. Flow has plan limits and paid offerings that can
-          change; consult its current pricing page rather than relying on an undated comparison.
+          VoiceToText’s speaker labels also come only from a cloud model (GPT-4o Transcribe Diarize), and
+          names are yours to type, where Flow’s Notetaker names speakers from calendar and context. VoiceToText
+          costs nothing, but local models use disk space and processing power, and there is no commercial
+          support agreement.
         </>,
       ],
     },
@@ -385,121 +535,179 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         {
           title: "Must audio stay on-device?",
           body:
-            "Use VoiceToText with Parakeet or Whisper. Verify the selected model and avoid its optional cloud engines and AI actions for that session.",
+            "Use VoiceToText with a local model. Check Settings → Models and the Conversations transcription model, and skip AI actions and summaries for that session, since they send transcript text to OpenAI.",
         },
         {
           title: "Need cross-platform continuity?",
           body:
-            "Flow has the stronger documented platform story. Decide whether its cloud processing and account model fit the data involved.",
+            "Flow has the stronger platform story. Decide whether its cloud processing and account fit the data involved.",
         },
         {
           title: "Need managed compliance controls?",
           body:
-            "Evaluate Wispr’s current security documentation, agreements, admin controls, and Trust Center rather than inferring compliance from a local app.",
+            "Evaluate Wispr’s current security documentation, agreements, admin controls and Trust Center rather than inferring compliance from a local app.",
         },
         {
-          title: "Need inspectable software?",
-          body:
-            "VoiceToText’s public repository and URL-scheme automation are the more direct fit, with the maintenance tradeoffs of a project that publishes its source.",
+          title: "Mostly want meeting notes?",
+          body: (
+            <>
+              Compare Notetaker with VoiceToText’s Conversations, and with a dedicated notetaker; see{" "}
+              <Link href="/granola-alternative">VoiceToText vs Granola</Link>. For another local-first
+              dictation app, see <Link href="/superwhisper-alternative">VoiceToText vs Superwhisper</Link>, or
+              browse <Link href="/compare">every comparison</Link>.
+            </>
+          ),
         },
       ],
     },
   ],
   comparison: {
-    caption:
-      "Documented product behavior reviewed on July 27, 2026. Confirm current settings and plan details before making a policy decision.",
+    title: "VoiceToText vs Wispr Flow, in detail.",
+    caption: `Wispr Flow behavior as documented on ${WISPR_CHECKED}. Confirm current settings and plan details before making a policy decision.`,
     columns: ["VoiceToText", "Wispr Flow"],
     rows: [
       {
         label: "Transcription location",
         cells: [
-          "Local with Parakeet or Whisper; optional cloud engines are separately selected.",
-          "Wispr’s privacy page says transcription always happens in the cloud.",
+          "On the Mac with Parakeet or Whisper; optional OpenAI or ElevenLabs models are chosen separately and use your key.",
+          "“Transcription always happens in the cloud,” according to Wispr’s privacy page.",
         ],
       },
       {
         label: "Account",
         cells: [
-          "No VoiceToText account for the local app.",
-          "Desktop sign-in goes through Wispr’s web login, according to its product documentation.",
+          "None.",
+          "Required: sign in with Google, Apple, Microsoft, organization SSO, or email.",
         ],
       },
       {
         label: "Platforms",
         cells: [
-          "macOS on Apple Silicon.",
-          "Official documentation lists Mac, Windows, iOS, and Android (Beta).",
+          "macOS 15+ on Apple Silicon.",
+          "Mac (macOS 12+, Apple Silicon or Intel), Windows 10/11, iPhone (iOS 18.3+), Android 13–16.",
+        ],
+      },
+      {
+        label: "Languages",
+        cells: [
+          "Parakeet: 25 European languages, automatic. Local Whisper: English. Cloud models: 90–99+, detected automatically.",
+          "100+ for dictation; Notetaker transcribes 21 languages.",
         ],
       },
       {
         label: "Privacy controls",
         cells: [
-          "Select a local model so audio does not leave the Mac; the app has no first-party transcription server.",
-          "Privacy Mode controls training use; Private Cloud Sync separately controls server storage and dependent features.",
+          "Pick a local model and audio doesn’t leave the Mac. AI actions and summaries send transcript text to OpenAI on your key.",
+          "“Improve the model for everyone” controls training use; “Dictation Cloud Storage” controls server storage. Both off gives zero data retention for dictation.",
         ],
       },
       {
         label: "Output processing",
         cells: [
-          "Review-before-paste or instant paste, with optional user-keyed transcript actions.",
-          "AI commands, auto-edits, context awareness, personalization, dictionary, and snippets documented by Wispr.",
+          "Review before paste or instant paste. Opt-in AI actions on your OpenAI key; no voice commands.",
+          "Auto punctuation, filler removal, backtracking, dictionary, snippets and styles.",
         ],
       },
       {
         label: "Meetings and notes",
         cells: [
-          "Local microphone + system-audio recording, file import, playback, and transcript history.",
-          "Notetaker and meeting-note features are part of Flow’s cloud-connected ecosystem; some require Private Cloud Sync.",
+          "Conversations: mic + system audio, file import, speaker labels via a cloud model, AI summaries, action items and custom prompts, searchable local history.",
+          "Notetaker on Mac and Windows: on-device capture without a visible bot, cloud transcripts with speaker names, summaries, action items and cross-meeting search.",
         ],
       },
       {
         label: "Governance",
         cells: [
-          "Application source is available on GitHub; no license, commercial support, or compliance claim is made here.",
-          "Proprietary service with vendor-documented enterprise and security controls; verify current attestations in its Trust Center.",
+          "Source is public on GitHub; no commercial support or compliance claim is made here.",
+          "Proprietary service. SAML SSO on Growth and Enterprise; SCIM and audit logs on Enterprise; SOC 2 and ISO 27001 materials in its Trust Center.",
         ],
       },
       {
-        label: "Payment model",
+        label: "Price",
         cells: [
-          "Free with no paid tier.",
-          "Plan-based service; verify current limits and pricing with Wispr.",
+          "Free with no paid tier. Cloud models and AI features bill your own provider key.",
+          "Free plan with 2,000 words a week on desktop; Pro $15/user/month or $12 billed annually; Growth and Enterprise plans for teams.",
         ],
       },
     ],
     note:
-      "Zero data retention is not the same as on-device transcription: data can be processed in the cloud and discarded. Decide which requirement your policy actually sets.",
+      "Zero data retention is not the same as on-device transcription: data can be processed in the cloud and then discarded. Decide which requirement your policy actually sets.",
   },
+  faq: [
+    {
+      question: "Is there a free Wispr Flow alternative for Mac?",
+      answer:
+        "Yes. VoiceToText is free with no paid tier and no account. It transcribes on your Mac with local models and pastes the text into any app. It runs only on Apple Silicon Macs with macOS 15 or later.",
+    },
+    {
+      question: "Does Wispr Flow work offline?",
+      answer:
+        "No. Wispr's privacy page says transcription always happens in the cloud. VoiceToText works offline with its default Parakeet model once the model has downloaded.",
+    },
+    {
+      question: "Does VoiceToText have a meeting notetaker like Wispr Flow?",
+      answer:
+        "It records meetings: Conversations captures your microphone and system audio without a bot and transcribes when you stop. With your OpenAI key, each recording can get a summary, action items or your own prompt's result.",
+    },
+    {
+      question: "Does VoiceToText remove filler words and format text like Flow?",
+      answer:
+        "Not automatically. You review the transcript before pasting, and you can run an opt-in AI action such as Clean transcript, which removes fillers and handles spoken cues, using your own OpenAI key.",
+    },
+    {
+      question: "Can I use VoiceToText on Windows or iPhone?",
+      answer:
+        "No. VoiceToText is Mac-only and needs Apple Silicon. Wispr Flow has apps for Mac, Windows, iPhone and Android.",
+    },
+  ],
   sources: [
     {
       label: "Wispr Flow: Privacy",
       href: "https://wisprflow.ai/privacy",
       detail:
-        "Vendor overview of Privacy Mode, Private Cloud Sync, zero data retention, security claims, and the statement that transcription happens in the cloud.",
+        "Vendor overview of data controls, retention, certifications, and the statement that transcription always happens in the cloud.",
     },
     {
-      label: "Wispr Flow: Data controls",
+      label: "Wispr Flow: Manage data sharing, cloud storage and local history",
       href: "https://docs.wisprflow.ai/articles/9609615338-private-cloud-sync-and-data-sharing-preferences-in-wispr-flow",
       detail:
-        "July 2026 vendor documentation separating model-training preference from cloud storage and listing features that depend on sync.",
+        "Help-center article describing “Improve the model for everyone,” “Dictation Cloud Storage,” local storage options, the features that need cloud storage, and zero data retention.",
     },
     {
-      label: "Wispr Flow: Security FAQ",
+      label: "Wispr Flow: Security and privacy overview",
       href: "https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq",
       detail:
-        "Vendor details on data handling, Privacy Mode, cloud sync, certifications, organization controls, and product security.",
+        "Vendor details on SAML SSO, SCIM, audit logs, admin-locked settings, and SOC 2 and ISO 27001 documentation.",
     },
     {
       label: "Wispr Flow: What is Flow?",
       href: "https://docs.wisprflow.ai/articles/2772472373-what-is-flow",
-      detail:
-        "Current vendor platform and system-requirement documentation, including sign-in and device-specific limitations.",
+      detail: "Platforms, the account requirement, and the internet requirement for transcription.",
+    },
+    {
+      label: "Wispr Flow: Supported devices and system requirements",
+      href: "https://docs.wisprflow.ai/articles/1036674442",
+      detail: "Minimum macOS, Windows, iOS and Android versions, and Intel Mac support.",
+    },
+    {
+      label: "Wispr Flow: Pricing",
+      href: "https://wisprflow.ai/pricing",
+      detail: "Free plan limits and Pro, Growth and Enterprise pricing.",
+    },
+    {
+      label: "Wispr Flow: Notetaker",
+      href: "https://wisprflow.ai/notetaker",
+      detail: "Notetaker platforms, languages, capture without a visible bot, and its summaries, speaker names and search.",
+    },
+    {
+      label: "Wispr Flow: Features",
+      href: "https://wisprflow.ai/features",
+      detail: "Dictation features: auto punctuation, filler removal, backtracking, dictionary, snippets, styles and language count.",
     },
     {
       label: "Wispr Flow: What’s new",
       href: "https://wisprflow.ai/whats-new",
-      detail:
-        "Dated vendor history for the July 2026 split between Privacy Mode and Cloud Sync.",
+      detail: "Dated vendor changelog, including the June 2026 privacy-control split, Notetaker on Windows and the Canto model.",
     },
     {
       label: "VoiceToText source repository",
@@ -511,22 +719,22 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
   related: [
     {
       href: "/superwhisper-alternative",
-      title: "Superwhisper alternative",
-      description: "Compare two products that both offer local transcription but differ in platform reach and governance.",
+      title: "VoiceToText vs Superwhisper",
+      description: "Two products that both offer local transcription but differ in platform reach and governance.",
     },
     {
-      href: "/offline-speech-to-text-mac",
-      title: "Offline speech to text on Mac",
-      description: "See the exact boundary between local models, update checks, optional cloud engines, and AI actions.",
+      href: "/meeting-recording",
+      title: "Record and transcribe meetings",
+      description: "How Conversations records calls without a bot, and what AI summaries and action items do.",
     },
     {
-      href: "/apple-dictation-alternative",
-      title: "Apple Dictation alternative",
-      description: "Compare VoiceToText with the built-in Mac baseline before adding a cloud service.",
+      href: "/compare/best-dictation-apps-for-mac",
+      title: "Best dictation apps for Mac",
+      description: "Seven Mac dictation apps side by side on dictation, files, meetings, privacy, languages and price.",
     },
   ],
   ctaTitle: "Test the architecture your work requires.",
   ctaBody:
-    "If on-device transcription is non-negotiable, download a local model, disconnect Wi-Fi, and verify the full VoiceToText workflow yourself.",
+    "If on-device transcription is non-negotiable, let the default Parakeet model download, turn off Wi-Fi, and check the whole VoiceToText workflow yourself.",
   analyticsPlacement: "wispr_alternative",
 };

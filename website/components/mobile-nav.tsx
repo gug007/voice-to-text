@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { CSSProperties } from "react";
+import { createPortal } from "react-dom";
 
-import { DMG_URL, REPO_URL } from "@/lib/constants";
+import { REPO_URL } from "@/lib/constants";
+import { DownloadButton } from "@/components/ui/download-button";
 import { ExternalLink } from "@/components/ui/external-link";
-import { Icon } from "@/components/ui/icon";
 
 type MobileNavLink = {
   href: string;
@@ -33,13 +34,29 @@ const PANEL: CSSProperties = {
   WebkitBackdropFilter: "none",
 };
 
+/* While the menu is open everything outside the header is inert, so Tab cannot
+ * wander into page content hidden behind the panel. Returns the undo. */
+function inertOutside(keep: Element): () => void {
+  const made = Array.from(document.body.children).filter(
+    (el): el is HTMLElement =>
+      el instanceof HTMLElement && !el.contains(keep) && !el.classList.contains("nav__scrim") && !el.inert,
+  );
+  made.forEach((el) => {
+    el.inert = true;
+  });
+  return () =>
+    made.forEach((el) => {
+      el.inert = false;
+    });
+}
+
 export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !rootRef.current) return;
 
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -47,13 +64,19 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
         window.requestAnimationFrame(() => triggerRef.current?.focus());
       }
     };
+    // The scrim closes on its own click; closing here on pointerdown would let
+    // the click that follows land on the page underneath.
     const closeOnOutsidePress = (event: PointerEvent) => {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+      const target = event.target;
+      if (!(target instanceof Element) || target.closest(".nav__scrim")) return;
+      if (!rootRef.current?.contains(target)) setOpen(false);
     };
 
+    const restoreInert = inertOutside(rootRef.current);
     document.addEventListener("keydown", closeOnEscape);
     document.addEventListener("pointerdown", closeOnOutsidePress);
     return () => {
+      restoreInert();
       document.removeEventListener("keydown", closeOnEscape);
       document.removeEventListener("pointerdown", closeOnOutsidePress);
     };
@@ -99,7 +122,10 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
       ref={rootRef}
       className="nav__mobile"
       onBlur={(event) => {
-        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
+        // Only a real focus move closes the menu. A press on the scrim blurs to
+        // nothing, and the scrim's own click handles that.
+        const next = event.relatedTarget;
+        if (next && !event.currentTarget.contains(next)) setOpen(false);
       }}
     >
       <button
@@ -121,29 +147,20 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
         id="mobile-navigation"
         className={`nav__menu${open ? " is-open" : ""}`}
         style={PANEL}
-        aria-hidden={!open}
+        inert={!open}
       >
         <nav aria-label="Mobile">
           <ul role="list">
             {links.map(({ href, label }) => (
               <li key={href}>
-                <a
-                  href={`${linkPrefix}${href}`}
-                  tabIndex={open ? 0 : -1}
-                  onClick={() => closeAndFocusHashTarget(href)}
-                >
+                <a href={`${linkPrefix}${href}`} onClick={() => closeAndFocusHashTarget(href)}>
                   {label}
                 </a>
               </li>
             ))}
             {routes.map(({ href, label }) => (
               <li key={href}>
-                <Link
-                  href={href}
-                  aria-current={current === href ? "page" : undefined}
-                  tabIndex={open ? 0 : -1}
-                  onClick={close}
-                >
+                <Link href={href} aria-current={current === href ? "page" : undefined} onClick={close}>
                   {label}
                 </Link>
               </li>
@@ -151,7 +168,6 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
             <li>
               <ExternalLink
                 href={REPO_URL}
-                tabIndex={open ? 0 : -1}
                 onClick={close}
                 data-analytics-event="github_outbound"
                 data-analytics-placement="mobile_nav"
@@ -160,19 +176,20 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
               </ExternalLink>
             </li>
           </ul>
-          <a
-            className="btn btn--primary nav__menu-download"
-            href={DMG_URL}
-            tabIndex={open ? 0 : -1}
-            onClick={close}
-            data-analytics-event="download_click"
-            data-analytics-placement="mobile_nav"
-          >
-            <Icon name="download" />
-            <span>Download free</span>
-          </a>
+          <DownloadButton
+            placement="mobile_nav"
+            size="md"
+            label="Download free"
+            className="nav__menu-download"
+          />
         </nav>
       </div>
+
+      {/* Portalled to <body>: `.nav` has a backdrop-filter, which would make it
+          the containing block for a fixed child and shrink the scrim to the bar. */}
+      {open
+        ? createPortal(<div className="nav__scrim" aria-hidden="true" onClick={close} />, document.body)
+        : null}
     </div>
   );
 }

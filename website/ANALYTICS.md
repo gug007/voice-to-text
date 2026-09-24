@@ -35,14 +35,36 @@ The Search Console report collection is unpublished by default:
 
 Allow up to 48 hours for the latest Search Console data to appear. The integration can report at most the 16 months retained by Search Console.
 
-## Verify the two site events
+## Verify the site events
 
-The website already emits the following exact event names:
+The website emits the following exact event names:
 
 - `download_click`, with `placement`, `event_label`, and `link_url` when available
-- `demo_start`, with `placement` plus either `event_label`/`autoplay` for the product video or `source` for the interactive dictation demo
+- `demo_start`, with `placement`, `event_label` and `autoplay` for the product video
+- `send_to_mac`, with `placement`. Sent when a visitor who is not on a Mac taps **Send to your Mac**
+- `github_outbound`, with `placement` and `link_url`, for links to the GitHub repository
 
 Do not create renamed copies in GA4. Event names are case-sensitive.
+
+### Placement values
+
+`download_click` and `send_to_mac` share these placements, because both come from the same download button:
+
+- Site chrome: `desktop_nav`, `mobile_nav`, `mobile_sticky`, `nav_fallback` (no-JavaScript header link, `download_click` only)
+- Home: `home_hero`, `home_download` (the install section; formerly `home_footer`)
+- Guide and meetings: `guide_hero`, `guide_footer`, `meeting_hero`, `meeting_footer`
+- Compare hub and ranking: `compare_hub_hero`, `compare_hub_bottom`, `best_dictation_apps_bottom`
+- Landing pages, as `<prefix>_hero` and `<prefix>_bottom`: `offline_speech`, `coding_voice`, `apple_alternative`, `model_comparison`, `superwhisper_alternative`, `wispr_alternative`, `granola_alternative`, `macwhisper_alternative`
+
+`github_outbound` placements: `desktop_nav`, `mobile_nav`, `home_hero_release`, `home_download`, `home_download_release`, `privacy`, `everywhere_automation`, `contributors`, `meeting_footer`, `compare_hub_bottom`, `best_dictation_apps_bottom`, and each landing page's `<prefix>_bottom`.
+
+### `send_to_mac`
+
+A `.dmg` can't be installed on a phone, a PC or an iPad. The shared download button (`components/ui/download-button.tsx`) therefore renders the ordinary DMG link on the server. After load, if the browser is not a Mac desktop, it swaps that link for a **Send to your Mac** button. The check covers iPhone, iPad, Android, Windows and Linux. iPadOS reports itself as a Mac, so it's identified by `navigator.maxTouchPoints > 1`.
+
+The button opens the system share sheet with the home page URL. Where sharing isn't available, it copies the URL to the clipboard and announces "Link copied — open it on your Mac".
+
+The event carries the same `placement` values as `download_click` (for example `home_hero` or `mobile_sticky`). You can therefore compare the two events per placement. `send_to_mac` counts an intent to install later, not a download, so keep it a regular event. Do not mark it as a key event or add it to download totals.
 
 To verify collection:
 
@@ -192,13 +214,13 @@ Use `Landing page + query string` as rows and add:
 
 Because `download_click` is the only custom event marked as a key event, Key events and Session key event rate represent the primary download outcome. If other key events are added later, select or filter to `download_click` explicitly.
 
-Add a second event-detail tab with `Event name` as rows, limited to `download_click` and `demo_start`, and show:
+Add a second event-detail tab with `Event name` as rows, limited to `download_click`, `send_to_mac` and `demo_start`, and show:
 
 - Event count
 - Active users
 - Event count per active user
 
-Label `download_click` **Primary outcome** and `demo_start` **Secondary engagement** in the dashboard. Break out `download_click` by `placement` only after `placement` has been registered as an event-scoped custom dimension; custom dimensions are not retroactive.
+Label `download_click` **Primary outcome**, `send_to_mac` **Deferred install intent (mobile)**, and `demo_start` **Secondary engagement** in the dashboard. Break out `download_click` by `placement` only after `placement` has been registered as an event-scoped custom dimension; custom dimensions are not retroactive.
 
 ## Weekly review rules
 

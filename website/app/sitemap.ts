@@ -1,75 +1,19 @@
 import type { MetadataRoute } from "next";
 
-import { GUIDE_URL, SITE_URL } from "@/lib/constants";
-import { MEETING_URL } from "@/lib/seo";
+import { PAGES, pageUrl, type PagePath } from "@/lib/pages";
 
+// Generated from the PAGES registry, so a page's lastModified is the same date
+// its OpenGraph tags, JSON-LD and visible "Updated" line show. Bump `modified`
+// in lib/pages.ts only on real content changes; a per-build timestamp would
+// fake freshness to crawlers.
 export default function sitemap(): MetadataRoute.Sitemap {
-  // Bump when page content meaningfully changes; a per-build timestamp would
-  // fake freshness to crawlers.
-  const homeLastModified = "2026-07-27";
-  const contentPageLastModified = "2026-07-27";
-  const newContentLastModified = "2026-07-27";
-  const comparisonLastModified = "2026-08-12";
-  return [
-    {
-      url: `${SITE_URL}/`,
-      lastModified: homeLastModified,
-      changeFrequency: "monthly",
-      priority: 1.0,
-    },
-    {
-      url: GUIDE_URL,
-      lastModified: contentPageLastModified,
-      changeFrequency: "monthly",
-      priority: 0.9,
-    },
-    {
-      url: MEETING_URL,
-      lastModified: contentPageLastModified,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${SITE_URL}/offline-speech-to-text-mac`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.85,
-    },
-    {
-      url: `${SITE_URL}/voice-to-text-for-coding`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.85,
-    },
-    {
-      url: `${SITE_URL}/apple-dictation-alternative`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${SITE_URL}/whisper-vs-parakeet-mac`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.8,
-    },
-    {
-      url: `${SITE_URL}/superwhisper-alternative`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.75,
-    },
-    {
-      url: `${SITE_URL}/wispr-flow-alternative`,
-      lastModified: newContentLastModified,
-      changeFrequency: "monthly",
-      priority: 0.75,
-    },
-    {
-      url: `${SITE_URL}/compare/best-dictation-apps-for-mac`,
-      lastModified: comparisonLastModified,
-      changeFrequency: "monthly",
-      priority: 0.9,
-    },
-  ];
+  return (Object.keys(PAGES) as PagePath[]).map((path) => {
+    const { modified, changeFrequency, priority } = PAGES[path];
+    return {
+      url: pageUrl(path),
+      lastModified: modified,
+      changeFrequency,
+      priority,
+    };
+  });
 }

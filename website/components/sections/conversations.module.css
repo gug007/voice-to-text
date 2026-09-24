@@ -1,0 +1,435 @@
+/* Chapter two — Conversations. The mockup (components/ui/conversation-mockup.tsx)
+   shares this module, so the section and its window are styled in one place.
+   Everything reads the Clear Coat tokens from globals.css, so dark mode needs no
+   rules of its own. */
+
+/* ---------- Layout: the window pins while the steps scroll ---------- */
+.rig {
+  display: grid;
+  grid-template-columns: minmax(0, 1.08fr) minmax(0, .92fr);
+  gap: clamp(32px, 5vw, var(--space-16));
+  align-items: start;
+}
+.stage {
+  position: sticky;
+  top: calc(var(--nav-h) + 28px);
+}
+@media (max-width: 960px) {
+  .rig { grid-template-columns: minmax(0, 1fr); }
+  .stage { position: static; }
+}
+
+/* ---------- Steps ---------- */
+.steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-top: 1px solid var(--border-strong);
+}
+.step {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 14px;
+  padding: 20px 0 22px;
+  border-bottom: 1px solid var(--border);
+}
+.stepN {
+  width: 26px;
+  height: 26px;
+  margin-top: 1px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  display: grid;
+  place-items: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.step h3 {
+  margin-bottom: 6px;
+  font-size: 18px;
+  letter-spacing: -.018em;
+}
+.step p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  max-width: var(--measure);
+  text-wrap: pretty;
+}
+.step p em {
+  font-style: normal;
+  font-weight: 560;
+  color: var(--text-primary);
+}
+.step .stepNote {
+  margin-top: 10px;
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--brand-end) 55%, transparent);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-muted);
+}
+.more {
+  margin-top: 22px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-muted);
+  max-width: var(--measure);
+}
+
+/* ---------- The window ---------- */
+.figure { margin: 0; }
+.win {
+  container-type: inline-size;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+}
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  padding: 0 12px;
+  background: var(--surface-sunken);
+  border-bottom: 1px solid var(--border);
+}
+.dot { width: 9px; height: 9px; border-radius: var(--radius-full); flex: none; }
+.dotR { background: #ED6A5E; }
+.dotY { background: #F4BF50; }
+.dotG { background: #61C554; }
+.barTitle {
+  margin-inline: auto;
+  font-size: 11.5px;
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+}
+/* mirrors the traffic lights (3 x 9px + 2 x 7px) so the title centres optically */
+.barPad { width: 41px; flex: none; }
+
+.body { display: grid; grid-template-columns: minmax(0, 1fr); }
+.side { display: none; }
+@container (min-width: 640px) {
+  .body { grid-template-columns: 128px minmax(0, 1fr); }
+  .side {
+    display: grid;
+    align-content: start;
+    gap: 12px;
+    padding: 14px 8px;
+    background: var(--surface-elevated);
+    border-right: 1px solid var(--border);
+  }
+}
+.sideGroup { display: grid; gap: 1px; }
+.sideHead {
+  padding: 0 8px 3px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.sideItem {
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.sideItemOn {
+  background: var(--accent-soft);
+  color: var(--text-primary);
+  font-weight: 560;
+}
+
+.pane {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+.paneTitle { font-size: 15px; font-weight: var(--fw-semibold); letter-spacing: -.012em; color: var(--text-primary); }
+.paneSub { margin-top: 2px; font-size: 12px; line-height: 1.45; color: var(--text-muted); }
+
+/* the session card, idle: grey dot, "Ready", 0:00, then the two capsules */
+.session {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-elevated);
+}
+.sessionState {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 560;
+  color: var(--text-primary);
+}
+.readyDot { width: 8px; height: 8px; border-radius: var(--radius-full); background: var(--hairline-3); }
+.sessionClock { margin-left: 4px; font-family: var(--mono); font-size: 11.5px; font-weight: var(--fw-regular); color: var(--text-faint); }
+.sessionBtns { display: flex; flex-wrap: wrap; gap: 6px; }
+.capsule {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 11px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  font-size: 11.5px;
+  font-weight: var(--fw-medium);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.capsule :global(.icon) { width: 12px; height: 12px; }
+.capsulePrimary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.capsulePrimary .recGlyph { width: 10px; height: 10px; }
+
+/* ---------- One saved recording ---------- */
+.row {
+  display: grid;
+  gap: 11px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+.rowHead { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.play {
+  width: 30px;
+  height: 30px;
+  flex: none;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border);
+  background: var(--well);
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+}
+.play :global(.icon) { width: 12px; height: 12px; margin-left: 1px; }
+.rowMeta { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.rowDate { font-size: 12.5px; font-weight: 560; color: var(--text-primary); }
+.rowLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.typeBadge {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 10.5px;
+  font-weight: var(--fw-semibold);
+}
+/* narrow rows put the model on its own line rather than strand the "·" */
+.rowSep { display: none; }
+.rowModel { flex-basis: 100%; }
+@container (min-width: 460px) {
+  .rowSep { display: inline; }
+  .rowModel { flex-basis: auto; }
+}
+.rowTools { display: none; gap: 9px; color: var(--text-faint); }
+.rowTools :global(.icon) { width: 14px; height: 14px; }
+@container (min-width: 460px) {
+  .rowTools { display: inline-flex; }
+}
+
+/* the tab bar: a sunken track with a raised capsule on the selected tab */
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: var(--surface-sunken);
+}
+.tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: var(--fw-medium);
+  color: var(--text-muted);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color var(--duration-fast) var(--ease-standard),
+              color var(--duration-fast) var(--ease-standard),
+              box-shadow var(--duration-fast) var(--ease-standard);
+}
+.tab[aria-selected="true"] {
+  background: var(--surface);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow-sm);
+}
+@media (hover: hover) and (pointer: fine) {
+  .tab:hover { color: var(--text-primary); }
+}
+.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tabGlyph { width: 13px; height: 13px; opacity: .8; }
+.tabCount {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-full);
+  display: inline-grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: var(--fw-semibold);
+}
+/* too narrow for one row of four: a 2 x 2 segmented grid rather than a
+   bar that scrolls sideways and hides its last tab */
+@container (max-width: 420px) {
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+/* Every panel sits in the same grid cell, so the tallest one sets the height
+   and switching tabs never moves the page. A hidden panel keeps its box but
+   stays invisible, which also takes it out of the accessibility tree. Panels
+   are hidden with data-hidden, not the hidden attribute: Tailwind's preflight
+   forces [hidden] to display:none !important from a layer, which would
+   collapse them. */
+.panels { display: grid; }
+.panel {
+  grid-area: 1 / 1;
+  min-width: 0;
+  padding: 2px 2px 0;
+  animation: panel-in 220ms var(--ease-enter);
+}
+.panel[data-hidden] {
+  visibility: hidden;
+  animation: none;
+}
+@keyframes panel-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+.panelCaption {
+  margin-bottom: 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: .02em;
+  color: var(--text-faint);
+}
+.turns { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.turns li { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.turns b { font-weight: var(--fw-semibold); color: var(--text-primary); }
+
+.summary { display: grid; gap: 5px; font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
+.summary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; }
+.summary li { position: relative; padding-left: 13px; }
+.summary li::before { content: "–"; position: absolute; left: 0; color: var(--text-faint); }
+.summary .summaryHead { margin-top: 3px; font-weight: var(--fw-semibold); color: var(--text-primary); }
+
+.items { list-style: none; margin: 0 -6px; padding: 0; display: grid; gap: 1px; }
+.item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 7px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+@media (hover: hover) and (pointer: fine) {
+  .item:hover { background: var(--well); }
+}
+.check {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 1px 0 0;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--surface);
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+}
+.check::before {
+  content: "";
+  width: 8px;
+  height: 4.5px;
+  margin-top: -2px;
+  border-left: 2px solid var(--accent-ink);
+  border-bottom: 2px solid var(--accent-ink);
+  transform: rotate(-45deg);
+  opacity: 0;
+}
+.check:checked { border-color: var(--accent); background: var(--accent); }
+.check:checked::before { opacity: 1; }
+.check:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.itemBody { display: grid; gap: 4px; min-width: 0; }
+.itemTask { font-size: 13px; font-weight: var(--fw-medium); line-height: 1.4; color: var(--text-primary); }
+.item:has(.check:checked) .itemTask { color: var(--text-muted); text-decoration: line-through; text-decoration-color: var(--border-strong); }
+.itemChips { display: flex; flex-wrap: wrap; gap: 5px; }
+.itemChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: var(--well);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.itemChip :global(.icon) { width: 11px; height: 11px; }
+
+.caption {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* phone legibility: nothing readable in the window drops under 13px */
+@media (max-width: 640px) {
+  .step h3 { font-size: 17px; }
+  .step .stepNote { font-size: 13.5px; }
+  .pane { padding: 12px; }
+  .paneSub, .rowLine, .tab, .itemChip, .panelCaption { font-size: 13px; }
+  .rowDate, .sessionState, .turns li, .summary, .itemTask { font-size: 13.5px; }
+  .tabCount { font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab { transition: none; }
+  .panel { animation: none; }
+}
+
+@media (forced-colors: active) {
+  .win, .row { border: 1px solid CanvasText; }
+  .tab[aria-selected="true"] { outline: 2px solid Highlight; outline-offset: -2px; }
+}

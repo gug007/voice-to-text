@@ -16,8 +16,8 @@ export function Demo() {
           <p className="kicker">Interlude &middot; twenty seconds, unedited</p>
           <h2 id="demo-title">The real app, unedited.</h2>
           <p className="lede">
-            Twenty seconds of VoiceToText dictating a prompt into a coding workspace on a Mac. No copy and
-            paste, no window switching, nothing staged.
+            A silent screen recording of VoiceToText turning a spoken request into text inside a coding
+            workspace. One shortcut, no window switching, nothing sped up.
           </p>
         </div>
 

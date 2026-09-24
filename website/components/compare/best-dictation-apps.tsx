@@ -5,17 +5,28 @@ import { ScrollEffects } from "@/components/scroll-effects";
 import { Footer } from "@/components/sections/footer";
 import { Nav } from "@/components/sections/nav";
 import { StickyCta } from "@/components/sticky-cta";
+import { DownloadButton } from "@/components/ui/download-button";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon } from "@/components/ui/icon";
-import { products, REVIEW_DATE, sourceGroups, type Product } from "@/lib/best-dictation-apps-data";
-import { AUTHOR_URL, DMG_URL, REPO_URL, SITE_URL } from "@/lib/constants";
-import { PERSON_ID, WEBSITE_ID, personJsonLd } from "@/lib/seo";
+import { products, sourceGroups, type Product } from "@/lib/best-dictation-apps-data";
+import { AUTHOR_URL, REPO_URL, SITE_URL } from "@/lib/constants";
+import { formatDisplayDate, page, pageUrl } from "@/lib/pages";
+import { PERSON_ID, SOFTWARE_ID, WEBSITE_ID, personJsonLd } from "@/lib/seo";
 
 import styles from "./best-dictation-apps.module.css";
 
 const PATH = "/compare/best-dictation-apps-for-mac";
-const PAGE_URL = `${SITE_URL}${PATH}`;
+const PAGE_DATES = page(PATH);
+const SOURCES_REVIEWED = PAGE_DATES.sourcesReviewed ?? PAGE_DATES.published;
+const PAGE_URL = pageUrl(PATH);
 const ARTIFACT_ROOT = `${PATH}`;
+const HEADLINE = "The best dictation apps for Mac in 2026";
+const DESCRIPTION =
+  "A source-backed comparison of Mac dictation apps across dictation, files, meetings, correction workflow, privacy, languages, and price.";
+
+/** A row's own re-check date when it has one, otherwise the page-wide review date. */
+const rowReviewed = (product: Product) => product.reviewed ?? SOURCES_REVIEWED;
+const RECHECKED = products.filter((product) => product.reviewed && product.reviewed !== SOURCES_REVIEWED);
 
 const dimensions: Array<{ key: keyof Product; label: string }> = [
   { key: "dictation", label: "Dictation" },
@@ -51,13 +62,15 @@ const artifacts = [
 ] as const;
 
 function schemas() {
+  // Three levels, matching the visible trail: Home › Compare › Best dictation apps.
   const breadcrumb = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     "@id": `${PAGE_URL}#breadcrumb`,
     itemListElement: [
       { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
-      { "@type": "ListItem", position: 2, name: "Best dictation apps for Mac", item: PAGE_URL },
+      { "@type": "ListItem", position: 2, name: "Compare", item: pageUrl("/compare") },
+      { "@type": "ListItem", position: 3, name: "Best dictation apps for Mac", item: PAGE_URL },
     ],
   };
 
@@ -65,18 +78,40 @@ function schemas() {
     "@context": "https://schema.org",
     "@type": "Article",
     "@id": `${PAGE_URL}#article`,
-    headline: "The best dictation apps for Mac in 2026",
-    description:
-      "A source-backed comparison of Mac dictation apps across dictation, files, meetings, correction workflow, privacy, languages, and price.",
+    headline: HEADLINE,
+    description: DESCRIPTION,
     url: PAGE_URL,
-    datePublished: REVIEW_DATE,
-    dateModified: REVIEW_DATE,
+    datePublished: PAGE_DATES.published,
+    dateModified: PAGE_DATES.modified,
     inLanguage: "en",
     author: { "@id": PERSON_ID },
     publisher: { "@id": PERSON_ID },
+    image: {
+      "@type": "ImageObject",
+      url: `${PAGE_URL}/opengraph-image`,
+      width: 1200,
+      height: 630,
+    },
     isPartOf: { "@id": WEBSITE_ID },
-    breadcrumb: { "@id": `${PAGE_URL}#breadcrumb` },
+    mainEntityOfPage: { "@id": `${PAGE_URL}#webpage` },
     mainEntity: { "@id": `${PAGE_URL}#products` },
+  };
+
+  // `breadcrumb` is a WebPage property, so it lives here rather than on the Article.
+  const webPage = {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${PAGE_URL}#webpage`,
+    name: HEADLINE,
+    description: DESCRIPTION,
+    url: PAGE_URL,
+    datePublished: PAGE_DATES.published,
+    dateModified: PAGE_DATES.modified,
+    inLanguage: "en",
+    isPartOf: { "@id": WEBSITE_ID },
+    author: { "@id": PERSON_ID },
+    breadcrumb: { "@id": `${PAGE_URL}#breadcrumb` },
+    mainEntity: { "@id": `${PAGE_URL}#article` },
   };
 
   const itemList = {
@@ -88,17 +123,21 @@ function schemas() {
     itemListElement: products.map((product, index) => ({
       "@type": "ListItem",
       position: index + 1,
-      item: {
-        "@type": "SoftwareApplication",
-        name: product.name,
-        applicationCategory: "ProductivityApplication",
-        operatingSystem: "macOS",
-        url: product.sourceHref,
-      },
+      // VoiceToText points at the home page's SoftwareApplication node instead of a second copy.
+      item:
+        product.id === "voicetotext"
+          ? { "@id": SOFTWARE_ID }
+          : {
+              "@type": "SoftwareApplication",
+              name: product.name,
+              applicationCategory: "ProductivityApplication",
+              operatingSystem: "macOS",
+              url: product.sourceHref,
+            },
     })),
   };
 
-  return { breadcrumb, article, itemList };
+  return { breadcrumb, article, webPage, itemList };
 }
 
 function PickCard({ product, index }: { product: Product; index: number }) {
@@ -120,20 +159,31 @@ function PickCard({ product, index }: { product: Product; index: number }) {
           <dd>{product.tradeoff}</dd>
         </div>
       </dl>
-      <ExternalLink className={styles.vendorLink} href={product.sourceHref}>
-        Check the official source ↗
-      </ExternalLink>
+      <div className={styles.pickLinks}>
+        {product.comparePath ? (
+          <Link className={styles.compareLink} href={product.comparePath}>
+            VoiceToText vs {product.name} →
+          </Link>
+        ) : null}
+        <ExternalLink className={styles.vendorLink} href={product.sourceHref}>
+          {product.id === "voicetotext" ? "Read the source on GitHub ↗" : "Check the official source ↗"}
+        </ExternalLink>
+        <p className={styles.pickChecked}>
+          Checked <time dateTime={rowReviewed(product)}>{formatDisplayDate(rowReviewed(product))}</time>
+        </p>
+      </div>
     </article>
   );
 }
 
 export function BestDictationAppsPage() {
-  const { breadcrumb, article, itemList } = schemas();
+  const { breadcrumb, article, webPage, itemList } = schemas();
 
   return (
     <>
       <JsonLd data={breadcrumb} />
       <JsonLd data={article} />
+      <JsonLd data={webPage} />
       <JsonLd data={itemList} />
       <JsonLd data={personJsonLd} />
 
@@ -141,17 +191,17 @@ export function BestDictationAppsPage() {
       <main id="main" tabIndex={-1}>
         <article className={styles.article}>
           <header className={styles.hero} id="top" aria-labelledby="page-title">
-            <div className={`container ${styles.heroInner}`}>
+            <div className="container">
               <nav className="breadcrumb" aria-label="Breadcrumb">
                 <ol role="list">
                   <li><Link href="/">Home</Link></li>
-                  <li><span>Compare</span></li>
+                  <li><Link href="/compare">Compare</Link></li>
                   <li aria-current="page">Best dictation apps for Mac</li>
                 </ol>
               </nav>
               <p className={styles.eyebrow}>
                 <span className={styles.eyebrowDot} aria-hidden="true" />
-                Seven apps · seven decision points · 18 min
+                Seven apps · seven decision points · 10 min
               </p>
               <h1 className={styles.title} id="page-title">
                 The best Mac dictation app depends on what happens after you speak.
@@ -170,7 +220,8 @@ export function BestDictationAppsPage() {
               </div>
               <p className={styles.byline}>
                 Written by <a href={AUTHOR_URL} rel="author">Gurgen Abagyan</a>
-                {" "}· Published and source-checked <time dateTime={REVIEW_DATE}>August 12, 2026</time>
+                {" "}· Updated <time dateTime={PAGE_DATES.modified}>{formatDisplayDate(PAGE_DATES.modified)}</time>
+                {" "}· First published <time dateTime={PAGE_DATES.published}>{formatDisplayDate(PAGE_DATES.published)}</time>
               </p>
               <aside className={styles.disclosure} aria-label="Publisher disclosure">
                 <strong>Publisher disclosure.</strong>{" "}This is VoiceToText&apos;s project website, so the
@@ -196,7 +247,15 @@ export function BestDictationAppsPage() {
                   </p>
                   <p>
                     VoiceToText is our pick only for the narrower combination it actually wins: free local
-                    dictation plus review-before-paste, file import, and bot-free meeting capture on Apple silicon.
+                    dictation with review-before-paste, plus bot-free meeting recording, file import and a
+                    searchable history on Apple silicon, with AI summaries if you bring your own OpenAI key.
+                  </p>
+                  <p>
+                    Want one matchup in depth? Read{" "}
+                    <Link href="/wispr-flow-alternative">VoiceToText vs Wispr Flow</Link>,{" "}
+                    <Link href="/superwhisper-alternative">vs Superwhisper</Link> or{" "}
+                    <Link href="/apple-dictation-alternative">vs Apple Dictation</Link>, or browse the{" "}
+                    <Link href="/compare">comparison hub</Link>.
                   </p>
                 </div>
               </div>
@@ -204,7 +263,7 @@ export function BestDictationAppsPage() {
           </section>
 
           <section className={`${styles.section} ${styles.sectionAlt}`} id="picks" aria-labelledby="picks-title">
-            <div className={`container ${styles.wideContent}`}>
+            <div className="container">
               <header className={styles.sectionHeader}>
                 <p className={styles.sectionLabel}>Best by job</p>
                 <h2 id="picks-title">Seven products, seven defensible reasons to choose one.</h2>
@@ -222,7 +281,7 @@ export function BestDictationAppsPage() {
           </section>
 
           <section className={styles.section} id="matrix" aria-labelledby="matrix-title">
-            <div className={`container ${styles.wideContent}`}>
+            <div className="container">
               <header className={styles.sectionHeader}>
                 <p className={styles.sectionLabel}>Full comparison</p>
                 <h2 id="matrix-title">Compare the whole workflow, not one demo sentence.</h2>
@@ -231,12 +290,33 @@ export function BestDictationAppsPage() {
                   vendor language count is not treated as proof of equal accuracy in every language.
                 </p>
               </header>
-              <p className={styles.scrollHint} id="matrix-hint">Scroll horizontally to see all seven dimensions.</p>
-              <div className={styles.tableWrap} tabIndex={0} role="region" aria-labelledby="matrix-title" aria-describedby="matrix-hint">
-                <table className={styles.matrix}>
-                  <caption>
-                    Documented product behavior and public pricing checked August 12, 2026. Correction time is
-                    intentionally unranked until every app completes the published benchmark.
+              {/* The caption sits outside the scroller so it never slides away with the columns. */}
+              <div className={styles.matrixMeta}>
+                <p id="matrix-caption">
+                  Documented product behavior and public pricing checked {formatDisplayDate(SOURCES_REVIEWED)}
+                  {RECHECKED.length ? (
+                    <>
+                      {" "}({RECHECKED.map((product) => product.name).join(" and ")} re-checked{" "}
+                      {formatDisplayDate(RECHECKED[0].reviewed!)})
+                    </>
+                  ) : null}
+                  . Correction time is intentionally unranked until every app completes the published benchmark.
+                </p>
+                <p className={styles.scrollHint} id="matrix-hint">
+                  Seven apps down, seven dimensions across. The table is wider than the page: scroll it sideways
+                  (swipe, or Shift and the scroll wheel) to reach Languages and Price. The app column stays put.
+                </p>
+              </div>
+              <div
+                className={styles.tableWrap}
+                tabIndex={0}
+                role="region"
+                aria-labelledby="matrix-title"
+                aria-describedby="matrix-hint"
+              >
+                <table className={styles.matrix} aria-describedby="matrix-caption">
+                  <caption className="sr-only">
+                    Seven Mac dictation apps compared across seven dimensions.
                   </caption>
                   <thead>
                     <tr>
@@ -361,8 +441,9 @@ export function BestDictationAppsPage() {
                 <p className={styles.sectionLabel}>Official evidence</p>
                 <h2 id="sources-title">Check every capability and price at the source.</h2>
                 <p>
-                  All product claims above were reviewed against official vendor documentation on August 12,
-                  2026. Vendor benchmarks are not treated as independent results.
+                  All product claims above were reviewed against official vendor documentation on{" "}
+                  <time dateTime={SOURCES_REVIEWED}>{formatDisplayDate(SOURCES_REVIEWED)}</time>. Vendor benchmarks are
+                  not treated as independent results.
                 </p>
               </header>
               <div className={styles.sourceGrid}>
@@ -371,7 +452,7 @@ export function BestDictationAppsPage() {
                     <h3 id={`source-${group.name.toLowerCase().replaceAll(" ", "-")}`}>{group.name}</h3>
                     <ul role="list">
                       {group.links.map(([label, href]) => (
-                        <li key={href}><ExternalLink href={href}>{label} ↗</ExternalLink></li>
+                        <li key={href}><ExternalLink href={href}>{label}{"\u00a0"}↗</ExternalLink></li>
                       ))}
                     </ul>
                   </section>
@@ -380,7 +461,7 @@ export function BestDictationAppsPage() {
             </div>
           </section>
 
-          <section className={styles.finalCta} aria-labelledby="final-cta-title">
+          <section className={styles.finalCta} aria-labelledby="final-cta-title" data-final-cta>
             <div className="container">
               <p className={styles.sectionLabel}>Our stake in the comparison</p>
               <h2 id="final-cta-title">Test VoiceToText. Keep the competitor that beats it for your work.</h2>
@@ -389,10 +470,7 @@ export function BestDictationAppsPage() {
                 meetings better, or supports the language and platform you need, that is the right result.
               </p>
               <div className={styles.finalActions}>
-                <a className="btn btn--primary btn--lg" href={DMG_URL} data-analytics-event="download_click" data-analytics-placement="best_dictation_apps_bottom">
-                  <Icon name="download" />
-                  <span>Download VoiceToText — free</span>
-                </a>
+                <DownloadButton placement="best_dictation_apps_bottom" label="Download VoiceToText — free" />
                 <ExternalLink className="btn btn--secondary btn--lg" href={REPO_URL} data-analytics-event="github_outbound" data-analytics-placement="best_dictation_apps_bottom">
                   <Icon name="github" />
                   <span>Inspect the source</span>

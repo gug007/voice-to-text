@@ -24,7 +24,7 @@ export async function Contributors() {
   const contributors = await getContributors();
 
   return (
-    <section className="section" id="contributors" aria-labelledby="contributors-title">
+    <section className="section section--band" id="contributors" aria-labelledby="contributors-title">
       <div className="wrap">
         <div className="sec-head">
           <p className="kicker">Aside &middot; who builds it</p>

@@ -408,6 +408,19 @@ final class ModelRegistry {
     /// reloads on its next use; `prepareModel` already handles that path.
     private static let maxResidentLocalEngines = 2
 
+    /// Engines for background batch work (meeting transcription, transcript
+    /// regeneration), deliberately never shared with `engines`. An engine runs
+    /// one inference at a time, so a meeting chunk-transcribing on dictation's
+    /// instance left a short dictation queued behind it for tens of seconds.
+    /// One resident is enough: those jobs don't run side by side.
+    @ObservationIgnored
+    private var backgroundEngines: [String: TranscriptionEngine] = [:]
+
+    @ObservationIgnored
+    private var residentBackgroundLocalEngines: [String] = []
+
+    private static let maxResidentBackgroundLocalEngines = 1
+
     @ObservationIgnored
     private var preparationTasks: [String: Task<TranscriptionEngine?, Never>] = [:]
 
@@ -588,6 +601,41 @@ final class ModelRegistry {
         return prepared
     }
 
+    /// A separate engine instance for background batch transcription. The
+    /// download, dedup and stall handling all ride on `prepareModel`; only the
+    /// loaded instance differs, so a long meeting can never hold up dictation.
+    func prepareBackgroundEngine(id: String) async -> TranscriptionEngine? {
+        guard let descriptor = ModelCatalog.model(for: id) else { return nil }
+
+        if let existing = backgroundEngines[id] {
+            touchResidentBackgroundEngine(descriptor)
+            return existing
+        }
+
+        guard await prepareModel(id: id) != nil else { return nil }
+
+        // `prepareModel` also drops its result into dictation's own pool as a
+        // side effect of ensuring the download. When this isn't the active
+        // dictation model, that's dead weight sitting in a 2-slot cache sized
+        // for dictation's own needs — left in place, it can evict the model
+        // dictation actually wants warm the next time it transcribes.
+        if id != activeModelId {
+            engines[id] = nil
+            residentLocalEngines.removeAll { $0 == id }
+        }
+
+        let engine = makeEngine(for: descriptor)
+        do {
+            try await engine.prepare(progress: nil)
+        } catch {
+            AppLog.engine.error("Background engine \(id, privacy: .public) failed to prepare: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+        backgroundEngines[id] = engine
+        touchResidentBackgroundEngine(descriptor)
+        return engine
+    }
+
     /// Awaits an in-flight preparation but gives up if it makes no progress for
     /// `prepareStallTimeoutMs`. Returns the engine on success, or nil if the
     /// wait timed out — the underlying task is cancelled (best-effort) and left
@@ -674,6 +722,7 @@ final class ModelRegistry {
         guard let descriptor = ModelCatalog.model(for: id) else { return }
         if descriptor.isCloud {
             engines[id] = nil
+            backgroundEngines[id] = nil
             return
         }
         preparationTasks[id]?.cancel()
@@ -681,6 +730,8 @@ final class ModelRegistry {
         _ = nextPreparationGeneration(for: id)
         engines[id] = nil
         residentLocalEngines.removeAll { $0 == id }
+        backgroundEngines[id] = nil
+        residentBackgroundLocalEngines.removeAll { $0 == id }
         do {
             try ModelStorage.delete(descriptor)
             readiness[id] = .notInstalled
@@ -704,6 +755,19 @@ final class ModelRegistry {
             let evicted = residentLocalEngines.removeFirst()
             engines[evicted] = nil
             AppLog.engine.info("Released cached engine \(evicted, privacy: .public) to free its model")
+        }
+    }
+
+    /// `touchResidentEngine` for the background pool: same eviction rules,
+    /// its own budget, so a background load never pushes out a dictation model.
+    private func touchResidentBackgroundEngine(_ descriptor: ModelDescriptor) {
+        guard !descriptor.isCloud else { return }
+        residentBackgroundLocalEngines.removeAll { $0 == descriptor.id }
+        residentBackgroundLocalEngines.append(descriptor.id)
+        while residentBackgroundLocalEngines.count > Self.maxResidentBackgroundLocalEngines {
+            let evicted = residentBackgroundLocalEngines.removeFirst()
+            backgroundEngines[evicted] = nil
+            AppLog.engine.info("Released background engine \(evicted, privacy: .public) to free its model")
         }
     }
 

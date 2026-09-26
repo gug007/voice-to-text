@@ -1513,6 +1513,7 @@ final class DictationController {
         }
 
         enterTranscribing()
+        let pipelineStart = Date()
         let runID = transcriptionRunID
         inFlightTranscriptionSamples = samples
         defer {
@@ -1561,6 +1562,11 @@ final class DictationController {
         } else {
             recordedModel = descriptor
             let prepared = await ModelRegistry.shared.prepareModel(id: descriptor.id)
+            // Logged before the run fence on purpose: a user who gives up on a
+            // long "Transcribing" and cancels is exactly the case to diagnose.
+            if prepared != nil {
+                AppLog.dictation.notice("Engine acquired after \(Date().timeIntervalSince(pipelineStart), format: .fixed(precision: 2))s")
+            }
             guard runID == transcriptionRunID else { return }
             guard let engine = prepared else {
                 enterFailureHUD(
@@ -1585,8 +1591,10 @@ final class DictationController {
         }
 
         let rawText: String
+        let produceStart = Date()
         do {
             rawText = try await produce()
+            AppLog.dictation.notice("Transcription produced after \(Date().timeIntervalSince(pipelineStart), format: .fixed(precision: 2))s (inference: \(Date().timeIntervalSince(produceStart), format: .fixed(precision: 2))s)")
         } catch {
             guard runID == transcriptionRunID else { return }
             AppLog.dictation.error("Transcription failed: \(error.localizedDescription)")

@@ -25,10 +25,20 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     /// Which fields this model accepts (and which it rejects outright).
     private let capabilities: OpenAIModelCapabilities
 
-    /// Replaced wholesale when a request dies on a stale pooled connection
-    /// (see `send`); otherwise lives for the engine's lifetime.
+    /// Replaced wholesale when a request dies on a stale pooled connection, or
+    /// proactively after a long idle gap (see `send`); otherwise lives for the
+    /// engine's lifetime.
     private var session: URLSession
+    private var lastRequestFinishedAt: Date?
     private let sampleRate: Int
+
+    /// Below this idle gap since the last request, the pooled connection is
+    /// assumed alive and reused as-is. Above it, refreshing proactively costs
+    /// one extra handshake but avoids paying a full request timeout to
+    /// discover a NAT/VPN-expired connection reactively — the exact scenario
+    /// `send`'s reactive retry exists for, and the difference between a quick
+    /// take and a stall that silently doubles the request timeout.
+    private static let staleSessionIdleThreshold: TimeInterval = 30
 
     /// Tail of the prior chunk's transcript passed as `prompt` to the next
     /// — gives the model rolling context for consistent punctuation and
@@ -324,6 +334,15 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     /// guarantee the retry rides a fresh connection. All other failures
     /// propagate immediately.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        if let last = lastRequestFinishedAt,
+           Date().timeIntervalSince(last) > Self.staleSessionIdleThreshold {
+            AppLog.engine.debug(
+                "OpenAI session idle for \(Date().timeIntervalSince(last), format: .fixed(precision: 1))s; refreshing connection before request"
+            )
+            session.invalidateAndCancel()
+            session = Self.makeSession()
+        }
+        defer { lastRequestFinishedAt = Date() }
         do {
             return try await session.data(for: request)
         } catch let error as URLError

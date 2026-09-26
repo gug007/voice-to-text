@@ -283,7 +283,7 @@ final class MeetingController {
         let model: ModelDescriptor?
         var issue: String?
         if let descriptor = ModelRegistry.shared.conversationModel,
-           let engine = await ModelRegistry.shared.prepareModel(id: descriptor.id) {
+           let engine = await ModelRegistry.shared.prepareBackgroundEngine(id: descriptor.id) {
             model = descriptor
             do {
                 let text = try await MeetingTranscriber.transcribe(

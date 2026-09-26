@@ -57,7 +57,7 @@ final class TranscriptRegenerator {
         activeID = entry.id
         defer { activeID = nil }
 
-        guard let engine = await ModelRegistry.shared.prepareModel(id: modelId) else {
+        guard let engine = await ModelRegistry.shared.prepareBackgroundEngine(id: modelId) else {
             failure = (entry.id, "\(descriptor.displayName) isn't ready. Check the model in Models, or add an API key in Cloud.")
             return
         }

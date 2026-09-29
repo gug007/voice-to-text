@@ -69,7 +69,10 @@ enum MeetingTranscriber {
                 let speech = await Task.detached(priority: .userInitiated) {
                     SpeechEnergy.voicedSpan(in: chunk, sampleRate: sampleRate)
                 }.value
-                if MeetingChunkRecovery.shouldRetryWithoutContext(text: raw, contextPrompt: context, hasSpeech: speech != nil) {
+                // Only for an engine the prompt reaches: on Parakeet the retry
+                // would be the identical decode.
+                if engine.usesContextPrompt,
+                   MeetingChunkRecovery.shouldRetryWithoutContext(text: raw, contextPrompt: context, hasSpeech: speech != nil) {
                     AppLog.engine.notice("Conversation part \(pieces.count + 1) came back empty with a context prompt; retrying without it")
                     raw = try await engine.transcribe(samples: chunk, contextPrompt: nil, progress: nil)
                 }

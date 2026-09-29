@@ -26,8 +26,11 @@ actor WhisperKitEngine: TranscriptionEngine {
             // lists the repo on Hugging Face before it looks at the disk, with no
             // offline fallback, so going through it made every cold load — each
             // launch, each LRU eviction — need the network. Only a folder that
-            // is missing a model, or that fails to load (a partial download, a
-            // damaged file), goes back to the download path to be repaired.
+            // is missing a model, or that fails to load, goes back to the
+            // download path. That fetches the files that are missing; a file
+            // that is on disk with its download record intact is kept as it is,
+            // so a damaged one only goes away when the model is deleted and
+            // downloaded again.
             let installed = ModelStorage.whisperKitModelFolder(variant: modelId)
             if WhisperKitModelFiles.hasRequiredModels(in: installed) {
                 progress?(0.95, "Loading model into memory…")
@@ -90,8 +93,11 @@ actor WhisperKitEngine: TranscriptionEngine {
             throw TranscriptionEngineError.notReady
         }
         do {
-            let options = buildDecodingOptions(pipe: pipe, contextPrompt: contextPrompt)
             let windowSamples = pipe.featureExtractor.windowSamples ?? Constants.defaultWindowSamples
+            var options = buildDecodingOptions(pipe: pipe, contextPrompt: contextPrompt)
+            if options.language == nil {
+                options = await pinningDetectedLanguage(options, pipe: pipe, samples: samples, windowSamples: windowSamples)
+            }
             let pieces = samples.count > windowSamples
                 ? try await transcribeLongForm(pipe: pipe, samples: samples, options: options, windowSamples: windowSamples)
                 : [try await transcribeWindow(pipe: pipe, audio: samples, options: options)]
@@ -117,11 +123,14 @@ actor WhisperKitEngine: TranscriptionEngine {
         windowSamples: Int
     ) async throws -> [String] {
         let chunker = VADAudioChunker(vad: pipe.voiceActivityDetector)
-        let chunks = try await chunker.chunkAll(
+        let cuts = try await chunker.chunkAll(
             audioArray: samples,
             maxChunkLength: windowSamples,
             decodeOptions: options
-        )
+        ).map { $0.seekOffsetIndex..<($0.seekOffsetIndex + $0.audioSamples.count) }
+        let chunks = WhisperChunkCheck
+            .coveringRemainder(cuts, sampleCount: samples.count, maxLength: windowSamples)
+            .map { AudioChunk(seekOffsetIndex: $0.lowerBound, audioSamples: Array(samples[$0])) }
         let outcomes = await pipe.transcribeWithOptions(
             audioArrays: chunks.map(\.audioSamples),
             decodeOptionsArray: Array(repeating: options, count: chunks.count),
@@ -181,6 +190,37 @@ actor WhisperKitEngine: TranscriptionEngine {
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Detects the take's language once and pins it for every chunk and every
+    /// temperature fallback (see `WhisperLanguageProbe`). If detection fails,
+    /// the options keep WhisperKit's per-window detection rather than fall
+    /// back to forced English.
+    private func pinningDetectedLanguage(
+        _ options: DecodingOptions,
+        pipe: WhisperKit,
+        samples: [Float],
+        windowSamples: Int
+    ) async -> DecodingOptions {
+        let firstSpeech = SpeechEnergy.voicedSpan(in: samples, sampleRate: WhisperKit.sampleRate)
+            .map { Int($0.lowerBound * Double(WhisperKit.sampleRate)) }
+        let window = WhisperLanguageProbe.window(
+            firstSpeechSample: firstSpeech,
+            sampleCount: samples.count,
+            windowSamples: windowSamples
+        )
+        guard !window.isEmpty else { return options }
+        do {
+            let language = try await pipe.detectLangauge(audioArray: Array(samples[window])).language
+            guard !language.isEmpty else { return options }
+            var pinned = options
+            pinned.language = language
+            pinned.detectLanguage = false
+            return pinned
+        } catch {
+            AppLog.engine.warning("Whisper language detection failed (\(error.localizedDescription, privacy: .public)); detecting per window")
+            return options
+        }
+    }
+
     private func buildDecodingOptions(pipe: WhisperKit, contextPrompt: String?) -> DecodingOptions {
         let opts = TranscriptionDecoderOptions.current
 
@@ -213,9 +253,11 @@ actor WhisperKitEngine: TranscriptionEngine {
         return DecodingOptions(
             language: opts.language,
             temperatureFallbackCount: opts.temperatureFallbackCount,
-            // With no language set, detect it in every window. WhisperKit's
-            // defaults (`usePrefillPrompt` on, `detectLanguage` off) prefill
-            // `<|en|>` instead, forcing English on every multilingual model.
+            // With no language set, detect it. WhisperKit's defaults
+            // (`usePrefillPrompt` on, `detectLanguage` off) prefill `<|en|>`
+            // instead, forcing English on every multilingual model. This
+            // per-window detection is only the fallback: `transcribe` pins the
+            // language it detects once for the whole take.
             detectLanguage: opts.language == nil,
             withoutTimestamps: opts.withoutTimestamps,
             promptTokens: promptTokens,

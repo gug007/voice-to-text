@@ -163,7 +163,7 @@ Cloud (your own API key; audio goes directly from the Mac to the provider, which
 ${cloud.map(modelLine).join("\n")}
 
 - LIVE models are for dictation only. With ${joinNames(liveTextModelNames("word by word"))}, text appears word by word as you speak. With ${joinNames(liveTextModelNames("phrase by phrase"))}, OpenAI transcribes each phrase after a short pause (about half a second), so text appears phrase by phrase. With ${joinNames(liveOnStopModelNames())}, the text appears only when you stop.
-- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (per 30-second stretch of audio; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
+- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (once per recording, or per 10-minute part of a longer one, from its first speech; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
 
 ## Privacy and network
 

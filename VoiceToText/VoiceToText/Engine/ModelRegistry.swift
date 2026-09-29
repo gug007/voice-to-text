@@ -76,7 +76,8 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
             id: id,
             provider: backend.cloudProvider?.rawValue,
             backendModelId: backendModelId,
-            isRealtime: isRealtime
+            isRealtime: isRealtime,
+            languageCount: ConversationModelResolver.languageCount(from: languages)
         )
     }
 
@@ -543,30 +544,32 @@ final class ModelRegistry {
     /// batch one, since a finished recording is no job for a streaming engine.
     var conversationModel: ModelDescriptor? {
         if let id = conversationModelId, let explicit = ModelCatalog.model(for: id) {
-            return conversationTranscriptionModel(for: explicit)
+            return conversationTranscription(for: explicit).model
         }
-        return dictationModelForConversations
+        return dictationModelForConversations?.model
     }
 
     /// What "Same as dictation" transcribes conversations with right now: the
-    /// dictation model, or the batch model standing in for a live one.
-    var dictationModelForConversations: ModelDescriptor? {
-        activeModel.map(conversationTranscriptionModel(for:))
+    /// dictation model, or the batch model standing in for a live one — and
+    /// whether that model has to be downloaded first.
+    var dictationModelForConversations: (model: ModelDescriptor, needsDownload: Bool)? {
+        activeModel.map(conversationTranscription(for:))
     }
 
     /// `model` itself unless it's realtime; then the batch model that
-    /// `ConversationModelResolver` picks. A cloud model counts as available
-    /// while its readiness says the provider's key is set.
-    private func conversationTranscriptionModel(for model: ModelDescriptor) -> ModelDescriptor {
-        guard model.isRealtime else { return model }
+    /// `ConversationModelResolver` picks. A cloud model counts as ready while
+    /// its readiness says the provider's key is set, a local one while it is
+    /// installed (or on its way).
+    private func conversationTranscription(for model: ModelDescriptor) -> (model: ModelDescriptor, needsDownload: Bool) {
+        guard model.isRealtime else { return (model, false) }
         let preferred = Dictionary(uniqueKeysWithValues: ModelCatalog.preferredConversationBatchModelIDs.map {
             ($0.key.rawValue, $0.value)
         })
-        let id = ConversationModelResolver.resolve(
+        let resolution = ConversationModelResolver.resolve(
             model.resolverCandidate,
             catalog: ModelCatalog.all.map(\.resolverCandidate),
             preferredBatchModelIDs: preferred,
-            isAvailable: { [readiness] id in
+            isReady: { [readiness] id in
                 switch readiness[id] {
                 case .installed, .preparing: return true
                 case .notInstalled, .failed, nil: return false
@@ -574,7 +577,8 @@ final class ModelRegistry {
             },
             defaultLocalModelID: ModelCatalog.defaultModelID
         )
-        return ModelCatalog.model(for: id) ?? model
+        guard let resolved = ModelCatalog.model(for: resolution.id) else { return (model, false) }
+        return (resolved, resolution.needsDownload)
     }
 
     func setActive(_ modelId: String) {

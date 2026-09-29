@@ -70,7 +70,8 @@ export type ModelFact = {
   /**
    * What the model covers inside VoiceToText. Every model detects the spoken
    * language itself; the app has no language picker. Local Whisper detects it
-   * per 30-second stretch of audio.
+   * once per recording (per 10-minute part of a longer one), from the first
+   * speech, and keeps it for the whole recording.
    */
   languagesInApp: string;
   /** Provider list price per hour of audio, billed to the user's own key. 0 for local models. */
@@ -430,7 +431,8 @@ export const DOWNLOAD_SIZE_NOTE =
  * The offline note, worded once for every page that needs it in full.
  * Parakeet (FluidAudio) and Whisper (WhisperKitEngine) both load an installed
  * model from disk. Hugging Face is contacted only to download a model, or to
- * re-download one whose files are missing or damaged.
+ * fetch files missing from an installed one (a damaged file on disk is not
+ * re-checked).
  */
 export const WHISPER_OFFLINE_NOTE =
   "Parakeet, the default, works with the network off after its one-time download. Whisper models do too: they transcribe on your Mac, your audio never leaves it, and an installed model loads from disk. The app contacts Hugging Face only to download a model.";

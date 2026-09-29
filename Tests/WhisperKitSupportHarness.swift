@@ -21,7 +21,74 @@ struct WhisperKitSupportHarness {
         try chunkCheckRetriesFailures()
         try chunkCheckRetriesEmptyPromptedSpeechWithoutPrompt()
         try chunkCheckAcceptsHonestSilence()
+        try remainderUnderASecondIsKept()
+        try remainderThatOverflowsSplitsEvenly()
+        try coveredChunksAreUntouched()
+        try languageProbeStartsAtFirstSpeech()
         print("WhisperKit support harness passed")
+    }
+
+    /// `VADAudioChunker.chunkAll`'s loop (WhisperKit 0.17, AudioChunker.swift
+    /// 66-107) with the split point supplied by the caller: it stops once less
+    /// than `windowPadding` is left after a cut.
+    private static func chunkAll(count: Int, maxChunk: Int = 480_000, split: (Int, Int) -> Int) -> [Range<Int>] {
+        var out: [Range<Int>] = []
+        var start = 0
+        while start < count - 16_000 {
+            var end = count
+            if start + maxChunk < end { end = split(start, min(count, start + maxChunk)) }
+            guard end > start else { break }
+            out.append(start..<end)
+            start = end
+        }
+        return out
+    }
+
+    private static func remainderUnderASecondIsKept() throws {
+        let rate = 16_000
+        let count = Int(30.8 * Double(rate))
+        // Longest pause at 29.8 s: the chunker stops with 1.0 s left over.
+        let cuts = chunkAll(count: count) { _, _ in Int(29.8 * Double(rate)) }
+        try expect(cuts.last?.upperBound == Int(29.8 * Double(rate)), "the replica drops the last second, as WhisperKit does")
+        let covered = WhisperChunkCheck.coveringRemainder(cuts, sampleCount: count, maxLength: 480_000)
+        try expect(covered.last?.upperBound == count, "the remainder is decoded")
+        try expect(covered.count == 2 && covered.allSatisfy { $0.count <= 480_000 }, "split in two, each within a window: \(covered)")
+        try expect(covered.first?.lowerBound == 0 && zip(covered, covered.dropFirst()).allSatisfy { $0.upperBound == $1.lowerBound },
+                   "contiguous from the start")
+    }
+
+    private static func remainderThatOverflowsSplitsEvenly() throws {
+        let rate = 16_000
+        let count = Int(75.6 * Double(rate))
+        let cuts = [0..<(25 * rate), (25 * rate)..<(50 * rate), (50 * rate)..<Int(74.9 * Double(rate))]
+        let covered = WhisperChunkCheck.coveringRemainder(cuts, sampleCount: count, maxLength: 480_000)
+        try expect(covered.count == 3, "a remainder that fits joins the last chunk: \(covered)")
+        try expect(covered.last == (50 * rate)..<count, "the last chunk now runs to the end")
+
+        let full = [0..<(30 * rate - 100)]
+        let overflow = WhisperChunkCheck.coveringRemainder(full, sampleCount: 30 * rate + 8_000, maxLength: 30 * rate)
+        try expect(overflow.count == 2 && overflow.allSatisfy { $0.count <= 30 * rate && $0.count > 16_000 },
+                   "a merge past one window splits evenly, no piece under a second: \(overflow)")
+        try expect(overflow.last?.upperBound == 30 * rate + 8_000, "still to the end")
+    }
+
+    private static func coveredChunksAreUntouched() throws {
+        let cuts = [0..<100, 100..<200]
+        try expect(WhisperChunkCheck.coveringRemainder(cuts, sampleCount: 200, maxLength: 150) == cuts,
+                   "chunks that reach the end are left alone")
+        try expect(WhisperChunkCheck.coveringRemainder([], sampleCount: 250, maxLength: 100) == [0..<83, 83..<166, 166..<250],
+                   "no chunks at all: even pieces within the window")
+    }
+
+    private static func languageProbeStartsAtFirstSpeech() throws {
+        typealias P = WhisperLanguageProbe
+        try expect(P.window(firstSpeechSample: 32_000, sampleCount: 1_000_000, windowSamples: 480_000) == 32_000..<512_000,
+                   "one window from the first speech")
+        try expect(P.window(firstSpeechSample: 900_000, sampleCount: 1_000_000, windowSamples: 480_000) == 520_000..<1_000_000,
+                   "speech late in the take: a full window ending at the end")
+        try expect(P.window(firstSpeechSample: nil, sampleCount: 80_000, windowSamples: 480_000) == 0..<80_000,
+                   "no speech found, short take: the whole take")
+        try expect(P.window(firstSpeechSample: 5, sampleCount: 0, windowSamples: 480_000).isEmpty, "no audio, no window")
     }
 
     private static func scratchFolder() throws -> URL {

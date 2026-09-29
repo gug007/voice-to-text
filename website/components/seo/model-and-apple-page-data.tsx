@@ -531,8 +531,9 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         <>
           Upstream, Whisper is multilingual and can translate speech into English. VoiceToText uses it to
           transcribe, not translate: there is no language picker, and the model detects the language itself,
-          afresh for each 30-second stretch of audio. Accuracy varies by language, strongest in English and
-          other widely spoken ones, so test it on your own speech.
+          once per recording from its first speech, then keeps it, so a recording that switches language
+          stays in the first one. Accuracy varies by language, strongest in English and other widely spoken
+          ones, so test it on your own speech.
         </>,
         <>
           OpenAI also warns that performance is uneven across accents and that these weakly supervised models
@@ -630,7 +631,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         label: "Languages in VoiceToText",
         cells: [
           "25 European languages, detected automatically.",
-          "99 languages, detected automatically for each 30-second stretch of audio.",
+          "99 languages, detected automatically once per recording.",
         ],
       },
       {
@@ -683,7 +684,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     {
       question: "Can local Whisper in VoiceToText transcribe languages other than English?",
       answer:
-        "Yes. The local Whisper models cover 99 languages and detect the one you speak automatically, for each 30-second stretch of audio; there is no language picker. Accuracy varies by language, so test your own speech against Parakeet or a cloud model.",
+        "Yes. The local Whisper models cover 99 languages and detect the one you speak automatically, once per recording from its first speech; there is no language picker. Accuracy varies by language, so test your own speech against Parakeet or a cloud model.",
     },
     {
       question: "How much disk space do the local models need?",

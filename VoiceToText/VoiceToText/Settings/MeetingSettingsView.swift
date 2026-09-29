@@ -273,11 +273,12 @@ struct MeetingsPane: View {
     /// Names the model "Same as dictation" really uses. A live dictation model
     /// never transcribes recordings — `ModelRegistry.conversationModel` swaps in
     /// a batch one — so the line says which, and why it isn't the dictation
-    /// model.
+    /// model, or that it has to download before the first conversation.
     private var sameAsDictationDetail: String? {
         guard let used = registry.dictationModelForConversations else { return nil }
-        guard used.id != registry.activeModel?.id else { return used.sectionedDisplayName }
-        return "\(used.sectionedDisplayName) (dictation model is live)"
+        let name = used.model.sectionedDisplayName
+        guard used.model.id != registry.activeModel?.id else { return name }
+        return used.needsDownload ? "\(name) (download needed)" : "\(name) (dictation model is live)"
     }
 
     private var conversationModelBinding: Binding<String?> {

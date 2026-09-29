@@ -43,7 +43,7 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
     private var onLiveText: (@Sendable (String) -> Void)?
 
     /// What this session still owes and whether any of it was lost.
-    private var finish = ElevenLabsRealtimeFinishTracker()
+    private var finish: ElevenLabsRealtimeFinishTracker
     /// Set by the buffered `transcribe` right after it opens its session.
     private var isBufferedSession = false
     /// Every sample of a live take, in the order it was sent, so a degraded
@@ -52,18 +52,22 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
     /// have their samples in hand and don't keep a second copy.
     private var takeAudio: [Float] = []
     private var retainsTakeAudio = false
-    private var sessionSampleCount = 0
     private var sessionContextPrompt: String?
+    /// Set on the buffered session that re-sends a degraded live take: the
+    /// whole re-send must end by then.
+    private var sessionDeadline: ContinuousClock.Instant?
 
-    /// Bumped by every `startStream`. A torn-down session's receive loop can
-    /// resume after the next session has started; without this fence its close
-    /// would mark the healthy session as dropped. It also tells a finish wait
-    /// that its session was replaced underneath it.
+    /// Bumped by every `startStream` and `cancelStream`. A torn-down session's
+    /// receive loop can resume after the next session has started; without
+    /// this fence its close would mark the healthy session as dropped. It also
+    /// tells a finish wait, or the re-send behind it, that its session was
+    /// replaced or cancelled underneath it.
     private var sessionGeneration = 0
 
     init(modelId: String, sampleRate: Int = Int(AudioConfig.targetSampleRate)) {
         self.modelId = modelId
         self.sampleRate = sampleRate
+        self.finish = Self.freshTracker(sampleRate: sampleRate)
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 60
         config.timeoutIntervalForResource = 3600
@@ -73,6 +77,10 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
     nonisolated var isReady: Bool {
         get async { ElevenLabsAPIKey.read() != nil }
     }
+
+    /// The session is opened without `previous_text`; `contextPrompt` is
+    /// ignored.
+    nonisolated var usesContextPrompt: Bool { false }
 
     func prepare(progress: PrepareProgress?) async throws {
         progress?(0.5, "Checking API key…")
@@ -90,6 +98,17 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         contextPrompt: String?,
         onLiveText: @escaping @Sendable (String) -> Void
     ) async throws {
+        try await openSession(contextPrompt: contextPrompt, onLiveText: onLiveText, deadline: nil)
+    }
+
+    /// `deadline` bounds the automatic re-send of a degraded take: once it
+    /// passes, the socket is cut (see `enforceDeadline`), which ends a stalled
+    /// handshake, a stalled send and the finish wait alike.
+    private func openSession(
+        contextPrompt: String?,
+        onLiveText: @escaping @Sendable (String) -> Void,
+        deadline: ContinuousClock.Instant?
+    ) async throws {
         guard let apiKey = ElevenLabsAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
@@ -101,15 +120,16 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         // Reset session state in case the actor is reused.
         committedSegments = []
         partial = ""
-        finish = ElevenLabsRealtimeFinishTracker()
+        finish = Self.freshTracker(sampleRate: sampleRate)
         isBufferedSession = false
         takeAudio = []
         retainsTakeAudio = true
-        sessionSampleCount = 0
         sessionContextPrompt = contextPrompt
+        sessionDeadline = deadline
         self.onLiveText = onLiveText
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        if let deadline { enforceDeadline(deadline, generation: generation) }
 
         var components = URLComponents(string: "wss://api.elevenlabs.io/v1/speech-to-text/realtime")!
         components.queryItems = [
@@ -151,7 +171,14 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
     private func sendChunkOverSocket(_ samples: [Float]) async {
         // Kept before the send, so a take whose socket died is still whole.
         if retainsTakeAudio { takeAudio.append(contentsOf: samples) }
-        sessionSampleCount += samples.count
+        finish.audioSent(
+            sampleCount: samples.count,
+            hasSpeechEnergy: RealtimeFinishPolicy.hasSpeechEnergy(
+                samples,
+                sampleRate: sampleRate,
+                thresholdDBFS: DictationConfig.vadThresholdDBFS
+            )
+        )
         guard let task else { return }
         let payload: [String: Any] = [
             "message_type": "input_audio_chunk",
@@ -163,19 +190,20 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription)
+            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
         }
     }
 
     func finishStream() async throws -> String {
         let session: RealtimeFinishPolicy.Session = isBufferedSession ? .buffered : .live
         let generation = sessionGeneration
-        // Throws only when a newer session replaced this one mid-wait — that
-        // session owns the socket now, so there is nothing here to tear down.
+        // Throws only when a newer session or a cancel replaced this one
+        // mid-wait — the socket is no longer this call's to tear down.
         let settled = try await settleSession()
         guard generation == sessionGeneration else { throw Self.supersededError }
         let take = takeAudio
         let contextPrompt = sessionContextPrompt
+        let transport = finish.transport
         teardown()
 
         switch RealtimeFinishPolicy.action(
@@ -188,12 +216,11 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         case .rerunBuffered:
             let seconds = Double(take.count) / Double(sampleRate)
             AppLog.dictation.warning("ElevenLabs live session incomplete (\(settled.degradation?.summary ?? "", privacy: .public)); re-sending the \(seconds, format: .fixed(precision: 1))s take")
-            return try await transcribe(samples: take, contextPrompt: contextPrompt, progress: nil)
+            let deadline = ContinuousClock.now + .milliseconds(RealtimeFinishPolicy.resendBudgetMs)
+            return try await transcribeBuffered(samples: take, contextPrompt: contextPrompt, deadline: deadline)
         case .fail(let degradation):
             AppLog.dictation.error("ElevenLabs session incomplete: \(degradation.summary, privacy: .public)")
-            throw TranscriptionEngineError.transcriptionFailed(
-                RealtimeFinishPolicy.failureReason(provider: "ElevenLabs", degradation)
-            )
+            throw RealtimeFinishPolicy.failureError(provider: "ElevenLabs", degradation, transport: transport)
         }
     }
 
@@ -206,23 +233,32 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         // already captured before we flush, so no trailing words are lost.
         audioContinuation?.finish()
         await senderTask?.value
+        finish.beginFinish()
 
-        finish.flushCommitSent()
-        await sendFlushCommit()
+        // Flush only when speech may still be uncommitted; with nothing
+        // outstanding there is nothing to wait for (see
+        // `ElevenLabsRealtimeFinishTracker`).
+        if finish.needsFlush {
+            finish.flushCommitSent()
+            await sendFlushCommit()
+        }
 
         // Poll so we return as soon as the answer lands rather than always
-        // paying the full window. A buffered session also waits for the stream
-        // of segments to go quiet (see `transcriptEvents`); a live one has been
-        // keeping up all along, so the flush's own answer is the end.
-        let capMs = isBufferedSession
-            ? RealtimeFinishPolicy.bufferedFinishCapMs(sampleCount: sessionSampleCount, sampleRate: Double(sampleRate))
-            : Self.finishGraceMs
-        let quietNeededMs = isBufferedSession ? Self.bufferedQuietMs : 0
+        // paying the full window. The window scales with what may be owed: the
+        // whole take for a buffered session, the audio since the last commit
+        // for a live one.
+        let buffered = isBufferedSession
+        var capMs = buffered
+            ? RealtimeFinishPolicy.bufferedFinishCapMs(sampleCount: finish.sentSamples, sampleRate: Double(sampleRate))
+            : RealtimeFinishPolicy.liveFinishCapMs(owedSampleCount: finish.owedSampleCount, sampleRate: Double(sampleRate))
+        if let sessionDeadline {
+            capMs = min(capMs, RealtimeFinishPolicy.milliseconds(until: sessionDeadline))
+        }
         var waitedMs = 0
         var quietMs = 0
         var seenEvents = finish.transcriptEvents
         func isDone() -> Bool {
-            finish.degradation != nil || (finish.isSettled && quietMs >= quietNeededMs)
+            finish.isDone(quietMs: quietMs, buffered: buffered)
         }
         while true {
             guard generation == sessionGeneration else { throw Self.supersededError }
@@ -242,7 +278,10 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         return (text, finish.degradation)
     }
 
+    /// Also stops a finish wait, or the re-send behind it, that is still
+    /// running for this engine: the generation bump makes it throw.
     func cancelStream() async {
+        sessionGeneration &+= 1
         teardown()
         committedSegments = []
         partial = ""
@@ -255,7 +294,15 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         contextPrompt: String?,
         progress: TranscribeProgress?
     ) async throws -> String {
-        try await startStream(contextPrompt: contextPrompt) { _ in }
+        try await transcribeBuffered(samples: samples, contextPrompt: contextPrompt, deadline: nil)
+    }
+
+    private func transcribeBuffered(
+        samples: [Float],
+        contextPrompt: String?,
+        deadline: ContinuousClock.Instant?
+    ) async throws -> String {
+        try await openSession(contextPrompt: contextPrompt, onLiveText: { _ in }, deadline: deadline)
         // Before any audio is fed: the sender only runs once chunks arrive.
         isBufferedSession = true
         retainsTakeAudio = false
@@ -282,6 +329,7 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
     /// is fenced on that still being the live one (see `sessionGeneration`).
     private func receiveLoop(generation: Int) async {
         guard let task, generation == sessionGeneration else { return }
+        var failure: Error?
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
@@ -300,13 +348,19 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
                 // Surfaces auth/handshake failures, which `task.resume()`
                 // reports lazily on the first receive rather than at connect.
                 AppLog.dictation.error("ElevenLabs receive loop ended: \(error.localizedDescription)")
+                failure = error
                 break
             }
         }
         // Unblocks a pending finish, and marks the take incomplete if the
-        // socket closed while text was still owed.
+        // socket closed while text was still owed. A handshake the server
+        // refused (a bad key, a rate limit) says which by its HTTP status.
         guard generation == sessionGeneration else { return }
-        finish.connectionClosed()
+        if let status = (task.response as? HTTPURLResponse)?.statusCode,
+           let refusal = RealtimeRefusal.handshake(status: status) {
+            finish.refused(refusal, "HTTP \(status)")
+        }
+        finish.connectionClosed(transport: (failure as? URLError)?.code)
     }
 
     private func handleMessage(_ text: String) {
@@ -335,11 +389,32 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
             finish.nothingToCommit()
         default:
             // Error events carry an "error" field; every other one costs text.
+            // The ones that refuse the session outright rule out a re-send.
             if let err = obj["error"] as? String, type != "warning" {
-                finish.serverError("\(type): \(err)")
+                if let refusal = RealtimeRefusal.elevenLabs(messageType: type) {
+                    finish.refused(refusal, err)
+                } else {
+                    finish.serverError("\(type): \(err)")
+                }
                 AppLog.dictation.error("ElevenLabs stream error (\(type)): \(err)")
             }
         }
+    }
+
+    private func enforceDeadline(_ deadline: ContinuousClock.Instant, generation: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(until: deadline, clock: .continuous)
+            await self?.deadlinePassed(generation: generation)
+        }
+    }
+
+    /// Marks the session timed out and cuts the socket, so every wait on it —
+    /// the sender's drain, the finish — ends now.
+    private func deadlinePassed(generation: Int) {
+        guard generation == sessionGeneration, task != nil else { return }
+        AppLog.dictation.warning("ElevenLabs re-send ran out of time; giving up on it")
+        finish.finishWindowExpired()
+        task?.cancel(with: .goingAway, reason: nil)
     }
 
     private func emitLiveText() {
@@ -367,7 +442,7 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription)
+            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
         }
     }
 
@@ -417,18 +492,18 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         return String(data: data, encoding: .utf8)
     }
 
-    /// How long a live session waits for its flush to be answered. A healthy
-    /// server answers in well under a second; running out now costs a re-send
-    /// of the whole take rather than a silently clipped ending, so this is
-    /// generous.
-    private nonisolated static let finishGraceMs = 5_000
     private nonisolated static let finishPollMs = 50
-    /// How long a buffered session's segments must stop arriving before the
-    /// transcript counts as finished.
-    private nonisolated static let bufferedQuietMs = 2_000
+
+    /// A commit lands a silence window plus a transcription after its cut, so
+    /// it is trusted to cover audio sent up to a second before it arrived. Any
+    /// speech sent after that still gets a flush; if the guess falls short of
+    /// the segment's own end, the flush just finds nothing to add.
+    private nonisolated static func freshTracker(sampleRate: Int) -> ElevenLabsRealtimeFinishTracker {
+        ElevenLabsRealtimeFinishTracker(commitLagSamples: sampleRate)
+    }
 
     private nonisolated static var supersededError: TranscriptionEngineError {
-        .transcriptionFailed("A newer ElevenLabs session replaced this one before it finished.")
+        .transcriptionFailed("The ElevenLabs session was cancelled or replaced before it finished.")
     }
 
     // MARK: - Connection test

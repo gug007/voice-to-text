@@ -25,10 +25,15 @@ protocol TranscriptionEngine: AnyObject, Sendable {
     /// the whole buffer so per-request state (rolling prompt, speaker numbering)
     /// isn't reset at every local cut.
     var chunksInternally: Bool { get }
+    /// Whether `contextPrompt` can change what the engine produces. A caller
+    /// that would retry "without the prompt" must skip engines where it
+    /// can't — the retry would only run the identical decode again.
+    var usesContextPrompt: Bool { get }
 }
 
 extension TranscriptionEngine {
     var chunksInternally: Bool { false }
+    var usesContextPrompt: Bool { true }
 
     func transcribe(samples: [Float]) async throws -> String {
         try await transcribe(samples: samples, contextPrompt: nil, progress: nil)

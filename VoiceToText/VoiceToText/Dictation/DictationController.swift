@@ -251,6 +251,13 @@ final class DictationController {
     @ObservationIgnored
     private var streamingEngine: (any StreamingTranscriptionEngine)?
 
+    /// The stream detached from `streamingEngine` while its `finishStream()`
+    /// runs — which, for a session that dropped, includes re-sending the whole
+    /// take. Held so Cancel and the watchdog can stop that too, not just fence
+    /// its result.
+    @ObservationIgnored
+    private var finishingStream: (any StreamingTranscriptionEngine)?
+
     /// The model that owns the active streaming session, captured at recording
     /// start. Used for History attribution because a streaming transcript is
     /// produced by the already-open session, not by whatever model is active at
@@ -585,6 +592,13 @@ final class DictationController {
         guard let streaming = streamingEngine else { return }
         streamingEngine = nil
         Task { await streaming.cancelStream() }
+    }
+
+    /// Stops a stream whose finish (or automatic re-send) is still running.
+    private func cancelFinishingStream() {
+        guard let finishing = finishingStream else { return }
+        finishingStream = nil
+        Task { await finishing.cancelStream() }
     }
 
     private func cancelPendingRecording() {
@@ -1374,6 +1388,7 @@ final class DictationController {
         removeTranscribingEscMonitor()
         stopTranscribingElapsedTicker()
         cancelStreamingSession()
+        cancelFinishingStream()
         inFlightTranscriptionSamples = nil
         lastFailedSamples = nil
         failedTakeHistoryID = nil
@@ -1516,6 +1531,7 @@ final class DictationController {
         transcriptionRunID &+= 1
         stopTranscribingElapsedTicker()
         cancelStreamingSession()
+        cancelFinishingStream()
         let message = "Transcription is taking too long. Try again."
         guard let samples = inFlightTranscriptionSamples else {
             enterFailureHUD(message: message)
@@ -1798,6 +1814,7 @@ final class DictationController {
             if runID == transcriptionRunID {
                 stopTranscribingElapsedTicker()
                 inFlightTranscriptionSamples = nil
+                finishingStream = nil
             }
         }
 
@@ -1839,6 +1856,7 @@ final class DictationController {
             // The audio source is done, so stop feeding it. finishStream tears
             // the socket down itself — this isn't a cancelStreamingSession case.
             streamingEngine = nil
+            finishingStream = streaming
             recordedModel = streamingModel ?? descriptor
             streamingModel = nil
             recorder.onAudioChunk = nil

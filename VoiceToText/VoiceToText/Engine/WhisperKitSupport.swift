@@ -68,4 +68,42 @@ nonisolated enum WhisperChunkCheck {
             return .accept(trimmed)
         }
     }
+
+    /// Chunk ranges that cover all `sampleCount` samples. `VADAudioChunker`
+    /// stops once less than a second is left after its last cut (padding it
+    /// keeps against end-of-clip hallucinations), so a word said in that last
+    /// second never reached the decoder. The remainder joins the last chunk
+    /// when that still fits one window; otherwise the two are split in half,
+    /// since a chunk under a second would never be decoded at all.
+    static func coveringRemainder(_ ranges: [Range<Int>], sampleCount: Int, maxLength: Int) -> [Range<Int>] {
+        guard sampleCount > 0, maxLength > 0 else { return ranges }
+        guard let last = ranges.last else { return evenSplit(0..<sampleCount, maxLength: maxLength) }
+        guard last.upperBound < sampleCount else { return ranges }
+        return ranges.dropLast() + evenSplit(last.lowerBound..<sampleCount, maxLength: maxLength)
+    }
+
+    private static func evenSplit(_ range: Range<Int>, maxLength: Int) -> [Range<Int>] {
+        let parts = max(1, (range.count + maxLength - 1) / maxLength)
+        return (0..<parts).map { part in
+            let start = range.lowerBound + range.count * part / parts
+            let end = range.lowerBound + range.count * (part + 1) / parts
+            return start..<end
+        }
+    }
+}
+
+/// Where `WhisperKitEngine` listens for the take's language.
+///
+/// Detecting in every window (`detectLanguage` in `DecodingOptions`) let a take
+/// switch language between chunks, and inside a window's temperature
+/// fallbacks, which re-detect with a random sampler. So a take is detected
+/// once, at temperature 0, from one window that starts at its first speech —
+/// or ends at the take's end, when speech starts less than a window before it.
+nonisolated enum WhisperLanguageProbe {
+    static func window(firstSpeechSample: Int?, sampleCount: Int, windowSamples: Int) -> Range<Int> {
+        guard sampleCount > 0 else { return 0..<0 }
+        let length = min(max(1, windowSamples), sampleCount)
+        let start = min(max(0, firstSpeechSample ?? 0), sampleCount - length)
+        return start..<(start + length)
+    }
 }

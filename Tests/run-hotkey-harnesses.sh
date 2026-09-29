@@ -184,6 +184,8 @@ swiftc -parse-as-library \
 "$TMPDIR/openai-request-builder-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionEngine.swift \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Engine/RealtimeSessionFinish.swift \
   Tests/RealtimeSessionFinishHarness.swift \
   -o "$TMPDIR/realtime-session-finish-harness"

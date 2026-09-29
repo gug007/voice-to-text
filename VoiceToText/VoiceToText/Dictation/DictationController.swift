@@ -110,6 +110,10 @@ final class DictationController {
     /// possibly-valid recording. Overwritten on each run.
     @ObservationIgnored
     private var inFlightTranscriptionSamples: [Float]?
+    /// Whether that run is a "Transcribe Anyway", so a watchdog recovery's
+    /// Retry doesn't send the audio back through the gate the user overruled.
+    @ObservationIgnored
+    private var inFlightSkipsSpeechGate = false
     /// Generous backstop: local engines emit no transcribe progress, so this
     /// can't reset on liveness. Sized well beyond any realistic transcription so
     /// it only catches a genuine wedge; a false fire still preserves the audio.
@@ -611,6 +615,7 @@ final class DictationController {
             actionRevertStack: LiveHUDState.shared.actionRevertStack,
             historyIDs: pendingHistoryIDs,
             pasteTarget: pasteTarget,
+            bannerAction: Self.reviewBannerAction(),
             failedSamples: lastFailedSamples,
             retrySkipsSpeechGate: retrySkipsSpeechGate,
             failedTakeHistoryID: failedTakeHistoryID
@@ -635,6 +640,8 @@ final class DictationController {
         /// Takes still in History (and on disk) until the discard is final.
         let historyIDs: [UUID]
         let pasteTarget: NSRunningApplication?
+        /// The banner's own action beside Retry ("Check API Key"), if any.
+        let bannerAction: FailureAction?
         /// A failed Resume take's audio, behind the banner's Retry, and the
         /// History row it was saved to. That row is not among `historyIDs`:
         /// a failed take stays in History whatever becomes of the review.
@@ -681,9 +688,18 @@ final class DictationController {
             text: discarded.text,
             cursorLocation: discarded.cursorLocation,
             banner: discarded.banner,
-            bannerRetry: bannerRetry
+            bannerRetry: bannerRetry,
+            bannerAction: discarded.bannerAction
         )
         LiveHUDState.shared.actionRevertStack = discarded.actionRevertStack
+    }
+
+    /// The extra action on the review banner right now, read back off the
+    /// card so a discarded review's Undo can put it back.
+    private static func reviewBannerAction() -> FailureAction? {
+        let hud = LiveHUDState.shared
+        guard let title = hud.secondaryActionTitle, let run = hud.onSecondaryAction else { return nil }
+        return FailureAction(title: title, icon: hud.secondaryActionIcon ?? "key.fill", hint: nil, run: run)
     }
 
     /// Makes the last cancelled review's discard final: its takes leave
@@ -878,8 +894,9 @@ final class DictationController {
     /// stay in the target app), so the global tap does the real work and the
     /// local monitor only covers the case where our app happens to be active.
     /// Skipped entirely when "Esc cancels dictation" is off, read once as this
-    /// phase begins for the same reason `installRecordingEscMonitors` does —
-    /// and so is every later card's Esc (see `hudTakesLocalEscape`).
+    /// phase begins for the same reason `installRecordingEscMonitors` does.
+    /// The review and failure cards differ only in that Esc typed into them
+    /// while they are key always works (see `hudTakesLocalEscape`).
     private func installTranscribingEscMonitor() {
         removeTranscribingEscMonitor()
         guard HotkeyStore.shared.escapeCancelsDictation else { return }
@@ -922,21 +939,12 @@ final class DictationController {
         // Local monitor: our review panel is key, so Esc is dispatched into our app.
         reviewEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == UInt16(kVK_Escape) {
-                let (takes, intoCard) = MainActor.assumeIsolated {
-                    (
-                        self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false,
-                        LiveHUDPanel.shared.isPanelEvent(event)
-                    )
+                let takes = MainActor.assumeIsolated {
+                    self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false
                 }
-                if takes {
-                    Task { @MainActor in self?.cancelReview() }
-                    return nil
-                }
-                // With the setting off, an Esc typed into the card still
-                // mustn't reach the editor, which would open a completion
-                // list; one typed into another of our windows is that
-                // window's.
-                return intoCard ? nil : event
+                guard takes else { return event }
+                Task { @MainActor in self?.cancelReview() }
+                return nil
             }
             // ⌘R resumes recording with the new transcript spliced at the caret.
             // Matched like a menu key equivalent, so it survives a Cyrillic
@@ -997,20 +1005,18 @@ final class DictationController {
         let escapeCancels = HotkeyStore.shared.escapeCancelsDictation
         failureEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == UInt16(kVK_Escape) {
-                let (takes, intoCard) = MainActor.assumeIsolated {
-                    (
-                        self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false,
-                        LiveHUDPanel.shared.isPanelEvent(event)
-                    )
+                let takes = MainActor.assumeIsolated {
+                    self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false
                 }
-                // With the setting off, an Esc typed into the card is still
-                // swallowed, as on the review card: closing the card is the
-                // controller's job, not AppKit's `cancelOperation:`.
-                guard takes else { return intoCard ? nil : event }
+                guard takes else { return event }
                 Task { @MainActor in self?.dismissFailure() }
                 return nil
             }
-            if event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter) {
+            // Return only when typed into the card: this monitor sees every
+            // window of ours, and Return in Settings — submitting the API key
+            // the card just sent the user to fix — is that field's.
+            if event.keyCode == UInt16(kVK_Return) || event.keyCode == UInt16(kVK_ANSI_KeypadEnter),
+               MainActor.assumeIsolated({ LiveHUDPanel.shared.isPanelEvent(event) }) {
                 Task { @MainActor in self?.retryTranscription() }
                 return nil
             }
@@ -1075,6 +1081,13 @@ final class DictationController {
                 }
                 if type == .keyUp {
                     return context.swallowState.finishIfNeeded() ? nil : Unmanaged.passUnretained(event)
+                }
+                // An Esc still held from before this tap existed — the one
+                // that just cancelled a resumed recording, say — repeats into
+                // it; acting on that would discard the review it restored.
+                if event.getIntegerValueField(.keyboardEventAutorepeat) != 0,
+                   !context.swallowState.isSwallowing {
+                    return Unmanaged.passUnretained(event)
                 }
                 // The tap's run-loop source is on the main run loop, so this
                 // callback is already on the main thread. Read at the keypress,
@@ -1437,7 +1450,7 @@ final class DictationController {
     /// card's Cancel button does, and what the hotkey policy already maps this
     /// state to. The panel isn't key here (the caret stays in the target app),
     /// so the global tap does the real work. Off with "Esc cancels dictation",
-    /// like every other card's Esc.
+    /// like the transcribing card's.
     private func installPreparingEscMonitor() {
         removePreparingEscMonitor()
         guard HotkeyStore.shared.escapeCancelsDictation else { return }
@@ -1508,7 +1521,12 @@ final class DictationController {
             enterFailureHUD(message: message)
             return
         }
-        failTake(message: message, samples: samples, model: ModelRegistry.shared.activeModel)
+        failTake(
+            message: message,
+            samples: samples,
+            model: ModelRegistry.shared.activeModel,
+            retrySkipsSpeechGate: inFlightSkipsSpeechGate
+        )
     }
 
     private func startTranscribingElapsedTicker(from start: Date) {
@@ -1768,6 +1786,7 @@ final class DictationController {
         let pipelineStart = Date()
         let runID = transcriptionRunID
         inFlightTranscriptionSamples = samples
+        inFlightSkipsSpeechGate = skipSpeechGate
         defer {
             // Fenced as a whole: a run the user cancelled (or the watchdog gave
             // up on) can outlive its own HUD, and by the time it unwinds the
@@ -1790,18 +1809,19 @@ final class DictationController {
             guard runID == transcriptionRunID else { return }
             guard voiced else {
                 AppLog.dictation.notice("Speech gate found no speech in \(samples.count) samples; offering Transcribe Anyway")
-                let model = streamingModel ?? descriptor
                 cancelStreamingSession()
                 // The gate can be wrong — soft speech, a mic turned down — so
-                // the audio is kept and the card offers to transcribe it anyway
-                // rather than dropping what may be the user's words. The
-                // pipeline's empty-output check below still stands behind it.
-                failTake(
+                // the card keeps the audio and offers to transcribe it anyway
+                // rather than dropping what may be the user's words. It is
+                // not saved to History: past this gate a rejection is almost
+                // always real silence, and silent rows would push real
+                // dictations out of the cap. A "Transcribe Anyway" that then
+                // fails is saved like any failed take.
+                enterFailureHUD(
                     message: "No speech detected.",
                     samples: samples,
-                    model: model,
-                    status: .noSpeech,
-                    retrySkipsSpeechGate: true
+                    canRetry: true,
+                    speechGateRejected: true
                 )
                 return
             }
@@ -1837,7 +1857,8 @@ final class DictationController {
                 failTake(
                     message: "Failed to prepare model for transcription.",
                     samples: samples,
-                    model: descriptor
+                    model: descriptor,
+                    retrySkipsSpeechGate: skipSpeechGate
                 )
                 return
             }
@@ -1863,7 +1884,8 @@ final class DictationController {
         } catch {
             guard runID == transcriptionRunID else { return }
             // Classified so the card can say what would actually help: a
-            // refused key needs Settings, not Retry; a rate limit needs a wait.
+            // refused key needs Settings — beside Retry, which is what works
+            // once it's fixed; a rate limit needs a wait.
             let failure = TranscriptionFailure.classify(error)
             AppLog.dictation.error("Transcription failed (\(String(describing: failure), privacy: .public)): \(error.localizedDescription)")
             failTake(
@@ -1873,7 +1895,7 @@ final class DictationController {
                 ),
                 samples: samples,
                 model: recordedModel,
-                canRetry: failure.offersRetry,
+                retrySkipsSpeechGate: skipSpeechGate,
                 action: failure == .unauthorized
                     ? .checkAPIKey { WindowOpener.shared.showMain(section: .cloud) }
                     : nil
@@ -1887,7 +1909,8 @@ final class DictationController {
             failTake(
                 message: "Transcription returned empty text. Try speaking closer to the mic.",
                 samples: samples,
-                model: recordedModel
+                model: recordedModel,
+                retrySkipsSpeechGate: skipSpeechGate
             )
             return
         }
@@ -1899,20 +1922,24 @@ final class DictationController {
         // text in the review buffer, but the saved audio is only this take).
         // Held as "pending" until the user keeps it (paste/deliver) so a review
         // Cancel can retract it — discarded dictation must not stay on disk.
-        // A retry that finally worked fills in the row its failure saved
-        // instead of adding a second one for the same audio.
+        //
+        // A take that failed first already has a row, which its failure card
+        // said was saved: the text goes into that row, and the row stays out
+        // of the pending list, so cancelling this review can't take back what
+        // the card promised. If History's "Transcribe Again" filled it in
+        // meanwhile, this text joins it as another version, not a second row.
         let store = RecordingHistoryStore.shared
-        let historyID: UUID?
         if let failedID = failedTakeHistoryID,
-           store.resolveFailedTranscript(id: failedID, transcript: processed, model: recordedModel) {
-            historyID = failedID
-        } else {
-            historyID = store.record(samples: samples, transcript: processed, model: recordedModel)
+           let row = store.entries.first(where: { $0.id == failedID }) {
+            if row.needsTranscript {
+                store.resolveFailedTranscript(id: failedID, transcript: processed, model: recordedModel)
+            } else if row.transcript != processed.trimmingCharacters(in: .whitespacesAndNewlines) {
+                store.addRegeneratedTranscript(id: failedID, transcript: processed, model: recordedModel)
+            }
+        } else if let id = store.record(samples: samples, transcript: processed, model: recordedModel) {
+            pendingHistoryIDs.append(id)
         }
         failedTakeHistoryID = nil
-        if let historyID {
-            pendingHistoryIDs.append(historyID)
-        }
 
         // Resume always returns to review with the new transcript spliced at
         // the original caret; otherwise honor the user's review preference —
@@ -1954,13 +1981,16 @@ final class DictationController {
     /// keeping the failed take's audio so the banner can offer Retry;
     /// otherwise shows the failure HUD with optional Retry. Retry is offered
     /// only when re-running the same audio could plausibly succeed.
-    /// `retrySkipsSpeechGate` makes that retry "Transcribe Anyway", for audio
-    /// the speech gate rejected.
+    /// `retrySkipsSpeechGate` makes that retry skip the speech gate, for audio
+    /// the user already told to be transcribed anyway; `speechGateRejected`
+    /// is the gate's own rejection, whose retry is "Transcribe Anyway".
+    /// `action` sits beside Retry when there is one, and replaces it when not.
     private func enterFailureHUD(
         message: String,
         samples: [Float]? = nil,
         canRetry: Bool = false,
         retrySkipsSpeechGate: Bool = false,
+        speechGateRejected: Bool = false,
         action: FailureAction? = nil,
         detail: String? = nil,
         savedToHistory: Bool = false
@@ -1975,7 +2005,7 @@ final class DictationController {
         // below. A no-op on the paths that never armed it.
         removeTranscribingEscMonitor()
         let retryAvailable = canRetry && samples != nil
-        self.retrySkipsSpeechGate = retrySkipsSpeechGate
+        self.retrySkipsSpeechGate = retrySkipsSpeechGate || speechGateRejected
 
         if let resume = resumeContext {
             resumeContext = nil
@@ -1988,7 +2018,8 @@ final class DictationController {
                 text: resume.fullText,
                 cursorLocation: resume.cursorLocation,
                 banner: message,
-                bannerRetry: bannerRetry
+                bannerRetry: bannerRetry,
+                bannerAction: action
             )
             return
         }
@@ -1996,16 +2027,20 @@ final class DictationController {
         lastFailedSamples = retryAvailable ? samples : nil
         state = .error(message)
 
-        // Retry wins whenever the same audio could plausibly succeed on a second
-        // pass; otherwise the caller's action (Open Settings for a permission
+        // Retry leads whenever the same audio could plausibly succeed on a
+        // second pass, with the caller's action beside it (Check API Key);
+        // otherwise the caller's action leads (Open Settings for a permission
         // failure, where pressing the hotkey again can never help); otherwise
         // Close alone.
         let resolvedAction: FailureAction?
+        let secondaryAction: FailureAction?
         if retryAvailable {
             let retry: @MainActor () -> Void = { [weak self] in self?.retryTranscription() }
-            resolvedAction = retrySkipsSpeechGate ? .transcribeAnyway(retry) : .retry(retry)
+            resolvedAction = speechGateRejected ? .transcribeAnyway(retry) : .retry(retry)
+            secondaryAction = action
         } else {
             resolvedAction = action
+            secondaryAction = nil
         }
 
         LiveHUDPanel.shared.showFailure(
@@ -2019,35 +2054,37 @@ final class DictationController {
             salvagedSampleCount: samples?.count ?? 0,
             savedToHistory: savedToHistory,
             detail: detail,
+            secondaryActionTitle: secondaryAction?.title,
+            secondaryActionIcon: secondaryAction?.icon,
             onRetry: { resolvedAction?.run() },
+            onSecondaryAction: secondaryAction?.run,
             onCancel: { [weak self] in self?.dismissFailure() }
         )
         installFailureEscMonitor()
     }
 
-    /// A take whose audio is real but produced no text. The audio goes to
-    /// History before the card goes up — unless History is off — so closing
-    /// the card, starting another dictation, quitting or a crash can't lose
-    /// it; the row then offers "Transcribe Again". A failed Resume take is
-    /// kept the same way, behind the review banner's Retry.
+    /// A take whose transcription failed. The audio goes to History before
+    /// the card goes up — unless History is off — so closing the card,
+    /// starting another dictation, quitting or a crash can't lose it; the row
+    /// then offers "Transcribe Again". A failed Resume take is kept the same
+    /// way, behind the review banner's Retry. Retry is always offered: even a
+    /// refused key is one fix away from the same audio working.
     private func failTake(
         message: String,
         samples: [Float],
         model: ModelDescriptor?,
-        status: RecordingHistoryEntry.Status.Kind = .failed,
-        canRetry: Bool = true,
         retrySkipsSpeechGate: Bool = false,
         action: FailureAction? = nil
     ) {
         let saved = holdFailedTakeInHistory(
             samples: samples,
             model: model,
-            status: .init(kind: status, message: message)
+            status: .init(kind: .failed, message: message)
         )
         enterFailureHUD(
             message: message,
             samples: samples,
-            canRetry: canRetry,
+            canRetry: true,
             retrySkipsSpeechGate: retrySkipsSpeechGate,
             action: action,
             savedToHistory: saved
@@ -2100,7 +2137,7 @@ final class DictationController {
             FailureAction(title: "Add API Key", icon: "key.fill", hint: nil, run: run)
         }
 
-        /// The provider refused the key: Retry can't help, fixing the key can.
+        /// The provider refused the key: fix it here, then Retry.
         static func checkAPIKey(_ run: @escaping @MainActor () -> Void) -> FailureAction {
             FailureAction(title: "Check API Key", icon: "key.fill", hint: nil, run: run)
         }
@@ -2112,7 +2149,8 @@ final class DictationController {
         text: String,
         cursorLocation: Int? = nil,
         banner: String? = nil,
-        bannerRetry: (@MainActor () -> Void)? = nil
+        bannerRetry: (@MainActor () -> Void)? = nil,
+        bannerAction: FailureAction? = nil
     ) {
         // Invalidate any action that slipped in during a previous session's
         // exit window (e.g. ⌘R then ⌘1 in quick succession) so a stale
@@ -2130,6 +2168,9 @@ final class DictationController {
             onCancel: { [weak self] in self?.cancelReview() },
             onResume: { [weak self] in self?.resumeRecording() },
             onRetry: bannerRetry,
+            secondaryActionTitle: bannerAction?.title,
+            secondaryActionIcon: bannerAction?.icon,
+            onSecondaryAction: bannerAction?.run,
             onRunAction: { [weak self] action in self?.runReviewAction(action) }
         )
         installReviewEscMonitor()
@@ -2177,6 +2218,8 @@ final class DictationController {
         // the retry affordance and its audio so an action-failure banner
         // can't resurrect a Retry button wired to the stale dictation take.
         hud.onRetry = nil
+        hud.secondaryActionTitle = nil
+        hud.onSecondaryAction = nil
         lastFailedSamples = nil
         failedTakeHistoryID = nil
         hud.runningActionId = action.id
@@ -2240,6 +2283,9 @@ final class DictationController {
             // here left the review card on screen over a state that no longer
             // matched it, and took the user's transcript out of reach of Paste.
             LiveHUDState.shared.reviewBanner = PermissionCopy.accessibilityHUDMessage
+            // Whatever the banner offered was about the failed take, not this.
+            LiveHUDState.shared.secondaryActionTitle = nil
+            LiveHUDState.shared.onSecondaryAction = nil
             return
         }
 

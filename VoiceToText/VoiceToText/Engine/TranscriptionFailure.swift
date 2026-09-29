@@ -52,22 +52,28 @@ nonisolated struct CloudTranscriptionError: LocalizedError, Sendable {
         )
     }
 
+    /// The longest wait a server is taken at its word for. Anything past a day
+    /// is a broken header, not advice — and `Double` happily parses "inf" and
+    /// "1e30", which would trap the moment they were turned into an `Int`.
+    static let maxRetryAfter: TimeInterval = 86_400
+
     static func retryAfter(milliseconds: String?, header: String?, now: Date) -> TimeInterval? {
-        if let ms = milliseconds.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }), ms >= 0 {
-            return ms / 1_000
+        if let ms = milliseconds.flatMap({ Double($0.trimmingCharacters(in: .whitespaces)) }),
+           ms.isFinite, ms >= 0 {
+            return min(ms / 1_000, maxRetryAfter)
         }
         guard let header = header?.trimmingCharacters(in: .whitespaces), !header.isEmpty else {
             return nil
         }
         if let seconds = Double(header) {
-            return seconds >= 0 ? seconds : nil
+            return seconds.isFinite && seconds >= 0 ? min(seconds, maxRetryAfter) : nil
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "GMT")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
         guard let date = formatter.date(from: header) else { return nil }
-        return max(0, date.timeIntervalSince(now))
+        return min(max(0, date.timeIntervalSince(now)), maxRetryAfter)
     }
 
     private static func apiCode(in body: Data) -> String? {
@@ -85,8 +91,8 @@ nonisolated struct CloudTranscriptionError: LocalizedError, Sendable {
 nonisolated enum TranscriptionFailure: Equatable, Sendable {
     /// No network. Retry once connected, or use a model on this Mac.
     case offline
-    /// The provider refused the API key (401/403). Retrying can't help; the
-    /// key has to be fixed.
+    /// The provider refused the API key (401, or a 403 that names the key).
+    /// The card points at the key; Retry stays for after it's fixed.
     case unauthorized
     /// Too many requests. `retryAfter` is when the provider said to try
     /// again, if it said.
@@ -112,8 +118,14 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
             return classify(transport: code)
         case .http(let status, let retryAfter, let apiCode):
             switch status {
-            case 401, 403:
+            case 401:
                 return .unauthorized
+            // A 403 is usually not about the key: OpenAI sends it for a model
+            // the project can't use (`model_not_found`, which the engine
+            // already explains) and for unsupported regions. Only one that
+            // names the key is one.
+            case 403:
+                return apiCode.map(keyRelatedAPICodes.contains) == true ? .unauthorized : .other
             case 429:
                 // OpenAI answers an exhausted balance with a 429 too, and no
                 // amount of waiting fixes that — its own message (about
@@ -126,6 +138,9 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
             }
         }
     }
+
+    /// OpenAI's error code for a key it doesn't accept.
+    static let keyRelatedAPICodes: Set<String> = ["invalid_api_key"]
 
     /// Only the codes that mean this Mac has no usable network. A timeout or
     /// a refused connection can just as well be a slow or unwell server, and
@@ -166,15 +181,12 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
         }
     }
 
-    /// Whether running the same audio again could succeed. Not for a refused
-    /// key: the card sends the user to fix it instead.
-    var offersRetry: Bool {
-        self != .unauthorized
-    }
-
-    /// "20s" under a minute, whole minutes (rounded up) past it.
+    /// "20s" under a minute, whole minutes (rounded up) past it. Clamped like
+    /// `CloudTranscriptionError.retryAfter`, so no value can trap the `Int`.
     static func waitDescription(_ seconds: TimeInterval) -> String {
-        let whole = Int(seconds.rounded(.up))
+        let limit = CloudTranscriptionError.maxRetryAfter
+        let bounded = seconds.isFinite ? min(max(0, seconds), limit) : limit
+        let whole = Int(bounded.rounded(.up))
         guard whole >= 60 else { return "\(max(1, whole))s" }
         return "\((whole + 59) / 60) min"
     }

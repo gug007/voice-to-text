@@ -32,6 +32,7 @@ struct MeetingChunkRecoveryHarness {
         try fillsGapsOnlyAroundRealText()
         try voicedSpanFollowsWindows()
         try energyVADFindsSpeechAndIgnoresSilence()
+        try coughInQuietIsNotSpeech()
         print("Meeting chunk recovery harness passed")
     }
 
@@ -102,5 +103,21 @@ struct MeetingChunkRecoveryHarness {
         let burst = SpeechEnergy.voicedSpan(in: signal(seconds: 30, tone: 11..<14), sampleRate: rate)
         try expect(burst == 10...15,
                    "a 3 s burst inside a long quiet chunk is found by its 5 s window: \(String(describing: burst))")
+    }
+
+    /// A window is voiced by a share of its frames, not by the dictation
+    /// gate's absolute 0.4 s: a cough in a quiet room is not speech the model
+    /// failed on, and marking it [untranscribed] — or re-decoding it without a
+    /// prompt, inviting a hallucination — would be wrong.
+    private static func coughInQuietIsNotSpeech() throws {
+        let hum = signal(seconds: 30, tone: 0..<30, amplitude: 0.0014)  // ≈ -60 dBFS
+        let cough = signal(seconds: 30, tone: 12..<12.45)
+        let take = zip(hum, cough).map { $0 + $1 }
+        try expect(SpeechEnergy.voicedSpan(in: take, sampleRate: rate) == nil,
+                   "a 0.45 s cough in -60 dBFS noise leaves its 5 s window unvoiced")
+        let window = take[(10 * rate)..<(15 * rate)]
+        try expect(!EnergyVAD().isVoiced(window, sampleRate: rate), "the ratio test rejects the window")
+        try expect(EnergyVAD().passesSpeechGate(window, sampleRate: rate),
+                   "while the dictation gate, which judges a whole take by voiced time, would pass it")
     }
 }

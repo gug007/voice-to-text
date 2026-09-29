@@ -124,7 +124,14 @@ struct RecordingEscapePolicyHarness {
         try expect(!takes(true, false, otherApp, nil), "no paste target and the card not key: passes through")
         try expect(!takes(true, false, nil, target), "no frontmost app: passes through")
 
-        try expect(!takes(false, true, target, target), "setting off: the key card leaves Esc alone")
+        try expect(takes(false, true, otherApp, target), "setting off: Esc typed into the key card still closes it")
         try expect(!takes(false, false, target, target), "setting off: the target app keeps its Esc")
+
+        let held = RecordingEscapeSwallowState()
+        try expect(!held.isSwallowing, "nothing held at first")
+        _ = held.begin()
+        try expect(held.isSwallowing, "a taken Escape is held until its key-up")
+        _ = held.finishIfNeeded()
+        try expect(!held.isSwallowing, "and released by it")
     }
 }

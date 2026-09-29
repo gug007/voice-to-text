@@ -46,7 +46,9 @@ private struct EngineError: LocalizedError {
 struct TranscriptionFailureHarness {
     static func main() throws {
         try refusedKeysAreUnauthorized()
+        try otherForbiddensKeepTheEngineMessage()
         try rateLimitsCarryRetryAfter()
+        try absurdRetryAftersAreBounded()
         try exhaustedQuotaIsNotARateLimit()
         try serverErrorsAreServer()
         try otherStatusesKeepTheEngineMessage()
@@ -60,8 +62,16 @@ struct TranscriptionFailureHarness {
 
     private static func refusedKeysAreUnauthorized() throws {
         try expect(httpFailure(401), .unauthorized, "401 is a refused key")
-        try expect(httpFailure(403), .unauthorized, "403 too")
-        try expect(TranscriptionFailure.unauthorized.offersRetry, false, "retrying a refused key can't help")
+        try expect(httpFailure(401, code: "invalid_api_key"), .unauthorized, "with or without a code")
+        try expect(httpFailure(403, code: "invalid_api_key"), .unauthorized, "a 403 that names the key")
+    }
+
+    /// OpenAI's 403s are mostly not about the key, and the engine's own
+    /// message for them is the useful one.
+    private static func otherForbiddensKeepTheEngineMessage() throws {
+        try expect(httpFailure(403, code: "model_not_found"), .other, "a model the project can't use")
+        try expect(httpFailure(403, code: "unsupported_country_region_territory"), .other, "a region block")
+        try expect(httpFailure(403), .other, "an unexplained 403")
     }
 
     private static func rateLimitsCarryRetryAfter() throws {
@@ -89,7 +99,26 @@ struct TranscriptionFailureHarness {
         try expect(httpFailure(429), .rateLimited(retryAfter: nil), "no header, no promise")
         try expect(httpFailure(429, headers: ["Retry-After": "soon"]), .rateLimited(retryAfter: nil), "garbage is ignored")
         try expect(httpFailure(429, headers: ["Retry-After": "-5"]), .rateLimited(retryAfter: nil), "a negative wait is ignored")
-        try expect(TranscriptionFailure.rateLimited(retryAfter: 20).offersRetry, true, "a rate limit passes")
+    }
+
+    /// `Double` parses these, and an unchecked one traps when the card turns
+    /// it into whole seconds.
+    private static func absurdRetryAftersAreBounded() throws {
+        let day = CloudTranscriptionError.maxRetryAfter
+        try expect(httpFailure(429, headers: ["Retry-After": "inf"]), .rateLimited(retryAfter: nil), "infinity is no answer")
+        try expect(httpFailure(429, headers: ["Retry-After": "nan"]), .rateLimited(retryAfter: nil), "nor is NaN")
+        try expect(httpFailure(429, headers: ["Retry-After": "1e30"]), .rateLimited(retryAfter: day), "a huge wait is clamped to a day")
+        try expect(httpFailure(429, headers: ["retry-after-ms": "inf", "Retry-After": "7"]), .rateLimited(retryAfter: 7), "a non-finite ms header falls back to seconds")
+        try expect(httpFailure(429, headers: ["retry-after-ms": "1e40"]), .rateLimited(retryAfter: day), "huge milliseconds are clamped")
+        try expect(
+            CloudTranscriptionError.retryAfter(milliseconds: nil, header: "Fri, 31 Dec 9999 23:59:59 GMT", now: now) == day,
+            true,
+            "a far-future date is clamped too"
+        )
+        try expect(TranscriptionFailure.waitDescription(.infinity), "1440 min", "the wait text never traps")
+        try expect(TranscriptionFailure.waitDescription(1e30), "1440 min", "on any value")
+        try expect(TranscriptionFailure.waitDescription(-3), "1s", "or a negative one")
+        _ = TranscriptionFailure.waitDescription(.nan)
     }
 
     private static func exhaustedQuotaIsNotARateLimit() throws {

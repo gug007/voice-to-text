@@ -50,7 +50,7 @@ actor VoiceActivityGate {
                 // Fall through to energy VAD on any runtime failure.
             }
         }
-        return fallback.isVoiced(samples[...], sampleRate: Int(AudioConfig.targetSampleRate))
+        return fallback.passesSpeechGate(samples[...], sampleRate: Int(AudioConfig.targetSampleRate))
     }
 
     /// The loaded model, or nil while only the energy fallback is available.

@@ -68,8 +68,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     let customInsights: [CustomInsight]?
 
     /// Set when the recording was saved without a real transcript — its
-    /// transcription failed, or found no speech — so the audio would outlive
-    /// the failure card; `transcript` then holds a placeholder. Nil, and
+    /// transcription failed — so the audio would outlive the failure card;
+    /// `transcript` then holds a placeholder. Nil, and
     /// absent from every index written before this existed, means the
     /// transcript is the model's output.
     let status: Status?
@@ -77,12 +77,11 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// Why a recording has no transcript yet. A struct rather than a bare
     /// enum so the row can say what went wrong in the card's own words.
     struct Status: Codable, Hashable, Sendable {
+        /// One kind today. Kept as a field so a later kind decodes as a row
+        /// this build passes through rather than one it misreads.
         enum Kind: String, Codable, Sendable {
             /// The transcription itself failed — network, API key, engine.
             case failed
-            /// The speech gate heard nothing, and the take wasn't transcribed
-            /// anyway.
-            case noSpeech
         }
 
         let kind: Kind

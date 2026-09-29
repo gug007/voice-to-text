@@ -104,6 +104,10 @@ struct HUDBanner: View {
     /// Hint for the Retry control, when Return is bound to it.
     var retryHint: String?
     var showsRetry: Bool = false
+    /// A second way out beside Retry ("Check API Key"), or nil.
+    var actionTitle: String?
+    var actionIcon: String?
+    var onAction: () -> Void = {}
     let onRetry: () -> Void
 
     var body: some View {
@@ -119,6 +123,10 @@ struct HUDBanner: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: Space.s4)
+
+            if let actionTitle {
+                HUDButton(title: actionTitle, systemImage: actionIcon, role: .secondary) { onAction() }
+            }
 
             if showsRetry {
                 HUDButton(

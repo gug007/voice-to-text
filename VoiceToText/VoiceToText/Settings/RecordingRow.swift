@@ -480,16 +480,14 @@ struct RecordingRow: View {
     /// regenerate menu; either way the transcript replaces this notice.
     private func untranscribedNotice(_ status: RecordingHistoryEntry.Status) -> some View {
         VStack(alignment: .leading, spacing: Space.s3) {
-            Text(status.kind == .noSpeech ? "Not transcribed — no speech detected" : "Not transcribed")
+            Text("Not transcribed")
                 .typo(.captionMedium)
                 .foregroundStyle(Palette.signalWarn)
-            if status.kind == .failed {
-                Text(status.message)
-                    .typo(.body)
-                    .foregroundStyle(Palette.inkMuted)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            Text(status.message)
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
             if !isRegenerating, let model = transcribeAgainModel {
                 Button("Transcribe Again") {
                     Task { await regenerator.regenerate(entry: entry, modelId: model.id) }

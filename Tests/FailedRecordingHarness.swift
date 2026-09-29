@@ -74,10 +74,10 @@ struct FailedRecordingHarness {
     }
 
     private static func statusRoundTripsThroughTheIndex() throws {
-        let noSpeech = makeFailed(status: .init(kind: .noSpeech, message: "No speech detected."))
-        let data = try HistoryIndexCodec.encode(entries: [makeFailed(), noSpeech], passthrough: [])
+        let offline = makeFailed(status: .init(kind: .failed, message: "You're offline."))
+        let data = try HistoryIndexCodec.encode(entries: [makeFailed(), offline], passthrough: [])
         let decoded = try HistoryIndexCodec.decode(data)
-        try expect(decoded.entries, [makeFailed(), noSpeech], "status survives a write and a read")
+        try expect(decoded.entries, [makeFailed(), offline], "status survives a write and a read")
         try expect(decoded.entries[0].needsTranscript, true, "a failed take waits for a transcript")
 
         let plain = try HistoryIndexCodec.encode(entries: [makeFailed(status: nil)], passthrough: [])

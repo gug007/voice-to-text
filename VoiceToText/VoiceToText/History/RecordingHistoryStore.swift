@@ -148,7 +148,7 @@ final class RecordingHistoryStore {
     /// words as a conversation archived without a transcript.
     nonisolated static let placeholderTranscript = "⚠︎ Audio saved without a transcript."
 
-    /// Saves a dictation whose transcription failed (or found no speech), so
+    /// Saves a dictation whose transcription failed, so
     /// its audio outlives the failure card: closing it, starting another
     /// dictation, quitting or a crash no longer lose the take. The row carries
     /// `status` and a placeholder transcript until `resolveFailedTranscript`

@@ -80,7 +80,13 @@ private struct HUDCard: View {
     private func sections(_ layout: HUDLayout) -> some View {
         VStack(alignment: .leading, spacing: HUDMetrics.gap) {
             if let message = bannerMessage {
-                HUDBanner(message: message, showsRetry: hasBannerRetry) {
+                HUDBanner(
+                    message: message,
+                    showsRetry: hasBannerRetry,
+                    actionTitle: bannerActionTitle,
+                    actionIcon: state.secondaryActionIcon,
+                    onAction: { state.onSecondaryAction?() }
+                ) {
                     performBannerRetry()
                 }
                     .transition(.opacity)
@@ -202,6 +208,15 @@ private struct HUDCard: View {
         switch state.mode {
         case .reviewing, .resumeRecording: return state.onRetry != nil
         case .failed, .preparing, .recording, .transcribing, .discarded: return false
+        }
+    }
+
+    /// The review banner's own extra action, for a failed Resume take. In
+    /// `.failed` the control row carries it, as it carries Retry.
+    private var bannerActionTitle: String? {
+        switch state.mode {
+        case .reviewing, .resumeRecording: return state.secondaryActionTitle
+        case .failed, .preparing, .recording, .transcribing, .discarded: return nil
         }
     }
 
@@ -411,7 +426,7 @@ private struct HUDControlRow: View {
                 cancelButton(title: "Cancel", hint: escCancelHint)
 
             case .reviewing:
-                cancelButton(title: "Cancel", hint: escCancelHint)
+                cancelButton(title: "Cancel", hint: "esc")
                 Spacer(minLength: Space.s4)
                 if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     HUDButton(
@@ -435,7 +450,16 @@ private struct HUDControlRow: View {
 
             case .failed:
                 Spacer(minLength: Space.s4)
-                cancelButton(title: "Close", hint: escCancelHint)
+                if let secondaryTitle = state.secondaryActionTitle {
+                    HUDButton(
+                        title: secondaryTitle,
+                        systemImage: state.secondaryActionIcon,
+                        role: .secondary
+                    ) { state.onSecondaryAction?() }
+                }
+                // Esc in the key card always closes it, whatever "Esc cancels
+                // dictation" says — that setting is about Esc in other apps.
+                cancelButton(title: "Close", hint: "esc")
                 if let actionTitle = state.failureActionTitle {
                     primaryButton(
                         title: actionTitle,
@@ -466,8 +490,9 @@ private struct HUDControlRow: View {
     }
 
     /// Cancel promises `esc` only where Esc really cancels. With "Esc cancels
-    /// dictation" off, no card takes Esc — recording, preparing, transcribing,
-    /// review and the failure card alike — so none may advertise it.
+    /// dictation" off, recording, preparing and transcribing stop taking Esc,
+    /// so they must not advertise it. The review and failure cards keep
+    /// theirs: they are key, and Esc typed into them always works.
     private var escCancelHint: String? {
         HotkeyStore.shared.escapeCancelsDictation ? "esc" : nil
     }

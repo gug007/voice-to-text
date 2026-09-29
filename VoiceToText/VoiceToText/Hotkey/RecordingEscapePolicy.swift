@@ -50,18 +50,19 @@ enum RecordingEscapePolicy {
     /// Those cards float over every app and stay up after the user clicks
     /// elsewhere, so their session-wide tap used to take every Esc typed
     /// anywhere: one meant for vim or a dialog discarded a finished dictation.
-    /// Esc is the card's only while the user is plausibly talking to it — the
-    /// card itself is key, or the app they are dictating into is still in
-    /// front — and with "Esc cancels dictation" off, never. The card's own
-    /// buttons work either way.
+    /// Esc is the card's only while the user is plausibly talking to it. An
+    /// Esc typed into the card itself (it is key) always is, like Esc in any
+    /// dialog. One typed into the app they are dictating into is the card's
+    /// only while "Esc cancels dictation" is on — the setting is about Esc
+    /// reaching past our own window, not about our window's own keys.
     static func hudShouldTakeEscape(
         escapeCancelsDictation: Bool,
         panelIsKey: Bool,
         frontmostPID: pid_t?,
         pasteTargetPID: pid_t?
     ) -> Bool {
-        guard escapeCancelsDictation else { return false }
         if panelIsKey { return true }
+        guard escapeCancelsDictation else { return false }
         guard let frontmostPID, let pasteTargetPID else { return false }
         return frontmostPID == pasteTargetPID
     }
@@ -93,5 +94,12 @@ final class RecordingEscapeSwallowState: @unchecked Sendable {
         lock.lock()
         awaitingKeyUp = false
         lock.unlock()
+    }
+
+    /// Whether an Escape this state took is still held down.
+    var isSwallowing: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return awaitingKeyUp
     }
 }

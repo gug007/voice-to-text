@@ -14,9 +14,10 @@ import Foundation
 /// per-unit threshold. The old ratio stays as a second way through, so nothing
 /// it used to accept — one short word in a sub-second take — is rejected now.
 ///
-/// The gate is only a pre-filter. The pipeline's empty-output check still
-/// stands behind it, and that is what catches a model hallucinating on the
-/// near-silence a looser gate lets through.
+/// The gate is the only thing between near-silence and the model. The
+/// pipeline's empty-output check behind it catches a model that returns
+/// nothing, not one that invents text — which is why a take still needs real
+/// voiced time to pass, rather than the gate passing everything.
 ///
 /// Foundation-only and `nonisolated` so the harness compiles it standalone: it
 /// sees per-unit scores — Silero probabilities, or frame levels in dBFS for the

@@ -183,6 +183,11 @@ final class LiveHUDState {
     /// Key hint on that button — only set where the key is really bound
     /// (Return runs Retry; nothing is bound to Open Settings).
     var failureActionHint: String?
+    /// A second action beside Retry — on the failure card's control row, or
+    /// on the review banner after a failed Resume take. "Check API Key" for a
+    /// refused key: Retry stays, since it is what works once the key is fixed.
+    var secondaryActionTitle: String?
+    var secondaryActionIcon: String?
 
     /// The discard notice's one line ("Dictation discarded").
     var noticeMessage: String = ""
@@ -234,6 +239,7 @@ final class LiveHUDState {
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
     /// The discard notice's Undo.
     @ObservationIgnored var onUndo: (@MainActor () -> Void)?
+    @ObservationIgnored var onSecondaryAction: (@MainActor () -> Void)?
 
     /// Steps back one action at a time: each call restores the text from
     /// before the most recent transform, so chained actions unwind in order
@@ -421,6 +427,9 @@ final class LiveHUDPanel {
         onCancel: @escaping @MainActor () -> Void,
         onResume: @escaping @MainActor () -> Void,
         onRetry: (@MainActor () -> Void)? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryActionIcon: String? = nil,
+        onSecondaryAction: (@MainActor () -> Void)? = nil,
         onRunAction: (@MainActor (DictationAction) -> Void)? = nil
     ) {
         let nsLen = (text as NSString).length
@@ -448,6 +457,9 @@ final class LiveHUDPanel {
         state.onResume = onResume
         // Retry on the failure banner: re-runs a failed Resume take's audio.
         state.onRetry = onRetry
+        state.secondaryActionTitle = secondaryActionTitle
+        state.secondaryActionIcon = secondaryActionIcon
+        state.onSecondaryAction = onSecondaryAction
         state.onRunAction = onRunAction
 
         present()
@@ -467,7 +479,10 @@ final class LiveHUDPanel {
         salvagedSampleCount: Int = 0,
         savedToHistory: Bool = false,
         detail: String? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryActionIcon: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
+        onSecondaryAction: (@MainActor () -> Void)? = nil,
         onCancel: @escaping @MainActor () -> Void
     ) {
         state.mode = .failed
@@ -480,6 +495,9 @@ final class LiveHUDPanel {
         state.salvagedSampleCount = salvagedSampleCount
         state.failureSavedToHistory = savedToHistory
         state.failureDetail = detail
+        state.secondaryActionTitle = secondaryActionTitle
+        state.secondaryActionIcon = secondaryActionIcon
+        state.onSecondaryAction = onSecondaryAction
         state.preparingMessage = ""
         state.preparingFraction = nil
         state.transcribingElapsedSeconds = 0
@@ -602,6 +620,9 @@ final class LiveHUDPanel {
         state.onRunAction = nil
         state.onUndo = nil
         state.noticeMessage = ""
+        state.secondaryActionTitle = nil
+        state.secondaryActionIcon = nil
+        state.onSecondaryAction = nil
         panel?.orderOut(nil)
         panel?.acceptsKey = false
         morphDeadline = .distantPast

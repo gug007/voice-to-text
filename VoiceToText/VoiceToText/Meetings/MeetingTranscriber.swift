@@ -56,7 +56,10 @@ enum MeetingTranscriber {
             // punctuation and proper nouns stay consistent across the cut.
             let context = pieces.last.map { String($0.suffix(200)) }
             let raw = try await engine.transcribe(samples: chunk, contextPrompt: context, progress: nil)
-            pieces.append(TranscriptPostProcessor.processPreservingLines(raw))
+            // Only the recording's opening words are sure to start a sentence;
+            // a later cut usually lands mid-sentence, so keep its casing as-is.
+            let isOpening = !pieces.contains { !$0.isEmpty }
+            pieces.append(TranscriptPostProcessor.processPreservingLines(raw, capitalizeFirst: isOpening))
             // The estimate can land one over when a cut drifts early, so keep
             // the denominator honest rather than letting the bar stall short.
             onProgress(pieces.count, max(estimate, pieces.count))

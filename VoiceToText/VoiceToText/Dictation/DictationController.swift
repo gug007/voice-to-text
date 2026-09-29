@@ -1924,12 +1924,18 @@ final class DictationController {
 
         let processed = TranscriptPostProcessor.process(rawText)
         if processed.isEmpty {
-            failTake(
-                message: "Transcription returned empty text. Try speaking closer to the mic.",
-                samples: samples,
-                model: recordedModel,
-                retrySkipsSpeechGate: skipSpeechGate
-            )
+            // An engine that ran fine and wrote nothing heard nothing worth
+            // keeping — room noise the gate let through, a stray press. Like a
+            // gate rejection it isn't saved to History (silent rows would push
+            // real dictations out of the cap); the card still keeps the audio
+            // for Retry. A take that already has a row from an earlier failure
+            // keeps it, with this as its latest reason.
+            let message = "Transcription returned empty text. Try speaking closer to the mic."
+            if failedTakeHistoryID != nil {
+                failTake(message: message, samples: samples, model: recordedModel, retrySkipsSpeechGate: skipSpeechGate)
+            } else {
+                enterFailureHUD(message: message, samples: samples, canRetry: true, retrySkipsSpeechGate: skipSpeechGate)
+            }
             return
         }
 

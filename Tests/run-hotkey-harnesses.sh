@@ -164,6 +164,18 @@ swiftc -parse-as-library \
 "$TMPDIR/openai-request-builder-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/RealtimeSessionFinish.swift \
+  Tests/RealtimeSessionFinishHarness.swift \
+  -o "$TMPDIR/realtime-session-finish-harness"
+"$TMPDIR/realtime-session-finish-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ConversationModelResolver.swift \
+  Tests/ConversationModelResolverHarness.swift \
+  -o "$TMPDIR/conversation-model-resolver-harness"
+"$TMPDIR/conversation-model-resolver-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/SpeakerRelabeler.swift \
   Tests/SpeakerRelabelerHarness.swift \
   -o "$TMPDIR/speaker-relabeler-harness"

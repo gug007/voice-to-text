@@ -606,12 +606,14 @@ struct RecordingRow: View {
         }
     }
 
-    /// Every catalog model, grouped "On this Mac" / by cloud provider, with the
-    /// entry's current model checkmarked — the "Regenerate with" list restyled to
-    /// the shared dropdown language.
+    /// Every catalog model except the live ones, grouped "On this Mac" / by
+    /// cloud provider, with the entry's current model checkmarked — the
+    /// "Regenerate with" list restyled to the shared dropdown language. A live
+    /// model would only re-feed the stored audio through its one-shot
+    /// fallback, which isn't built for a whole recording.
     private var regenerateModelSections: [DropdownSection<String>] {
         var sections: [DropdownSection<String>] = []
-        let all = ModelCatalog.all
+        let all = ModelCatalog.all.filter { !$0.isRealtime }
         let local = all.filter { !$0.isCloud }
         if !local.isEmpty {
             sections.append(DropdownSection(

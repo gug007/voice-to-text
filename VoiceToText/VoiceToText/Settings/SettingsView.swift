@@ -228,7 +228,7 @@ struct HotkeyPane: View {
             Plate {
                 SettingsToggleRow(
                     title: "Esc cancels dictation",
-                    subtitle: "While recording or transcribing, Esc discards the dictation instead of reaching the app you're in. Turn off if you often press Esc in other apps while dictating.",
+                    subtitle: "Esc cancels a dictation while it records, transcribes or waits for review. After you stop, it only reacts on the card or in the app you're dictating into. Turn off if you often press Esc in other apps while dictating.",
                     isOn: escapeCancelsDictationBinding
                 )
             }
@@ -890,7 +890,10 @@ struct GeneralPane: View {
                 return "Press the shortcut again, \(esc)or click Stop."
             }
         case .transcribing: return "Waiting for transcription…"
-        case .reviewing: return "Press \(hk) to paste, or Esc to cancel."
+        case .reviewing:
+            return HotkeyStore.shared.escapeCancelsDictation
+                ? "Press \(hk) to paste, or Esc to cancel."
+                : "Press \(hk) to paste, or click Cancel."
         case .delivering: return "Pasting into the app you were using."
         case .error(let message): return message
         }

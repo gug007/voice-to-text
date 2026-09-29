@@ -28,7 +28,9 @@ private final class RecordingEscapeEventTapContext {
 /// panels are nonactivating, so when another app is frontmost their local key
 /// monitors never fire and Esc is dead — this session-level tap catches Esc and
 /// routes it to the right dismissal. `target` picks which HUD is showing (they
-/// never overlap), so the same tap serves both.
+/// never overlap), so the same tap serves both. It only takes an Esc meant for
+/// the dictation (`RecordingEscapePolicy.hudShouldTakeEscape`); every other
+/// one reaches the app it was typed into.
 private final class HUDEscapeEventTapContext {
     enum Target {
         case preparing
@@ -39,10 +41,16 @@ private final class HUDEscapeEventTapContext {
 
     weak var controller: DictationController?
     let target: Target
+    /// The app this dictation is aimed at, fixed for the tap's lifetime.
+    let pasteTargetPID: pid_t?
+    /// Pairs a taken Esc's key-up with its key-down, so the key-up of one the
+    /// tap let through still reaches the app that got the key-down.
+    let swallowState = RecordingEscapeSwallowState()
 
-    init(controller: DictationController, target: Target) {
+    init(controller: DictationController, target: Target, pasteTargetPID: pid_t?) {
         self.controller = controller
         self.target = target
+        self.pasteTargetPID = pasteTargetPID
     }
 }
 
@@ -253,6 +261,12 @@ final class DictationController {
     @ObservationIgnored
     private var pendingHistoryIDs: [UUID] = []
 
+    /// The review cancelled most recently, while its Undo notice is up.
+    @ObservationIgnored
+    private var discardedReview: DiscardedReview?
+    @ObservationIgnored
+    private var discardUndoTask: Task<Void, Never>?
+
     /// Snapshot of the review text taken when the user clicks Resume.
     /// Splits the text at the caret so the next transcription can be
     /// spliced into the same position when recording finishes.
@@ -308,6 +322,19 @@ final class DictationController {
         // Build the audio engine now, in the background, so the first hotkey
         // press doesn't pay for CoreAudio's device enumeration.
         recorder.prewarm()
+        // Quitting takes the discard notice down, so its discard is final —
+        // retracted and flushed before exit, or the takes would outlive it.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, self.discardedReview != nil else { return }
+                self.finalizeDiscardedReview()
+                RecordingHistoryStore.shared.flush()
+            }
+        }
     }
 
     func installHotkey() {
@@ -559,18 +586,107 @@ final class DictationController {
         }
     }
 
+    /// Cancel (or Esc) on the review card. The dictation is gone from the
+    /// user's point of view at once, but not yet in fact: for a few seconds the
+    /// card shrinks to "Dictation discarded" with Undo, which puts the review
+    /// back exactly as it was. Only when that lapses do the takes leave
+    /// History (`finalizeDiscardedReview`) — one stray keypress used to
+    /// destroy a long dictation for good.
     private func cancelReview() {
         guard case .reviewing = state else { return }
         AppLog.dictation.info("Review cancelled")
         cancelReviewAction()
         removeReviewEscMonitor()
+        let discarded = DiscardedReview(
+            text: LiveHUDPanel.shared.currentReviewText,
+            cursorLocation: LiveHUDPanel.shared.currentCursorLocation,
+            banner: LiveHUDState.shared.reviewBanner,
+            actionRevertStack: LiveHUDState.shared.actionRevertStack,
+            historyIDs: pendingHistoryIDs,
+            pasteTarget: pasteTarget,
+            failedSamples: lastFailedSamples,
+            retrySkipsSpeechGate: retrySkipsSpeechGate
+        )
         lastFailedSamples = nil
         pendingReviewBanner = nil
         pasteTarget = nil
-        // The user discarded this dictation — pull its takes back out of History.
-        discardPendingHistory()
-        LiveHUDPanel.shared.hide()
+        pendingHistoryIDs.removeAll()
         state = .idle
+        offerUndo(for: discarded)
+    }
+
+    /// A review the user just cancelled, held for as long as its Undo is on
+    /// screen: what `enterReview` needs to put the card back, plus the session
+    /// state the cancel cleared — so Undo is the cancel never having happened.
+    private struct DiscardedReview {
+        let text: String
+        let cursorLocation: Int
+        let banner: String?
+        let actionRevertStack: [String]
+        /// Takes still in History (and on disk) until the discard is final.
+        let historyIDs: [UUID]
+        let pasteTarget: NSRunningApplication?
+        /// A failed Resume take's audio, behind the banner's Retry.
+        let failedSamples: [Float]?
+        let retrySkipsSpeechGate: Bool
+    }
+
+    /// Shown in place of the review card; the takes go when it lapses. The
+    /// window matches History's own Undo, so a discard is exactly as
+    /// recoverable wherever it happens.
+    private func offerUndo(for discarded: DiscardedReview) {
+        finalizeDiscardedReview()
+        discardedReview = discarded
+        LiveHUDPanel.shared.showDiscarded(message: "Dictation discarded") { [weak self] in
+            self?.undoDiscardedReview()
+        }
+        discardUndoTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(RecordingHistoryStore.undoGraceSeconds))
+            guard !Task.isCancelled else { return }
+            self?.finalizeDiscardedReview()
+        }
+    }
+
+    private func undoDiscardedReview() {
+        // Idle is the only state the notice lives in; anything else means a
+        // new dictation is already under way and owns the session fields.
+        guard state == .idle, !recordingStartGate.hasActiveStart,
+              let discarded = discardedReview else { return }
+        AppLog.dictation.info("Discarded review restored")
+        discardUndoTask?.cancel()
+        discardUndoTask = nil
+        discardedReview = nil
+        pendingHistoryIDs = discarded.historyIDs
+        pasteTarget = discarded.pasteTarget
+        lastFailedSamples = discarded.failedSamples
+        retrySkipsSpeechGate = discarded.retrySkipsSpeechGate
+        var bannerRetry: (@MainActor () -> Void)?
+        if discarded.failedSamples != nil {
+            bannerRetry = { [weak self] in self?.retryFailedResumeTranscription() }
+        }
+        enterReview(
+            text: discarded.text,
+            cursorLocation: discarded.cursorLocation,
+            banner: discarded.banner,
+            bannerRetry: bannerRetry
+        )
+        LiveHUDState.shared.actionRevertStack = discarded.actionRevertStack
+    }
+
+    /// Makes the last cancelled review's discard final: its takes leave
+    /// History and the disk, and its notice goes if it is still up. Runs when
+    /// the Undo window lapses, and early from anything that takes the notice
+    /// off screen — a new dictation, a failure card, quitting — because its
+    /// Undo goes with it. A no-op when nothing is pending.
+    private func finalizeDiscardedReview() {
+        discardUndoTask?.cancel()
+        discardUndoTask = nil
+        guard let discarded = discardedReview else { return }
+        discardedReview = nil
+        for id in discarded.historyIDs {
+            RecordingHistoryStore.shared.retract(id: id)
+        }
+        LiveHUDPanel.shared.hideDiscardedNotice()
     }
 
     /// Keeps the current review session's saved takes in History.
@@ -578,12 +694,12 @@ final class DictationController {
         pendingHistoryIDs.removeAll()
     }
 
-    /// Retracts (deletes) the current review session's saved takes, for when
-    /// the user discards the dictation instead of keeping it.
+    /// Retracts (deletes) the current review session's saved takes at once,
+    /// for a session that ends with no review to undo back to — a cancelled
+    /// transcription, a dismissed failure. A cancelled review goes through
+    /// `cancelReview`'s Undo instead.
     private func discardPendingHistory() {
         for id in pendingHistoryIDs {
-            // Retract at once (no undo toast): discarding an uncommitted review
-            // take is itself an explicit cancel.
             RecordingHistoryStore.shared.retract(id: id)
         }
         pendingHistoryIDs.removeAll()
@@ -747,18 +863,34 @@ final class DictationController {
     /// stay in the target app), so the global tap does the real work and the
     /// local monitor only covers the case where our app happens to be active.
     /// Skipped entirely when "Esc cancels dictation" is off, read once as this
-    /// phase begins for the same reason `installRecordingEscMonitors` does.
-    /// Review and failure Esc handling is deliberately unaffected: the review
-    /// panel is our own key window, and the failure HUD has nothing to lose.
+    /// phase begins for the same reason `installRecordingEscMonitors` does —
+    /// and so is every later card's Esc (see `hudTakesLocalEscape`).
     private func installTranscribingEscMonitor() {
         removeTranscribingEscMonitor()
         guard HotkeyStore.shared.escapeCancelsDictation else { return }
         transcribingEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            let takes = MainActor.assumeIsolated {
+                self?.hudTakesLocalEscape(event, escapeCancelsDictation: true) ?? false
+            }
+            guard takes else { return event }
             Task { @MainActor in self?.cancelTranscription() }
             return nil
         }
         installHUDEscapeEventTap(target: .transcribing)
+    }
+
+    /// Whether an Esc that reached one of our local monitors belongs to the
+    /// dictation's card. Local monitors see every key event our app gets, so
+    /// without this an Esc typed into Settings — while the dictation is aimed
+    /// at another app — would discard it too.
+    private func hudTakesLocalEscape(_ event: NSEvent, escapeCancelsDictation: Bool) -> Bool {
+        RecordingEscapePolicy.shouldCancel(keyCode: event.keyCode, modifierFlags: event.modifierFlags)
+            && RecordingEscapePolicy.hudShouldTakeEscape(
+                escapeCancelsDictation: escapeCancelsDictation,
+                panelIsKey: LiveHUDPanel.shared.isPanelEvent(event),
+                frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                pasteTargetPID: pasteTarget?.processIdentifier
+            )
     }
 
     private func removeTranscribingEscMonitor() {
@@ -771,11 +903,25 @@ final class DictationController {
 
     private func installReviewEscMonitor() {
         removeReviewEscMonitor()
+        let escapeCancels = HotkeyStore.shared.escapeCancelsDictation
         // Local monitor: our review panel is key, so Esc is dispatched into our app.
         reviewEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == UInt16(kVK_Escape) {
-                Task { @MainActor in self?.cancelReview() }
-                return nil
+                let (takes, intoCard) = MainActor.assumeIsolated {
+                    (
+                        self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false,
+                        LiveHUDPanel.shared.isPanelEvent(event)
+                    )
+                }
+                if takes {
+                    Task { @MainActor in self?.cancelReview() }
+                    return nil
+                }
+                // With the setting off, an Esc typed into the card still
+                // mustn't reach the editor, which would open a completion
+                // list; one typed into another of our windows is that
+                // window's.
+                return intoCard ? nil : event
             }
             // ⌘R resumes recording with the new transcript spliced at the caret.
             // Matched like a menu key equivalent, so it survives a Cyrillic
@@ -813,9 +959,10 @@ final class DictationController {
             return event
         }
         // Global fallback: the local monitor above only fires while our app is
-        // active. When the user has switched to another app, this session-level
-        // tap keeps Esc-to-cancel working. ⌘R / ⌘1–9 stay local-only on purpose
-        // (they must never fire from another app's keystrokes).
+        // active. When the user has switched back to the app they were
+        // dictating into, this session-level tap keeps Esc-to-cancel working
+        // there — and only there. ⌘R / ⌘1–9 stay local-only on purpose (they
+        // must never fire from another app's keystrokes).
         installHUDEscapeEventTap(target: .review)
     }
 
@@ -832,8 +979,19 @@ final class DictationController {
     /// is available — guarded by `lastFailedSamples`).
     private func installFailureEscMonitor() {
         removeFailureEscMonitor()
+        let escapeCancels = HotkeyStore.shared.escapeCancelsDictation
         failureEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == UInt16(kVK_Escape) {
+                let (takes, intoCard) = MainActor.assumeIsolated {
+                    (
+                        self?.hudTakesLocalEscape(event, escapeCancelsDictation: escapeCancels) ?? false,
+                        LiveHUDPanel.shared.isPanelEvent(event)
+                    )
+                }
+                // With the setting off, an Esc typed into the card is still
+                // swallowed, as on the review card: closing the card is the
+                // controller's job, not AppKit's `cancelOperation:`.
+                guard takes else { return intoCard ? nil : event }
                 Task { @MainActor in self?.dismissFailure() }
                 return nil
             }
@@ -859,15 +1017,22 @@ final class DictationController {
 
     /// Installs the session-level Escape tap that backs the review/failure HUDs
     /// when our app is inactive. Mirrors the recording-Escape tap's lifecycle but
-    /// stays deliberately narrow: it swallows only the Escape key (both edges, so
-    /// no stray key-up leaks to the frontmost app) and acts on key-down; every
-    /// other key passes straight through untouched. Non-fatal on failure — the
-    /// local monitor still covers the app-active case, so unlike the recording
-    /// tap a creation failure doesn't tear the HUD down.
+    /// stays deliberately narrow: it takes only a bare Escape meant for the
+    /// dictation (`RecordingEscapePolicy.hudShouldTakeEscape`) — both edges, so
+    /// no stray key-up leaks to the frontmost app — and acts on key-down; every
+    /// other key, and every other Escape, passes straight through untouched.
+    /// Not installed at all with "Esc cancels dictation" off. Non-fatal on
+    /// failure — the local monitor still covers the app-active case, so unlike
+    /// the recording tap a creation failure doesn't tear the HUD down.
     private func installHUDEscapeEventTap(target: HUDEscapeEventTapContext.Target) {
         removeHUDEscapeEventTap()
+        guard HotkeyStore.shared.escapeCancelsDictation else { return }
 
-        let context = HUDEscapeEventTapContext(controller: self, target: target)
+        let context = HUDEscapeEventTapContext(
+            controller: self,
+            target: target,
+            pasteTargetPID: pasteTarget?.processIdentifier
+        )
         hudEscEventTapContext = context
         let contextPtr = Unmanaged.passUnretained(context).toOpaque()
         let mask = CGEventMask(
@@ -893,9 +1058,27 @@ final class DictationController {
                 guard RecordingEscapePolicy.isEscape(keyCode: keyCode) else {
                     return Unmanaged.passUnretained(event)
                 }
-                // Escape belongs to the HUD while this tap is alive (it only lives
-                // while the HUD shows): swallow both edges, dismiss on key-down.
-                if type == .keyDown {
+                if type == .keyUp {
+                    return context.swallowState.finishIfNeeded() ? nil : Unmanaged.passUnretained(event)
+                }
+                // The tap's run-loop source is on the main run loop, so this
+                // callback is already on the main thread. Read at the keypress,
+                // not at install: the user moves between apps while the card
+                // is up.
+                let flags = NSEvent.ModifierFlags(rawValue: UInt(event.flags.rawValue))
+                let takes = MainActor.assumeIsolated {
+                    RecordingEscapePolicy.shouldCancel(keyCode: keyCode, modifierFlags: flags)
+                        && RecordingEscapePolicy.hudShouldTakeEscape(
+                            // Installed only while the setting is on.
+                            escapeCancelsDictation: true,
+                            panelIsKey: LiveHUDPanel.shared.isKey,
+                            frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier,
+                            pasteTargetPID: context.pasteTargetPID
+                        )
+                }
+                guard takes else { return Unmanaged.passUnretained(event) }
+                // Swallow both edges and any auto-repeat; dismiss once.
+                if context.swallowState.begin() {
                     DispatchQueue.main.async {
                         controller.handleHUDEscape(target: context.target)
                     }
@@ -953,6 +1136,8 @@ final class DictationController {
 
     private func startRecording(startID: RecordingStartGate.StartID) async {
         guard recordingStartGate.accepts(startID) else { return }
+        // A new dictation takes the card, and the discard notice's Undo with it.
+        finalizeDiscardedReview()
         removeFailureEscMonitor()
         lastFailedSamples = nil
         pendingReviewBanner = nil
@@ -1234,11 +1419,16 @@ final class DictationController {
     /// Esc during preparing cancels the pending start — the same thing the
     /// card's Cancel button does, and what the hotkey policy already maps this
     /// state to. The panel isn't key here (the caret stays in the target app),
-    /// so the global tap does the real work.
+    /// so the global tap does the real work. Off with "Esc cancels dictation",
+    /// like every other card's Esc.
     private func installPreparingEscMonitor() {
         removePreparingEscMonitor()
+        guard HotkeyStore.shared.escapeCancelsDictation else { return }
         preparingEscMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            guard event.keyCode == UInt16(kVK_Escape) else { return event }
+            let takes = MainActor.assumeIsolated {
+                self?.hudTakesLocalEscape(event, escapeCancelsDictation: true) ?? false
+            }
+            guard takes else { return event }
             Task { @MainActor in self?.cancelPendingRecording() }
             return nil
         }
@@ -1726,6 +1916,8 @@ final class DictationController {
         // A start that failed before recording began still has its preparing
         // card up (and its Esc route armed); this hands both over.
         endPreparingPhase()
+        // This card replaces the discard notice, if one is up, and its Undo.
+        finalizeDiscardedReview()
         // Leaving `.transcribing` (or never having reached it): its Esc route
         // hands over to the review banner's or the failure HUD's, installed
         // below. A no-op on the paths that never armed it.

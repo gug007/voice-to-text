@@ -43,6 +43,28 @@ enum RecordingEscapePolicy {
     static func isEscape(keyCode: UInt16) -> Bool {
         keyCode == UInt16(kVK_Escape)
     }
+
+    /// Whether a bare Esc belongs to the dictation's card once recording has
+    /// stopped — the preparing, transcribing, review and failure cards.
+    ///
+    /// Those cards float over every app and stay up after the user clicks
+    /// elsewhere, so their session-wide tap used to take every Esc typed
+    /// anywhere: one meant for vim or a dialog discarded a finished dictation.
+    /// Esc is the card's only while the user is plausibly talking to it — the
+    /// card itself is key, or the app they are dictating into is still in
+    /// front — and with "Esc cancels dictation" off, never. The card's own
+    /// buttons work either way.
+    static func hudShouldTakeEscape(
+        escapeCancelsDictation: Bool,
+        panelIsKey: Bool,
+        frontmostPID: pid_t?,
+        pasteTargetPID: pid_t?
+    ) -> Bool {
+        guard escapeCancelsDictation else { return false }
+        if panelIsKey { return true }
+        guard let frontmostPID, let pasteTargetPID else { return false }
+        return frontmostPID == pasteTargetPID
+    }
 }
 
 final class RecordingEscapeSwallowState: @unchecked Sendable {

@@ -28,6 +28,8 @@ nonisolated enum HUDMetrics {
     static let compactWidth: CGFloat = 420
     /// Wide card width: review, failure, and any session resumed out of review.
     static let wideWidth: CGFloat = 600
+    /// The discard notice: one line and Undo, no wider than it needs to be.
+    static let noticeWidth: CGFloat = 340
 
     static let meterHeight: CGFloat = 56
     /// The meter beside a resumed take's transcript.
@@ -101,7 +103,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         hasBanner = switch state.mode {
         case .reviewing, .resumeRecording: state.reviewBanner != nil
         case .failed: true
-        case .preparing, .recording, .transcribing: false
+        case .preparing, .recording, .transcribing, .discarded: false
         }
         resumedSession = state.resumedSession
     }
@@ -129,7 +131,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         switch mode {
         case .recording: return true
         case .transcribing: return !resumedSession
-        case .preparing, .resumeRecording, .reviewing, .failed: return false
+        case .preparing, .resumeRecording, .reviewing, .failed, .discarded: return false
         }
     }
 
@@ -180,12 +182,13 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         // Preparing is compact because it only ever precedes a compact
         // recording card: a take resumed out of review keeps the review card on
         // screen instead of showing this one (see `beginPreparingPhase`).
-        case .preparing, .recording: return false
+        case .preparing, .recording, .discarded: return false
         }
     }
 
     var width: CGFloat {
-        isWide ? HUDMetrics.wideWidth : HUDMetrics.compactWidth
+        if mode == .discarded { return HUDMetrics.noticeWidth }
+        return isWide ? HUDMetrics.wideWidth : HUDMetrics.compactWidth
     }
 
     var minHeight: CGFloat {
@@ -203,6 +206,9 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         // transcript underneath it does not shift by a pixel.
         case .resumeRecording, .reviewing, .failed:
             return reviewHeight
+        // Just the control row: the notice is as small as a card gets.
+        case .discarded:
+            return 0
         }
     }
 

@@ -68,13 +68,20 @@ nonisolated enum LiveHUDMode: Sendable, Equatable {
     /// A transcription failure. No longer a separate 480×200 panel — it renders
     /// as a banner inside the same card at the same review width.
     case failed
+    /// "Dictation discarded" with Undo, for a few seconds after the review was
+    /// cancelled. One line and a button: the user has already moved on, so it
+    /// neither takes key nor stays.
+    case discarded
 
     /// Whether the panel accepts key status (and therefore keyboard input) in
     /// this mode. Preparing, recording and transcribing must NOT: the user is
-    /// typing in another app and the caret has to stay there.
+    /// typing in another app and the caret has to stay there. Nor must the
+    /// discard notice — the Esc that raised it may have been the user leaving
+    /// the card to type elsewhere, and a notice that took key would swallow
+    /// their next keystrokes. Undo still works on first click.
     var acceptsKey: Bool {
         switch self {
-        case .preparing, .recording, .transcribing: return false
+        case .preparing, .recording, .transcribing, .discarded: return false
         case .resumeRecording, .reviewing, .failed: return true
         }
     }
@@ -173,6 +180,9 @@ final class LiveHUDState {
     /// (Return runs Retry; nothing is bound to Open Settings).
     var failureActionHint: String?
 
+    /// The discard notice's one line ("Dictation discarded").
+    var noticeMessage: String = ""
+
     /// Display name of the model being downloaded or loaded, on the preparing
     /// card. The card names the model because "which model is this waiting on"
     /// is the first thing a user asks when a hotkey press seems to do nothing.
@@ -218,6 +228,8 @@ final class LiveHUDState {
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
     @ObservationIgnored var onRetry: (@MainActor () -> Void)?
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
+    /// The discard notice's Undo.
+    @ObservationIgnored var onUndo: (@MainActor () -> Void)?
 
     /// Steps back one action at a time: each call restores the text from
     /// before the most recent transform, so chained actions unwind in order
@@ -483,6 +495,49 @@ final class LiveHUDPanel {
         AppLog.hud.info("HUD failure shown: \(message)")
     }
 
+    /// The review was just cancelled: the card shrinks to one line with Undo
+    /// and stops taking key, which hands the keyboard straight back to the
+    /// app the user is in. `DictationController` owns how long it stays.
+    func showDiscarded(message: String, onUndo: @escaping @MainActor () -> Void) {
+        state.mode = .discarded
+        state.isRecording = false
+        state.level = 0
+        state.noticeMessage = message
+        state.failureMessage = ""
+        state.failureActionTitle = nil
+        state.salvagedSampleCount = 0
+        state.failureDetail = nil
+        state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
+        state.reviewText = ""
+        state.reviewBanner = nil
+        state.showsLiveText = false
+        state.partialTranscript = ""
+        state.resumedSession = false
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertStack = []
+        state.onPaste = nil
+        state.onCancel = nil
+        state.onStop = nil
+        state.onResume = nil
+        state.onRetry = nil
+        state.onRunAction = nil
+        state.onUndo = onUndo
+
+        present()
+        AppLog.hud.info("HUD discard notice shown")
+    }
+
+    /// Takes the discard notice down if it is still what the card shows —
+    /// and nothing else: by the time its window lapses a new dictation may
+    /// own the panel.
+    func hideDiscardedNotice() {
+        guard state.mode == .discarded, panel?.isVisible == true else { return }
+        hide()
+    }
+
     func setElapsed(_ seconds: Double) {
         state.elapsedSeconds = seconds
     }
@@ -538,6 +593,8 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onUndo = nil
+        state.noticeMessage = ""
         panel?.orderOut(nil)
         panel?.acceptsKey = false
         morphDeadline = .distantPast
@@ -549,6 +606,18 @@ final class LiveHUDPanel {
     /// Settings). The mode test is what the second panel used to provide.
     func isReviewPanelEvent(_ event: NSEvent) -> Bool {
         event.window === panel && state.mode == .reviewing
+    }
+
+    /// Whether the given key event was delivered to the HUD at all — i.e. the
+    /// user was typing into the card, not into another of our windows.
+    func isPanelEvent(_ event: NSEvent) -> Bool {
+        event.window === panel
+    }
+
+    /// Whether the card currently holds key status, so keystrokes go to it
+    /// rather than to the app in front.
+    var isKey: Bool {
+        panel?.isKeyWindow == true
     }
 
     /// Current edited review text (read at paste time).

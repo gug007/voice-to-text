@@ -53,7 +53,7 @@ If you'd rather skip the review step, turn off **Review before pasting** in Sett
 
 - **Toggle or hold.** Press the shortcut to start and again to stop, or switch to **Hold to record** in Settings → Shortcut.
 - **Recording card.** A small floating card shows a live level meter, the elapsed time, and Cancel / Finish buttons. `Esc` cancels (you can turn that off).
-- **Review panel.** `Return` pastes, `Shift+Return` adds a new line, `Esc` discards the take, and `⌘R` records another take and inserts it at the cursor, so a long prompt can be spoken in passes.
+- **Review panel.** `Return` pastes, `Shift+Return` adds a new line, `Esc` discards the take (with a few seconds to undo), and `⌘R` records another take and inserts it at the cursor, so a long prompt can be spoken in passes.
 - **Paste, not typing.** VoiceToText saves your clipboard, puts the text on it, sends `⌘V` to the frontmost app, and restores the previous clipboard about a quarter of a second later. Fields that block pasting won't receive text.
 - **No voice commands.** Saying "new line" or "comma" writes those words. There's no built-in filler-word removal; an AI action can clean that up if you want.
 - **Resilient capture.** If the microphone changes mid-take (AirPods switching profiles, for example), recording restarts automatically. If it can't, the audio captured so far is still transcribed. A failed transcription keeps the audio so you can retry.
@@ -83,7 +83,7 @@ Conversations is VoiceToText's meeting recorder.
 ### History
 
 - Every dictation and every conversation or upload is saved on your Mac with its audio and transcript, in `~/Library/Application Support/VoiceToText/History`.
-- Dictations are saved by default. Turn off **Save recordings** in History to stop saving them; takes you cancel in review are removed. Conversations and uploads are always saved.
+- Dictations are saved by default. Turn off **Save recordings** in History to stop saving them; takes you cancel in review are removed once the few-second Undo passes. Conversations and uploads are always saved.
 - **Search transcripts** finds text across transcripts, earlier versions, summaries, action items, custom results, speaker names, model, and date.
 - Favorite, play, copy, or delete with a 5-second Undo (`⌘Z`). **Clear All** is undoable too.
 - **Regenerate** any recording with any of the 15 models and keep each version side by side.

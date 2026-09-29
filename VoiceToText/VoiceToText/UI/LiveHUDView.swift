@@ -183,7 +183,7 @@ private struct HUDCard: View {
         switch state.mode {
         case .failed: return state.failureMessage
         case .reviewing, .resumeRecording: return state.reviewBanner
-        case .preparing, .recording, .transcribing: return nil
+        case .preparing, .recording, .transcribing, .discarded: return nil
         }
     }
 
@@ -193,7 +193,7 @@ private struct HUDCard: View {
     private var hasBannerRetry: Bool {
         switch state.mode {
         case .reviewing, .resumeRecording: return state.onRetry != nil
-        case .failed, .preparing, .recording, .transcribing: return false
+        case .failed, .preparing, .recording, .transcribing, .discarded: return false
         }
     }
 
@@ -378,7 +378,7 @@ private struct HUDControlRow: View {
                 // Nothing to finish yet, but a stalled download has to have a
                 // way out — the hotkey policy already maps this to
                 // `cancelPendingRecording`, so Cancel keeps its `esc` hint.
-                cancelButton(title: "Cancel")
+                cancelButton(title: "Cancel", hint: escCancelHint)
 
             case .recording, .resumeRecording:
                 if !layout.showsInlineMeter {
@@ -403,7 +403,7 @@ private struct HUDControlRow: View {
                 cancelButton(title: "Cancel", hint: escCancelHint)
 
             case .reviewing:
-                cancelButton(title: "Cancel")
+                cancelButton(title: "Cancel", hint: escCancelHint)
                 Spacer(minLength: Space.s4)
                 if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     HUDButton(
@@ -427,7 +427,7 @@ private struct HUDControlRow: View {
 
             case .failed:
                 Spacer(minLength: Space.s4)
-                cancelButton(title: "Close")
+                cancelButton(title: "Close", hint: escCancelHint)
                 if let actionTitle = state.failureActionTitle {
                     primaryButton(
                         title: actionTitle,
@@ -435,20 +435,31 @@ private struct HUDControlRow: View {
                         hint: state.failureActionHint
                     ) { state.onRetry?() }
                 }
+
+            case .discarded:
+                Text(state.noticeMessage)
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1)
+                Spacer(minLength: Space.s4)
+                // Same identity as the primary action it replaces, so the
+                // button slides out of the review card instead of popping.
+                primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
+                    state.onUndo?()
+                }
             }
         }
         .animation(motion.layout, value: state.actionRevertStack.count)
     }
 
-    private func cancelButton(title: String, hint: String? = "esc") -> some View {
+    private func cancelButton(title: String, hint: String?) -> some View {
         HUDButton(title: title, hint: hint, role: .secondary) { state.onCancel?() }
             .matchedGeometryEffect(id: "hud.cancel", in: namespace)
     }
 
     /// Cancel promises `esc` only where Esc really cancels. With "Esc cancels
-    /// dictation" off, recording and transcribing stop swallowing Esc, so the
-    /// button must not advertise it — the review panel and the failure HUD are
-    /// unaffected and keep theirs.
+    /// dictation" off, no card takes Esc — recording, preparing, transcribing,
+    /// review and the failure card alike — so none may advertise it.
     private var escCancelHint: String? {
         HotkeyStore.shared.escapeCancelsDictation ? "esc" : nil
     }

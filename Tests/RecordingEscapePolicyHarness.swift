@@ -98,6 +98,33 @@ struct RecordingEscapePolicyHarness {
         swallowState.reset()
         try expect(!swallowState.finishIfNeeded(), "reset clears pending swallowed Escape")
 
+        try hudEscapeIsScopedToTheDictation()
+
         print("Recording escape policy harness passed")
+    }
+
+    /// The review, failure, preparing and transcribing cards: Esc is theirs
+    /// only while the user is talking to them.
+    private static func hudEscapeIsScopedToTheDictation() throws {
+        let target: pid_t = 501
+        let otherApp: pid_t = 777
+        let takes = { (setting: Bool, key: Bool, front: pid_t?, aimed: pid_t?) in
+            RecordingEscapePolicy.hudShouldTakeEscape(
+                escapeCancelsDictation: setting,
+                panelIsKey: key,
+                frontmostPID: front,
+                pasteTargetPID: aimed
+            )
+        }
+
+        try expect(takes(true, true, otherApp, target), "Esc typed into the key card is the card's")
+        try expect(takes(true, true, nil, nil), "…even with no paste target or frontmost app")
+        try expect(takes(true, false, target, target), "Esc in the app being dictated into is the card's")
+        try expect(!takes(true, false, otherApp, target), "Esc meant for another app passes through")
+        try expect(!takes(true, false, otherApp, nil), "no paste target and the card not key: passes through")
+        try expect(!takes(true, false, nil, target), "no frontmost app: passes through")
+
+        try expect(!takes(false, true, target, target), "setting off: the key card leaves Esc alone")
+        try expect(!takes(false, false, target, target), "setting off: the target app keeps its Esc")
     }
 }

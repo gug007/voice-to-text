@@ -1,27 +1,31 @@
 import Foundation
 import Observation
 
-/// Storage choice: a plain plist value (UserDefaults) rather than the macOS
-/// Keychain. The Keychain prompts the user on every code-signature change,
-/// which makes dev builds painful and breaks "Always Allow" on rebuild.
-/// UserDefaults lives in `~/Library/Preferences/<bundle-id>.plist`, scoped
-/// to this Mac user, with the same effective threat model as the Keychain on
-/// a single-user Mac (any process running as the user can read either).
+/// Storage choice: the login keychain, not UserDefaults. Earlier builds kept
+/// the key in `~/Library/Preferences/<bundle-id>.plist` on the grounds that the
+/// Keychain prompts on every code-signature change, but that holds only for
+/// ad-hoc builds. A Developer ID build's designated requirement survives
+/// updates, so the login keychain hands the key back without a prompt, and
+/// unlike the plist no other process can read it silently and backups don't
+/// copy it in plaintext. The key moves across once, on first read; team-less
+/// debug builds keep using UserDefaults. See `APIKeyVault.forProvider`.
 nonisolated enum OpenAIAPIKey {
-    private static let defaultsKey = "cloud.openai.apiKey"
+    private static let vault = APIKeyVault.forProvider(
+        account: "openai",
+        label: "VoiceToText OpenAI API key",
+        legacyDefaultsKey: "cloud.openai.apiKey"
+    )
 
     static func read() -> String? {
-        let value = UserDefaults.standard.string(forKey: defaultsKey)
-        guard let value, !value.isEmpty else { return nil }
-        return value
+        vault.read()
     }
 
     static func write(_ value: String) {
-        UserDefaults.standard.set(value, forKey: defaultsKey)
+        vault.write(value)
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        vault.clear()
     }
 
     /// Cheap client-side shape check, used to decide whether a paste is worth

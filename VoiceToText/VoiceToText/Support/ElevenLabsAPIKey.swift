@@ -1,25 +1,27 @@
 import Foundation
 import Observation
 
-/// ElevenLabs API key storage. Mirrors `OpenAIAPIKey`: a plain UserDefaults
-/// value rather than the macOS Keychain (see `OpenAIAPIKey` for the rationale —
-/// the Keychain re-prompts on every code-signature change, which breaks dev
-/// builds). Same effective threat model on a single-user Mac.
+/// ElevenLabs API key storage. Mirrors `OpenAIAPIKey`: the login keychain,
+/// moved across once from the UserDefaults value earlier builds used, which
+/// team-less debug builds keep using (see `OpenAIAPIKey` for why, and
+/// `APIKeyVault.forProvider` for the details).
 nonisolated enum ElevenLabsAPIKey {
-    private static let defaultsKey = "cloud.elevenLabs.apiKey"
+    private static let vault = APIKeyVault.forProvider(
+        account: "elevenlabs",
+        label: "VoiceToText ElevenLabs API key",
+        legacyDefaultsKey: "cloud.elevenLabs.apiKey"
+    )
 
     static func read() -> String? {
-        let value = UserDefaults.standard.string(forKey: defaultsKey)
-        guard let value, !value.isEmpty else { return nil }
-        return value
+        vault.read()
     }
 
     static func write(_ value: String) {
-        UserDefaults.standard.set(value, forKey: defaultsKey)
+        vault.write(value)
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        vault.clear()
     }
 
     /// Cheap client-side shape check, used to decide whether a paste is worth

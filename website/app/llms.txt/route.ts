@@ -169,7 +169,7 @@ ${cloud.map(modelLine).join("\n")}
 
 - With local models and no API keys, the app connects only to Hugging Face (each model downloads once, and loading a Whisper model, after each launch, needs a connection to it) and GitHub Releases (update check at launch and every 24 hours). Audio and transcripts stay on the Mac. With Parakeet, the default, transcription works fully offline.
 - Cloud transcription models send audio to OpenAI or ElevenLabs. AI actions and AI insights send transcript text to OpenAI. Adding an API key sends one verification request to that provider.
-- API keys are stored in the app's preferences (UserDefaults) on the Mac, not in the Keychain.
+- API keys are stored in the macOS login Keychain on the Mac (older versions kept them in the app's preferences and move them to the Keychain on first launch).
 - No VoiceToText servers, no accounts, and no analytics or telemetry in the app. The website uses Google Analytics.
 - Updates are never silent: the app offers Install Update, Later or Skip This Version.
 

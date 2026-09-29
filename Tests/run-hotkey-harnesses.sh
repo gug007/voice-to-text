@@ -79,7 +79,17 @@ swiftc -parse-as-library \
 "$TMPDIR/update-eligibility-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/APIKeyVault.swift \
+  Tests/APIKeyVaultHarness.swift \
+  -o "$TMPDIR/api-key-vault-harness"
+"$TMPDIR/api-key-vault-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/OpenAIAPIKey.swift \
+  VoiceToText/VoiceToText/Support/APIKeyVault.swift \
+  VoiceToText/VoiceToText/Support/KeychainAPIKeyStore.swift \
+  VoiceToText/VoiceToText/Support/CodeSigning.swift \
+  VoiceToText/VoiceToText/Support/AppLogger.swift \
   VoiceToText/VoiceToText/Actions/DictationAction.swift \
   VoiceToText/VoiceToText/Actions/ActionRunner.swift \
   Tests/ActionRunnerHarness.swift \

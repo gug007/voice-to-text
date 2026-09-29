@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import OSLog
 
 /// Transcribes a finished meeting recording off the main actor: walks it in
 /// model-sized chunks, transcribes each on the active engine while carrying a
@@ -42,6 +43,11 @@ enum MeetingTranscriber {
         onProgress(0, estimate)
 
         var pieces: [String] = []
+        // Aligned with `pieces`: for a piece that came back empty over speech,
+        // where in the recording that speech was (see `MeetingChunkRecovery`).
+        var gaps: [ClosedRange<Double>?] = []
+        let sampleRate = reader.sampleRate
+        var chunkStart = 0.0
         while true {
             // Detached on purpose: reading and scanning a chunk is synchronous
             // work, and under `NonisolatedNonsendingByDefault` an awaited
@@ -55,18 +61,36 @@ enum MeetingTranscriber {
             // Give Whisper-style engines the tail of the prior chunk so
             // punctuation and proper nouns stay consistent across the cut.
             let context = pieces.last.map { String($0.suffix(200)) }
-            let raw = try await engine.transcribe(samples: chunk, contextPrompt: context, progress: nil)
+            var raw = try await engine.transcribe(samples: chunk, contextPrompt: context, progress: nil)
+            var gap: ClosedRange<Double>?
+            if MeetingChunkRecovery.isBlank(raw) {
+                // Measured only for the rare empty chunk; detached for the
+                // same reason as the read above.
+                let speech = await Task.detached(priority: .userInitiated) {
+                    SpeechEnergy.voicedSpan(in: chunk, sampleRate: sampleRate)
+                }.value
+                if MeetingChunkRecovery.shouldRetryWithoutContext(text: raw, contextPrompt: context, hasSpeech: speech != nil) {
+                    AppLog.engine.notice("Conversation part \(pieces.count + 1) came back empty with a context prompt; retrying without it")
+                    raw = try await engine.transcribe(samples: chunk, contextPrompt: nil, progress: nil)
+                }
+                if MeetingChunkRecovery.isBlank(raw), let speech {
+                    gap = (chunkStart + speech.lowerBound)...(chunkStart + speech.upperBound)
+                    AppLog.engine.warning("Conversation part \(pieces.count + 1) has speech but no transcript; marking it")
+                }
+            }
             // Only the recording's opening words are sure to start a sentence;
             // a later cut usually lands mid-sentence, so keep its casing as-is.
             let isOpening = !pieces.contains { !$0.isEmpty }
             pieces.append(TranscriptPostProcessor.processPreservingLines(raw, capitalizeFirst: isOpening))
+            gaps.append(gap)
+            chunkStart += Double(chunk.count) / Double(sampleRate)
             // The estimate can land one over when a cut drifts early, so keep
             // the denominator honest rather than letting the bar stall short.
             onProgress(pieces.count, max(estimate, pieces.count))
         }
         guard !pieces.isEmpty else { return "" }
         onProgress(pieces.count, pieces.count)
-        return MeetingTranscriptJoiner.join(pieces)
+        return MeetingTranscriptJoiner.join(MeetingChunkRecovery.fillingGaps(pieces, gaps: gaps))
     }
 
     /// Decodes the recorded WAV into 16 kHz mono Float samples. Downmixes

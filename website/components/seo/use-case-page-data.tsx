@@ -24,7 +24,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     <>
       With Parakeet, the default model, transcription runs on your Mac and works with Wi-Fi off. The app
       download, the first model download and the update check need the internet. Whisper models also
-      transcribe on your Mac, but loading one needs a connection, so use Parakeet on a fully offline Mac. Audio
+      transcribe on your Mac and work with Wi-Fi off once downloaded. Audio
       leaves the Mac only if you choose an OpenAI or ElevenLabs cloud model. Transcript text leaves the Mac
       only if you run an AI action or generate an AI summary, and then it goes to OpenAI on your own key.
     </>
@@ -49,10 +49,9 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
           transcripts.
         </>,
         <>
-          <strong>For a fully offline Mac, use Parakeet.</strong> Parakeet, the default, works with the network
-          off after its one-time download. Whisper models also transcribe on your Mac, and your audio never
-          leaves it, but the current version contacts Hugging Face whenever it loads a Whisper model (after each
-          launch), so loading one needs an internet connection.
+          <strong>Any local model works on a fully offline Mac.</strong> Parakeet, the default, works with the
+          network off after its one-time download, and so do the Whisper models: an installed model loads from
+          disk, and the app contacts Hugging Face only to download one.
         </>,
         <>
           Everything else is opt-in and tied to a key you paste in. A cloud transcription model (OpenAI or
@@ -83,7 +82,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         {
           title: "Let the default model download",
           body:
-            "Parakeet TDT v3, the default, starts downloading from Hugging Face on first launch. With Parakeet, this is the one step that needs the internet. It covers English and 24 other European languages, detected automatically. The local Whisper sizes are an alternative for English: VoiceToText currently transcribes them in English only, and loading one needs a connection.",
+            "Parakeet TDT v3, the default, starts downloading from Hugging Face on first launch. This is the one step that needs the internet. It covers English and 24 other European languages, detected automatically. The local Whisper sizes are an alternative that covers 99 languages; each also downloads once and then works offline.",
         },
         {
           title: "Grant only the needed permissions",
@@ -94,8 +93,8 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
           title: "Run the three-check local test",
           body: (
             <>
-              Before sensitive work, check three things. In Settings → Models, a local model is selected
-              (Parakeet if the Mac will be offline). In Settings → Conversations, the Transcription model is “Same as dictation” or another
+              Before sensitive work, check three things. In Settings → Models, a local model is selected.
+              In Settings → Conversations, the Transcription model is “Same as dictation” or another
               local model, because it controls meetings and file imports separately. When you regenerate a
               recording, pick a local model from the “Regenerate with” menu. For a strictly local session,
               also skip AI actions and AI insights.
@@ -152,9 +151,9 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
           body: (
             <>
               On the Mac, Parakeet covers 25 European languages automatically, and the local Whisper models
-              transcribe English. The app has no language setting. Any other language needs a cloud model
-              (OpenAI covers 99+ and ElevenLabs 90+, detected automatically), and cloud models are not
-              offline. The <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet guide</Link> compares
+              cover 99, with accuracy that varies by language. The app has no language setting. Cloud models
+              also detect the language (OpenAI covers 99+ and ElevenLabs 90+), but they are not offline. The{" "}
+              <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet guide</Link> compares
               the six local models.
             </>
           ),
@@ -184,7 +183,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
       },
       {
         label: "Internet during transcription",
-        cells: ["Not required. Loading a Whisper model needs a connection; Parakeet doesn’t.", "Required."],
+        cells: ["Not required.", "Required."],
       },
       {
         label: "Provider account",
@@ -193,7 +192,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
       {
         label: "Languages",
         cells: [
-          "Parakeet: 25 European languages, automatic. Local Whisper: English.",
+          "Parakeet: 25 European languages, automatic. Local Whisper: 99 languages, automatic.",
           "OpenAI 99+ or ElevenLabs 90+, detected automatically.",
         ],
       },
@@ -201,7 +200,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         label: "Best fit",
         cells: [
           "Private or offline work, predictable control, and no usage billing.",
-          "Words appearing live as you speak, speaker labels, other languages, or a hard recording you choose to send.",
+          "Words appearing live as you speak, speaker labels, or a hard recording you choose to send.",
         ],
       },
       {
@@ -226,12 +225,12 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     {
       question: "Does VoiceToText work with no internet connection?",
       answer:
-        "Yes, with Parakeet, the default model, once it has downloaded: dictation, meeting recording and file transcription then work with the network off. Whisper models also transcribe on the Mac, but the current version contacts Hugging Face each time it loads one, so loading a Whisper model needs a connection. Cloud models, AI actions and AI insights need the internet.",
+        "Yes, with a local model, Parakeet (the default) or Whisper, once it has downloaded: dictation, meeting recording and file transcription then work with the network off. Cloud models, AI actions and AI insights need the internet.",
     },
     {
       question: "What does VoiceToText connect to when it runs locally?",
       answer:
-        "With local models and no API keys, it downloads models from Hugging Face, checks with Hugging Face each time it loads a Whisper model, and checks GitHub Releases for updates at launch and every 24 hours. Updates install only when you confirm. The app has no account, analytics or first-party server.",
+        "With local models and no API keys, it downloads models from Hugging Face and checks GitHub Releases for updates at launch and every 24 hours. Updates install only when you confirm. The app has no account, analytics or first-party server.",
     },
     {
       question: "Are my dictations saved on the Mac?",
@@ -241,12 +240,12 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     {
       question: "Which languages work offline?",
       answer:
-        "Parakeet TDT v3, the default, covers 25 European languages, detects them automatically and works fully offline. The local Whisper models currently transcribe English in VoiceToText. Other languages need an OpenAI or ElevenLabs cloud model, which sends the audio to that provider.",
+        "Parakeet TDT v3, the default, covers 25 European languages, detects them automatically and works fully offline. The local Whisper models cover 99 languages, also detected automatically and fully offline. OpenAI and ElevenLabs cloud models cover 90 to 99+, but they send the audio to that provider.",
     },
     {
       question: "Can I record meetings offline?",
       answer:
-        "Yes, with Parakeet. Conversations records your microphone and system audio and transcribes the recording on the Mac when you stop, using a local model. Speaker labels are the exception: they need the cloud model GPT-4o Transcribe Diarize.",
+        "Yes, with a local model. Conversations records your microphone and system audio and transcribes the recording on the Mac when you stop, using a local model. Speaker labels are the exception: they need the cloud model GPT-4o Transcribe Diarize.",
     },
   ],
   sources: [
@@ -440,8 +439,8 @@ export const codingVoiceToTextConfig: SeoLandingConfig = {
           title: "Pick the model for the repo",
           body: (
             <>
-              For private code, stay on a local model: Parakeet or Whisper. Local Whisper transcribes English;
-              Parakeet also handles 24 other European languages. The{" "}
+              For private code, stay on a local model: Parakeet or Whisper. Local Whisper covers 99 languages;
+              Parakeet handles English and 24 other European languages. The{" "}
               <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet comparison</Link> has the benchmark
               numbers.
             </>

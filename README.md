@@ -12,7 +12,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
 - **Free, source available** — no paid tier, no VoiceToText account, and no analytics or telemetry in the app; the source is on GitHub
 - **Local by default** — the default model, Parakeet TDT v3, downloads once on first launch and then runs on your Mac; five local Whisper models are available too
-- **Offline after setup** — with Parakeet, the default, dictation and transcription need no network once the model is downloaded (Whisper models need a connection each time they load)
+- **Offline after setup** — with a local model, Parakeet (the default) or Whisper, dictation and transcription need no network once the model is downloaded
 - **Global shortcut** — `⌥ Space` toggles dictation by default; switch to hold-to-record, or bind any key with a modifier, a lone F1–F20, or Right Control
 - **Review before pasting** — edit the transcript, record another take at the cursor, or run an AI action before anything reaches the other app (on by default; turn it off for instant paste)
 - **Pastes into any app** — the text goes in with ⌘V and your previous clipboard is restored afterwards, so it works anywhere you can paste text
@@ -45,7 +45,7 @@ If you'd rather skip the review step, turn off **Review before pasting** in Sett
 
 - macOS 15.0 or later
 - Apple Silicon (M1 or newer); Intel Macs are not supported by current builds
-- An internet connection for the first model download, update checks, loading a Whisper model, and any cloud models or AI features you choose to use
+- An internet connection for the first model download, update checks, and any cloud models or AI features you choose to use
 
 ## How it works
 
@@ -106,16 +106,16 @@ Insights use your OpenAI key and `gpt-5.5`, and send the transcript text (with s
 
 **On your Mac** — free, downloaded once from Hugging Face. Audio never leaves the Mac.
 
-Parakeet, the default, works with the network off after its one-time download. Whisper models also transcribe on your Mac, and your audio never leaves it, but the current version contacts Hugging Face whenever it loads a Whisper model (after each launch), so loading one needs an internet connection. For a fully offline Mac, use Parakeet.
+Every local model works with the network off after its one-time download: Parakeet, the default, and the Whisper models load straight from disk.
 
 | Model | Notes |
 | --- | --- |
 | Parakeet TDT v3 | Default and recommended. 25 European languages. |
-| Whisper Large v3 Turbo | English. |
-| Whisper Large v3 | English. Highest quality score among local models. |
-| Whisper Small | English. Smaller download, more mistakes. |
-| Whisper Base | English. |
-| Whisper Tiny | English. For testing your setup. |
+| Whisper Large v3 Turbo | 99 languages. |
+| Whisper Large v3 | 99 languages. Highest quality score among local models. |
+| Whisper Small | 99 languages. Smaller download, more mistakes. |
+| Whisper Base | 99 languages. |
+| Whisper Tiny | 99 languages. For testing your setup. |
 
 Models take from under 100 MB to about 1.6 GB on disk, depending on which one you pick.
 
@@ -140,10 +140,10 @@ LIVE models are for dictation only. Prices are the providers' list prices as of 
 There's no language picker; each model decides.
 
 - **Parakeet TDT v3** (default): 25 European languages, detected automatically.
-- **Local Whisper models:** English only in VoiceToText today.
+- **Local Whisper models:** 99 languages, detected automatically.
 - **Cloud models:** OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
 
-For a language outside Parakeet's 25, choose a cloud model.
+For a language outside Parakeet's 25, choose a Whisper model or a cloud model.
 
 ## Mac integration
 
@@ -164,7 +164,7 @@ For a language outside Parakeet's 25, choose a cloud model.
 
 ## Privacy and network
 
-- **With local models and no API keys,** the app connects to the internet only to reach Hugging Face (model downloads, plus a check each time a Whisper model loads) and to check GitHub Releases for updates. Your audio and transcripts stay on the Mac.
+- **With local models and no API keys,** the app connects to the internet only to reach Hugging Face (model downloads) and to check GitHub Releases for updates. Your audio and transcripts stay on the Mac.
 - **Cloud transcription models** send your audio directly to OpenAI or ElevenLabs under your API key. Provider charges apply.
 - **AI actions and AI insights** send transcript text to OpenAI under your key when you run them.
 - **Adding an API key** sends one request to that provider to check the key. Keys are stored in the app's preferences on this Mac.

@@ -100,7 +100,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Local by default",
           body:
-            "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on Apple Silicon after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
+            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on Apple Silicon after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
         },
         {
           title: "Review as the core workflow",
@@ -212,7 +212,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       {
         label: "Local transcription",
         cells: [
-          "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on the Mac after download. Parakeet also works with the network off; loading a Whisper model needs a connection.",
+          "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on the Mac after download, even with the network off.",
           "Official model catalog lists on-device models that work without internet.",
         ],
       },
@@ -264,7 +264,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     {
       question: "Do both apps work offline?",
       answer:
-        "Yes, with local models. Superwhisper documents on-device models that work without internet. In VoiceToText, Parakeet, the default, works with the network off after a one-time download. Its Whisper models also run on the Mac, but loading one needs an internet connection.",
+        "Yes, with local models. Superwhisper documents on-device models that work without internet. In VoiceToText, Parakeet, the default, works with the network off after a one-time download, and so do its Whisper models.",
     },
     {
       question: "Does VoiceToText have AI formatting like Super Mode?",
@@ -470,7 +470,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         {
           title: "On-device transcription",
           body:
-            "Parakeet (25 European languages) and five Whisper sizes (English in VoiceToText) run on Apple Silicon after the model download. VoiceToText runs no server, so there is nowhere for it to send your recording.",
+            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on Apple Silicon after the model download. VoiceToText runs no server, so there is nowhere for it to send your recording.",
         },
         {
           title: "No account",
@@ -590,7 +590,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       {
         label: "Languages",
         cells: [
-          "Parakeet: 25 European languages, automatic. Local Whisper: English. Cloud models: 90–99+, detected automatically.",
+          "Parakeet: 25 European languages, automatic. Local Whisper: 99 languages, automatic. Cloud models: 90–99+, detected automatically.",
           "100+ for dictation; Notetaker transcribes 21 languages.",
         ],
       },

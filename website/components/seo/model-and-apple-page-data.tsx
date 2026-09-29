@@ -114,8 +114,8 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
           body: (
             <>
               Six local models run on the Mac: Parakeet (the default, 25 European languages) and five Whisper
-              sizes, which VoiceToText currently runs in English. Nine optional cloud models from OpenAI and
-              ElevenLabs cover more languages and live text, on your own API key. The{" "}
+              sizes (99 languages). Nine optional cloud models from OpenAI and ElevenLabs cover 90 to 99+
+              languages and add live text, on your own API key. The{" "}
               <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet guide</Link> compares the local six.
             </>
           ),
@@ -232,14 +232,14 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
       {
         label: "On-device status",
         cells: [
-          "Parakeet and Whisper run locally after download; Parakeet also works with the network off, while loading a Whisper model needs a connection. Cloud models and AI actions are optional and use your own key.",
+          "Parakeet and Whisper run locally after download, even with the network off. Cloud models and AI actions are optional and use your own key.",
           "Apple says to check Keyboard settings because internet and on-device behavior can vary by language and context.",
         ],
       },
       {
         label: "Languages",
         cells: [
-          "Parakeet: 25 European languages, automatic. Local Whisper: English. Cloud models: 90–99+, detected automatically.",
+          "Parakeet: 25 European languages, automatic. Local Whisper: 99 languages, automatic. Cloud models: 90–99+, detected automatically.",
           "Many languages; you choose them in Keyboard settings. Features vary by language.",
         ],
       },
@@ -278,7 +278,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
     {
       question: "Does VoiceToText work offline like Apple’s on-device dictation?",
       answer:
-        "Yes, with Parakeet, the default model: after a one-time download it transcribes on the Mac with the network off. The local Whisper models also run on the Mac, but loading one needs an internet connection. Cloud models and AI features are optional and need the internet and your own API key.",
+        "Yes, with Parakeet, the default model: after a one-time download it transcribes on the Mac with the network off. The local Whisper models do too. Cloud models and AI features are optional and need the internet and your own API key.",
     },
     {
       question: "Can I use Apple Dictation and VoiceToText on the same Mac?",
@@ -386,7 +386,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
   readingTime: "8 min",
   h1: "Whisper vs. Parakeet on Mac: choose with your audio, not a leaderboard headline.",
   lead:
-    "VoiceToText runs both model families on your Mac. Parakeet TDT v3 is the default and handles 25 European languages; the five Whisper sizes trade download size, speed and accuracy for English. The right answer depends on your language, your Mac, your microphone and your vocabulary.",
+    "VoiceToText runs both model families on your Mac. Parakeet TDT v3 is the default and handles 25 European languages; the five Whisper sizes cover 99 languages and trade download size, speed and accuracy. The right answer depends on your language, your Mac, your microphone and your vocabulary.",
   heroPoints: [
     "Parakeet + 5 Whisper sizes",
     "Two public WER benchmarks",
@@ -396,10 +396,9 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
   summaryTitle: "A sensible default",
   summary: (
     <>
-      Start with Parakeet TDT v3, the default. It is the only local model in VoiceToText that handles
-      languages other than English (25 European languages, detected automatically), and it has the lowest
-      Open ASR Leaderboard error rate of the six. It is also the one to use on a Mac without internet: loading
-      a Whisper model needs a connection. If you dictate in English, also try Whisper Large v3 or
+      Start with Parakeet TDT v3, the default. It handles 25 European languages, detected automatically,
+      and it has the lowest Open ASR Leaderboard error rate of the six. For a language outside those 25, use
+      a Whisper model, which covers 99. If you dictate in English, also try Whisper Large v3 or
       Large v3 Turbo: another benchmark ranks them ahead, and Large v3 has the highest quality score the app
       shows for an on-device model. Keep whichever makes the fewest meaning-changing mistakes on your own
       audio.
@@ -431,7 +430,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     note: (
       <>
         {QUALITY_SCORE_SOURCES} {DOWNLOAD_SIZE_NOTE} The Models pane lists 99 languages for the Whisper
-        models, which is the upstream model’s count; VoiceToText currently runs local Whisper in English only.
+        models, which is the upstream model’s count; VoiceToText detects the language automatically.
         Artificial Analysis has not benchmarked Parakeet v3, so
         its AA-WER is the v2 model’s result carried over. Its Whisper figures come from hosted cloud versions,
         not from a Mac.
@@ -521,7 +520,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     {
       id: "whisper",
       eyebrow: "Why choose Whisper",
-      title: "Whisper gives you more sizes, and in VoiceToText it is an English choice.",
+      title: "Whisper gives you more sizes, and it covers 99 languages.",
       paragraphs: [
         <>
           OpenAI’s model card lists Tiny, Base, Small, Medium, Large and Turbo variants. VoiceToText offers
@@ -530,15 +529,16 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
           space or memory; the larger ones are for when transcript quality matters more than turnaround.
         </>,
         <>
-          Upstream, Whisper is multilingual and can translate speech into English. VoiceToText doesn’t use
-          that today: it runs its local Whisper models with the language set to English and has no language
-          picker, so speech in another language comes out translated into English or garbled. For
-          non-English dictation, use Parakeet or a cloud model.
+          Upstream, Whisper is multilingual and can translate speech into English. VoiceToText uses it to
+          transcribe, not translate: there is no language picker, and the model detects the language itself,
+          afresh for each 30-second stretch of audio. Accuracy varies by language, strongest in English and
+          other widely spoken ones, so test it on your own speech.
         </>,
         <>
           OpenAI also warns that performance is uneven across accents and that these weakly supervised models
-          can produce text that was never spoken. Choose Whisper when you dictate in English and want to
-          compare sizes, or when it handles your microphone, accent or vocabulary better. Large v3 has the
+          can produce text that was never spoken. Choose Whisper when you speak a language outside
+          Parakeet’s 25, when you want to compare sizes, or when it handles your microphone, accent or
+          vocabulary better. Large v3 has the
           app’s “Most accurate” chip among local models; keep a smaller size handy if it slows you down.
         </>,
       ],
@@ -569,7 +569,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         },
         {
           title: "Other languages and speaker labels",
-          body: `OpenAI models detect 99+ languages and ElevenLabs 90+. For meetings where you need to know who said what, ${DIARIZE.name} (${formatPrice(DIARIZE)}) labels speakers; no local model does.`,
+          body: `OpenAI models detect 99+ languages and ElevenLabs 90+, worth comparing with local Whisper for a language outside Parakeet’s 25. For meetings where you need to know who said what, ${DIARIZE.name} (${formatPrice(DIARIZE)}) labels speakers; no local model does.`,
         },
       ],
     },
@@ -630,7 +630,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         label: "Languages in VoiceToText",
         cells: [
           "25 European languages, detected automatically.",
-          "English. The upstream family is multilingual, but the app currently fixes the language to English.",
+          "99 languages, detected automatically for each 30-second stretch of audio.",
         ],
       },
       {
@@ -648,14 +648,14 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         label: "With the network off",
         cells: [
           "Loads and transcribes offline after its one-time download.",
-          "Transcribes on the Mac, but the current version contacts Hugging Face each time it loads a model (after each launch), so loading needs a connection.",
+          "Loads and transcribes offline after its one-time download.",
         ],
       },
       {
         label: "What can go wrong",
         cells: [
           "A language outside its 25, or vocabulary the model handles poorly.",
-          "Non-English speech, resource cost on large sizes, uneven accent results, and possible invented text documented by OpenAI.",
+          "Weaker results in less common languages, resource cost on large sizes, uneven accent results, and possible invented text documented by OpenAI.",
         ],
       },
       {
@@ -683,12 +683,12 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     {
       question: "Can local Whisper in VoiceToText transcribe languages other than English?",
       answer:
-        "Not today. VoiceToText runs its local Whisper models in English. For other languages, use Parakeet, which covers 25 European languages automatically, or an OpenAI or ElevenLabs cloud model.",
+        "Yes. The local Whisper models cover 99 languages and detect the one you speak automatically, for each 30-second stretch of audio; there is no language picker. Accuracy varies by language, so test your own speech against Parakeet or a cloud model.",
     },
     {
       question: "How much disk space do the local models need?",
       answer:
-        "The app's catalog lists downloads from about 39 MB (Whisper Tiny) to several hundred MB (Parakeet and the Large models). Installed size can be larger; Whisper Large v3 takes about 1.6 GB. Each model downloads once. Parakeet then runs fully offline; Whisper models need a connection each time they load.",
+        "The app's catalog lists downloads from about 39 MB (Whisper Tiny) to several hundred MB (Parakeet and the Large models). Installed size can be larger; Whisper Large v3 takes about 1.6 GB. Each model downloads once and then runs fully offline.",
     },
     {
       question: "Did VoiceToText run these accuracy tests?",

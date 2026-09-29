@@ -2,7 +2,8 @@ import Foundation
 
 /// Simple energy-based voice activity detector.
 /// No external dependencies — pure arithmetic over 30 ms RMS frames.
-struct EnergyVAD {
+/// `nonisolated` so the transcription paths can call it off the main actor.
+nonisolated struct EnergyVAD {
     /// Returns true when enough energy frames exceed the dBFS threshold.
     func isVoiced(_ samples: ArraySlice<Float>, sampleRate: Int) -> Bool {
         let tuning = VadTuning.current

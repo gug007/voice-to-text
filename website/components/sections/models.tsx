@@ -19,9 +19,7 @@ type MeterVars = CSSProperties & Record<"--q", string>;
 
 /** How the app handles languages for a local model (it has no language picker). */
 function localLanguages(model: ModelFact): string {
-  return model.languagesInApp === "English"
-    ? "English in VoiceToText"
-    : `${model.languagesInApp}, detected automatically`;
+  return `${model.languagesInApp}, detected automatically`;
 }
 
 /** One plain line on what a cloud model does differently, straight from the catalog flags. */
@@ -63,8 +61,8 @@ export function Models() {
           </p>
           <h2 id="models-title">Pick the speech-to-text model that fits the job.</h2>
           <p className="lede">
-            {countWord(local.length)} models run on your Mac, so your audio never leaves it, and Parakeet, the
-            default, keeps working with the network off. {countWord(cloud.length)} more are optional cloud models
+            {countWord(local.length)} models run on your Mac, so your audio never leaves it, and once downloaded
+            they keep working with the network off. {countWord(cloud.length)} more are optional cloud models
             on your own API key. Switch in Settings → Models whenever the trade-off changes — a quick note is not
             the same job as an hour-long call.
           </p>

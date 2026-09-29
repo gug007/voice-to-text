@@ -5,7 +5,7 @@ import Foundation
 //   vad.energyVoicedRatio    – Double (default 0.30)
 //   vad.sileroVoicedRatio    – Double (default 0.25)
 
-struct VadTuning {
+nonisolated struct VadTuning {
     var energyThresholdDBFS: Float
     var energyVoicedRatio: Float
     var sileroVoicedRatio: Float

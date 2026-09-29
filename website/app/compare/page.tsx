@@ -95,7 +95,7 @@ const GROUPS: ComparisonGroup[] = [
         path: "/whisper-vs-parakeet-mac",
         title: "Whisper vs. Parakeet on Mac",
         verdict:
-          "Parakeet is the quick default for 25 European languages. Whisper Large v3 scores higher on the app’s quality scale but runs English-only here.",
+          "Parakeet is the quick default for 25 European languages. Whisper Large v3 scores higher on the app’s quality scale and covers 99 languages, but takes longer.",
       },
     ],
   },

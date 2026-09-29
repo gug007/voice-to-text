@@ -176,6 +176,22 @@ swiftc -parse-as-library \
 "$TMPDIR/conversation-model-resolver-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/WhisperKitSupport.swift \
+  Tests/WhisperKitSupportHarness.swift \
+  -o "$TMPDIR/whisperkit-support-harness"
+"$TMPDIR/whisperkit-support-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/AppConstants.swift \
+  VoiceToText/VoiceToText/Audio/VadTuning.swift \
+  VoiceToText/VoiceToText/Audio/VAD.swift \
+  VoiceToText/VoiceToText/Audio/SpeechEnergy.swift \
+  VoiceToText/VoiceToText/Meetings/MeetingChunkRecovery.swift \
+  Tests/MeetingChunkRecoveryHarness.swift \
+  -o "$TMPDIR/meeting-chunk-recovery-harness"
+"$TMPDIR/meeting-chunk-recovery-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/SpeakerRelabeler.swift \
   Tests/SpeakerRelabelerHarness.swift \
   -o "$TMPDIR/speaker-relabeler-harness"

@@ -554,8 +554,8 @@ export default function MeetingRecordingPage() {
               ))}
             </ol>
             <p className={styles.sectionNote}>
-              Not sure which model to pick? Parakeet covers English and 24 other European languages on your Mac;
-              local Whisper models transcribe English. For other languages, choose an OpenAI model.{" "}
+              Not sure which model to pick? Parakeet covers English and 24 other European languages on your Mac.
+              For other languages, choose a local Whisper model (99 languages) or an OpenAI model.{" "}
               <Link className="link" href="/whisper-vs-parakeet-mac">Compare Whisper and Parakeet on Mac</Link>.
             </p>
           </div>

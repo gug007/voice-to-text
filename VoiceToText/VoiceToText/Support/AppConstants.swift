@@ -19,7 +19,7 @@ nonisolated enum AudioConfig {
     static let tapBufferSize: AVAudioFrameCount = 1_024
 }
 
-enum DictationConfig {
+nonisolated enum DictationConfig {
     static let enableAudioPreprocessing: Bool = true
     static let minTranscribeSamples = 8_000
 

@@ -57,7 +57,7 @@ final class ConversationQuitGuard {
         let meetings = MeetingController.shared
         // The work may have finished on its own before the prompt could show.
         guard meetings.isBusy else { return answer(true) }
-        switch askHowToQuit(recording: Self.isRecording(meetings.state)) {
+        switch askHowToQuit(Self.moment(meetings.state)) {
         case .keepGoing:
             quitAfterSave = false
             answer(false)
@@ -88,27 +88,37 @@ final class ConversationQuitGuard {
         NSApp.reply(toApplicationShouldTerminate: terminate)
     }
 
-    /// A start still in flight counts as recording: once it lands, Stop & Save
-    /// stops it like any other recording.
-    private static func isRecording(_ state: MeetingController.State) -> Bool {
+    /// What the prompt can truthfully say is happening.
+    private enum Moment { case recording, transcribing, settling }
+
+    private static func moment(_ state: MeetingController.State) -> Moment {
         switch state {
-        case .transcribing, .importing: return false
-        case .recording, .idle, .error: return true
+        case .recording: return .recording
+        case .transcribing, .importing: return .transcribing
+        // Busy while idle or failed only because a start, stop or cancel is
+        // mid-flight; which one isn't visible from here.
+        case .idle, .error: return .settling
         }
     }
 
-    private func askHowToQuit(recording: Bool) -> Choice {
+    private func askHowToQuit(_ moment: Moment) -> Choice {
         let alert = NSAlert()
         alert.alertStyle = .warning
         let aftermath = "If you quit anyway, the audio is kept and appears in History without a transcript the next time VoiceToText opens."
-        if recording {
+        switch moment {
+        case .recording:
             alert.messageText = "A conversation is still recording"
             alert.informativeText = "Stop & Save ends the recording, transcribes it and saves it to History, then quits. \(aftermath)"
             alert.addButton(withTitle: "Stop & Save")
             alert.addButton(withTitle: "Keep Recording")
-        } else {
+        case .transcribing:
             alert.messageText = "A conversation is still being transcribed"
             alert.informativeText = "VoiceToText can finish the transcript and save it to History, then quit. \(aftermath)"
+            alert.addButton(withTitle: "Finish & Quit")
+            alert.addButton(withTitle: "Don't Quit")
+        case .settling:
+            alert.messageText = "A conversation is starting or stopping"
+            alert.informativeText = "VoiceToText can let it finish, save anything recorded to History, then quit. \(aftermath)"
             alert.addButton(withTitle: "Finish & Quit")
             alert.addButton(withTitle: "Don't Quit")
         }
@@ -138,7 +148,9 @@ final class ConversationQuitGuard {
         let alert = NSAlert()
         alert.messageText = "Saving the conversation…"
         alert.informativeText = "VoiceToText quits as soon as it's transcribed and saved to History. A long conversation can take a few minutes. Quit Now keeps the audio for the next launch, without a transcript."
-        alert.addButton(withTitle: "Quit Now")
+        // No key equivalent: as the only button it would take Return, and a
+        // second Return meant for the first alert would abandon the transcript.
+        alert.addButton(withTitle: "Quit Now").keyEquivalent = ""
 
         let closer = Task {
             await saving.value

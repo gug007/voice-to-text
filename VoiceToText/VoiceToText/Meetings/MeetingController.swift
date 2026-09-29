@@ -137,7 +137,8 @@ final class MeetingController {
     // MARK: - Start
 
     func start() async {
-        guard !isBusy else { return }
+        // An update is being swapped in and the app is about to quit into it.
+        guard !isBusy, !AppUpdater.shared.isFinishingInstall else { return }
         transitioning = true
         defer { transitioning = false }
         lastSavedSummary = nil
@@ -246,7 +247,7 @@ final class MeetingController {
     /// video is treated exactly like a recorded conversation), then runs the same
     /// transcribe-and-save path as `stop()`.
     func importMedia(url: URL) async {
-        guard !isBusy else { return }
+        guard !isBusy, !AppUpdater.shared.isFinishingInstall else { return }
         transitioning = true
         defer { transitioning = false }
         lastSavedSummary = nil

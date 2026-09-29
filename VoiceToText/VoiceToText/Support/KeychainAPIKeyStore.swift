@@ -9,8 +9,8 @@ nonisolated extension APIKeyVault {
     /// service set to this build's bundle identifier, so the Dev build and the
     /// release keep separate items and never prompt for each other's. The login
     /// keychain trusts an item's creator by its designated requirement, which
-    /// every Developer ID build of this app shares across updates, so reading
-    /// the key never prompts. It is the file-based login keychain on purpose:
+    /// every Developer ID build of this app shares across updates, so an update
+    /// reads the key without a prompt. It is the file-based login keychain on purpose:
     /// the data-protection keychain (`kSecUseDataProtectionKeychain`) requires an
     /// application-identifier entitlement, which needs a provisioning profile
     /// this Developer ID app doesn't carry.
@@ -19,15 +19,26 @@ nonisolated extension APIKeyVault {
     /// keeps the key in UserDefaults as before: its designated requirement is a
     /// hash of that exact binary, so the Keychain would prompt after every
     /// rebuild.
-    static func forProvider(account: String, label: String, legacyDefaultsKey: String) -> APIKeyVault {
+    ///
+    /// `onKeyReadable` runs, on the reading thread, whenever a load finds a key,
+    /// including one the Keychain only gave up on a retry.
+    static func forProvider(
+        account: String,
+        label: String,
+        legacyDefaultsKey: String,
+        onKeyReadable: (@Sendable () -> Void)? = nil
+    ) -> APIKeyVault {
         let legacy = DefaultsAPIKeyStore(defaultsKey: legacyDefaultsKey)
+        let clearPending = DefaultsAPIKeyFlag(defaultsKey: legacyDefaultsKey + ".clearPending")
         guard CodeSigning.runningTeamIdentifier != nil,
               let service = Bundle.main.bundleIdentifier, !service.isEmpty else {
-            return APIKeyVault(secure: nil, legacy: legacy)
+            return APIKeyVault(secure: nil, legacy: legacy, clearPending: clearPending)
         }
         return APIKeyVault(
             secure: KeychainAPIKeyStore(service: service, account: account, label: label),
-            legacy: legacy
+            legacy: legacy,
+            clearPending: clearPending,
+            onKeyReadable: onKeyReadable
         )
     }
 }

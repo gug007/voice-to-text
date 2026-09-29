@@ -167,7 +167,7 @@ For a language outside Parakeet's 25, choose a Whisper model or a cloud model.
 - **With local models and no API keys,** the app connects to the internet only to reach Hugging Face (model downloads) and to check GitHub Releases for updates. Your audio and transcripts stay on the Mac.
 - **Cloud transcription models** send your audio directly to OpenAI or ElevenLabs under your API key. Provider charges apply.
 - **AI actions and AI insights** send transcript text to OpenAI under your key when you run them.
-- **Adding an API key** sends one request to that provider to check the key. Keys are stored in the app's preferences on this Mac.
+- **Adding an API key** sends one request to that provider to check the key. Keys are stored in the macOS login Keychain on this Mac (older versions kept them in the app's preferences and move them to the Keychain on first launch).
 - **No VoiceToText servers,** no account, and no analytics or telemetry in the app. (The website, voicetotext.cc, uses Google Analytics.)
 - **History is saved locally,** including dictation audio by default — see [History](#history).
 

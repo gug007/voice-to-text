@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -13,7 +14,8 @@ nonisolated enum OpenAIAPIKey {
     private static let vault = APIKeyVault.forProvider(
         account: "openai",
         label: "VoiceToText OpenAI API key",
-        legacyDefaultsKey: "cloud.openai.apiKey"
+        legacyDefaultsKey: "cloud.openai.apiKey",
+        onKeyReadable: { Task { @MainActor in OpenAIAPIKeyStore.shared.refreshFromStorage() } }
     )
 
     static func read() -> String? {
@@ -26,6 +28,13 @@ nonisolated enum OpenAIAPIKey {
 
     static func clear() {
         vault.clear()
+    }
+
+    /// Asks the Keychain again if it couldn't be read earlier (locked, or a
+    /// prompt was dismissed). May block on a prompt, so call it off the main
+    /// thread.
+    static func retryIfUnreadable() {
+        vault.retryIfUnreadable()
     }
 
     /// Cheap client-side shape check, used to decide whether a paste is worth
@@ -43,7 +52,8 @@ nonisolated enum OpenAIAPIKey {
 final class OpenAIAPIKeyStore {
     static let shared = OpenAIAPIKeyStore()
 
-    /// Posted after `setKey`/`clearKey` so non-SwiftUI components
+    /// Posted after `setKey`/`clearKey`, and when a key turns up late (see
+    /// `refreshFromStorage`), so non-SwiftUI components
     /// (e.g. `ModelRegistry`) can refresh derived state.
     static let didChangeNotification = Notification.Name("OpenAIAPIKeyStore.didChange")
 
@@ -57,6 +67,27 @@ final class OpenAIAPIKeyStore {
         let stored = OpenAIAPIKey.read()
         self.hasKey = stored != nil
         self.keySuffix = Self.suffix(of: stored)
+        // A Keychain that couldn't be read (locked, or a prompt dismissed)
+        // would otherwise mean "no key" for the whole session. Coming back to
+        // the app is when an unlock or access prompt is welcome.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task.detached(priority: .utility) { OpenAIAPIKey.retryIfUnreadable() }
+        }
+    }
+
+    /// Catches up with a key that became readable after this store last
+    /// looked, and tells the rest of the app when that changed anything.
+    func refreshFromStorage() {
+        let stored = OpenAIAPIKey.read()
+        let suffix = Self.suffix(of: stored)
+        guard (stored != nil) != hasKey || suffix != keySuffix else { return }
+        hasKey = stored != nil
+        keySuffix = suffix
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     func setKey(_ rawValue: String) {

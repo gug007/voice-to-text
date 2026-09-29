@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct UpdatesPane: View {
@@ -133,6 +134,9 @@ struct UpdatesPane: View {
                     .foregroundStyle(Palette.inkMuted)
             }
 
+        case .installed:
+            StatusLabel(level: .ready, text: "Installed")
+
         case .error:
             StatusLabel(level: .warning, text: "Error")
         }
@@ -148,6 +152,8 @@ struct UpdatesPane: View {
             return "Downloading update…"
         case .installing:
             return "Installing update…"
+        case .installed:
+            return "Update installed"
         case .upToDate:
             return "You're up to date"
         default:
@@ -165,6 +171,10 @@ struct UpdatesPane: View {
             return "\(Int(fraction * 100))% downloaded"
         case .installing:
             return "Mounting and copying the new app."
+        case .installed(let relaunches):
+            return relaunches
+                ? "Quit VoiceToText to finish; it reopens on the new version."
+                : "Quit and reopen VoiceToText to use the new version."
         case .upToDate:
             return "You have the latest version."
         case .error(let message):
@@ -194,6 +204,14 @@ struct UpdatesPane: View {
             .controlSize(.regular)
             .tint(Palette.accent)
             .disabled(conversationBusy)
+
+        case .installed:
+            Button("Quit VoiceToText") {
+                NSApp.terminate(nil)
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .tint(Palette.accent)
 
         default:
             Button("Check Now") {

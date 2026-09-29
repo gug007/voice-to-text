@@ -271,7 +271,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText uses the microphone to capture your voice for local speech-to-text transcription. Audio is processed on-device and never leaves your Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText records your voice for dictation and conversations. With a local model it is transcribed on your Mac; if you choose a cloud model, the audio is sent to that provider.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",
@@ -304,7 +304,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
-				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText uses the microphone to capture your voice for local speech-to-text transcription. Audio is processed on-device and never leaves your Mac.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText records your voice for dictation and conversations. With a local model it is transcribed on your Mac; if you choose a cloud model, the audio is sent to that provider.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/../Frameworks",

@@ -260,6 +260,10 @@ struct RecordingRow: View {
     /// commits nobody to anything, so on a History full of dictations this strip
     /// would be pure noise under every row — and the sparkles menu is still
     /// there for the rare dictation that is worth summarizing.
+    /// Every insight leaves the Mac, even for a conversation transcribed by a
+    /// local model — say so wherever one can be started.
+    private static let sendsTranscript = "Sends the transcript to OpenAI (\(ActionRunner.modelId))."
+
     @ViewBuilder
     private var generateStrip: some View {
         if entry.source == .meeting,
@@ -268,18 +272,18 @@ struct RecordingRow: View {
            !hasRunningInsight {
             HStack(spacing: Space.s4) {
                 insightChip(title: "Summary", symbolName: "sparkles",
-                            help: "Generate \(InsightKind.summary.commandNoun) from this conversation") {
+                            help: "Generate \(InsightKind.summary.commandNoun) from this conversation. \(Self.sendsTranscript)") {
                     generate(.summary)
                 }
                 insightChip(title: "Action items", symbolName: "checklist",
-                            help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation") {
+                            help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation. \(Self.sendsTranscript)") {
                     generate(.actionItems)
                 }
                 // The third way in: the user's own instruction, opening the same
                 // popover the sparkles menu opens. The glyph is spelled out like
                 // its two neighbours, and is the one `InsightKind.custom` wears.
                 insightChip(title: "Custom", symbolName: "wand.and.sparkles",
-                            help: "Format this transcript with your own instruction") {
+                            help: "Format this transcript with your own instruction. \(Self.sendsTranscript)") {
                     showCustomPrompt = true
                 }
             }
@@ -643,7 +647,7 @@ struct RecordingRow: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("Summarize, list action items, or format with your own instruction")
+        .help("Summarize, list action items, or format with your own instruction. \(Self.sendsTranscript)")
         .popover(isPresented: $showInsightMenu, arrowEdge: .bottom) {
             DropdownPopup(
                 sections: insightMenuSections,

@@ -7,6 +7,10 @@
 //   VoiceToText/Actions/DictationAction.swift   built-in AI actions
 //   VoiceToText/Engine/WhisperKitEngine.swift   Whisper model loading (network)
 //   VoiceToText/Engine/OpenAIRealtimeEngine.swift, ElevenLabsRealtimeEngine.swift  live text
+// Two claims live outside this repo's copy and must be re-read with it: the
+// macOS microphone prompt (INFOPLIST_KEY_NSMicrophoneUsageDescription in
+// project.pbxproj) and the GitHub repository description. Neither may promise
+// audio stays on the Mac — cloud models send it to their provider.
 // When the app's catalog changes, update this file and bump CATALOG_SNAPSHOT.
 
 export const CATALOG_SNAPSHOT = "September 2026 · VoiceToText v0.0.57";

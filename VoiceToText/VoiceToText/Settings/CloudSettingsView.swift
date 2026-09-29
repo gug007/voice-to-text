@@ -23,7 +23,7 @@ struct CloudPane: View {
                 symbol: "cloud.fill",
                 tint: Self.openAITint,
                 title: "OpenAI",
-                subtitle: "GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1",
+                subtitle: "GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1 · AI actions, summaries and action items",
                 hasKey: keyStore.hasKey,
                 keySuffix: keyStore.keySuffix,
                 autoFocusesField: true

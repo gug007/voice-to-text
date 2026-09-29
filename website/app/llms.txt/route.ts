@@ -115,7 +115,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 - Price: free. No paid tier, no subscription, no VoiceToText account.
 - Source: available on GitHub at ${REPO_URL}. The repository has no license file, so describe it as "source available", not "open source".
 - Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor}. Builds are Apple Silicon only.
-- Download: ${DMG_URL} (signed and notarized DMG). All releases: ${RELEASES_URL}
+- Download: ${DMG_URL} (DMG containing a signed, notarized app). All releases: ${RELEASES_URL}
 - Website: ${SITE_URL}
 - App shape: a regular Mac window (panes: General, Conversations, History, Shortcut, Models, Actions, Cloud, Updates) with a Dock icon, plus a menu bar item. Menu-bar-only is optional (turn off "Show in Dock"). Launch at login is on after first run. Appearance: System, Light or Dark.
 - Permissions: Microphone; Accessibility (required to start recording and to paste); Input Monitoring only when Right Control alone is the shortcut; Screen Recording only for Conversations, to capture system audio (the screen is never recorded).

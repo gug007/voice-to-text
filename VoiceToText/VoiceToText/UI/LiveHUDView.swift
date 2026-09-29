@@ -142,9 +142,7 @@ private struct HUDCard: View {
             }
 
             if layout.showsEmptyState {
-                Text(state.failureDetail ?? (layout.hasSalvagedAudio
-                     ? "\(Self.capturedDuration(layout.salvagedSeconds)) captured."
-                     : "Nothing to review."))
+                Text(state.failureDetail ?? emptyStateLine(layout))
                     .typo(.body)
                     .foregroundStyle(Palette.inkMuted)
                     // Sized to absorb the card's slack, so the control row still
@@ -162,6 +160,16 @@ private struct HUDCard: View {
             HUDControlRow(state: state, layout: layout, namespace: hudNamespace)
                 .frame(height: HUDMetrics.controlRowHeight)
         }
+    }
+
+    /// What the failure card says it kept: nothing, how much it captured, and
+    /// — once the take is in History — where to find it again.
+    private func emptyStateLine(_ layout: HUDLayout) -> String {
+        guard layout.hasSalvagedAudio else { return "Nothing to review." }
+        let captured = Self.capturedDuration(layout.salvagedSeconds)
+        return state.failureSavedToHistory
+            ? "\(captured) captured — saved to History."
+            : "\(captured) captured."
     }
 
     /// Tenths below a minute, where the difference between 0.3s and 8.6s is

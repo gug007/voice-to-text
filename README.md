@@ -56,7 +56,7 @@ If you'd rather skip the review step, turn off **Review before pasting** in Sett
 - **Review panel.** `Return` pastes, `Shift+Return` adds a new line, `Esc` discards the take (with a few seconds to undo), and `⌘R` records another take and inserts it at the cursor, so a long prompt can be spoken in passes.
 - **Paste, not typing.** VoiceToText saves your clipboard, puts the text on it, sends `⌘V` to the frontmost app, and restores the previous clipboard about a quarter of a second later. Fields that block pasting won't receive text.
 - **No voice commands.** Saying "new line" or "comma" writes those words. There's no built-in filler-word removal; an AI action can clean that up if you want.
-- **Resilient capture.** If the microphone changes mid-take (AirPods switching profiles, for example), recording restarts automatically. If it can't, the audio captured so far is still transcribed. A failed transcription keeps the audio so you can retry.
+- **Resilient capture.** If the microphone changes mid-take (AirPods switching profiles, for example), recording restarts automatically. If it can't, the audio captured so far is still transcribed. A failed transcription keeps the audio so you can retry, and saves it to History to transcribe again later.
 - The app uses the macOS default input device; there's no microphone picker.
 
 ### AI actions

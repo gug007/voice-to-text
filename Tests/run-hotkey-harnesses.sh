@@ -38,6 +38,20 @@ swiftc -parse-as-library \
 "$TMPDIR/speech-gate-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  Tests/TranscriptionFailureHarness.swift \
+  -o "$TMPDIR/transcription-failure-harness"
+"$TMPDIR/transcription-failure-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
+  Tests/FailedRecordingHarness.swift \
+  -o "$TMPDIR/failed-recording-harness"
+"$TMPDIR/failed-recording-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyBindingHarness.swift \

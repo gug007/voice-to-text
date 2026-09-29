@@ -4,6 +4,10 @@ import Observation
 /// Re-transcribes a saved recording's stored audio with a chosen model and
 /// writes the new transcript back into History. One regeneration at a time; the
 /// active id and chunk progress drive the inline UI on the recording row.
+///
+/// A recording saved without a transcript (a failed dictation) is the
+/// replace-mode case: its placeholder is replaced outright and its status
+/// cleared, rather than kept as an alternate beside the real text.
 @Observable
 @MainActor
 final class TranscriptRegenerator {
@@ -76,7 +80,13 @@ final class TranscriptRegenerator {
                 failure = (entry.id, "No speech was detected with \(descriptor.displayName).")
                 return
             }
-            RecordingHistoryStore.shared.addRegeneratedTranscript(id: entry.id, transcript: trimmed, model: descriptor)
+            // Decided by the store's current copy, not this snapshot of it: a
+            // retry from the dictation card may have filled the transcript
+            // in while this one ran, and then this is an ordinary regeneration.
+            let store = RecordingHistoryStore.shared
+            if !store.resolveFailedTranscript(id: entry.id, transcript: trimmed, model: descriptor) {
+                store.addRegeneratedTranscript(id: entry.id, transcript: trimmed, model: descriptor)
+            }
         } catch {
             failure = (entry.id, "Couldn't regenerate: \(error.localizedDescription)")
         }

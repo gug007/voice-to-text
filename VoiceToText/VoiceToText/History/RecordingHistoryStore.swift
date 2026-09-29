@@ -144,6 +144,39 @@ final class RecordingHistoryStore {
         }
     }
 
+    /// Stands in for the transcript of a dictation saved without one. Same
+    /// words as a conversation archived without a transcript.
+    nonisolated static let placeholderTranscript = "⚠︎ Audio saved without a transcript."
+
+    /// Saves a dictation whose transcription failed (or found no speech), so
+    /// its audio outlives the failure card: closing it, starting another
+    /// dictation, quitting or a crash no longer lose the take. The row carries
+    /// `status` and a placeholder transcript until `resolveFailedTranscript`
+    /// fills it in. Returns the new entry's id, or nil when saving is disabled
+    /// — a failed take is still a dictation, and History-off means none are
+    /// kept.
+    @discardableResult
+    func recordFailed(
+        samples: [Float],
+        model: ModelDescriptor?,
+        status: RecordingHistoryEntry.Status
+    ) -> UUID? {
+        guard isEnabled, !samples.isEmpty else { return nil }
+        let sampleRate = Int(AudioConfig.targetSampleRate)
+        let entry = makeEntry(
+            transcript: Self.placeholderTranscript,
+            durationSeconds: Double(samples.count) / Double(sampleRate),
+            sampleRate: sampleRate,
+            model: model,
+            source: .dictation,
+            status: status
+        )
+        return insert(entry) { dest in
+            let data = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
+            try? data.write(to: dest, options: .atomic)
+        }
+    }
+
     /// Builds a new entry with a fresh id and matching `<id>.wav` file name.
     private func makeEntry(
         transcript: String,
@@ -151,7 +184,8 @@ final class RecordingHistoryStore {
         sampleRate: Int,
         model: ModelDescriptor?,
         source: RecordingHistoryEntry.Source,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        status: RecordingHistoryEntry.Status? = nil
     ) -> RecordingHistoryEntry {
         let id = UUID()
         return RecordingHistoryEntry(
@@ -163,7 +197,8 @@ final class RecordingHistoryStore {
             sampleRate: sampleRate,
             modelId: model?.id,
             modelName: model?.displayName,
-            source: source
+            source: source,
+            status: status
         )
     }
 
@@ -331,6 +366,46 @@ final class RecordingHistoryStore {
             newAlternateID: UUID()
         )
         persistIndex()
+    }
+
+    /// Fills in the transcript of a recording saved without one (see
+    /// `recordFailed`): the text replaces the placeholder outright — no
+    /// alternate is kept for it — and the status clears. Returns false,
+    /// changing nothing, when the entry is gone or already has a transcript;
+    /// the caller then files the text some other way.
+    @discardableResult
+    func resolveFailedTranscript(id: UUID, transcript: String, model: ModelDescriptor?) -> Bool {
+        let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        var resolved = false
+        mutateEntry(id) { entry in
+            let updated = entry.resolvingPlaceholder(
+                transcript: trimmed,
+                modelId: model?.id,
+                modelName: model?.displayName
+            )
+            resolved = updated != nil
+            return updated
+        }
+        return resolved
+    }
+
+    /// Replaces the failure a recording without a transcript reports — a
+    /// retry that failed differently. Returns false when the entry is gone or
+    /// already has a transcript.
+    @discardableResult
+    func updateFailedStatus(id: UUID, status: RecordingHistoryEntry.Status) -> Bool {
+        var updated = false
+        mutateEntry(id) { entry in
+            guard entry.status != status else {
+                updated = entry.status != nil
+                return nil
+            }
+            let next = entry.updatingStatus(status)
+            updated = next != nil
+            return next
+        }
+        return updated
     }
 
     /// Removes one transcript version from an entry. Removing the active one

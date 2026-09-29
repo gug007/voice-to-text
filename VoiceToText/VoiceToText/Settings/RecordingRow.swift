@@ -173,13 +173,16 @@ struct RecordingRow: View {
                     renameSpeakersControl
                 }
                 regenerateControl
-                insightControl
-                iconButton(
-                    systemName: copied ? "checkmark" : "doc.on.doc",
-                    help: "Copy transcript",
-                    tint: copied ? Palette.signalReady : Palette.inkMuted,
-                    action: copyActiveTranscript
-                )
+                // A placeholder is nothing to summarize or copy.
+                if !entry.needsTranscript {
+                    insightControl
+                    iconButton(
+                        systemName: copied ? "checkmark" : "doc.on.doc",
+                        help: "Copy transcript",
+                        tint: copied ? Palette.signalReady : Palette.inkMuted,
+                        action: copyActiveTranscript
+                    )
+                }
                 iconButton(
                     systemName: "trash",
                     help: "Delete recording",
@@ -443,10 +446,13 @@ struct RecordingRow: View {
     }
 
     /// One plain transcript, or — when the recording has alternate versions — a
-    /// labeled, removable block per version (newest/active first).
+    /// labeled, removable block per version (newest/active first). A dictation
+    /// saved without a transcript says why instead, with the way to fix it.
     @ViewBuilder
     private var transcriptSection: some View {
-        if entry.hasAlternateTranscripts {
+        if let status = entry.status {
+            untranscribedNotice(status)
+        } else if entry.hasAlternateTranscripts {
             VStack(alignment: .leading, spacing: Space.s5) {
                 ForEach(entry.transcriptVariants) { variant in
                     TranscriptBlockView(
@@ -467,6 +473,42 @@ struct RecordingRow: View {
                 header: nil
             )
         }
+    }
+
+    /// What went wrong, in the failure card's own words, and one click to try
+    /// again with the model the take was meant for. Any other model is in the
+    /// regenerate menu; either way the transcript replaces this notice.
+    private func untranscribedNotice(_ status: RecordingHistoryEntry.Status) -> some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text(status.kind == .noSpeech ? "Not transcribed — no speech detected" : "Not transcribed")
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.signalWarn)
+            if status.kind == .failed {
+                Text(status.message)
+                    .typo(.body)
+                    .foregroundStyle(Palette.inkMuted)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            if !isRegenerating, let model = transcribeAgainModel {
+                Button("Transcribe Again") {
+                    Task { await regenerator.regenerate(entry: entry, modelId: model.id) }
+                }
+                .buttonStyle(.plain)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.accent)
+                .disabled(regenerator.isRunning)
+                .help("Transcribe this recording with \(model.displayName)")
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The model the take was meant for while it still exists, otherwise
+    /// the active dictation model.
+    private var transcribeAgainModel: ModelDescriptor? {
+        if let id = entry.modelId, let model = ModelCatalog.model(for: id) { return model }
+        return ModelRegistry.shared.activeModel
     }
 
     private func modelLabel(for variant: TranscriptVariant) -> String {
@@ -592,7 +634,7 @@ struct RecordingRow: View {
             }
             .buttonStyle(.plain)
             .disabled(regenerator.isRunning)
-            .help("Regenerate transcript with another model")
+            .help(entry.needsTranscript ? "Transcribe with another model" : "Regenerate transcript with another model")
             .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
                 DropdownPopup(
                     sections: regenerateModelSections,

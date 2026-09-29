@@ -67,6 +67,29 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// same index.json back-compat reason as the two above (absent ⇒ none).
     let customInsights: [CustomInsight]?
 
+    /// Set when the recording was saved without a real transcript — its
+    /// transcription failed, or found no speech — so the audio would outlive
+    /// the failure card; `transcript` then holds a placeholder. Nil, and
+    /// absent from every index written before this existed, means the
+    /// transcript is the model's output.
+    let status: Status?
+
+    /// Why a recording has no transcript yet. A struct rather than a bare
+    /// enum so the row can say what went wrong in the card's own words.
+    struct Status: Codable, Hashable, Sendable {
+        enum Kind: String, Codable, Sendable {
+            /// The transcription itself failed — network, API key, engine.
+            case failed
+            /// The speech gate heard nothing, and the take wasn't transcribed
+            /// anyway.
+            case noSpeech
+        }
+
+        let kind: Kind
+        /// The failure as the card put it ("OpenAI didn't accept your API key.").
+        let message: String
+    }
+
     /// How many custom results one recording may hold at once. The cap exists
     /// for the tab bar, not for storage: four or five model-named tabs beside
     /// Transcript, Summary and Action Items stop being scannable and start
@@ -121,6 +144,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// True when this recording has more than one transcript to show.
     var hasAlternateTranscripts: Bool { !(alternates ?? []).isEmpty }
 
+    /// True while the recording is waiting for a transcript (see `status`).
+    var needsTranscript: Bool { status != nil }
+
     /// Every transcript for this recording, newest (active) first. The active one
     /// reuses the entry's own id so the UI can target it for removal; alternates
     /// carry their own ids.
@@ -166,7 +192,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         speakerNames: [String: String]? = nil,
         summary: TranscriptSummary? = nil,
         actionItems: TranscriptActionItems? = nil,
-        customInsights: [CustomInsight]? = nil
+        customInsights: [CustomInsight]? = nil,
+        status: Status? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -183,6 +210,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.summary = summary
         self.actionItems = actionItems
         self.customInsights = customInsights
+        self.status = status
     }
 
     // MARK: - Copies
@@ -207,7 +235,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         isFavorite: Bool?,
         summary: TranscriptSummary?,
         actionItems: TranscriptActionItems?,
-        customInsights: [CustomInsight]?
+        customInsights: [CustomInsight]?,
+        status: Status?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -224,7 +253,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -250,7 +280,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -266,7 +297,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -281,7 +313,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -297,7 +330,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -316,7 +350,51 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
+        )
+    }
+
+    /// Returns a copy whose placeholder is replaced by a real transcript and
+    /// whose status is cleared — the take has been transcribed at last. The
+    /// placeholder is not kept as an alternate: it was never a transcript, and
+    /// a "version" reading "Audio saved without a transcript" beside the real
+    /// one would only be clutter. Nil when the entry isn't waiting for one.
+    func resolvingPlaceholder(
+        transcript: String,
+        modelId: String?,
+        modelName: String?
+    ) -> RecordingHistoryEntry? {
+        guard status != nil else { return nil }
+        return replacing(
+            transcript: transcript,
+            modelId: modelId ?? self.modelId,
+            modelName: modelName ?? self.modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: nil
+        )
+    }
+
+    /// Returns a copy reporting a different failure (a retry that failed
+    /// differently); nil when the entry isn't waiting for a transcript.
+    func updatingStatus(_ status: Status) -> RecordingHistoryEntry? {
+        guard self.status != nil else { return nil }
+        return replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: status
         )
     }
 
@@ -331,7 +409,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status
         )
     }
 }

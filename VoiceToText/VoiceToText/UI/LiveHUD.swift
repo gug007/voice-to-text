@@ -172,6 +172,10 @@ final class LiveHUDState {
     /// already dropped the samples by the time it renders; a note promising
     /// they were kept would be a lie on the commonest card in the app.
     var salvagedSampleCount: Int = 0
+    /// Whether the failed take's audio was saved to History, which the card
+    /// then says — closing it no longer loses anything. Only ever true when
+    /// the save really happened (History can be off).
+    var failureSavedToHistory: Bool = false
     /// Replaces the failure card's empty-state line ("Nothing to review." /
     /// "N s captured.") when the failure has something more useful to say
     /// there — the paste fallback's "click where it goes" instruction.
@@ -461,6 +465,7 @@ final class LiveHUDPanel {
         actionIcon: String = "arrow.clockwise",
         actionHint: String? = nil,
         salvagedSampleCount: Int = 0,
+        savedToHistory: Bool = false,
         detail: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void
@@ -473,6 +478,7 @@ final class LiveHUDPanel {
         state.failureActionIcon = actionIcon
         state.failureActionHint = actionHint
         state.salvagedSampleCount = salvagedSampleCount
+        state.failureSavedToHistory = savedToHistory
         state.failureDetail = detail
         state.preparingMessage = ""
         state.preparingFraction = nil
@@ -580,6 +586,7 @@ final class LiveHUDPanel {
         state.failureMessage = ""
         state.failureActionTitle = nil
         state.salvagedSampleCount = 0
+        state.failureSavedToHistory = false
         state.failureDetail = nil
         state.preparingModelName = ""
         state.preparingMessage = ""

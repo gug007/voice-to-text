@@ -204,6 +204,7 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/AppConstants.swift \
   VoiceToText/VoiceToText/Audio/VadTuning.swift \
+  VoiceToText/VoiceToText/Audio/SpeechGate.swift \
   VoiceToText/VoiceToText/Audio/VAD.swift \
   VoiceToText/VoiceToText/Audio/SpeechEnergy.swift \
   VoiceToText/VoiceToText/Meetings/MeetingChunkRecovery.swift \

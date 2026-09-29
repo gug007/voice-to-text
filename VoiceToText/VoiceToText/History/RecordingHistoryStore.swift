@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import OSLog
 
 /// Saves every completed dictation — the recorded audio plus its transcript —
 /// and exposes the list to the History pane. Audio is written as a WAV beside
@@ -15,6 +16,12 @@ final class RecordingHistoryStore {
     /// Most recent first. The source of truth at runtime; the on-disk index is
     /// a cache rebuilt from this on every change.
     private(set) var entries: [RecordingHistoryEntry] = []
+
+    /// Index rows this build couldn't decode — typically written by a newer
+    /// build before a downgrade. Never shown, never capped and their WAVs never
+    /// reaped; they're only written back so those recordings survive until a
+    /// build that understands them runs again.
+    private let passthroughRows: [HistoryIndexCodec.PassthroughRow]
 
     /// Total size of saved audio on disk, refreshed after each change. Shown in
     /// the pane header the same way the Models pane shows model disk usage.
@@ -73,10 +80,23 @@ final class RecordingHistoryStore {
         } else {
             isEnabled = UserDefaults.standard.bool(forKey: Keys.enabled)
         }
-        entries = Self.loadIndex()
+        let loaded = Self.loadIndex()
+        entries = loaded.entries
+        passthroughRows = loaded.passthrough
         // One launch-time directory scan both totals disk usage and sweeps orphan
-        // WAVs no surviving entry references (see `computeDiskUsage`).
-        refreshDiskUsage(reapingUnreferenced: Set(entries.map(\.audioFileName)))
+        // WAVs no surviving row references (see `computeDiskUsage`) — but only
+        // after a clean load with no quarantined index beside it. Otherwise the
+        // WAVs' owners are unknown, and reaping would delete the very audio a
+        // recovered index points at.
+        let mayReap = HistoryIndexCodec.mayReapOrphans(
+            loadWasClean: loaded.isClean,
+            directoryFileNames: (try? FileManager.default.contentsOfDirectory(atPath: Self.directory.path)) ?? []
+        )
+        refreshDiskUsage(
+            reapingUnreferenced: mayReap
+                ? HistoryIndexCodec.referencedAudio(entries: entries, passthrough: passthroughRows)
+                : nil
+        )
     }
 
     // MARK: - Locations
@@ -512,8 +532,17 @@ final class RecordingHistoryStore {
                 try FileManager.default.moveItem(at: fileURL, to: dest)
             } catch {
                 // Cross-volume or busy source: fall back to copy-then-remove.
-                try? FileManager.default.copyItem(at: fileURL, to: dest)
-                try? FileManager.default.removeItem(at: fileURL)
+                // The source goes only once the copy has landed: on a full disk
+                // the copy fails too, and the file left in MeetingsTemp is what
+                // launch recovery re-ingests. A partial copy is removed so that
+                // recovery doesn't leave a truncated duplicate beside it.
+                do {
+                    try FileManager.default.copyItem(at: fileURL, to: dest)
+                    try? FileManager.default.removeItem(at: fileURL)
+                } catch {
+                    try? FileManager.default.removeItem(at: dest)
+                    AppLog.history.error("Couldn't move recording into History: \(error.localizedDescription)")
+                }
             }
         }
     }
@@ -527,34 +556,118 @@ final class RecordingHistoryStore {
         // Committing clears `pendingDeletion`, which drops the entries here and
         // makes the deletion permanent. No need to sort/cap here — `entries` is
         // already newest-first and ≤ maxEntries, and `loadIndex` re-sorts and
-        // re-caps on launch, so the on-disk order is just a cache.
-        let snapshot = entries + (pendingDeletion?.entries ?? [])
+        // re-caps on launch, so the on-disk order is just a cache. Rows this
+        // build couldn't decode go back out unchanged after them.
+        let snapshot = indexSnapshot
+        let passthrough = passthroughRows
         enqueueIO { dir in
-            Self.ensureDirectoryExists(dir)
-            let encoder = JSONEncoder()
-            encoder.dateEncodingStrategy = .iso8601
-            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            guard let data = try? encoder.encode(snapshot) else { return }
-            try? data.write(to: Self.indexURL, options: .atomic)
+            Self.writeIndex(entries: snapshot, passthrough: passthrough, in: dir)
         }
     }
 
-    private nonisolated static func loadIndex() -> [RecordingHistoryEntry] {
-        guard let data = try? Data(contentsOf: indexURL) else { return [] }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        guard let decoded = try? decoder.decode([RecordingHistoryEntry].self, from: data) else { return [] }
+    /// Every entry the on-disk index should list: visible plus undo-window.
+    private var indexSnapshot: [RecordingHistoryEntry] {
+        entries + (pendingDeletion?.entries ?? [])
+    }
+
+    /// Blocks until every queued disk write has landed. Called at quit so the
+    /// last index write isn't lost when the process exits — including the
+    /// updater's relaunch, which quits moments after a change can be made.
+    /// If that last write failed (typically a full disk), it's tried once more
+    /// with the current state: space may have been freed since, and a recording
+    /// whose WAV landed but whose row never reached the index otherwise leaves
+    /// only an unreferenced file behind.
+    func flush() {
+        let snapshot = indexSnapshot
+        let passthrough = passthroughRows
+        let dir = Self.directory
+        Self.ioQueue.sync {
+            if Self.lastIndexWriteFailed {
+                Self.writeIndex(entries: snapshot, passthrough: passthrough, in: dir)
+            }
+        }
+    }
+
+    /// Whether the most recent index write failed. Read and written only on
+    /// `ioQueue`, which is what makes the unchecked access safe.
+    private nonisolated(unsafe) static var lastIndexWriteFailed = false
+
+    /// The one index write, shared by `persistIndex` and `flush` so both log a
+    /// failure the same way and keep `lastIndexWriteFailed` current. Must run
+    /// on `ioQueue`.
+    private nonisolated static func writeIndex(
+        entries: [RecordingHistoryEntry],
+        passthrough: [HistoryIndexCodec.PassthroughRow],
+        in dir: URL
+    ) {
+        ensureDirectoryExists(dir)
+        do {
+            let data = try HistoryIndexCodec.encode(entries: entries, passthrough: passthrough)
+            try data.write(to: indexURL, options: .atomic)
+            lastIndexWriteFailed = false
+        } catch {
+            lastIndexWriteFailed = true
+            AppLog.history.error("History index write failed: \(error.localizedDescription)")
+        }
+    }
+
+    private nonisolated struct LoadedIndex {
+        let entries: [RecordingHistoryEntry]
+        let passthrough: [HistoryIndexCodec.PassthroughRow]
+        /// False when index.json existed but couldn't be read or parsed. A
+        /// missing index (a fresh install) is clean.
+        let isClean: Bool
+    }
+
+    private nonisolated static func loadIndex() -> LoadedIndex {
+        guard FileManager.default.fileExists(atPath: indexURL.path) else {
+            return LoadedIndex(entries: [], passthrough: [], isClean: true)
+        }
+        let decoded: HistoryIndexCodec.Decoded
+        do {
+            decoded = try HistoryIndexCodec.decode(Data(contentsOf: indexURL))
+        } catch {
+            // Starting empty is the only option, but the next write would
+            // replace the file — so it's moved aside first, keeping the user's
+            // transcripts recoverable.
+            AppLog.history.error("History index unreadable, starting empty: \(error.localizedDescription)")
+            quarantineIndex()
+            return LoadedIndex(entries: [], passthrough: [], isClean: false)
+        }
+        if !decoded.passthrough.isEmpty {
+            AppLog.history.notice("History index: kept \(decoded.passthrough.count) row(s) this build can't decode")
+        }
         // Drop entries whose WAV never landed on disk (an interrupted or failed
         // write) so a dangling, unplayable row self-heals instead of lingering
         // forever; the on-disk index is rewritten on the next mutation. Also
         // re-sort to the newest-first invariant the rest of the store relies on.
         let dir = directory
-        let present = decoded.filter {
+        let present = decoded.entries.filter {
             FileManager.default.fileExists(
                 atPath: dir.appendingPathComponent($0.audioFileName, isDirectory: false).path
             )
         }
-        return RecordingHistoryPruner.prune(present, maxCount: maxEntries).kept
+        return LoadedIndex(
+            entries: RecordingHistoryPruner.prune(present, maxCount: maxEntries).kept,
+            passthrough: decoded.passthrough,
+            isClean: true
+        )
+    }
+
+    /// Moves an unreadable index.json aside as `index.corrupt-<timestamp>.json`.
+    /// While that file exists the launch reaper stays off (see
+    /// `HistoryIndexCodec.mayReapOrphans`), so the audio it points at survives.
+    private nonisolated static func quarantineIndex() {
+        let destination = directory.appendingPathComponent(
+            HistoryIndexCodec.quarantineFileName(at: Date()),
+            isDirectory: false
+        )
+        do {
+            try FileManager.default.moveItem(at: indexURL, to: destination)
+            AppLog.history.error("Moved the unreadable history index aside as \(destination.lastPathComponent, privacy: .public)")
+        } catch {
+            AppLog.history.error("Couldn't move the unreadable history index aside: \(error.localizedDescription)")
+        }
     }
 
     /// Recomputes saved-audio disk usage. When `referenced` is supplied (only at
@@ -582,29 +695,62 @@ final class RecordingHistoryStore {
     }
 
     /// Sums the allocated size of every history WAV. When `referenced` is given
-    /// (launch only), WAVs no surviving entry references are deleted in the same
-    /// pass instead of counted: orphans accrue when an entry is pruned by the cap
-    /// or when the app is quit during a delete's undo window (the on-disk index
-    /// can briefly list more than the cap, so loading trims it and strands the
-    /// dropped entry's audio). At launch there's no in-flight recording or pending
-    /// deletion, so any unreferenced WAV is a true orphan, and this runs on the
-    /// serial IO queue, ahead of any later write — self-healing a crash mid-window.
+    /// (launch only), WAVs no surviving row — entry or passthrough — references
+    /// are deleted in the same pass instead of counted, if old enough (below);
+    /// init passes nil when `HistoryIndexCodec.mayReapOrphans` says the load
+    /// can't be trusted.
+    /// Orphans accrue when an entry is pruned by the cap or when the app is
+    /// quit during a delete's undo window (the on-disk index can briefly list
+    /// more than the cap, so loading trims it and strands the dropped entry's
+    /// audio). At launch there's no in-flight recording or pending
+    /// deletion, and this runs on the serial IO queue, ahead of any later
+    /// write — self-healing a crash mid-window.
+    ///
+    /// An unreferenced WAV is only a true orphan if it's older than index.json
+    /// (`HistoryIndexCodec.mayReapOrphanWAV`); a newer one is kept and counted.
+    /// That's what saves a recording whose WAV landed but whose index write
+    /// failed on a full disk (a same-volume move needs no space). The rule
+    /// follows from the serial queue: `insert` enqueues the WAV landing before
+    /// its `persistIndex`, and every WAV is dated when it lands. The date is the
+    /// later of content and attribute modification: `ingest`'s move (or APFS
+    /// clone-copy) keeps the source's content date — for a meeting, when
+    /// recording stopped, before a transcription during which other index
+    /// writes can land — but the kernel sets the attribute-change time (ctime)
+    /// on every rename or new file, and nothing in user space can set it back
+    /// or fail to set it. So an index write that ran before the landing is
+    /// older than the WAV, and every one after it was snapshotted with the
+    /// entry present. A WAV older than the last successful write was therefore
+    /// dropped from that write on purpose (pruned by the cap, or trimmed on
+    /// load after a quit mid-undo), and those are exactly the orphans reaped
+    /// here. The one ordering this can't see is the wall clock stepping back
+    /// between the last successful write and a landing.
+    ///
+    /// This only keeps the file until the next successful index write, which
+    /// won't list it; the launch after that reaps it. The recovery path is
+    /// `flush()` retrying the failed write at quit.
     private nonisolated static func computeDiskUsage(
         _ dir: URL,
         reapingUnreferenced referenced: Set<String>?
     ) -> Int64 {
+        // Read once, before any WAV is judged; nil (no index) reaps nothing.
+        let indexModified = referenced == nil
+            ? nil
+            : (try? indexURL.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .contentModificationDateKey, .attributeModificationDateKey]
         guard let enumerator = FileManager.default.enumerator(
             at: dir,
-            includingPropertiesForKeys: [.totalFileAllocatedSizeKey],
+            includingPropertiesForKeys: Array(keys),
             options: [.skipsHiddenFiles]
         ) else { return 0 }
         var total: Int64 = 0
         for case let fileURL as URL in enumerator where fileURL.pathExtension == "wav" {
-            if let referenced, !referenced.contains(fileURL.lastPathComponent) {
+            let values = try? fileURL.resourceValues(forKeys: keys)
+            let landed = [values?.contentModificationDate, values?.attributeModificationDate].compactMap { $0 }.max()
+            if let referenced, !referenced.contains(fileURL.lastPathComponent),
+               HistoryIndexCodec.mayReapOrphanWAV(modified: landed, indexModified: indexModified) {
                 try? FileManager.default.removeItem(at: fileURL)
                 continue
             }
-            let values = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey])
             total += Int64(values?.totalFileAllocatedSize ?? 0)
         }
         return total

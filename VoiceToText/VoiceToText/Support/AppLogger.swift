@@ -9,4 +9,5 @@ nonisolated enum AppLog {
     static let engine = Logger(subsystem: subsystem, category: "Engine")
     static let hud = Logger(subsystem: subsystem, category: "HUD")
     static let audio = Logger(subsystem: subsystem, category: "Audio")
+    static let history = Logger(subsystem: subsystem, category: "History")
 }

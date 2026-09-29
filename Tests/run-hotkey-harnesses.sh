@@ -96,6 +96,14 @@ swiftc -parse-as-library \
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
+  Tests/HistoryIndexCodecHarness.swift \
+  -o "$TMPDIR/history-index-codec-harness"
+"$TMPDIR/history-index-codec-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
   VoiceToText/VoiceToText/History/TranscriptInsightRequest.swift \
   VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
   VoiceToText/VoiceToText/History/InsightPromptStore.swift \

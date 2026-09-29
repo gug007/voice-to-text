@@ -140,6 +140,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    // History writes its index on a background queue; drain it so a change made
+    // just before quitting (or before the updater relaunches us) reaches disk.
+    func applicationWillTerminate(_ notification: Notification) {
+        RecordingHistoryStore.shared.flush()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // A reopen fired as a side effect of a voicetotext:// trigger must stay
         // headless — don't bring up the settings window.

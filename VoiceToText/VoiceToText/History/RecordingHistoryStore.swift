@@ -210,7 +210,11 @@ final class RecordingHistoryStore {
         _ entry: RecordingHistoryEntry,
         landAudio: @escaping @Sendable (_ dest: URL) -> Void
     ) -> UUID {
-        let outcome = RecordingHistoryPruner.prune([entry] + entries, maxUnprotected: Self.maxEntries)
+        let outcome = RecordingHistoryPruner.prune(
+            [entry] + entries,
+            maxUnprotected: Self.maxEntries,
+            pinned: entriesInUse
+        )
         entries = outcome.kept
         let prunedFiles = outcome.removed.map(\.audioFileName)
         let fileName = entry.audioFileName
@@ -223,6 +227,18 @@ final class RecordingHistoryStore {
         persistIndex()
         refreshDiskUsage()
         return entry.id
+    }
+
+    /// Recordings a job is working on right now: an insight being generated or
+    /// a transcript being regenerated. Pruning one mid-request would delete the
+    /// row its paid result is about to land on, and `mutateEntry` would drop
+    /// the result, so the cap leaves them alone until the job ends.
+    private var entriesInUse: Set<UUID> {
+        var ids = Set(TranscriptInsightGenerator.shared.running.map(\.entryID))
+        if let regenerating = TranscriptRegenerator.shared.activeID {
+            ids.insert(regenerating)
+        }
+        return ids
     }
 
     // MARK: - Mutation
@@ -330,9 +346,7 @@ final class RecordingHistoryStore {
     /// Flips the starred state of one entry in place (order preserved) and
     /// persists the index. No audio is touched. Survives relaunch via index.json.
     func toggleFavorite(id: UUID) {
-        guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        entries[index] = entries[index].updatingFavorite(!entries[index].isFavorited)
-        persistIndex()
+        mutateEntry(id) { $0.updatingFavorite(!$0.isFavorited) }
     }
 
     /// Assigns display names to an entry's canonical speaker labels (persisted, no
@@ -341,14 +355,12 @@ final class RecordingHistoryStore {
     /// unknown id. Giving two labels the same name merges them in the displayed
     /// transcript — see `SpeakerRelabeler.apply`.
     func setSpeakerNames(entryID: UUID, names: [String: String]) {
-        guard let index = entries.firstIndex(where: { $0.id == entryID }) else { return }
         var normalized: [String: String] = [:]
         for (label, name) in names {
             let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty { normalized[label] = trimmed }
         }
-        entries[index] = entries[index].updatingSpeakerNames(normalized.isEmpty ? nil : normalized)
-        persistIndex()
+        mutateEntry(entryID) { $0.updatingSpeakerNames(normalized.isEmpty ? nil : normalized) }
     }
 
     /// Records a re-transcription: the freshly generated text becomes the active
@@ -439,6 +451,10 @@ final class RecordingHistoryStore {
     /// A `nil` from `transform` means "nothing actually changed", which skips the
     /// write; an id in neither place is ignored entirely.
     ///
+    /// Every edit that can change whether the cap protects an entry — the star,
+    /// speaker names, insights — comes through here, so an entry that loses its
+    /// protection is stamped with when (`stampingLostProtection`) in one place.
+    ///
     /// Rebuilding `PendingDeletion` here is safe for the commit timer:
     /// `finalizePendingDeletion(expecting:)` matches on ids, which an in-place
     /// replacement leaves untouched.
@@ -446,12 +462,18 @@ final class RecordingHistoryStore {
         _ entryID: UUID,
         _ transform: (RecordingHistoryEntry) -> RecordingHistoryEntry?
     ) {
+        let now = Date()
+        func settled(_ original: RecordingHistoryEntry) -> RecordingHistoryEntry? {
+            transform(original).map {
+                RecordingHistoryPruner.stampingLostProtection(from: original, to: $0, at: now)
+            }
+        }
         if let index = entries.firstIndex(where: { $0.id == entryID }) {
-            guard let updated = transform(entries[index]) else { return }
+            guard let updated = settled(entries[index]) else { return }
             entries[index] = updated
         } else if let pending = pendingDeletion,
                   let index = pending.entries.firstIndex(where: { $0.id == entryID }) {
-            guard let updated = transform(pending.entries[index]) else { return }
+            guard let updated = settled(pending.entries[index]) else { return }
             var kept = pending.entries
             kept[index] = updated
             pendingDeletion = PendingDeletion(entries: kept)
@@ -721,7 +743,8 @@ final class RecordingHistoryStore {
             )
         }
         return LoadedIndex(
-            entries: RecordingHistoryPruner.prune(present, maxUnprotected: maxEntries).kept,
+            // Nothing can be running before the store exists, so nothing is pinned.
+            entries: RecordingHistoryPruner.prune(present, maxUnprotected: maxEntries, pinned: []).kept,
             passthrough: decoded.passthrough,
             isClean: true
         )

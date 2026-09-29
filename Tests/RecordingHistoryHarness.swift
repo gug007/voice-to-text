@@ -67,12 +67,13 @@ private let sampleCustomInsight = CustomInsight(
 )
 
 /// What `RecordingHistoryStore.insert` does to the visible list: prepend the
-/// new entry, then prune.
+/// new entry, then prune, sparing the entries a job is working on.
 private func inserting(
     _ entry: RecordingHistoryEntry,
-    into library: [RecordingHistoryEntry]
+    into library: [RecordingHistoryEntry],
+    pinned: Set<UUID> = []
 ) -> RecordingHistoryPruner.Outcome {
-    RecordingHistoryPruner.prune([entry] + library, maxUnprotected: cap)
+    RecordingHistoryPruner.prune([entry] + library, maxUnprotected: cap, pinned: pinned)
 }
 
 /// Inserts `count` plain dictations, one at a time, each newer than the last,
@@ -80,12 +81,13 @@ private func inserting(
 private func insertingDictations(
     _ count: Int,
     after offset: TimeInterval,
-    into library: [RecordingHistoryEntry]
+    into library: [RecordingHistoryEntry],
+    pinned: Set<UUID> = []
 ) -> (library: [RecordingHistoryEntry], removed: [RecordingHistoryEntry]) {
     var library = library
     var removed: [RecordingHistoryEntry] = []
     for i in 1...count {
-        let outcome = inserting(makeEntry(offset: offset + TimeInterval(i)), into: library)
+        let outcome = inserting(makeEntry(offset: offset + TimeInterval(i)), into: library, pinned: pinned)
         library = outcome.kept
         removed += outcome.removed
     }
@@ -112,7 +114,10 @@ struct RecordingHistoryHarness {
         try conversationSurvives250Dictations()
         try insightAndSpeakerEntriesSurvive250Inserts()
         try protectedEntriesBeyondCapAreAllKept()
-        try unstarredEntryIsPrunedByTheNextInsert()
+        try lostProtectionIsStampedOnlyWhenLost()
+        try unprotectedAtRoundTripsAndSurvivesEdits()
+        try unstarredOldFavoriteSurvivesTheNextInsert()
+        try entryWithARunningJobSurvivesInserts()
         try undoAfterClearAllKeepsTheNewRecording()
         try undoBringsBackEvenTheOldestEntry()
         try codableRoundTrips()
@@ -146,7 +151,7 @@ struct RecordingHistoryHarness {
             makeEntry(offset: 300),
             makeEntry(offset: 200),
         ]
-        let outcome = RecordingHistoryPruner.prune(entries, maxUnprotected: 2)
+        let outcome = RecordingHistoryPruner.prune(entries, maxUnprotected: 2, pinned: [])
         try expect(outcome.kept.count == 2, "keeps maxUnprotected entries")
         try expect(outcome.kept[0].createdAt.timeIntervalSinceReferenceDate == 300, "newest first")
         try expect(outcome.kept[1].createdAt.timeIntervalSinceReferenceDate == 200, "second newest second")
@@ -156,7 +161,7 @@ struct RecordingHistoryHarness {
 
     private static func pruneSortsRegardlessOfInputOrder() throws {
         let ascending = [makeEntry(offset: 1), makeEntry(offset: 2), makeEntry(offset: 3)]
-        let outcome = RecordingHistoryPruner.prune(ascending, maxUnprotected: 10)
+        let outcome = RecordingHistoryPruner.prune(ascending, maxUnprotected: 10, pinned: [])
         let times = outcome.kept.map { $0.createdAt.timeIntervalSinceReferenceDate }
         try expect(times == [3, 2, 1], "unsorted input is normalized to newest-first")
     }
@@ -164,16 +169,16 @@ struct RecordingHistoryHarness {
     private static func pruneWithNonPositiveMaxRemovesEveryUnprotected() throws {
         let favorite = makeEntry(offset: 0, isFavorite: true)
         let entries = [makeEntry(offset: 1), favorite, makeEntry(offset: 2)]
-        let zero = RecordingHistoryPruner.prune(entries, maxUnprotected: 0)
+        let zero = RecordingHistoryPruner.prune(entries, maxUnprotected: 0, pinned: [])
         try expect(zero.kept == [favorite], "maxUnprotected 0 keeps only protected entries")
         try expect(zero.removed.count == 2, "maxUnprotected 0 removes every unprotected entry")
-        let negative = RecordingHistoryPruner.prune(entries, maxUnprotected: -5)
+        let negative = RecordingHistoryPruner.prune(entries, maxUnprotected: -5, pinned: [])
         try expect(negative.kept == [favorite] && negative.removed.count == 2, "negative maxUnprotected acts like 0")
     }
 
     private static func pruneUnderCapKeepsAll() throws {
         let entries = [makeEntry(offset: 1), makeEntry(offset: 2)]
-        let outcome = RecordingHistoryPruner.prune(entries, maxUnprotected: 5)
+        let outcome = RecordingHistoryPruner.prune(entries, maxUnprotected: 5, pinned: [])
         try expect(outcome.kept.count == 2 && outcome.removed.isEmpty, "below cap keeps everything")
     }
 
@@ -244,7 +249,7 @@ struct RecordingHistoryHarness {
         }
         // Odd offsets, spread through the protected ones.
         let dictations = (0..<5).map { makeEntry(offset: TimeInterval($0 * 100 + 1)) }
-        let outcome = RecordingHistoryPruner.prune((dictations + entries).shuffled(), maxUnprotected: 2)
+        let outcome = RecordingHistoryPruner.prune((dictations + entries).shuffled(), maxUnprotected: 2, pinned: [])
         try expect(outcome.kept.count == cap + 50 + 2, "every protected entry kept, plus the newest 2 dictations")
         try expect(entries.allSatisfy(outcome.kept.contains), "no protected entry is removed past the cap")
         try expect(
@@ -254,21 +259,113 @@ struct RecordingHistoryHarness {
         try expect(isNewestFirst(outcome.kept), "protected and unprotected entries interleave newest-first")
     }
 
-    /// Protection is re-evaluated on every prune: a recording that loses its
-    /// star is an ordinary dictation again and goes with the next insert if
-    /// it's past the cap.
-    private static func unstarredEntryIsPrunedByTheNextInsert() throws {
-        let favorite = makeEntry(offset: 0, isFavorite: true)
-        let (library, _) = insertingDictations(cap, after: 0, into: [favorite])
-        try expect(library.contains(favorite), "starred and kept")
-        let unstarred = library.map { $0.id == favorite.id ? $0.updatingFavorite(false) : $0 }
-        let oldestDictation = library.first { $0.createdAt.timeIntervalSinceReferenceDate == 1 }!
-        let outcome = inserting(makeEntry(offset: TimeInterval(cap + 1)), into: unstarred)
+    /// What the store's `mutateEntry` does with each edit: stamp the moment
+    /// protection is lost, and only then.
+    private static func lostProtectionIsStampedOnlyWhenLost() throws {
+        let now = Date(timeIntervalSinceReferenceDate: 1_000)
+        func stamped(_ original: RecordingHistoryEntry, _ updated: RecordingHistoryEntry) -> Date? {
+            RecordingHistoryPruner.stampingLostProtection(from: original, to: updated, at: now).unprotectedAt
+        }
+        let favorite = makeEntry(offset: 1, isFavorite: true)
+        try expect(stamped(favorite, favorite.updatingFavorite(false)) == now, "unstarring stamps the moment")
+
+        let summarized = makeEntry(offset: 1, summary: sampleSummary)
+        try expect(stamped(summarized, summarized.updatingSummary(nil)) == now, "removing the last insight stamps it")
+
+        let named = makeEntry(offset: 1, speakerNames: ["Speaker 1": "Kara"])
+        try expect(stamped(named, named.updatingSpeakerNames(nil)) == now, "clearing speaker names stamps it")
+
+        let starredAndSummarized = makeEntry(offset: 1, isFavorite: true, summary: sampleSummary)
         try expect(
-            outcome.removed.map(\.id) == [oldestDictation.id, favorite.id],
-            "the unstarred entry and the oldest dictation go"
+            stamped(starredAndSummarized, starredAndSummarized.updatingFavorite(false)) == nil,
+            "still protected by its summary, so nothing is lost"
         )
-        try expect(unprotectedCount(outcome.kept) == cap, "back within the cap")
+        let conversation = makeEntry(offset: 1, source: .meeting, isFavorite: true)
+        try expect(stamped(conversation, conversation.updatingFavorite(false)) == nil, "a conversation stays protected")
+
+        let plain = makeEntry(offset: 1)
+        try expect(stamped(plain, plain.updatingFavorite(true)) == nil, "gaining protection stamps nothing")
+        try expect(stamped(plain, plain.updatingFavorite(false)) == nil, "an unprotected edit stamps nothing")
+    }
+
+    private static func unprotectedAtRoundTripsAndSurvivesEdits() throws {
+        let when = Date(timeIntervalSinceReferenceDate: 500)
+        let entry = makeEntry(offset: 1).updatingUnprotectedAt(when)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let round = try decoder.decode([RecordingHistoryEntry].self, from: encoder.encode([entry])).first
+        try expect(round?.unprotectedAt == when, "unprotectedAt round-trips through Codable")
+
+        let legacy = """
+        [{"id":"\(UUID().uuidString)","createdAt":"2026-01-01T00:00:00Z","transcript":"t","audioFileName":"a.wav","durationSeconds":1,"sampleRate":16000}]
+        """
+        let decoded = try decoder.decode([RecordingHistoryEntry].self, from: Data(legacy.utf8)).first
+        try expect(decoded?.unprotectedAt == nil, "an index written before unprotectedAt decodes as never unprotected")
+
+        try expect(entry.updatingSummary(sampleSummary).unprotectedAt == when, "other edits carry the date through")
+        try expect(entry.updatingFavorite(true).unprotectedAt == when, "starring again keeps it (unused while protected)")
+    }
+
+    /// Unstarring an old favorite must not turn the next dictation into its
+    /// deletion: it queues behind the newest dictations as of the unstar and
+    /// rolls off only after `cap` newer ones, like any other.
+    private static func unstarredOldFavoriteSurvivesTheNextInsert() throws {
+        let favorite = makeEntry(offset: 0, isFavorite: true)
+        let (full, _) = insertingDictations(cap, after: 0, into: [favorite])
+        let unstarredAt = Date(timeIntervalSinceReferenceDate: TimeInterval(cap) + 0.5)
+        let library = full.map { entry in
+            entry.id == favorite.id
+                ? RecordingHistoryPruner.stampingLostProtection(from: entry, to: entry.updatingFavorite(false), at: unstarredAt)
+                : entry
+        }
+
+        let (afterOne, removedByOne) = insertingDictations(1, after: TimeInterval(cap), into: library)
+        try expect(afterOne.contains { $0.id == favorite.id }, "the unstarred recording survives the next insert")
+        try expect(
+            removedByOne.map { $0.createdAt.timeIntervalSinceReferenceDate } == [2, 1],
+            "the oldest dictations go in its place"
+        )
+        try expect(afterOne.last?.id == favorite.id, "it keeps its place in the list, oldest at the bottom")
+        try expect(isNewestFirst(afterOne), "the list stays newest-first by recording date")
+
+        // 200 dictations newer than the unstar in all, then it goes like any other.
+        let (afterMost, _) = insertingDictations(cap - 2, after: TimeInterval(cap + 1), into: afterOne)
+        try expect(afterMost.contains { $0.id == favorite.id }, "still there with fewer than 200 newer dictations")
+        let (afterAll, removedLast) = insertingDictations(1, after: TimeInterval(2 * cap - 1), into: afterMost)
+        try expect(!afterAll.contains { $0.id == favorite.id }, "gone once 200 newer dictations have been made")
+        try expect(removedLast.map(\.id) == [favorite.id], "and it is the one removed")
+    }
+
+    /// An insight or regeneration running on an old dictation pins it: the
+    /// dictations landing meanwhile can't prune the row its result is for, and
+    /// pinning never pushes another entry out early. Once the job ends the pin
+    /// is released and the cap applies as if it had never been there.
+    private static func entryWithARunningJobSurvivesInserts() throws {
+        let (full, _) = insertingDictations(cap, after: 0, into: [])
+        let busy = full.last!
+        try expect(busy.createdAt.timeIntervalSinceReferenceDate == 1, "the oldest dictation is the one in use")
+
+        let (during, removedDuring) = insertingDictations(5, after: TimeInterval(cap), into: full, pinned: [busy.id])
+        try expect(during.contains(busy), "a pinned entry survives inserts past the cap")
+        try expect(
+            removedDuring.map { $0.createdAt.timeIntervalSinceReferenceDate }.sorted() == [2, 3, 4, 5],
+            "the others go exactly when they would have anyway"
+        )
+        try expect(unprotectedCount(during) == cap + 1, "the pinned entry is the only overflow")
+
+        // The job ends; the next insert prunes it as usual.
+        let (after, removedAfter) = insertingDictations(1, after: TimeInterval(cap + 5), into: during)
+        try expect(removedAfter.map(\.id).contains(busy.id), "once released, the pinned entry is pruned")
+        let (neverPinned, _) = insertingDictations(6, after: TimeInterval(cap), into: full)
+        try expect(
+            after.map(\.createdAt) == neverPinned.map(\.createdAt),
+            "and the library matches one where it was never pinned"
+        )
+
+        let zero = RecordingHistoryPruner.prune(full, maxUnprotected: 0, pinned: [busy.id])
+        try expect(zero.kept == [busy], "a pinned entry is kept even with no room at all")
     }
 
     /// The verified defect: Clear All, a dictation landing inside the undo

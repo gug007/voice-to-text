@@ -89,6 +89,13 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         let message: String
     }
 
+    /// When the recording last lost its protection from the History cap —
+    /// unstarred, its speaker names cleared, its last insight removed — so the
+    /// cap ranks it from then rather than from `createdAt` (see
+    /// `RecordingHistoryPruner.retainedSince`). Nil when it never lost any;
+    /// optional, like the fields above, so older indexes decode (absent ⇒ nil).
+    let unprotectedAt: Date?
+
     /// How many custom results one recording may hold at once. The cap exists
     /// for the tab bar, not for storage: four or five model-named tabs beside
     /// Transcript, Summary and Action Items stop being scannable and start
@@ -192,7 +199,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         summary: TranscriptSummary? = nil,
         actionItems: TranscriptActionItems? = nil,
         customInsights: [CustomInsight]? = nil,
-        status: Status? = nil
+        status: Status? = nil,
+        unprotectedAt: Date? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -210,6 +218,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.actionItems = actionItems
         self.customInsights = customInsights
         self.status = status
+        self.unprotectedAt = unprotectedAt
     }
 
     // MARK: - Copies
@@ -235,7 +244,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         summary: TranscriptSummary?,
         actionItems: TranscriptActionItems?,
         customInsights: [CustomInsight]?,
-        status: Status?
+        status: Status?,
+        unprotectedAt: Date?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -253,7 +263,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -280,7 +291,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -297,7 +309,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -313,7 +326,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -330,7 +344,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -350,7 +365,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -375,7 +391,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: nil
+            status: nil,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -393,7 +410,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -409,7 +427,28 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             summary: summary,
             actionItems: actionItems,
             customInsights: customInsights,
-            status: status
+            status: status,
+            unprotectedAt: unprotectedAt
+        )
+    }
+
+    /// Returns a copy recording when it lost its protection from the cap;
+    /// everything else is kept. Set only through
+    /// `RecordingHistoryPruner.stampingLostProtection`, which decides whether
+    /// an edit lost it.
+    func updatingUnprotectedAt(_ unprotectedAt: Date?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 }
@@ -497,9 +536,10 @@ nonisolated enum RecordingHistoryPruner {
     /// budget) or speaker names (typed in by hand).
     ///
     /// Checked afresh on every prune, so a recording that loses its star or its
-    /// last insight is an ordinary dictation again: if it's older than the
-    /// newest `maxUnprotected`, the next prune takes it. Never the unstar
-    /// itself, which would turn a stray click into a deletion.
+    /// last insight is an ordinary dictation again — but ranked from the moment
+    /// it lost protection (see `retainedSince`), not from when it was made.
+    /// Otherwise unstarring a year-old dictation would delete it at the next
+    /// insert, and a stray click would be a deletion.
     static func isProtected(_ entry: RecordingHistoryEntry) -> Bool {
         entry.isFavorited
             || entry.source == .meeting
@@ -507,26 +547,57 @@ nonisolated enum RecordingHistoryPruner {
             || !(entry.speakerNames ?? [:]).isEmpty
     }
 
-    /// Retains every protected entry plus the newest `maxUnprotected`
-    /// unprotected ones by `createdAt`, returning the older unprotected rest as
-    /// `removed`. Input order is irrelevant — entries are sorted newest-first
-    /// here so the result is deterministic. `maxUnprotected <= 0` removes every
-    /// unprotected entry.
-    static func prune(_ entries: [RecordingHistoryEntry], maxUnprotected: Int) -> Outcome {
+    /// Where an unprotected entry stands in the cap: when it was recorded, or
+    /// when it last lost protection if that's later. An unstarred dictation
+    /// queues behind every newer one as if just recorded, and rolls off only
+    /// after `maxUnprotected` more.
+    static func retainedSince(_ entry: RecordingHistoryEntry) -> Date {
+        max(entry.createdAt, entry.unprotectedAt ?? entry.createdAt)
+    }
+
+    /// `updated` as it should be stored after an edit of `original`: stamped
+    /// with `now` as the moment it lost protection when `original` had it and
+    /// `updated` doesn't, otherwise unchanged. The store runs every edit that
+    /// can change protection through here.
+    static func stampingLostProtection(
+        from original: RecordingHistoryEntry,
+        to updated: RecordingHistoryEntry,
+        at now: Date
+    ) -> RecordingHistoryEntry {
+        guard isProtected(original), !isProtected(updated) else { return updated }
+        return updated.updatingUnprotectedAt(now)
+    }
+
+    /// Retains every protected entry plus the `maxUnprotected` unprotected ones
+    /// ranked newest by `retainedSince`, returning the rest as `removed`.
+    /// `pinned` names entries a job is working on right now — an insight or a
+    /// regeneration whose paid result would otherwise land on a deleted row —
+    /// and those are kept even past the cap, which the next prune after the
+    /// job ends enforces again. They still take their place in the ranking, so
+    /// pinning one never pushes another out early. Input order is irrelevant —
+    /// both lists come back newest-first by `createdAt`, the order History
+    /// shows. `maxUnprotected <= 0` removes every unprotected, unpinned entry.
+    static func prune(
+        _ entries: [RecordingHistoryEntry],
+        maxUnprotected: Int,
+        pinned: Set<UUID>
+    ) -> Outcome {
         var kept: [RecordingHistoryEntry] = []
         var removed: [RecordingHistoryEntry] = []
-        var unprotectedKept = 0
-        for entry in newestFirst(entries) {
+        var ranked = 0
+        for entry in byRetention(entries) {
             if isProtected(entry) {
                 kept.append(entry)
-            } else if unprotectedKept < maxUnprotected {
+                continue
+            }
+            ranked += 1
+            if ranked <= maxUnprotected || pinned.contains(entry.id) {
                 kept.append(entry)
-                unprotectedKept += 1
             } else {
                 removed.append(entry)
             }
         }
-        return Outcome(kept: kept, removed: removed)
+        return Outcome(kept: newestFirst(kept), removed: newestFirst(removed))
     }
 
     /// Undo of a deletion: puts `restored` back into `current` (the visible
@@ -548,11 +619,22 @@ nonisolated enum RecordingHistoryPruner {
         newestFirst(current + restored)
     }
 
-    private static func newestFirst(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
+    /// Best-kept first: latest `retainedSince`, then the display order.
+    private static func byRetention(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
         entries.sorted { lhs, rhs in
-            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-            // Stable tie-break for equal timestamps so the policy is total.
-            return lhs.id.uuidString > rhs.id.uuidString
+            let left = retainedSince(lhs), right = retainedSince(rhs)
+            if left != right { return left > right }
+            return isNewer(lhs, than: rhs)
         }
+    }
+
+    private static func newestFirst(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
+        entries.sorted { isNewer($0, than: $1) }
+    }
+
+    private static func isNewer(_ lhs: RecordingHistoryEntry, than rhs: RecordingHistoryEntry) -> Bool {
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+        // Stable tie-break for equal timestamps so the policy is total.
+        return lhs.id.uuidString > rhs.id.uuidString
     }
 }

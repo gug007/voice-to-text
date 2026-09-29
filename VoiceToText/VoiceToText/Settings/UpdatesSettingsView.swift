@@ -158,7 +158,9 @@ struct UpdatesPane: View {
     private var actionSubtitle: String {
         switch updater.status {
         case .available:
-            return "The app will quit and relaunch automatically."
+            return conversationBusy
+                ? "Finish the current conversation first: installing quits and relaunches the app."
+                : "The app will quit and relaunch automatically."
         case .downloading(let fraction):
             return "\(Int(fraction * 100))% downloaded"
         case .installing:
@@ -170,6 +172,12 @@ struct UpdatesPane: View {
         default:
             return "Fetch the latest release from GitHub."
         }
+    }
+
+    /// Installing quits the app, so it waits for a recording or transcription
+    /// to finish (`installUpdate` refuses too, for the launch prompt).
+    private var conversationBusy: Bool {
+        MeetingController.shared.isBusy
     }
 
     @ViewBuilder
@@ -185,6 +193,7 @@ struct UpdatesPane: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)
             .tint(Palette.accent)
+            .disabled(conversationBusy)
 
         default:
             Button("Check Now") {

@@ -140,6 +140,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    // A conversation still recording or transcribing gets a say before any quit
+    // (⌘Q, the menu bar's Quit, logout, the updater's relaunch); with nothing
+    // busy this is an immediate yes. See ConversationQuitGuard.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        ConversationQuitGuard.shared.reply(to: sender)
+    }
+
     // History writes its index on a background queue; drain it so a change made
     // just before quitting (or before the updater relaunches us) reaches disk.
     func applicationWillTerminate(_ notification: Notification) {

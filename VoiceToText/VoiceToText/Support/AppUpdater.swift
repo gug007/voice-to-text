@@ -165,6 +165,8 @@ final class AppUpdater {
 
     func installUpdate() async {
         guard case .available(_, let url, _) = status else { return }
+        let available = status
+        guard !conversationBlocksInstall() else { return }
         // performInstall enforces this before the swap; checking here as well
         // saves a download that could never be installed.
         guard CodeSigning.runningDesignatedRequirement() != nil else {
@@ -178,6 +180,12 @@ final class AppUpdater {
                     self?.status = .downloading(fraction: pct)
                 }
             }
+            // A conversation may have started while the update downloaded.
+            if conversationBlocksInstall() {
+                try? FileManager.default.removeItem(at: dmgURL)
+                status = available
+                return
+            }
             status = .installing
             // performInstall blocks on hdiutil/ditto — keep it off the main actor.
             try await Task.detached { try Self.performInstall(dmgURL: dmgURL) }.value
@@ -186,6 +194,22 @@ final class AppUpdater {
             AppLog.dictation.error("Update install failed: \(error.localizedDescription)")
             status = .error(Self.withManualDownloadHint(error.localizedDescription))
         }
+    }
+
+    /// Installing quits and relaunches the app, which would cut off a
+    /// conversation that is recording or transcribing, so it's refused with a
+    /// word of why. Refused rather than deferred: an app that quits by itself
+    /// the moment a meeting ends would be the worse surprise. The update stays
+    /// available. Returns true when the install must not go ahead.
+    private func conversationBlocksInstall() -> Bool {
+        guard MeetingController.shared.isBusy else { return false }
+        let alert = NSAlert()
+        alert.messageText = "Finish the conversation first"
+        alert.informativeText = "Installing the update quits and relaunches VoiceToText, which would cut off the conversation that's recording or transcribing. Install it from Settings → Updates once the conversation is saved."
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+        return true
     }
 
     /// A failed install can leave someone stuck on this version, so every

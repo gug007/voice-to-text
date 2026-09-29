@@ -150,12 +150,13 @@ final class RecordingHistoryStore {
         durationSeconds: Double,
         sampleRate: Int,
         model: ModelDescriptor?,
-        source: RecordingHistoryEntry.Source
+        source: RecordingHistoryEntry.Source,
+        createdAt: Date = Date()
     ) -> RecordingHistoryEntry {
         let id = UUID()
         return RecordingHistoryEntry(
             id: id,
-            createdAt: Date(),
+            createdAt: createdAt,
             transcript: transcript,
             audioFileName: "\(id.uuidString).wav",
             durationSeconds: durationSeconds,
@@ -499,14 +500,16 @@ final class RecordingHistoryStore {
     /// `MeetingRecorder`) into History by moving it into the history directory.
     /// Always saves — unlike `record`, this is an explicit user action, so it
     /// isn't gated by the auto-save toggle. Returns the new entry's id, or nil
-    /// when the transcript is blank or the source file is missing.
+    /// when the transcript is blank or the source file is missing. `createdAt`
+    /// defaults to now; launch recovery passes when the recording was made.
     @discardableResult
     func ingest(
         fileURL: URL,
         transcript: String,
         durationSeconds: Double,
         model: ModelDescriptor?,
-        source: RecordingHistoryEntry.Source
+        source: RecordingHistoryEntry.Source,
+        createdAt: Date = Date()
     ) -> UUID? {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -517,7 +520,8 @@ final class RecordingHistoryStore {
             durationSeconds: durationSeconds,
             sampleRate: Int(AudioConfig.targetSampleRate),
             model: model,
-            source: source
+            source: source,
+            createdAt: createdAt
         )
         return insert(entry) { dest in
             try? FileManager.default.removeItem(at: dest)

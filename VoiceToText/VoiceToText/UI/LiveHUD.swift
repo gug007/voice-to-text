@@ -148,10 +148,11 @@ final class LiveHUDState {
     /// transitions away from `.failed`.
     var failureMessage: String = ""
     /// Title of the failure card's action button, or nil for Close only.
-    /// Failures whose audio can't possibly succeed on a second pass (too-short,
-    /// VAD silent) offer nothing; transcription failures offer "Retry"; a
-    /// missing permission offers "Open Settings", because pressing the hotkey
-    /// again cannot fix it and the message alone leaves the user hunting.
+    /// Failures whose audio can't possibly succeed on a second pass (too
+    /// short) offer nothing; transcription failures offer "Retry"; audio the
+    /// speech gate rejected offers "Transcribe Anyway"; a missing permission
+    /// offers "Open Settings", because pressing the hotkey again cannot fix it
+    /// and the message alone leaves the user hunting.
     var failureActionTitle: String?
     var failureActionIcon: String = "arrow.clockwise"
     /// Samples the failed take captured, at the target rate. Non-zero replaces
@@ -439,9 +440,9 @@ final class LiveHUDPanel {
 
     /// A failure, rendered as a banner inside the same card at the same width as
     /// review — the standalone failure panel is gone. `actionTitle` nil leaves
-    /// only Close (e.g. "no speech detected", where re-running the audio won't
-    /// help); "Retry" re-runs the audio; "Open Settings" is what a permission
-    /// failure offers instead, since the hotkey can't fix itself.
+    /// only Close (e.g. "recording too short", where re-running the audio
+    /// won't help); "Retry" re-runs the audio; "Open Settings" is what a
+    /// permission failure offers instead, since the hotkey can't fix itself.
     func showFailure(
         message: String,
         actionTitle: String?,

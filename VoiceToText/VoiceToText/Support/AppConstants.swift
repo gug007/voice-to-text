@@ -19,6 +19,8 @@ nonisolated enum AudioConfig {
     static let tapBufferSize: AVAudioFrameCount = 1_024
 }
 
+/// `nonisolated` because the speech gate and the transcription paths read
+/// their VAD defaults off the main actor (through `VadTuning`).
 nonisolated enum DictationConfig {
     static let enableAudioPreprocessing: Bool = true
     static let minTranscribeSamples = 8_000
@@ -28,6 +30,13 @@ nonisolated enum DictationConfig {
     static let vadThresholdDBFS: Float = -45.0
     static let vadVoicedRatio: Float = 0.30
     static let sileroVoicedRatio: Float = 0.25
+    /// Silero's own reference threshold, well below FluidAudio's 0.85: soft
+    /// and distant speech sits between the two, and it is exactly the speech
+    /// the old gate discarded.
+    static let sileroSpeechThreshold: Float = 0.5
+    /// About one short word. Two 256 ms Silero chunks clear it; one stray
+    /// chunk (a click, a cough) doesn't.
+    static let minVoicedSeconds: Double = 0.4
 }
 
 extension TimeInterval {

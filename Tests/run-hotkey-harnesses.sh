@@ -32,6 +32,12 @@ swiftc -parse-as-library \
 "$TMPDIR/recording-escape-policy-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/SpeechGate.swift \
+  Tests/SpeechGateHarness.swift \
+  -o "$TMPDIR/speech-gate-harness"
+"$TMPDIR/speech-gate-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyBindingHarness.swift \

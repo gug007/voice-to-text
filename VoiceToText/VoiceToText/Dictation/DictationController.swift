@@ -168,6 +168,12 @@ final class DictationController {
     /// success, dismissal, paste, review cancel, or when a new recording
     /// starts.
     private var lastFailedSamples: [Float]?
+    /// Whether retrying `lastFailedSamples` skips the speech gate — true when
+    /// the gate is what failed them. Re-running a take through the gate that
+    /// just rejected it would reject it again, so its retry is "Transcribe
+    /// Anyway". Written wherever `lastFailedSamples` is, read only with it.
+    @ObservationIgnored
+    private var retrySkipsSpeechGate = false
 
     /// A note the next review card must carry, set by a path that ended the
     /// recording early. A take cut short by a device change still produces a
@@ -232,6 +238,13 @@ final class DictationController {
     /// stop time (the user can switch models mid-recording).
     @ObservationIgnored
     private var streamingModel: ModelDescriptor?
+
+    /// Whether the active live stream has shown the user any words. A take
+    /// the server already heard speech in skips the speech gate: the gate's
+    /// only job is to keep silence away from the model, and throwing away
+    /// words the user watched appear is the worst thing it could do.
+    @ObservationIgnored
+    private var streamingShowedText = false
 
     /// History entry ids for the current review session's takes that haven't
     /// been committed yet. Each successful take is saved immediately (so audio
@@ -530,6 +543,7 @@ final class DictationController {
     private func cancelStreamingSession() {
         recorder.onAudioChunk = nil
         streamingModel = nil
+        streamingShowedText = false
         guard let streaming = streamingEngine else { return }
         streamingEngine = nil
         Task { await streaming.cancelStream() }
@@ -1015,11 +1029,15 @@ final class DictationController {
             // If the session can't open (auth/network), fall back to buffered.
             streamingEngine = nil
             streamingModel = nil
+            streamingShowedText = false
             recorder.onAudioChunk = nil
             if let streaming = engine as? any StreamingTranscriptionEngine {
                 do {
                     try await streaming.startStream(contextPrompt: nil) { live in
-                        Task { @MainActor in LiveHUDPanel.shared.setPartialTranscript(live) }
+                        Task { @MainActor in
+                            LiveHUDPanel.shared.setPartialTranscript(live)
+                            DictationController.shared.noteLiveText(live, from: streaming)
+                        }
                     }
                     guard recordingStartGate.accepts(startID) else {
                         await streaming.cancelStream()
@@ -1087,6 +1105,14 @@ final class DictationController {
             AppLog.dictation.error("Recorder start failed: \(error.localizedDescription)")
             enterFailureHUD(message: "Could not start recording: \(error.localizedDescription)")
         }
+    }
+
+    /// Only this take's own session counts: a torn-down one's last update
+    /// must not vouch for the next take.
+    private func noteLiveText(_ text: String, from stream: any StreamingTranscriptionEngine) {
+        guard streamingEngine === stream,
+              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        streamingShowedText = true
     }
 
     private func startElapsedTicker(from start: Date) {
@@ -1394,6 +1420,7 @@ final class DictationController {
             }
             AppLog.dictation.warning("Recovered \(samples.count) late samples onto the resumed review")
             lastFailedSamples = samples
+            retrySkipsSpeechGate = false
             enterReview(
                 text: LiveHUDPanel.shared.currentReviewText,
                 cursorLocation: LiveHUDPanel.shared.currentCursorLocation,
@@ -1471,7 +1498,8 @@ final class DictationController {
 
     private func retryTranscription() {
         guard case .error = state, let samples = lastFailedSamples else { return }
-        AppLog.dictation.info("Retrying transcription on \(samples.count) cached samples")
+        let skipSpeechGate = retrySkipsSpeechGate
+        AppLog.dictation.info("Retrying transcription on \(samples.count) cached samples (speech gate \(skipSpeechGate ? "skipped" : "on"))")
         removeFailureEscMonitor()
         lastFailedSamples = nil
         // Synchronously transition to .transcribing so a hotkey press queued
@@ -1479,7 +1507,7 @@ final class DictationController {
         // instead of starting a competing recording that would race with the
         // pipeline's own enterTranscribing call below.
         enterTranscribing()
-        Task { await runTranscriptionPipeline(samples: samples) }
+        Task { await runTranscriptionPipeline(samples: samples, skipSpeechGate: skipSpeechGate) }
     }
 
     /// Retry for a failed Resume take: the review HUD is back up showing the
@@ -1490,7 +1518,8 @@ final class DictationController {
     /// take lands at the caret exactly like a successful Resume would have.
     private func retryFailedResumeTranscription() {
         guard case .reviewing = state, let samples = lastFailedSamples else { return }
-        AppLog.dictation.info("Retrying failed resume transcription on \(samples.count) cached samples")
+        let skipSpeechGate = retrySkipsSpeechGate
+        AppLog.dictation.info("Retrying failed resume transcription on \(samples.count) cached samples (speech gate \(skipSpeechGate ? "skipped" : "on"))")
         cancelReviewAction()
         lastFailedSamples = nil
         resumeContext = ResumeContext(
@@ -1499,14 +1528,17 @@ final class DictationController {
         )
         removeReviewEscMonitor()
         enterTranscribing()
-        Task { await runTranscriptionPipeline(samples: samples) }
+        Task { await runTranscriptionPipeline(samples: samples, skipSpeechGate: skipSpeechGate) }
     }
 
     /// Runs VAD + transcription + post-processing on the given audio.
     /// On any recoverable failure, surfaces the error through the failure
     /// HUD with Retry; on success, hands off to the review/deliver flow.
     /// Reusable across first-pass and retry so they share one code path.
-    private func runTranscriptionPipeline(samples: [Float]) async {
+    ///
+    /// `skipSpeechGate` is the "Transcribe Anyway" retry of a take the gate
+    /// rejected — the user has overruled it.
+    private func runTranscriptionPipeline(samples: [Float], skipSpeechGate: Bool = false) async {
         guard let descriptor = ModelRegistry.shared.activeModel else {
             enterFailureHUD(message: "No active model selected.")
             return
@@ -1530,16 +1562,27 @@ final class DictationController {
             }
         }
 
-        let voiced = await VoiceActivityGate.shared.isVoiced(samples)
-        guard runID == transcriptionRunID else { return }
-        guard voiced else {
-            AppLog.dictation.info("Full buffer VAD silent; dropping")
-            cancelStreamingSession()
-            // Same reason as the too-short branch: a salvaged fragment is
-            // exactly the kind of clip that trips the gate, and the card must
-            // not claim there is nothing to review while its audio exists.
-            enterFailureHUD(message: "No speech detected — try again.", samples: samples)
-            return
+        // A live stream that has already shown words has heard speech, and
+        // all the gate could do to its take is throw those words away.
+        let streamHeardSpeech = streamingEngine != nil && streamingShowedText
+        if !skipSpeechGate, !streamHeardSpeech {
+            let voiced = await VoiceActivityGate.shared.isVoiced(samples)
+            guard runID == transcriptionRunID else { return }
+            guard voiced else {
+                AppLog.dictation.notice("Speech gate found no speech in \(samples.count) samples; offering Transcribe Anyway")
+                cancelStreamingSession()
+                // The gate can be wrong — soft speech, a mic turned down — so
+                // the audio is kept and the card offers to transcribe it anyway
+                // rather than dropping what may be the user's words. The
+                // pipeline's empty-output check below still stands behind it.
+                enterFailureHUD(
+                    message: "No speech detected.",
+                    samples: samples,
+                    canRetry: true,
+                    retrySkipsSpeechGate: true
+                )
+                return
+            }
         }
 
         // Pick how the final transcript is produced: flush the live stream if
@@ -1670,10 +1713,13 @@ final class DictationController {
     /// keeping the failed take's audio so the banner can offer Retry;
     /// otherwise shows the failure HUD with optional Retry. Retry is offered
     /// only when re-running the same audio could plausibly succeed.
+    /// `retrySkipsSpeechGate` makes that retry "Transcribe Anyway", for audio
+    /// the speech gate rejected.
     private func enterFailureHUD(
         message: String,
         samples: [Float]? = nil,
         canRetry: Bool = false,
+        retrySkipsSpeechGate: Bool = false,
         action: FailureAction? = nil,
         detail: String? = nil
     ) {
@@ -1685,6 +1731,7 @@ final class DictationController {
         // below. A no-op on the paths that never armed it.
         removeTranscribingEscMonitor()
         let retryAvailable = canRetry && samples != nil
+        self.retrySkipsSpeechGate = retrySkipsSpeechGate
 
         if let resume = resumeContext {
             resumeContext = nil
@@ -1709,9 +1756,13 @@ final class DictationController {
         // pass; otherwise the caller's action (Open Settings for a permission
         // failure, where pressing the hotkey again can never help); otherwise
         // Close alone.
-        let resolvedAction: FailureAction? = retryAvailable
-            ? .retry { [weak self] in self?.retryTranscription() }
-            : action
+        let resolvedAction: FailureAction?
+        if retryAvailable {
+            let retry: @MainActor () -> Void = { [weak self] in self?.retryTranscription() }
+            resolvedAction = retrySkipsSpeechGate ? .transcribeAnyway(retry) : .retry(retry)
+        } else {
+            resolvedAction = action
+        }
 
         LiveHUDPanel.shared.showFailure(
             message: message,
@@ -1740,6 +1791,12 @@ final class DictationController {
 
         static func retry(_ run: @escaping @MainActor () -> Void) -> FailureAction {
             FailureAction(title: "Retry", icon: "arrow.clockwise", hint: "↩", run: run)
+        }
+
+        /// The retry for audio the speech gate rejected: the same re-run, with
+        /// the gate overruled.
+        static func transcribeAnyway(_ run: @escaping @MainActor () -> Void) -> FailureAction {
+            FailureAction(title: "Transcribe Anyway", icon: "waveform", hint: "↩", run: run)
         }
 
         static func openSettings(_ run: @escaping @MainActor () -> Void) -> FailureAction {

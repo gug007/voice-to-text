@@ -73,6 +73,12 @@ swiftc -parse-as-library \
 "$TMPDIR/launch-context-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/UpdateEligibility.swift \
+  Tests/UpdateEligibilityHarness.swift \
+  -o "$TMPDIR/update-eligibility-harness"
+"$TMPDIR/update-eligibility-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/OpenAIAPIKey.swift \
   VoiceToText/VoiceToText/Actions/DictationAction.swift \
   VoiceToText/VoiceToText/Actions/ActionRunner.swift \

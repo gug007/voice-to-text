@@ -2,6 +2,7 @@ import SwiftUI
 
 struct UpdatesPane: View {
     @Bindable private var updater = AppUpdater.shared
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         PaneScaffold {
@@ -20,7 +21,9 @@ struct UpdatesPane: View {
                         id: "update-error",
                         level: .warning,
                         title: "Update failed",
-                        message: message
+                        message: message,
+                        actionTitle: "Download Manually",
+                        action: { openURL(AppUpdater.releasesPageURL) }
                     )
                 ])
             }

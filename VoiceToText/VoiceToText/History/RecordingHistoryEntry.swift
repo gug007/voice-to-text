@@ -392,28 +392,89 @@ nonisolated enum TranscriptEditor {
 /// Pure, side-effect-free retention policy for the history list. Kept separate
 /// from the store so it can be unit-tested without touching the filesystem or
 /// the main actor (see `Tests/RecordingHistoryHarness.swift`).
+///
+/// The cap is there to stop routine dictations piling up, not to throw away
+/// recordings the user has shown they care about: pruning deletes the audio
+/// and everything attached to it, with no undo. So a protected entry (see
+/// `isProtected`) is never pruned and doesn't count toward the cap; only the
+/// unprotected entries are ranked, oldest out first.
+///
+/// Protected entries are kept even when they alone outnumber the cap. Every
+/// way into that state is deliberate (a star, a conversation, a paid insight,
+/// a named speaker) and the user can delete those rows themselves; deleting
+/// one behind their back is the failure this policy exists to prevent. The
+/// price is that disk use is bounded only for plain dictations, which is why
+/// the History pane shows how much space the audio takes.
 nonisolated enum RecordingHistoryPruner {
     struct Outcome: Equatable {
-        /// The newest entries to retain, ordered newest-first.
+        /// Every entry to retain, ordered newest-first.
         let kept: [RecordingHistoryEntry]
-        /// The overflow entries to delete (audio files included).
+        /// The unprotected overflow to delete (audio files included).
         let removed: [RecordingHistoryEntry]
     }
 
-    /// Retains the newest `maxCount` entries by `createdAt`, returning the rest
-    /// as `removed`. Input order is irrelevant — entries are sorted newest-first
-    /// here so the result is deterministic. `maxCount <= 0` removes everything.
-    static func prune(_ entries: [RecordingHistoryEntry], maxCount: Int) -> Outcome {
-        let sorted = entries.sorted { lhs, rhs in
+    /// Whether the cap must leave `entry` alone: a favorite (the user's own
+    /// "keep this"), a conversation (often an hour of audio nobody can record
+    /// again), or a recording with insights (paid for from the user's OpenAI
+    /// budget) or speaker names (typed in by hand).
+    ///
+    /// Checked afresh on every prune, so a recording that loses its star or its
+    /// last insight is an ordinary dictation again: if it's older than the
+    /// newest `maxUnprotected`, the next prune takes it. Never the unstar
+    /// itself, which would turn a stray click into a deletion.
+    static func isProtected(_ entry: RecordingHistoryEntry) -> Bool {
+        entry.isFavorited
+            || entry.source == .meeting
+            || entry.hasInsights
+            || !(entry.speakerNames ?? [:]).isEmpty
+    }
+
+    /// Retains every protected entry plus the newest `maxUnprotected`
+    /// unprotected ones by `createdAt`, returning the older unprotected rest as
+    /// `removed`. Input order is irrelevant — entries are sorted newest-first
+    /// here so the result is deterministic. `maxUnprotected <= 0` removes every
+    /// unprotected entry.
+    static func prune(_ entries: [RecordingHistoryEntry], maxUnprotected: Int) -> Outcome {
+        var kept: [RecordingHistoryEntry] = []
+        var removed: [RecordingHistoryEntry] = []
+        var unprotectedKept = 0
+        for entry in newestFirst(entries) {
+            if isProtected(entry) {
+                kept.append(entry)
+            } else if unprotectedKept < maxUnprotected {
+                kept.append(entry)
+                unprotectedKept += 1
+            } else {
+                removed.append(entry)
+            }
+        }
+        return Outcome(kept: kept, removed: removed)
+    }
+
+    /// Undo of a deletion: puts `restored` back into `current` (the visible
+    /// list, which may have gained recordings during the undo window),
+    /// newest-first, and removes nothing — even if that leaves more unprotected
+    /// entries than the cap.
+    ///
+    /// Trimming here could only take one of three things: a recording made
+    /// since the deletion began (after Clear All and a new dictation, Undo used
+    /// to delete the new one), the very entry the user just asked to keep, or an
+    /// unrelated old dictation whose audio would vanish behind an Undo. The
+    /// overflow is at most what was recorded during those few seconds, and the
+    /// next insert or launch prunes it by the usual rule, which lands exactly
+    /// where the cap would have without the deletion.
+    static func restoring(
+        _ restored: [RecordingHistoryEntry],
+        into current: [RecordingHistoryEntry]
+    ) -> [RecordingHistoryEntry] {
+        newestFirst(current + restored)
+    }
+
+    private static func newestFirst(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
+        entries.sorted { lhs, rhs in
             if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
             // Stable tie-break for equal timestamps so the policy is total.
             return lhs.id.uuidString > rhs.id.uuidString
         }
-        guard maxCount > 0 else { return Outcome(kept: [], removed: sorted) }
-        guard sorted.count > maxCount else { return Outcome(kept: sorted, removed: []) }
-        return Outcome(
-            kept: Array(sorted.prefix(maxCount)),
-            removed: Array(sorted.suffix(from: maxCount))
-        )
     }
 }

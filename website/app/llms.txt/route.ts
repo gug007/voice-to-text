@@ -147,7 +147,7 @@ ${list(BUILT_IN_ACTIONS)}
 
 ## History and AI insights
 
-- Every dictation (audio and transcript) and every conversation or upload is saved locally in ~/Library/Application Support/VoiceToText/History. The "Save recordings" toggle stops saving dictations; conversations and uploads are always saved. Newest 200 recordings are kept, favorites included in the count.
+- Every dictation (audio and transcript) and every conversation or upload is saved locally in ~/Library/Application Support/VoiceToText/History. The "Save recordings" toggle stops saving dictations; conversations and uploads are always saved. The newest 200 dictations are kept; favorites, conversations, uploads, and recordings with a summary, action items, custom result or speaker names are never removed automatically.
 - Search across transcripts, earlier versions, summaries, action items, custom results, speaker names, model, type and date. Favorites, playback, copy, delete with 5-second Undo, Clear All.
 - Regenerate any recording with another model; every version is kept side by side.
 - AI insights on any recording: Summary, Action Items (checklist with owner and due date only when said), and up to 3 custom-prompt results. They need an OpenAI API key and send the transcript text (with speaker names) to OpenAI (${AI_TEXT_MODEL}).

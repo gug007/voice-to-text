@@ -36,9 +36,12 @@ final class RecordingHistoryStore {
         }
     }
 
-    /// Cap on retained recordings; older ones are pruned (audio deleted too) so
-    /// history can't grow without bound. `nonisolated` so the off-main index
-    /// loader can read it.
+    /// Cap on retained *unprotected* recordings: plain dictations nobody
+    /// starred, ran an insight on or named speakers in. Older ones are pruned
+    /// (audio deleted too) so routine dictations can't pile up without bound;
+    /// protected recordings don't count and are never pruned (see
+    /// `RecordingHistoryPruner`). `nonisolated` so the off-main index loader
+    /// can read it.
     nonisolated static let maxEntries = 200
 
     /// How long a deleted recording stays recoverable before the deletion is
@@ -171,7 +174,7 @@ final class RecordingHistoryStore {
         _ entry: RecordingHistoryEntry,
         landAudio: @escaping @Sendable (_ dest: URL) -> Void
     ) -> UUID {
-        let outcome = RecordingHistoryPruner.prune([entry] + entries, maxCount: Self.maxEntries)
+        let outcome = RecordingHistoryPruner.prune([entry] + entries, maxUnprotected: Self.maxEntries)
         entries = outcome.kept
         let prunedFiles = outcome.removed.map(\.audioFileName)
         let fileName = entry.audioFileName
@@ -248,27 +251,17 @@ final class RecordingHistoryStore {
     /// Restores the recording(s) inside the undo window, back in their original
     /// order; no audio was ever removed, so this is a pure re-insert. No-op once
     /// the window has already committed.
+    ///
+    /// Nothing is pruned here, even when recordings made during the window push
+    /// the list past the cap; the next insert or launch trims the overflow. See
+    /// `RecordingHistoryPruner.restoring` for why.
     func undoPendingDeletion() {
         guard let pending = pendingDeletion else { return }
         pendingDeletionTask?.cancel()
         pendingDeletionTask = nil
         pendingDeletion = nil
-        // Restoring can push the count past the cap if new recordings landed
-        // during the window. Reserve room for the restored entries first and prune
-        // only the *existing* visible list, so Undo always brings its recording
-        // back — the entry being restored can never be the one evicted (which
-        // would delete the very file the user asked to keep). Only the genuinely
-        // oldest non-restored recordings are dropped, their audio removed to avoid
-        // orphans, mirroring `insert`.
-        let keepFromExisting = max(0, Self.maxEntries - pending.entries.count)
-        let trimmed = RecordingHistoryPruner.prune(entries, maxCount: keepFromExisting)
-        entries = RecordingHistoryPruner.prune(
-            trimmed.kept + pending.entries,
-            maxCount: Self.maxEntries
-        ).kept
-        removeAudioFiles(trimmed.removed.map(\.audioFileName))
+        entries = RecordingHistoryPruner.restoring(pending.entries, into: entries)
         persistIndex()
-        refreshDiskUsage()
     }
 
     /// Finalizes a deletion: removes the audio from disk and rewrites the index
@@ -555,9 +548,10 @@ final class RecordingHistoryStore {
         // (rather than being lost) if the app is quit before the window commits.
         // Committing clears `pendingDeletion`, which drops the entries here and
         // makes the deletion permanent. No need to sort/cap here — `entries` is
-        // already newest-first and ≤ maxEntries, and `loadIndex` re-sorts and
-        // re-caps on launch, so the on-disk order is just a cache. Rows this
-        // build couldn't decode go back out unchanged after them.
+        // already newest-first and pruned (bar a brief overflow after an Undo or
+        // an unstar), and `loadIndex` re-sorts and re-caps on launch, so the
+        // on-disk order is just a cache. Rows this build couldn't decode go back
+        // out unchanged after them.
         let snapshot = indexSnapshot
         let passthrough = passthroughRows
         enqueueIO { dir in
@@ -648,7 +642,7 @@ final class RecordingHistoryStore {
             )
         }
         return LoadedIndex(
-            entries: RecordingHistoryPruner.prune(present, maxCount: maxEntries).kept,
+            entries: RecordingHistoryPruner.prune(present, maxUnprotected: maxEntries).kept,
             passthrough: decoded.passthrough,
             isClean: true
         )
@@ -699,10 +693,11 @@ final class RecordingHistoryStore {
     /// are deleted in the same pass instead of counted, if old enough (below);
     /// init passes nil when `HistoryIndexCodec.mayReapOrphans` says the load
     /// can't be trusted.
-    /// Orphans accrue when an entry is pruned by the cap or when the app is
-    /// quit during a delete's undo window (the on-disk index can briefly list
-    /// more than the cap, so loading trims it and strands the dropped entry's
-    /// audio). At launch there's no in-flight recording or pending
+    /// Orphans accrue when an entry is pruned by the cap or when the on-disk
+    /// index lists more than the cap allows — the app quit during a delete's
+    /// undo window, or after an Undo or an unstar pushed it over but before the
+    /// next recording trimmed it — so loading trims it and strands the dropped
+    /// entry's audio. At launch there's no in-flight recording or pending
     /// deletion, and this runs on the serial IO queue, ahead of any later
     /// write — self-healing a crash mid-window.
     ///

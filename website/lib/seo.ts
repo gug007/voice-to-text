@@ -106,7 +106,7 @@ export const softwareApplicationJsonLd = {
     "Transcribe an audio or video file (MP3, M4A, WAV, AIFF, MP4, MOV, and other formats macOS can read) — on-device by default",
     "Speaker labels (Speaker 1, Speaker 2, …) from the optional cloud model GPT-4o Transcribe Diarize on your own OpenAI key, with names you can assign to each speaker",
     "AI summaries, action-item checklists, and custom-prompt results for any recording, using your own OpenAI key",
-    "Local history of up to 200 recordings, with search across transcripts, summaries, action items, and speaker names, plus favorites, playback, copy, and undoable deletes",
+    "Local history of every conversation and your latest 200 dictations, with search across transcripts, summaries, action items, and speaker names, plus favorites, playback, copy, and undoable deletes",
     "Regenerate any transcript with a different model and keep every version side by side",
     "Conversation recordings interrupted by a crash or power loss are recovered into History on next launch",
     "Menu bar item with dictation and conversation controls, and an optional menu-bar-only mode",

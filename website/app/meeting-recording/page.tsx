@@ -205,7 +205,7 @@ const PRIVACY_BULLETS = [
   "Audio goes to a provider only when a cloud model transcribes it: an OpenAI model you choose in Conversations, or a cloud dictation model while the setting is “Same as dictation”. It goes directly to that provider under your own API key. VoiceToText has no server in that path.",
   "Summaries, action items, and custom prompts send the transcript text, never the audio, to OpenAI, and only when you generate one.",
   "Recordings and transcripts live in ~/Library/Application Support/VoiceToText/History. Delete any of them from History, with a 5-second undo if you slip.",
-  "History keeps your newest 200 recordings. Dictations and conversations share that limit and favorites are not exempt, so the oldest recordings are deleted, audio included, once you pass it.",
+  "History keeps your newest 200 dictations, deleting older ones with their audio. Conversations, favorites, and recordings with a summary or action items are never removed automatically.",
 ];
 
 const SPEAKER_WORKFLOW = [

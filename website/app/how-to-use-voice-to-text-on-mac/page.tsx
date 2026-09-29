@@ -295,8 +295,8 @@ const CHOICES: Choice[] = [
       <>
         Each dictation is saved on this Mac with its audio and transcript. In History you can search
         transcripts, star favorites, play audio back, and re-transcribe with another model. Turn off Save
-        recordings to stop keeping dictations. History holds your newest 200 recordings, meetings included, and
-        favorites are not exempt.
+        recordings to stop keeping dictations. History keeps your newest 200 dictations; favorites, meetings and
+        recordings with a summary or action items are never removed automatically.
       </>
     ),
   },

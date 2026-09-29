@@ -208,7 +208,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         </>,
       ],
       note:
-        "Local doesn’t mean invisible. Recordings stay in your history until you delete them, and anyone using your Mac account can open them. History keeps up to 200 recordings and removes the oldest first.",
+        "Local doesn’t mean invisible. Recordings stay in your history until you delete them, and anyone using your Mac account can open them. Dictations are the exception: past your latest 200, the oldest are removed automatically unless you starred them or added a summary or action items.",
     },
     {
       id: "give-up",
@@ -265,7 +265,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "A few calls a week, no budget → VoiceToText",
           body:
-            "Recording, transcription and history are free, and old meetings don’t expire after 30 days; history keeps your latest 200 recordings. Add an OpenAI key only if you want summaries.",
+            "Recording, transcription and history are free, and old meetings don’t expire after 30 days; conversations stay in History until you delete them. Add an OpenAI key only if you want summaries.",
         },
         {
           title: "Windows, phones or in-person → Granola",

@@ -57,7 +57,7 @@ const BUILT_INS: BuiltIn[] = [
   {
     glyph: "search",
     title: "History, searchable",
-    body: "Your latest 200 dictations and recordings stay on your Mac. Search transcripts, summaries, action items and speaker names.",
+    body: "Your conversations, favorites and latest 200 dictations stay on your Mac. Search transcripts, summaries, action items and speaker names.",
   },
   {
     glyph: "versions",

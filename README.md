@@ -19,7 +19,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Conversations** — record your microphone and the other people on a call (system audio) together, or drop in an audio or video file; transcribed when you stop
 - **Speaker labels** — optional, through OpenAI's GPT-4o Transcribe Diarize; rename "Speaker 1" to real names
 - **AI insights** — Summary, Action Items, and your own prompts on any recording, with your OpenAI key
-- **Searchable History** — every dictation and conversation is kept on your Mac with its audio; search, favorite, replay, copy, and re-transcribe with another model
+- **Searchable History** — every conversation and your latest 200 dictations stay on your Mac with their audio; search, favorite, replay, copy, and re-transcribe with another model
 - **15 speech models** — 6 local and 9 cloud (OpenAI and ElevenLabs), including four live models
 - **Built for AI agents** — speak prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools
 - **Scriptable** — a `voicetotext://` URL scheme for Raycast, Shortcuts, Stream Deck, and scripts
@@ -87,7 +87,7 @@ Conversations is VoiceToText's meeting recorder.
 - **Search transcripts** finds text across transcripts, earlier versions, summaries, action items, custom results, speaker names, model, and date.
 - Favorite, play, copy, or delete with a 5-second Undo (`⌘Z`). **Clear All** is undoable too.
 - **Regenerate** any recording with any of the 15 models and keep each version side by side.
-- History keeps the newest 200 recordings, dictations and conversations combined; favorites count toward the limit.
+- History keeps your newest 200 dictations, removing older ones with their audio. Favorites, conversations, uploads, and recordings with AI insights or speaker names are never removed automatically.
 - There's no export, sharing, sync, or transcript editing — copy to the clipboard to take text elsewhere.
 
 ### AI insights

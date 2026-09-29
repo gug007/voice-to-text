@@ -162,7 +162,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         {
           title: "Local is not anonymous",
           body:
-            "By default VoiceToText saves every dictation’s audio and transcript in History (~/Library/Application Support/VoiceToText/History). To stop saving dictations, turn off Save recordings in the History pane. Conversations and imports are always saved. History keeps the newest 200 recordings. Protect your user account, turn on FileVault, and delete sensitive recordings you no longer need.",
+            "By default VoiceToText saves every dictation’s audio and transcript in History (~/Library/Application Support/VoiceToText/History). To stop saving dictations, turn off Save recordings in the History pane. Conversations and imports are always saved. History keeps your newest 200 dictations; favorites, conversations and recordings with a summary or action items stay until you delete them. Protect your user account, turn on FileVault, and delete sensitive recordings you no longer need.",
         },
       ],
       note: (
@@ -236,7 +236,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     {
       question: "Are my dictations saved on the Mac?",
       answer:
-        "Yes, by default. Each dictation's audio and transcript is saved in History on your Mac. Turn off Save recordings in the History pane to stop saving dictations. Conversations and imported files are always saved. History keeps the newest 200 recordings.",
+        "Yes, by default. Each dictation's audio and transcript is saved in History on your Mac. Turn off Save recordings in the History pane to stop saving dictations. Conversations and imported files are always saved. History keeps your newest 200 dictations; favorites, conversations and recordings with a summary or action items are never removed automatically.",
     },
     {
       question: "Which languages work offline?",

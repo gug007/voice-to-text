@@ -40,6 +40,9 @@ actor FluidAudioEngine: TranscriptionEngine {
         }
     }
 
+    /// Parakeet has no prompt input; `contextPrompt` is ignored.
+    nonisolated var usesContextPrompt: Bool { false }
+
     // Parakeet streams natively over long audio via its TDT decoder state,
     // so the external chunker — and `progress` — are unused.
     func transcribe(

@@ -1,25 +1,36 @@
+import AppKit
 import Foundation
 import Observation
 
-/// ElevenLabs API key storage. Mirrors `OpenAIAPIKey`: a plain UserDefaults
-/// value rather than the macOS Keychain (see `OpenAIAPIKey` for the rationale —
-/// the Keychain re-prompts on every code-signature change, which breaks dev
-/// builds). Same effective threat model on a single-user Mac.
+/// ElevenLabs API key storage. Mirrors `OpenAIAPIKey`: the login keychain,
+/// moved across once from the UserDefaults value earlier builds used, which
+/// team-less debug builds keep using (see `OpenAIAPIKey` for why, and
+/// `APIKeyVault.forProvider` for the details).
 nonisolated enum ElevenLabsAPIKey {
-    private static let defaultsKey = "cloud.elevenLabs.apiKey"
+    private static let vault = APIKeyVault.forProvider(
+        account: "elevenlabs",
+        label: "VoiceToText ElevenLabs API key",
+        legacyDefaultsKey: "cloud.elevenLabs.apiKey",
+        onKeyReadable: { Task { @MainActor in ElevenLabsAPIKeyStore.shared.refreshFromStorage() } }
+    )
 
     static func read() -> String? {
-        let value = UserDefaults.standard.string(forKey: defaultsKey)
-        guard let value, !value.isEmpty else { return nil }
-        return value
+        vault.read()
     }
 
     static func write(_ value: String) {
-        UserDefaults.standard.set(value, forKey: defaultsKey)
+        vault.write(value)
     }
 
     static func clear() {
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        vault.clear()
+    }
+
+    /// Asks the Keychain again if it couldn't be read earlier (locked, or a
+    /// prompt was dismissed). May block on a prompt, so call it off the main
+    /// thread.
+    static func retryIfUnreadable() {
+        vault.retryIfUnreadable()
     }
 
     /// Cheap client-side shape check, used to decide whether a paste is worth
@@ -37,7 +48,8 @@ nonisolated enum ElevenLabsAPIKey {
 final class ElevenLabsAPIKeyStore {
     static let shared = ElevenLabsAPIKeyStore()
 
-    /// Posted after `setKey`/`clearKey` so non-SwiftUI components
+    /// Posted after `setKey`/`clearKey`, and when a key turns up late (see
+    /// `refreshFromStorage`), so non-SwiftUI components
     /// (e.g. `ModelRegistry`) can refresh derived readiness state.
     static let didChangeNotification = Notification.Name("ElevenLabsAPIKeyStore.didChange")
 
@@ -51,6 +63,27 @@ final class ElevenLabsAPIKeyStore {
         let stored = ElevenLabsAPIKey.read()
         self.hasKey = stored != nil
         self.keySuffix = Self.suffix(of: stored)
+        // A Keychain that couldn't be read (locked, or a prompt dismissed)
+        // would otherwise mean "no key" for the whole session. Coming back to
+        // the app is when an unlock or access prompt is welcome.
+        NotificationCenter.default.addObserver(
+            forName: NSApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { _ in
+            Task.detached(priority: .utility) { ElevenLabsAPIKey.retryIfUnreadable() }
+        }
+    }
+
+    /// Catches up with a key that became readable after this store last
+    /// looked, and tells the rest of the app when that changed anything.
+    func refreshFromStorage() {
+        let stored = ElevenLabsAPIKey.read()
+        let suffix = Self.suffix(of: stored)
+        guard (stored != nil) != hasKey || suffix != keySuffix else { return }
+        hasKey = stored != nil
+        keySuffix = suffix
+        NotificationCenter.default.post(name: Self.didChangeNotification, object: nil)
     }
 
     func setKey(_ rawValue: String) {

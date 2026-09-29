@@ -12,7 +12,7 @@ const CARDS: PrivacyCard[] = [
   {
     icon: "bolt",
     title: "Transcription runs on your Mac",
-    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on Apple Silicon, so your audio never leaves the Mac. Parakeet, the default, works with the network off after its one-time download. Whisper models need a connection each time they load, because the current version checks with Hugging Face first.",
+    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on Apple Silicon, so your audio never leaves the Mac. Parakeet, the default, and the Whisper models work with the network off after their one-time download.",
   },
   {
     icon: "cloud",
@@ -47,13 +47,6 @@ const LEDGER: LedgerRow[] = [
     label: "Model download",
     note: "once per model, from Hugging Face",
     tag: "once",
-  },
-  {
-    happens: true,
-    icon: "box",
-    label: "Whisper model load",
-    note: "a Hugging Face check each time one loads, after every launch; Parakeet loads offline",
-    tag: "on load",
   },
   {
     happens: true,

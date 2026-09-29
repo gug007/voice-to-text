@@ -71,6 +71,16 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     var isCloud: Bool { backend.isCloud }
     var isRealtime: Bool { backend.isStreaming }
 
+    var resolverCandidate: ConversationModelResolver.Candidate {
+        ConversationModelResolver.Candidate(
+            id: id,
+            provider: backend.cloudProvider?.rawValue,
+            backendModelId: backendModelId,
+            isRealtime: isRealtime,
+            languageCount: ConversationModelResolver.languageCount(from: languages)
+        )
+    }
+
     /// 1...10 accuracy score derived from `benchmarks`; `nil` when unmeasured.
     var quality: Double? { ModelQualityScore.score(for: benchmarks) }
 
@@ -360,6 +370,18 @@ enum ModelCatalog {
     static func model(for id: String) -> ModelDescriptor? {
         all.first { $0.id == id }
     }
+
+    /// The dictation model on a fresh install, and the local model that
+    /// conversations fall back to when nothing else fits.
+    static let defaultModelID = "parakeet-tdt-v3"
+
+    /// Per provider, the batch model that transcribes conversations in place of
+    /// a realtime model with no batch twin (see `ConversationModelResolver`).
+    /// OpenAI's own recommendation for recorded speech. ElevenLabs has no batch
+    /// model in the catalog, so its live model falls back to the local default.
+    static let preferredConversationBatchModelIDs: [CloudProvider: String] = [
+        .openAI: "openai-gpt-transcribe",
+    ]
 }
 
 enum ModelReadiness: Equatable {
@@ -435,7 +457,7 @@ final class ModelRegistry {
 
     private init() {
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
-            ?? "parakeet-tdt-v3"
+            ?? ModelCatalog.defaultModelID
         self.conversationModelId = UserDefaults.standard.string(forKey: Keys.conversationModelId)
         refreshInstalledState()
         NotificationCenter.default.addObserver(
@@ -518,12 +540,45 @@ final class ModelRegistry {
 
     /// Model used to transcribe conversations/meetings: the explicitly chosen
     /// one when set and still present in the catalog (a stale stored id falls
-    /// back), otherwise the dictation model.
+    /// back), otherwise the dictation model — with a live model swapped for a
+    /// batch one, since a finished recording is no job for a streaming engine.
     var conversationModel: ModelDescriptor? {
         if let id = conversationModelId, let explicit = ModelCatalog.model(for: id) {
-            return explicit
+            return conversationTranscription(for: explicit).model
         }
-        return activeModel
+        return dictationModelForConversations?.model
+    }
+
+    /// What "Same as dictation" transcribes conversations with right now: the
+    /// dictation model, or the batch model standing in for a live one — and
+    /// whether that model has to be downloaded first.
+    var dictationModelForConversations: (model: ModelDescriptor, needsDownload: Bool)? {
+        activeModel.map(conversationTranscription(for:))
+    }
+
+    /// `model` itself unless it's realtime; then the batch model that
+    /// `ConversationModelResolver` picks. A cloud model counts as ready while
+    /// its readiness says the provider's key is set, a local one while it is
+    /// installed (or on its way).
+    private func conversationTranscription(for model: ModelDescriptor) -> (model: ModelDescriptor, needsDownload: Bool) {
+        guard model.isRealtime else { return (model, false) }
+        let preferred = Dictionary(uniqueKeysWithValues: ModelCatalog.preferredConversationBatchModelIDs.map {
+            ($0.key.rawValue, $0.value)
+        })
+        let resolution = ConversationModelResolver.resolve(
+            model.resolverCandidate,
+            catalog: ModelCatalog.all.map(\.resolverCandidate),
+            preferredBatchModelIDs: preferred,
+            isReady: { [readiness] id in
+                switch readiness[id] {
+                case .installed, .preparing: return true
+                case .notInstalled, .failed, nil: return false
+                }
+            },
+            defaultLocalModelID: ModelCatalog.defaultModelID
+        )
+        guard let resolved = ModelCatalog.model(for: resolution.id) else { return (model, false) }
+        return (resolved, resolution.needsDownload)
     }
 
     func setActive(_ modelId: String) {

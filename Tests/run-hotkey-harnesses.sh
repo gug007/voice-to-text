@@ -32,6 +32,26 @@ swiftc -parse-as-library \
 "$TMPDIR/recording-escape-policy-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/SpeechGate.swift \
+  Tests/SpeechGateHarness.swift \
+  -o "$TMPDIR/speech-gate-harness"
+"$TMPDIR/speech-gate-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  Tests/TranscriptionFailureHarness.swift \
+  -o "$TMPDIR/transcription-failure-harness"
+"$TMPDIR/transcription-failure-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
+  Tests/FailedRecordingHarness.swift \
+  -o "$TMPDIR/failed-recording-harness"
+"$TMPDIR/failed-recording-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
   Tests/HotkeyBindingHarness.swift \
@@ -73,12 +93,34 @@ swiftc -parse-as-library \
 "$TMPDIR/launch-context-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/UpdateEligibility.swift \
+  Tests/UpdateEligibilityHarness.swift \
+  -o "$TMPDIR/update-eligibility-harness"
+"$TMPDIR/update-eligibility-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/APIKeyVault.swift \
+  Tests/APIKeyVaultHarness.swift \
+  -o "$TMPDIR/api-key-vault-harness"
+"$TMPDIR/api-key-vault-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/OpenAIAPIKey.swift \
+  VoiceToText/VoiceToText/Support/APIKeyVault.swift \
+  VoiceToText/VoiceToText/Support/KeychainAPIKeyStore.swift \
+  VoiceToText/VoiceToText/Support/CodeSigning.swift \
+  VoiceToText/VoiceToText/Support/AppLogger.swift \
   VoiceToText/VoiceToText/Actions/DictationAction.swift \
   VoiceToText/VoiceToText/Actions/ActionRunner.swift \
   Tests/ActionRunnerHarness.swift \
   -o "$TMPDIR/action-runner-harness"
 "$TMPDIR/action-runner-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Output/TranscriptPostProcessor.swift \
+  Tests/TranscriptPostProcessorHarness.swift \
+  -o "$TMPDIR/transcript-post-processor-harness"
+"$TMPDIR/transcript-post-processor-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/TranscriptInsight.swift \
@@ -87,6 +129,14 @@ swiftc -parse-as-library \
   Tests/RecordingHistoryHarness.swift \
   -o "$TMPDIR/recording-history-harness"
 "$TMPDIR/recording-history-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
+  Tests/HistoryIndexCodecHarness.swift \
+  -o "$TMPDIR/history-index-codec-harness"
+"$TMPDIR/history-index-codec-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/TranscriptInsight.swift \
@@ -103,6 +153,12 @@ swiftc -parse-as-library \
   Tests/StreamingWAVWriterHarness.swift \
   -o "$TMPDIR/streaming-wav-writer-harness"
 "$TMPDIR/streaming-wav-writer-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Meetings/MeetingInterruption.swift \
+  Tests/MeetingInterruptionHarness.swift \
+  -o "$TMPDIR/meeting-interruption-harness"
+"$TMPDIR/meeting-interruption-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
@@ -126,6 +182,37 @@ swiftc -parse-as-library \
   Tests/OpenAIRequestBuilderHarness.swift \
   -o "$TMPDIR/openai-request-builder-harness"
 "$TMPDIR/openai-request-builder-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionEngine.swift \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Engine/RealtimeSessionFinish.swift \
+  Tests/RealtimeSessionFinishHarness.swift \
+  -o "$TMPDIR/realtime-session-finish-harness"
+"$TMPDIR/realtime-session-finish-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ConversationModelResolver.swift \
+  Tests/ConversationModelResolverHarness.swift \
+  -o "$TMPDIR/conversation-model-resolver-harness"
+"$TMPDIR/conversation-model-resolver-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/WhisperKitSupport.swift \
+  Tests/WhisperKitSupportHarness.swift \
+  -o "$TMPDIR/whisperkit-support-harness"
+"$TMPDIR/whisperkit-support-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/AppConstants.swift \
+  VoiceToText/VoiceToText/Audio/VadTuning.swift \
+  VoiceToText/VoiceToText/Audio/SpeechGate.swift \
+  VoiceToText/VoiceToText/Audio/VAD.swift \
+  VoiceToText/VoiceToText/Audio/SpeechEnergy.swift \
+  VoiceToText/VoiceToText/Meetings/MeetingChunkRecovery.swift \
+  Tests/MeetingChunkRecoveryHarness.swift \
+  -o "$TMPDIR/meeting-chunk-recovery-harness"
+"$TMPDIR/meeting-chunk-recovery-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/SpeakerRelabeler.swift \

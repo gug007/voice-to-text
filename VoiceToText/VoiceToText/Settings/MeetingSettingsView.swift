@@ -233,16 +233,17 @@ struct MeetingsPane: View {
     }
 
     /// Rows for the transcription-model dropdown: a lead "Same as dictation"
-    /// option (its resolved dictation model shown as the quiet secondary line),
-    /// then the selectable models grouped "On this Mac" / by cloud provider.
-    /// Provider suffixes are stripped for presentation under their headers.
+    /// option (the model it actually transcribes with shown as the quiet
+    /// secondary line), then the selectable models grouped "On this Mac" / by
+    /// cloud provider. Provider suffixes are stripped for presentation under
+    /// their headers.
     private var conversationModelSections: [DropdownSection<String?>] {
         var sections: [DropdownSection<String?>] = [
             DropdownSection(items: [
                 DropdownItem<String?>(
                     value: nil,
                     title: "Same as dictation",
-                    detail: registry.activeModel?.sectionedDisplayName
+                    detail: sameAsDictationDetail
                 )
             ])
         ]
@@ -267,6 +268,17 @@ struct MeetingsPane: View {
             ))
         }
         return sections
+    }
+
+    /// Names the model "Same as dictation" really uses. A live dictation model
+    /// never transcribes recordings — `ModelRegistry.conversationModel` swaps in
+    /// a batch one — so the line says which, and why it isn't the dictation
+    /// model, or that it has to download before the first conversation.
+    private var sameAsDictationDetail: String? {
+        guard let used = registry.dictationModelForConversations else { return nil }
+        let name = used.model.sectionedDisplayName
+        guard used.model.id != registry.activeModel?.id else { return name }
+        return used.needsDownload ? "\(name) (download needed)" : "\(name) (dictation model is live)"
     }
 
     private var conversationModelBinding: Binding<String?> {

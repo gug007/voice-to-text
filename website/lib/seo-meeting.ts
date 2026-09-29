@@ -65,7 +65,7 @@ export const meetingFaqEntries: FaqEntry[] = [
   {
     question: "Can I search old transcripts?",
     answer:
-      "Yes. The History pane has a Search transcripts field. It matches words in transcripts and their earlier versions, summaries, action items and owners, custom results, speaker names, model names, and dates, ignoring case and accents. History keeps your newest 200 recordings. Dictations and conversations share that limit and favorites are not exempt, so the oldest recordings are deleted, audio included, once you pass it.",
+      "Yes. The History pane has a Search transcripts field. It matches words in transcripts and their earlier versions, summaries, action items and owners, custom results, speaker names, model names, and dates, ignoring case and accents. History keeps your newest 200 dictations, deleting older ones with their audio. Conversations, favorites, and recordings with a summary or action items are never removed automatically.",
   },
 ];
 

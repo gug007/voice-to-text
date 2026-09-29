@@ -67,6 +67,35 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// same index.json back-compat reason as the two above (absent ⇒ none).
     let customInsights: [CustomInsight]?
 
+    /// Set when the recording was saved without a real transcript — its
+    /// transcription failed — so the audio would outlive the failure card;
+    /// `transcript` then holds a placeholder. Nil, and
+    /// absent from every index written before this existed, means the
+    /// transcript is the model's output.
+    let status: Status?
+
+    /// Why a recording has no transcript yet. A struct rather than a bare
+    /// enum so the row can say what went wrong in the card's own words.
+    struct Status: Codable, Hashable, Sendable {
+        /// One kind today. Kept as a field so a later kind decodes as a row
+        /// this build passes through rather than one it misreads.
+        enum Kind: String, Codable, Sendable {
+            /// The transcription itself failed — network, API key, engine.
+            case failed
+        }
+
+        let kind: Kind
+        /// The failure as the card put it ("OpenAI didn't accept your API key.").
+        let message: String
+    }
+
+    /// When the recording last lost its protection from the History cap —
+    /// unstarred, its speaker names cleared, its last insight removed — so the
+    /// cap ranks it from then rather than from `createdAt` (see
+    /// `RecordingHistoryPruner.retainedSince`). Nil when it never lost any;
+    /// optional, like the fields above, so older indexes decode (absent ⇒ nil).
+    let unprotectedAt: Date?
+
     /// How many custom results one recording may hold at once. The cap exists
     /// for the tab bar, not for storage: four or five model-named tabs beside
     /// Transcript, Summary and Action Items stop being scannable and start
@@ -121,6 +150,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// True when this recording has more than one transcript to show.
     var hasAlternateTranscripts: Bool { !(alternates ?? []).isEmpty }
 
+    /// True while the recording is waiting for a transcript (see `status`).
+    var needsTranscript: Bool { status != nil }
+
     /// Every transcript for this recording, newest (active) first. The active one
     /// reuses the entry's own id so the UI can target it for removal; alternates
     /// carry their own ids.
@@ -166,7 +198,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         speakerNames: [String: String]? = nil,
         summary: TranscriptSummary? = nil,
         actionItems: TranscriptActionItems? = nil,
-        customInsights: [CustomInsight]? = nil
+        customInsights: [CustomInsight]? = nil,
+        status: Status? = nil,
+        unprotectedAt: Date? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -183,6 +217,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.summary = summary
         self.actionItems = actionItems
         self.customInsights = customInsights
+        self.status = status
+        self.unprotectedAt = unprotectedAt
     }
 
     // MARK: - Copies
@@ -207,7 +243,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         isFavorite: Bool?,
         summary: TranscriptSummary?,
         actionItems: TranscriptActionItems?,
-        customInsights: [CustomInsight]?
+        customInsights: [CustomInsight]?,
+        status: Status?,
+        unprotectedAt: Date?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -224,7 +262,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             speakerNames: speakerNames,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -250,7 +290,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -266,7 +308,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -281,7 +325,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -297,7 +343,9 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -316,7 +364,54 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
+        )
+    }
+
+    /// Returns a copy whose placeholder is replaced by a real transcript and
+    /// whose status is cleared — the take has been transcribed at last. The
+    /// placeholder is not kept as an alternate: it was never a transcript, and
+    /// a "version" reading "Audio saved without a transcript" beside the real
+    /// one would only be clutter. Nil when the entry isn't waiting for one.
+    func resolvingPlaceholder(
+        transcript: String,
+        modelId: String?,
+        modelName: String?
+    ) -> RecordingHistoryEntry? {
+        guard status != nil else { return nil }
+        return replacing(
+            transcript: transcript,
+            modelId: modelId ?? self.modelId,
+            modelName: modelName ?? self.modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: nil,
+            unprotectedAt: unprotectedAt
+        )
+    }
+
+    /// Returns a copy reporting a different failure (a retry that failed
+    /// differently); nil when the entry isn't waiting for a transcript.
+    func updatingStatus(_ status: Status) -> RecordingHistoryEntry? {
+        guard self.status != nil else { return nil }
+        return replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 
@@ -331,7 +426,29 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             isFavorite: isFavorite,
             summary: summary,
             actionItems: actionItems,
-            customInsights: customInsights
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
+        )
+    }
+
+    /// Returns a copy recording when it lost its protection from the cap;
+    /// everything else is kept. Set only through
+    /// `RecordingHistoryPruner.stampingLostProtection`, which decides whether
+    /// an edit lost it.
+    func updatingUnprotectedAt(_ unprotectedAt: Date?) -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt
         )
     }
 }
@@ -392,28 +509,132 @@ nonisolated enum TranscriptEditor {
 /// Pure, side-effect-free retention policy for the history list. Kept separate
 /// from the store so it can be unit-tested without touching the filesystem or
 /// the main actor (see `Tests/RecordingHistoryHarness.swift`).
+///
+/// The cap is there to stop routine dictations piling up, not to throw away
+/// recordings the user has shown they care about: pruning deletes the audio
+/// and everything attached to it, with no undo. So a protected entry (see
+/// `isProtected`) is never pruned and doesn't count toward the cap; only the
+/// unprotected entries are ranked, oldest out first.
+///
+/// Protected entries are kept even when they alone outnumber the cap. Every
+/// way into that state is deliberate (a star, a conversation, a paid insight,
+/// a named speaker) and the user can delete those rows themselves; deleting
+/// one behind their back is the failure this policy exists to prevent. The
+/// price is that disk use is bounded only for plain dictations, which is why
+/// the History pane shows how much space the audio takes.
 nonisolated enum RecordingHistoryPruner {
     struct Outcome: Equatable {
-        /// The newest entries to retain, ordered newest-first.
+        /// Every entry to retain, ordered newest-first.
         let kept: [RecordingHistoryEntry]
-        /// The overflow entries to delete (audio files included).
+        /// The unprotected overflow to delete (audio files included).
         let removed: [RecordingHistoryEntry]
     }
 
-    /// Retains the newest `maxCount` entries by `createdAt`, returning the rest
-    /// as `removed`. Input order is irrelevant — entries are sorted newest-first
-    /// here so the result is deterministic. `maxCount <= 0` removes everything.
-    static func prune(_ entries: [RecordingHistoryEntry], maxCount: Int) -> Outcome {
-        let sorted = entries.sorted { lhs, rhs in
-            if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
-            // Stable tie-break for equal timestamps so the policy is total.
-            return lhs.id.uuidString > rhs.id.uuidString
+    /// Whether the cap must leave `entry` alone: a favorite (the user's own
+    /// "keep this"), a conversation (often an hour of audio nobody can record
+    /// again), or a recording with insights (paid for from the user's OpenAI
+    /// budget) or speaker names (typed in by hand).
+    ///
+    /// Checked afresh on every prune, so a recording that loses its star or its
+    /// last insight is an ordinary dictation again — but ranked from the moment
+    /// it lost protection (see `retainedSince`), not from when it was made.
+    /// Otherwise unstarring a year-old dictation would delete it at the next
+    /// insert, and a stray click would be a deletion.
+    static func isProtected(_ entry: RecordingHistoryEntry) -> Bool {
+        entry.isFavorited
+            || entry.source == .meeting
+            || entry.hasInsights
+            || !(entry.speakerNames ?? [:]).isEmpty
+    }
+
+    /// Where an unprotected entry stands in the cap: when it was recorded, or
+    /// when it last lost protection if that's later. An unstarred dictation
+    /// queues behind every newer one as if just recorded, and rolls off only
+    /// after `maxUnprotected` more.
+    static func retainedSince(_ entry: RecordingHistoryEntry) -> Date {
+        max(entry.createdAt, entry.unprotectedAt ?? entry.createdAt)
+    }
+
+    /// `updated` as it should be stored after an edit of `original`: stamped
+    /// with `now` as the moment it lost protection when `original` had it and
+    /// `updated` doesn't, otherwise unchanged. The store runs every edit that
+    /// can change protection through here.
+    static func stampingLostProtection(
+        from original: RecordingHistoryEntry,
+        to updated: RecordingHistoryEntry,
+        at now: Date
+    ) -> RecordingHistoryEntry {
+        guard isProtected(original), !isProtected(updated) else { return updated }
+        return updated.updatingUnprotectedAt(now)
+    }
+
+    /// Retains every protected entry plus the `maxUnprotected` unprotected ones
+    /// ranked newest by `retainedSince`, returning the rest as `removed`.
+    /// `pinned` names entries a job is working on right now — an insight or a
+    /// regeneration whose paid result would otherwise land on a deleted row —
+    /// and those are kept even past the cap, which the next prune after the
+    /// job ends enforces again. They still take their place in the ranking, so
+    /// pinning one never pushes another out early. Input order is irrelevant —
+    /// both lists come back newest-first by `createdAt`, the order History
+    /// shows. `maxUnprotected <= 0` removes every unprotected, unpinned entry.
+    static func prune(
+        _ entries: [RecordingHistoryEntry],
+        maxUnprotected: Int,
+        pinned: Set<UUID>
+    ) -> Outcome {
+        var kept: [RecordingHistoryEntry] = []
+        var removed: [RecordingHistoryEntry] = []
+        var ranked = 0
+        for entry in byRetention(entries) {
+            if isProtected(entry) {
+                kept.append(entry)
+                continue
+            }
+            ranked += 1
+            if ranked <= maxUnprotected || pinned.contains(entry.id) {
+                kept.append(entry)
+            } else {
+                removed.append(entry)
+            }
         }
-        guard maxCount > 0 else { return Outcome(kept: [], removed: sorted) }
-        guard sorted.count > maxCount else { return Outcome(kept: sorted, removed: []) }
-        return Outcome(
-            kept: Array(sorted.prefix(maxCount)),
-            removed: Array(sorted.suffix(from: maxCount))
-        )
+        return Outcome(kept: newestFirst(kept), removed: newestFirst(removed))
+    }
+
+    /// Undo of a deletion: puts `restored` back into `current` (the visible
+    /// list, which may have gained recordings during the undo window),
+    /// newest-first, and removes nothing — even if that leaves more unprotected
+    /// entries than the cap.
+    ///
+    /// Trimming here could only take one of three things: a recording made
+    /// since the deletion began (after Clear All and a new dictation, Undo used
+    /// to delete the new one), the very entry the user just asked to keep, or an
+    /// unrelated old dictation whose audio would vanish behind an Undo. The
+    /// overflow is at most what was recorded during those few seconds, and the
+    /// next insert or launch prunes it by the usual rule, which lands exactly
+    /// where the cap would have without the deletion.
+    static func restoring(
+        _ restored: [RecordingHistoryEntry],
+        into current: [RecordingHistoryEntry]
+    ) -> [RecordingHistoryEntry] {
+        newestFirst(current + restored)
+    }
+
+    /// Best-kept first: latest `retainedSince`, then the display order.
+    private static func byRetention(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
+        entries.sorted { lhs, rhs in
+            let left = retainedSince(lhs), right = retainedSince(rhs)
+            if left != right { return left > right }
+            return isNewer(lhs, than: rhs)
+        }
+    }
+
+    private static func newestFirst(_ entries: [RecordingHistoryEntry]) -> [RecordingHistoryEntry] {
+        entries.sorted { isNewer($0, than: $1) }
+    }
+
+    private static func isNewer(_ lhs: RecordingHistoryEntry, than rhs: RecordingHistoryEntry) -> Bool {
+        if lhs.createdAt != rhs.createdAt { return lhs.createdAt > rhs.createdAt }
+        // Stable tie-break for equal timestamps so the policy is total.
+        return lhs.id.uuidString > rhs.id.uuidString
     }
 }

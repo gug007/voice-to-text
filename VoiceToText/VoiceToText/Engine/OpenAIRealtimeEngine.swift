@@ -32,6 +32,12 @@ import OSLog
 ///
 /// Also implements buffered `transcribe(samples:)` as a one-shot session for the
 /// retry path and non-streaming callers (always a manual commit at finish).
+///
+/// A live session that loses text on the way — a dropped socket, a failed
+/// send, a server error, transcripts still owed when the finish window runs
+/// out — never hands back what it managed to collect: `finishStream` re-sends
+/// the whole take through the buffered path, and throws if that fails too, so
+/// the caller keeps the audio for Retry instead of pasting half a sentence.
 actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     let modelId: String
     private let session: URLSession
@@ -47,7 +53,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     /// Set when the fallback ladder gave up on VAD *mid-session*. Distinct from
     /// `usesManualCommit`: a model that is manual-commit by nature has its whole
-    /// take flushed by a caller that knows to wait (`commitOnFinish`), whereas a
+    /// take flushed by a caller that knows to wait (`isBufferedSession`), whereas a
     /// downgraded session streamed live with nothing auto-committing, so the
     /// single commit at finish covers the entire recording. That needs the
     /// buffered drain, not the trailing-utterance grace window.
@@ -86,39 +92,47 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     /// `feedAudio` on the audio thread (order-preserving `yield`).
     private nonisolated(unsafe) var audioContinuation: AsyncStream<[Float]>.Continuation?
 
-    /// Finalized utterance transcripts, in completion order.
-    private var committed: [String] = []
-    /// Text of the in-progress (not yet committed) utterance, accumulated from
-    /// `.delta` events. Server VAD emits utterances sequentially, so a single
-    /// partial string suffices (reset on each `.completed`).
-    private var currentPartial: String = ""
+    /// Every item's transcript (or its partial), in the order the items were
+    /// committed — not the order their transcripts happened to complete.
+    private var transcripts = RealtimeTranscriptOrder()
     private var onLiveText: (@Sendable (String) -> Void)?
-    private var lastError: String?
 
-    private var finishing = false
-    private var finishSignaled = false
-
-    /// Committed audio buffers (auto-VAD or manual) whose transcripts have
-    /// not arrived yet. One-shot buffered sessions feed audio faster than
-    /// realtime, so at finish the server may still owe every transcript even
-    /// though `currentPartial` is empty — the buffered path drains this count
-    /// instead of trusting the live path's "nothing pending" shortcut.
-    private var pendingTranscripts = 0
+    /// What this session still owes — committed buffers whose transcripts
+    /// haven't arrived, speech not yet committed, the finishing commit's reply
+    /// — and whether any of it was lost.
+    private var finish = OpenAIRealtimeFinishTracker()
     /// Set by the buffered `transcribe` so `finishStream` always commits the
-    /// trailing buffer and waits for `pendingTranscripts`, rather than
-    /// returning immediately (and empty) when no partial has shown up yet.
-    private var commitOnFinish = false
-    /// Set when the receive loop exits — no more events can arrive, so any
-    /// finish wait should stop instead of running out its cap.
+    /// trailing buffer and waits for every transcript, rather than returning
+    /// immediately (and empty) when no partial has shown up yet: one-shot
+    /// sessions feed audio faster than realtime, so the server may still owe
+    /// all of them.
+    private var isBufferedSession = false
+    /// Every sample of a live take, in the order it was sent, so a degraded
+    /// session can re-send the whole take. The controller holds the same audio
+    /// but `finishStream` has no way to ask for it. Buffered sessions already
+    /// have their samples in hand and don't keep a second copy.
+    private var takeAudio: [Float] = []
+    private var retainsTakeAudio = false
+    private var sessionSampleCount = 0
+    /// Samples sent since the last `input_audio_buffer.committed` — what the
+    /// finish may still be owed, which sizes its wait.
+    private var samplesSinceCommit = 0
+    private var sessionContextPrompt: String?
+    /// Set on the buffered session that re-sends a degraded live take: the
+    /// whole re-send, connection included, must end by then.
+    private var sessionDeadline: ContinuousClock.Instant?
+    /// Set when the receive loop exits — no more events can arrive, so the
+    /// config wait should stop instead of running out its cap.
     private var streamClosed = false
 
-    /// Bumped by every `startStream`. A torn-down session's receive loop can
-    /// still be parked in `task.receive()`; it resumes on the actor only at the
-    /// next suspension point, which — because `startStream` tears down, resets,
-    /// and *then* awaits the socket handshake — falls inside the next session's
-    /// window. Without this fence the dead session's `streamClosed = true` lands
-    /// on a healthy socket and silently disables both the config gate and the
-    /// finish waits.
+    /// Bumped by every `startStream` and `cancelStream`. A torn-down session's
+    /// receive loop can still be parked in `task.receive()`; it resumes on the
+    /// actor only at the next suspension point, which — because `startStream`
+    /// tears down, resets, and *then* awaits the socket handshake — falls
+    /// inside the next session's window. Without this fence the dead session's
+    /// `streamClosed = true` lands on a healthy socket and silently disables
+    /// both the config gate and the finish waits. It also stops a finish wait,
+    /// or the re-send behind it, once the caller has cancelled.
     private var sessionGeneration = 0
 
     init(modelId: String, inputSampleRate: Double = AudioConfig.targetSampleRate) {
@@ -159,6 +173,17 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         contextPrompt: String?,
         onLiveText: @escaping @Sendable (String) -> Void
     ) async throws {
+        try await openSession(contextPrompt: contextPrompt, onLiveText: onLiveText, deadline: nil)
+    }
+
+    /// `deadline` bounds the automatic re-send of a degraded take: once it
+    /// passes, the socket is cut (see `enforceDeadline`), which ends a stalled
+    /// handshake, a stalled send and the finish wait alike.
+    private func openSession(
+        contextPrompt: String?,
+        onLiveText: @escaping @Sendable (String) -> Void,
+        deadline: ContinuousClock.Instant?
+    ) async throws {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
@@ -167,19 +192,22 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         // old socket / receive + sender tasks.
         teardown()
 
-        committed = []
-        currentPartial = ""
-        lastError = nil
-        finishing = false
-        finishSignaled = false
-        pendingTranscripts = 0
-        commitOnFinish = false
+        transcripts = RealtimeTranscriptOrder()
+        finish = OpenAIRealtimeFinishTracker()
+        isBufferedSession = false
+        takeAudio = []
+        retainsTakeAudio = true
+        sessionSampleCount = 0
+        samplesSinceCommit = 0
+        sessionContextPrompt = contextPrompt
+        sessionDeadline = deadline
         streamClosed = false
         converter = nil
         self.onLiveText = onLiveText
         // Fence the previous session's receive loop out of everything reset here.
         sessionGeneration &+= 1
         let generation = sessionGeneration
+        if let deadline { enforceDeadline(deadline, generation: generation) }
 
         // Reset the config ladder — a previous session may have downgraded it,
         // and the next one deserves a fresh attempt at the best config.
@@ -205,6 +233,9 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
         // Configure the transcription session before any audio is sent.
         await sendSessionConfig()
+        // The handshake is a suspension point: a cancel, or a newer session,
+        // may have torn this one down meanwhile, and must not get it back.
+        guard generation == sessionGeneration else { throw Self.supersededError }
 
         let (audioStream, continuation) = AsyncStream<[Float]>.makeStream(
             bufferingPolicy: .unbounded
@@ -227,62 +258,98 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     }
 
     func finishStream() async throws -> String {
-        defer { teardown() }
+        let session: RealtimeFinishPolicy.Session = isBufferedSession ? .buffered : .live
+        let generation = sessionGeneration
+        // Throws only when a newer session or a cancel replaced this one
+        // mid-wait — the socket is no longer this call's to tear down.
+        let settled = try await settleSession()
+        guard generation == sessionGeneration else { throw Self.supersededError }
+        let take = takeAudio
+        let contextPrompt = sessionContextPrompt
+        let transport = finish.transport
+        teardown()
+
+        switch RealtimeFinishPolicy.action(
+            for: settled.degradation,
+            session: session,
+            hasRetainedTake: !take.isEmpty
+        ) {
+        case .deliver:
+            return settled.text
+        case .rerunBuffered:
+            let seconds = Double(take.count) / inputFormat.sampleRate
+            AppLog.dictation.warning("OpenAI live session incomplete (\(settled.degradation?.summary ?? "", privacy: .public)); re-sending the \(seconds, format: .fixed(precision: 1))s take")
+            let deadline = ContinuousClock.now + .milliseconds(RealtimeFinishPolicy.resendBudgetMs)
+            return try await transcribeBuffered(samples: take, contextPrompt: contextPrompt, deadline: deadline)
+        case .fail(let degradation):
+            AppLog.dictation.error("OpenAI realtime session incomplete: \(degradation.summary, privacy: .public)")
+            throw RealtimeFinishPolicy.failureError(provider: "OpenAI", degradation, transport: transport)
+        }
+    }
+
+    /// Drains the audio, commits whatever is still uncommitted, and waits for
+    /// every transcript the server owes. Returns what arrived and why it can't
+    /// be trusted, if it can't.
+    private func settleSession() async throws -> (text: String, degradation: RealtimeDegradation?) {
+        let generation = sessionGeneration
 
         // Stop accepting audio and drain everything captured before flushing.
         audioContinuation?.finish()
         await senderTask?.value
+        finish.beginFinish()
 
-        if commitOnFinish || downgradedToManualCommit {
-            // One-shot buffered session (or a live one the fallback ladder
-            // dropped to no-VAD): the whole take is still uncommitted, so every
-            // transcript may be in flight even with no partial in sight — and
-            // there may be several, which the `finishSignaled` wait below would
-            // truncate to the first. Commit the trailing buffer and wait for the
-            // pending count to drain — after a settle window that lets the
-            // commit's own `committed` event arrive — bailing if the socket dies.
-            finishing = true
-            finishSignaled = false
+        // A buffered session — or a live one the fallback ladder dropped to
+        // no-VAD — has the whole take uncommitted, so every transcript may be
+        // in flight even with no partial in sight, and there may be several.
+        // A live server-VAD session has been committing as the user spoke:
+        // only speech the VAD is still inside (or a partial on screen) needs
+        // the commit, and a committed-but-untranscribed tail is waited for
+        // below either way.
+        let wholeTakeOwed = isBufferedSession || downgradedToManualCommit
+        if wholeTakeOwed || finish.needsFinishCommit(manualCommit: usesManualCommit, hasPartial: transcripts.hasPartial) {
+            finish.finishCommitSent()
             await sendCommit()
-            var waitedMs = 0
-            while waitedMs < Self.bulkFinishCapMs, !streamClosed,
-                  waitedMs < Self.bulkCommitSettleMs || pendingTranscripts > 0 {
-                try? await Task.sleep(for: .milliseconds(Self.finishPollMs))
-                waitedMs += Self.finishPollMs
-            }
-        } else if usesManualCommit || !currentPartial.isEmpty {
-            // Live session. Two reasons to commit-and-wait here:
-            //  - Server VAD (`!currentPartial.isEmpty`) has been auto-committing
-            //    utterances as the user spoke, so at most the trailing one is
-            //    pending; if nothing is pending everything is already committed.
-            //  - Manual commit (`usesManualCommit`) never auto-commits, so the
-            //    whole utterance's `completed` is still owed even when no partial
-            //    has surfaced yet — always flush, regardless of `currentPartial`.
-            // Either way, wait on `finishSignaled` up to the grace cap for the
-            // final transcript. Silence that gets its commit rejected produces no
-            // `completed`, but the cap (and a socket close, which signals finish)
-            // still terminate the wait.
-            finishing = true
-            finishSignaled = false
-            await sendCommit()
-            var waitedMs = 0
-            while !finishSignaled, waitedMs < Self.finishGraceMs {
-                try? await Task.sleep(for: .milliseconds(Self.finishPollMs))
-                waitedMs += Self.finishPollMs
-            }
         }
+
+        // The wait scales with what is still owed: the whole take for a
+        // buffered session, the audio since the last commit for a live one
+        // (the whole take again on a manual-commit model, which transcribes
+        // only now). The settle window gives a bulk commit's own `committed`
+        // time to land before an empty pending count is believed.
+        var capMs = isBufferedSession
+            ? RealtimeFinishPolicy.bufferedFinishCapMs(sampleCount: sessionSampleCount, sampleRate: inputFormat.sampleRate)
+            : RealtimeFinishPolicy.liveFinishCapMs(owedSampleCount: samplesSinceCommit, sampleRate: inputFormat.sampleRate)
+        if let sessionDeadline {
+            capMs = min(capMs, RealtimeFinishPolicy.milliseconds(until: sessionDeadline))
+        }
+        let settleMs = wholeTakeOwed ? Self.bulkCommitSettleMs : 0
+        var waitedMs = 0
+        func isDone() -> Bool {
+            finish.degradation != nil || (finish.isSettled && waitedMs >= settleMs)
+        }
+        while true {
+            guard generation == sessionGeneration else { throw Self.supersededError }
+            if finish.needsFollowUpCommit {
+                finish.finishCommitSent()
+                await sendCommit()
+                continue
+            }
+            if isDone() || waitedMs >= capMs { break }
+            try? await Task.sleep(for: .milliseconds(Self.finishPollMs))
+            waitedMs += Self.finishPollMs
+        }
+        if !isDone() { finish.finishWindowExpired() }
 
         let text = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if text.isEmpty, let lastError {
-            throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(lastError)")
-        }
-        return text
+        return (text, finish.degradation)
     }
 
+    /// Also stops a finish wait, or the re-send behind it, that is still
+    /// running for this engine: the generation bump makes it throw.
     func cancelStream() async {
+        sessionGeneration &+= 1
         teardown()
-        committed = []
-        currentPartial = ""
+        transcripts = RealtimeTranscriptOrder()
     }
 
     // MARK: - Buffered fallback (retry / non-streaming callers)
@@ -292,8 +359,18 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         contextPrompt: String?,
         progress: TranscribeProgress?
     ) async throws -> String {
-        try await startStream(contextPrompt: contextPrompt) { _ in }
-        commitOnFinish = true
+        try await transcribeBuffered(samples: samples, contextPrompt: contextPrompt, deadline: nil)
+    }
+
+    private func transcribeBuffered(
+        samples: [Float],
+        contextPrompt: String?,
+        deadline: ContinuousClock.Instant?
+    ) async throws -> String {
+        try await openSession(contextPrompt: contextPrompt, onLiveText: { _ in }, deadline: deadline)
+        // Before any audio is fed: the sender only runs once chunks arrive.
+        isBufferedSession = true
+        retainsTakeAudio = false
         // ~200 ms per chunk at the input rate.
         let chunkSize = max(1, Int(inputFormat.sampleRate) / 5)
         var index = 0
@@ -308,7 +385,11 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     // MARK: - Send
 
     private func sendSessionConfig() async {
-        guard let task else { return }
+        guard let task else {
+            finish.sendFailed("no open connection")
+            return
+        }
+        let generation = sessionGeneration
 
         var transcription: [String: Any] = ["model": modelId]
         // Context fields only on the first rung: they are the most likely reason
@@ -367,7 +448,12 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             ],
         ]
         guard let json = Self.encode(payload) else { return }
-        try? await task.send(.string(json))
+        do {
+            try await task.send(.string(json))
+        } catch {
+            guard generation == sessionGeneration else { return }
+            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+        }
     }
 
     /// Blocks the sender task until the server confirms the session config, the
@@ -389,9 +475,9 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
 
     /// The server rejected a `session.update` that was never acknowledged, so the
     /// session as configured transcribes nothing. Step one rung down the ladder
-    /// and resend; after the last rung, leave `lastError` holding the server's
-    /// own message so `finishStream` surfaces it instead of an empty transcript.
-    private func downgradeSessionConfig() {
+    /// and resend; after the last rung, record the server's own message so the
+    /// finish fails with it instead of an empty transcript.
+    private func downgradeSessionConfig(rejection message: String) {
         let next: SessionConfigStage?
         switch configStage {
         case .full: next = .minimal
@@ -400,6 +486,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         }
         guard let next else {
             AppLog.dictation.error("OpenAI realtime session config rejected at every fallback; giving up")
+            finish.serverError(message)
             return
         }
         configStage = next
@@ -418,7 +505,16 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     }
 
     private func sendChunkOverSocket(_ samples: [Float]) async {
-        guard let task, let base64 = resampleToPCM16Base64(samples) else { return }
+        guard !samples.isEmpty else { return }
+        // Kept before the send, so a take whose socket died is still whole.
+        if retainsTakeAudio { takeAudio.append(contentsOf: samples) }
+        sessionSampleCount += samples.count
+        samplesSinceCommit += samples.count
+        guard let task else { return }
+        guard let base64 = resampleToPCM16Base64(samples) else {
+            finish.sendFailed("audio couldn't be resampled to 24 kHz")
+            return
+        }
         let payload: [String: Any] = [
             "type": "input_audio_buffer.append",
             "audio": base64,
@@ -427,14 +523,21 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            lastError = error.localizedDescription
+            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
         }
     }
 
     private func sendCommit() async {
-        guard let task else { return }
+        guard let task else {
+            finish.sendFailed("no open connection")
+            return
+        }
         guard let json = Self.encode(["type": "input_audio_buffer.commit"]) else { return }
-        try? await task.send(.string(json))
+        do {
+            try await task.send(.string(json))
+        } catch {
+            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+        }
     }
 
     // MARK: - Receive
@@ -451,6 +554,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     /// inside the *next* session (see `sessionGeneration`).
     private func receiveLoop(generation: Int) async {
         guard let task, generation == sessionGeneration else { return }
+        var failure: Error?
         while !Task.isCancelled {
             do {
                 let message = try await task.receive()
@@ -463,12 +567,19 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
                 }
             } catch {
                 AppLog.dictation.error("OpenAI realtime receive loop ended: \(error.localizedDescription)")
+                failure = error
                 break
             }
         }
         guard generation == sessionGeneration else { return }
         streamClosed = true
-        signalFinishIfNeeded()
+        // A handshake the server refused (a bad key, a rate limit) surfaces
+        // here as a failed receive; its HTTP status says which.
+        if let status = (task.response as? HTTPURLResponse)?.statusCode,
+           let refusal = RealtimeRefusal.handshake(status: status) {
+            finish.refused(refusal, "HTTP \(status)")
+        }
+        finish.connectionClosed(transport: (failure as? URLError)?.code)
     }
 
     private func handleMessage(_ text: String) {
@@ -481,46 +592,61 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
              "transcription_session.created", "transcription_session.updated":
             // Only `.updated` confirms our config landed — `.created` is the
             // server's greeting and arrives before the update is even read. Any
-            // error seen before this point was a config rejection we recovered
-            // from, so it must not outlive the retry as a stale `lastError`.
+            // error seen before this point was a config rejection the ladder
+            // answered, so none of them counts against the take.
             if type.hasSuffix(".updated") {
                 sessionConfigured = true
-                lastError = nil
             }
             AppLog.dictation.info("OpenAI realtime session ready (\(type))")
+        case "input_audio_buffer.speech_started":
+            finish.speechStarted()
         case "conversation.item.input_audio_transcription.delta":
             if let delta = obj["delta"] as? String {
-                currentPartial += delta
+                transcripts.delta(itemID: Self.itemID(in: obj), delta)
                 emitLiveText()
             }
         case "input_audio_buffer.committed":
-            pendingTranscripts += 1
+            transcripts.committed(
+                itemID: Self.itemID(in: obj),
+                previousItemID: obj["previous_item_id"] as? String
+            )
+            samplesSinceCommit = 0
+            finish.bufferCommitted()
         case "conversation.item.input_audio_transcription.completed":
-            if let transcript = obj["transcript"] as? String, !transcript.isEmpty {
-                committed.append(transcript)
-            }
-            currentPartial = ""
-            pendingTranscripts = max(0, pendingTranscripts - 1)
+            transcripts.completed(
+                itemID: Self.itemID(in: obj, fallback: UUID().uuidString),
+                transcript: obj["transcript"] as? String ?? ""
+            )
+            finish.transcriptCompleted()
             emitLiveText()
-            signalFinishIfNeeded()
         case "error", "conversation.item.input_audio_transcription.failed":
-            let err = (obj["error"] as? [String: Any])?["message"] as? String ?? type
-            lastError = err
-            if type == "conversation.item.input_audio_transcription.failed" {
-                pendingTranscripts = max(0, pendingTranscripts - 1)
-            }
+            let error = obj["error"] as? [String: Any]
+            let err = error?["message"] as? String ?? type
+            let code = error?["code"] as? String
             // Verbatim: for a rejected `session.update` this is the only
             // diagnostic there is — the server never says which field it disliked
             // anywhere else.
             AppLog.dictation.error("OpenAI realtime error: \(err)")
-            // An error before the session was ever confirmed is a rejected config,
-            // not a failed utterance: retry on a reduced one instead of streaming
-            // into a session that will never transcribe.
-            if type == "error", !sessionConfigured {
-                downgradeSessionConfig()
+            if type == "conversation.item.input_audio_transcription.failed" {
+                transcripts.failed(itemID: Self.itemID(in: obj, fallback: UUID().uuidString))
+                finish.transcriptFailed(err)
+            } else if code == "input_audio_buffer_commit_empty" {
+                // The finishing commit found nothing left — an answer, not a loss.
+                finish.commitFoundEmptyBuffer()
+            } else if let refusal = RealtimeRefusal.openAI(type: error?["type"] as? String, code: code) {
+                // Not a config problem the ladder could fix, and not one a
+                // re-send could either.
+                finish.refused(refusal, err)
+            } else if !sessionConfigured {
+                // An error before the session was ever confirmed is a rejected
+                // config, not a failed utterance: retry on a reduced one instead
+                // of streaming into a session that will never transcribe.
+                downgradeSessionConfig(rejection: err)
+            } else {
+                finish.serverError(err)
             }
         default:
-            break // speech_started/stopped, item.created, etc.
+            break // speech_stopped, item.created, etc.
         }
     }
 
@@ -529,15 +655,31 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     }
 
     private var liveText: String {
-        var parts = committed
-        if !currentPartial.isEmpty { parts.append(currentPartial) }
-        return parts.joined(separator: " ")
+        transcripts.text
     }
 
-    private func signalFinishIfNeeded() {
-        guard finishing else { return }
-        finishSignaled = true
+    private func enforceDeadline(_ deadline: ContinuousClock.Instant, generation: Int) {
+        Task { [weak self] in
+            try? await Task.sleep(until: deadline, clock: .continuous)
+            await self?.deadlinePassed(generation: generation)
+        }
     }
+
+    /// Marks the session timed out and cuts the socket, so every wait on it —
+    /// the handshake, the sender's drain, the finish — ends now.
+    private func deadlinePassed(generation: Int) {
+        guard generation == sessionGeneration, task != nil else { return }
+        AppLog.dictation.warning("OpenAI re-send ran out of time; giving up on it")
+        finish.finishWindowExpired()
+        task?.cancel(with: .goingAway, reason: nil)
+    }
+
+    /// The event's `item_id`. Every transcription event carries one; the
+    /// fallback only keeps a malformed event from landing in another item.
+    private nonisolated static func itemID(in event: [String: Any], fallback: String = "unidentified") -> String {
+        event["item_id"] as? String ?? fallback
+    }
+
 
     private func teardown() {
         audioContinuation?.finish()
@@ -549,8 +691,8 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         task?.cancel(with: .normalClosure, reason: nil)
         task = nil
         onLiveText = nil
-        finishing = false
-        commitOnFinish = false
+        takeAudio = []
+        retainsTakeAudio = false
     }
 
     // MARK: - Resampling + encoding
@@ -595,21 +737,22 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         return Data(bytes: int16[0], count: byteCount).base64EncodedString()
     }
 
-    private static func encode(_ payload: [String: Any]) -> String? {
+    private nonisolated static func encode(_ payload: [String: Any]) -> String? {
         guard let data = try? JSONSerialization.data(withJSONObject: payload) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    private static let finishGraceMs = 2_000
-    private static let finishPollMs = 50
+    private nonisolated static let finishPollMs = 50
     /// Cap on holding audio while waiting for `session.updated`, sized to cover
     /// the whole fallback ladder (each rung is one round trip) without letting a
     /// silent server turn into a visible recording stall.
-    private static let sessionConfigWaitMs = 2_000
-    private static let sessionConfigPollMs = 25
+    private nonisolated static let sessionConfigWaitMs = 2_000
+    private nonisolated static let sessionConfigPollMs = 25
     /// Buffered sessions: minimum wait so the manual commit's `committed`
-    /// event can arrive before `pendingTranscripts == 0` is trusted.
-    private static let bulkCommitSettleMs = 1_000
-    /// Buffered sessions: hard cap on waiting for in-flight transcripts.
-    private static let bulkFinishCapMs = 15_000
+    /// event can arrive before an empty pending count is trusted.
+    private nonisolated static let bulkCommitSettleMs = 1_000
+
+    private nonisolated static var supersededError: TranscriptionEngineError {
+        .transcriptionFailed("The OpenAI realtime session was cancelled or replaced before it finished.")
+    }
 }

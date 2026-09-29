@@ -28,6 +28,7 @@ struct StreamingWAVWriterHarness {
         try writesValidHeaderAndData()
         try repairsZeroedHeader()
         try repairRejectsHeaderOnlyFile()
+        try writeFailureStopsAppendingAndKeepsAlignedAudio()
         print("Streaming WAV writer harness passed")
     }
 
@@ -77,5 +78,40 @@ struct StreamingWAVWriterHarness {
         let writer = try StreamingWAVWriter(url: url, sampleRate: 16_000)
         _ = writer.finalize()  // header only, no samples
         try expect(!StreamingWAVWriter.repairHeaderInPlace(at: url), "header-only file isn't a recoverable recording")
+    }
+
+    /// Caps this process's file size (RLIMIT_FSIZE) so a write fails part-way
+    /// through a buffer — the same shape as a disk filling up mid-conversation,
+    /// without needing a full volume.
+    private static func writeFailureStopsAppendingAndKeepsAlignedAudio() throws {
+        let url = tempURL()
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let writer = try StreamingWAVWriter(url: url, sampleRate: 16_000)
+        let count = 16_000  // 1 second fits under the cap
+        writer.append([Float](repeating: 0.25, count: count))
+        try expect(!writer.didFail, "writes under the cap succeed")
+
+        // Past the cap the kernel signals SIGXFSZ (which would kill us) and
+        // then fails the write with EFBIG; ignore the signal to get the error.
+        signal(SIGXFSZ, SIG_IGN)
+        var original = rlimit()
+        getrlimit(RLIMIT_FSIZE, &original)
+        var capped = original
+        capped.rlim_cur = rlim_t(44 + count * 2 + 1_001)  // odd: forces a partial, misaligned write
+        setrlimit(RLIMIT_FSIZE, &capped)
+        writer.append([Float](repeating: 0.25, count: count))
+        setrlimit(RLIMIT_FSIZE, &original)
+        signal(SIGXFSZ, SIG_DFL)
+
+        try expect(writer.didFail, "a write past the cap sets the failure")
+        try expect(writer.totalSamples == count, "failed buffer isn't counted")
+        writer.append([Float](repeating: 0.25, count: 100))
+        try expect(writer.totalSamples == count, "appends after a failure are dropped")
+
+        try expect(writer.finalize() != nil, "finalize still returns the aligned audio")
+        let data = try Data(contentsOf: url)
+        try expect(data.count == 44 + count * 2, "partial tail trimmed back to whole samples")
+        try expect(readUInt32LE(data, 40) == UInt32(count * 2), "data size matches the aligned audio")
     }
 }

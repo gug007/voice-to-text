@@ -52,12 +52,16 @@ enum RecordingDateFormat {
 /// makes a hit legible in the row.
 ///
 /// No index, no FTS, no SQLite, no migration — and that is a measured decision,
-/// not a shortcut. `RecordingHistoryStore.maxEntries` is a hard **200**, the
-/// list lives in memory as a flat array (the on-disk `index.json` is only a
-/// cache of it), and the cap is a compile-time constant with no settings UI and
-/// no `UserDefaults` key behind it. Scanning 200 entries is microseconds, so
-/// there is nothing here for a background actor to do. If that cap ever becomes
-/// user-adjustable, this is the file to revisit.
+/// not a shortcut. `RecordingHistoryStore.maxEntries` holds plain dictations to
+/// a hard **200**, the list lives in memory as a flat array (the on-disk
+/// `index.json` is only a cache of it), and the cap is a compile-time constant
+/// with no settings UI and no `UserDefaults` key behind it. Favorites,
+/// conversations and recordings with insights or speaker names are kept on top
+/// of it, but each of those is made by hand, so a library runs to a few hundred
+/// entries, not tens of thousands. Scanning that is cheap, so there is nothing
+/// here for a background actor to do. If the cap ever becomes user-adjustable,
+/// or search starts to lag on a big library of long conversations, this is the
+/// file to revisit.
 enum HistorySearch {
     /// Case- and diacritic-insensitive, per the brief. `.caseInsensitive`
     /// alone would miss "Munchen" → "München".

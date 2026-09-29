@@ -115,7 +115,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 - Price: free. No paid tier, no subscription, no VoiceToText account.
 - Source: available on GitHub at ${REPO_URL}. The repository has no license file, so describe it as "source available", not "open source".
 - Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor}. Builds are Apple Silicon only.
-- Download: ${DMG_URL} (signed and notarized DMG). All releases: ${RELEASES_URL}
+- Download: ${DMG_URL} (DMG containing a signed, notarized app). All releases: ${RELEASES_URL}
 - Website: ${SITE_URL}
 - App shape: a regular Mac window (panes: General, Conversations, History, Shortcut, Models, Actions, Cloud, Updates) with a Dock icon, plus a menu bar item. Menu-bar-only is optional (turn off "Show in Dock"). Launch at login is on after first run. Appearance: System, Light or Dark.
 - Permissions: Microphone; Accessibility (required to start recording and to paste); Input Monitoring only when Right Control alone is the shortcut; Screen Recording only for Conversations, to capture system audio (the screen is never recorded).
@@ -147,7 +147,7 @@ ${list(BUILT_IN_ACTIONS)}
 
 ## History and AI insights
 
-- Every dictation (audio and transcript) and every conversation or upload is saved locally in ~/Library/Application Support/VoiceToText/History. The "Save recordings" toggle stops saving dictations; conversations and uploads are always saved. Newest 200 recordings are kept, favorites included in the count.
+- Every dictation (audio and transcript) and every conversation or upload is saved locally in ~/Library/Application Support/VoiceToText/History. The "Save recordings" toggle stops saving dictations; conversations and uploads are always saved. The newest 200 dictations are kept; favorites, conversations, uploads, and recordings with a summary, action items, custom result or speaker names are never removed automatically.
 - Search across transcripts, earlier versions, summaries, action items, custom results, speaker names, model, type and date. Favorites, playback, copy, delete with 5-second Undo, Clear All.
 - Regenerate any recording with another model; every version is kept side by side.
 - AI insights on any recording: Summary, Action Items (checklist with owner and due date only when said), and up to 3 custom-prompt results. They need an OpenAI API key and send the transcript text (with speaker names) to OpenAI (${AI_TEXT_MODEL}).
@@ -163,13 +163,13 @@ Cloud (your own API key; audio goes directly from the Mac to the provider, which
 ${cloud.map(modelLine).join("\n")}
 
 - LIVE models are for dictation only. With ${joinNames(liveTextModelNames("word by word"))}, text appears word by word as you speak. With ${joinNames(liveTextModelNames("phrase by phrase"))}, OpenAI transcribes each phrase after a short pause (about half a second), so text appears phrase by phrase. With ${joinNames(liveOnStopModelNames())}, the text appears only when you stop.
-- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models transcribe English only in VoiceToText (there is no language picker). For other languages use a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
+- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (once per recording, or per 10-minute part of a longer one, from its first speech; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
 
 ## Privacy and network
 
-- With local models and no API keys, the app connects only to Hugging Face (each model downloads once, and loading a Whisper model, after each launch, needs a connection to it) and GitHub Releases (update check at launch and every 24 hours). Audio and transcripts stay on the Mac. With Parakeet, the default, transcription works fully offline.
+- With local models and no API keys, the app connects only to Hugging Face (each model downloads once) and GitHub Releases (update check at launch and every 24 hours). Audio and transcripts stay on the Mac. Once a local model has downloaded, transcription works fully offline.
 - Cloud transcription models send audio to OpenAI or ElevenLabs. AI actions and AI insights send transcript text to OpenAI. Adding an API key sends one verification request to that provider.
-- API keys are stored in the app's preferences (UserDefaults) on the Mac, not in the Keychain.
+- API keys are stored in the macOS login Keychain on the Mac (older versions kept them in the app's preferences and move them to the Keychain on first launch).
 - No VoiceToText servers, no accounts, and no analytics or telemetry in the app. The website uses Google Analytics.
 - Updates are never silent: the app offers Install Update, Later or Skip This Version.
 

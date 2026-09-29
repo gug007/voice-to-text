@@ -182,17 +182,14 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         do {
             (data, response) = try await send(request)
         } catch {
-            throw TranscriptionEngineError.transcriptionFailed(
-                "Network error: \(error.localizedDescription)"
-            )
+            throw Self.networkError(error)
         }
 
         guard let http = response as? HTTPURLResponse else {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let summary = Self.errorMessage(from: data, status: http.statusCode) ?? "HTTP \(http.statusCode)"
-            throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
+            throw Self.httpError(http, body: data)
         }
 
         struct Body: Decodable { let text: String }
@@ -291,17 +288,14 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         do {
             (data, response) = try await send(request)
         } catch {
-            throw TranscriptionEngineError.transcriptionFailed(
-                "Network error: \(error.localizedDescription)"
-            )
+            throw Self.networkError(error)
         }
 
         guard let http = response as? HTTPURLResponse else {
             throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            let summary = Self.errorMessage(from: data, status: http.statusCode) ?? "HTTP \(http.statusCode)"
-            throw TranscriptionEngineError.transcriptionFailed("OpenAI: \(summary)")
+            throw Self.httpError(http, body: data)
         }
 
         return try DiarizedTranscript.parse(data)
@@ -323,6 +317,23 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             refs.append("data:audio/wav;base64,\(wav.base64EncodedString())")
         }
         return (names, refs)
+    }
+
+    /// A request that got no answer. Typed so the failure card can tell
+    /// "you're offline" from the rest; the message is the one it always was.
+    private nonisolated static func networkError(_ error: Error) -> Error {
+        let reason = "Network error: \(error.localizedDescription)"
+        guard let urlError = error as? URLError else {
+            return TranscriptionEngineError.transcriptionFailed(reason)
+        }
+        return CloudTranscriptionError(cause: .transport(urlError.code), reason: reason)
+    }
+
+    /// A non-2xx answer, typed so the failure card can tell a refused key or
+    /// a rate limit from the rest; the message is the one it always was.
+    private nonisolated static func httpError(_ http: HTTPURLResponse, body: Data) -> Error {
+        let summary = errorMessage(from: body, status: http.statusCode) ?? "HTTP \(http.statusCode)"
+        return CloudTranscriptionError.http(http, body: body, reason: "OpenAI: \(summary)")
     }
 
     /// One transparent retry for transport errors that typically mean the

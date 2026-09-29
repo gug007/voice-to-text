@@ -228,7 +228,7 @@ struct HotkeyPane: View {
             Plate {
                 SettingsToggleRow(
                     title: "Esc cancels dictation",
-                    subtitle: "While recording or transcribing, Esc discards the dictation instead of reaching the app you're in. Turn off if you often press Esc in other apps while dictating.",
+                    subtitle: "Esc cancels a dictation from any app while it records, and from the app you're dictating into while it transcribes or waits for review. Turn off if you often press Esc in other apps while dictating; Esc typed on the card itself always works.",
                     isOn: escapeCancelsDictationBinding
                 )
             }

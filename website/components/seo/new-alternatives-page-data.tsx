@@ -198,8 +198,8 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         <>
           VoiceToText with a local model transcribes on the Mac and saves the audio and text in your user
           folder. There is no VoiceToText server or account. The only network use in that setup is Hugging Face,
-          for the one-time model download (and each time a Whisper model loads), and the app’s update check.
-          With Parakeet, the default, transcription works with the network off.
+          for the one-time model download, and the app’s update check. Once the model has downloaded,
+          transcription works with the network off.
         </>,
         <>
           The AI step is where text leaves the Mac. Summary, Action Items and custom prompts send the transcript
@@ -208,7 +208,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         </>,
       ],
       note:
-        "Local doesn’t mean invisible. Recordings stay in your history until you delete them, and anyone using your Mac account can open them. History keeps up to 200 recordings and removes the oldest first.",
+        "Local doesn’t mean invisible. Recordings stay in your history until you delete them, and anyone using your Mac account can open them. Dictations are the exception: past your latest 200, the oldest are removed automatically unless you starred them or added a summary or action items.",
     },
     {
       id: "give-up",
@@ -265,7 +265,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "A few calls a week, no budget → VoiceToText",
           body:
-            "Recording, transcription and history are free, and old meetings don’t expire after 30 days; history keeps your latest 200 recordings. Add an OpenAI key only if you want summaries.",
+            "Recording, transcription and history are free, and old meetings don’t expire after 30 days; conversations stay in History until you delete them. Add an OpenAI key only if you want summaries.",
         },
         {
           title: "Windows, phones or in-person → Granola",
@@ -435,7 +435,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
       {
         label: "Local models",
         cells: [
-          "Parakeet TDT v3 (default) and five Whisper sizes. Local Whisper is English-only in this app.",
+          "Parakeet TDT v3 (default) and five Whisper sizes (99 languages).",
           "Whisper models, some fully available only in Pro. Pro adds Parakeet v2 and v3, WhisperKit and Qwen3-ASR.",
         ],
       },
@@ -570,11 +570,11 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
             "You can select and copy text but not edit it inside the app. Playback is play and stop only, with no seeking or speed control.",
         },
         {
-          title: "Fewer languages on the Mac",
+          title: "No language picker",
           body: (
             <>
-              Local Whisper in VoiceToText transcribes English only, and there’s no language picker. Parakeet
-              covers 25 European languages; for others, use a cloud model with your key.{" "}
+              Local Whisper in VoiceToText covers 99 languages but detects the language itself; there’s no
+              picker to pin one. Parakeet covers 25 European languages, also detected automatically.{" "}
               <Link href="/offline-speech-to-text-mac">What runs offline</Link>.
             </>
           ),
@@ -614,7 +614,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Non-English audio on the Mac → it depends",
           body:
-            "For the 25 European languages Parakeet covers, VoiceToText stays local. For other languages without the cloud, MacWhisper’s local Whisper setup lists 100 languages.",
+            "Both stay local. VoiceToText’s local Whisper models cover 99 languages, detected automatically, and Parakeet 25 European ones. MacWhisper’s local Whisper setup lists 100 languages.",
         },
       ],
       note: (
@@ -639,7 +639,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
     {
       question: "Does VoiceToText use Whisper like MacWhisper?",
       answer:
-        "It includes five local Whisper models, from Tiny to Large v3, but the default is NVIDIA's Parakeet TDT v3. In VoiceToText, local Whisper currently transcribes English only; Parakeet covers 25 European languages, and cloud models cover more.",
+        "It includes five local Whisper models, from Tiny to Large v3, but the default is NVIDIA's Parakeet TDT v3. In VoiceToText, local Whisper covers 99 languages, detected automatically; Parakeet covers 25 European languages, and cloud models 90 to 99+.",
     },
     {
       question: "Can VoiceToText transcribe several files at once?",
@@ -649,7 +649,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
     {
       question: "Do both apps work offline?",
       answer:
-        "Both can transcribe with models that run on the Mac. In VoiceToText, the default Parakeet model downloads once; after that, dictation, recording and file transcription work without a connection. Its Whisper models also run on the Mac, but loading one needs an internet connection. Cloud models, AI actions and AI summaries need the internet and your own API key.",
+        "Both can transcribe with models that run on the Mac. In VoiceToText, the default Parakeet model downloads once; after that, dictation, recording and file transcription work without a connection. Its Whisper models work offline the same way. Cloud models, AI actions and AI summaries need the internet and your own API key.",
     },
   ],
   sources: [

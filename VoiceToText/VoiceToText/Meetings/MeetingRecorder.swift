@@ -17,7 +17,8 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     /// Perceptual mic+system level (0…1) for the live indicator, on the main actor.
     var onLevel: (@MainActor @Sendable (Double) -> Void)?
     /// Fired if the OS tears the stream down mid-recording (permission revoked,
-    /// display reconfigured, …) so the controller can surface an error.
+    /// display reconfigured, …) or the WAV writer fails, so the controller can
+    /// stop and save what was captured.
     var onStopWithError: (@MainActor @Sendable (Error) -> Void)?
 
     private let sampleRate = Int(AudioConfig.targetSampleRate)
@@ -36,6 +37,9 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     // Mix FIFOs (touched only on processingQueue): paired by arrival order.
     private var micQueue: [Float] = []
     private var systemQueue: [Float] = []
+    /// Latches the writer's failure so it's reported once, not per buffer
+    /// (touched only on processingQueue).
+    private var reportedWriteFailure = false
 
     private var lastLevelEmitNs: UInt64 = 0
     private static let minLevelIntervalNs: UInt64 = 33_000_000  // ~30 Hz
@@ -86,6 +90,7 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
             self.writer = writer
             self.micQueue.removeAll(keepingCapacity: true)
             self.systemQueue.removeAll(keepingCapacity: true)
+            self.reportedWriteFailure = false
         }
 
         let stream = SCStream(filter: filter, configuration: config, delegate: self)
@@ -107,19 +112,28 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
 
     /// Stops capture, flushes the mix, and finalizes the WAV. Returns the
     /// playable file URL plus its duration in seconds, or nil if nothing was
-    /// captured.
+    /// captured or the file couldn't be finalized (it's left in place then).
+    /// Also the salvage path after the stream stopped on its own or the writer
+    /// failed — whatever reached the disk is kept.
     func stop() async -> (url: URL, duration: Double)? {
         guard let stream = takeStream() else { return nil }
+        // Throws when the stream already stopped with an error — there's nothing
+        // left to stop then, and the flush + finalize below must still run.
         try? await stream.stopCapture()
         // stopCapture has returned → no more sample callbacks can arrive, so the
         // final flush + finalize on the (now idle) processing queue is race-free.
         return processingQueue.sync {
             flushRemaining()
-            let duration = writer?.durationSeconds ?? 0
-            let url = writer?.finalize()
-            writer = nil
-            guard let url else { return nil }
-            return (url, duration)
+            guard let writer else { return nil }
+            self.writer = nil
+            let duration = writer.durationSeconds
+            if let url = writer.finalize() { return (url, duration) }
+            // finalize() couldn't patch the header (the disk failing again), yet
+            // the whole samples are on disk. Size the header from the file, as
+            // launch-time recovery does, rather than lose the conversation.
+            guard writer.totalSamples > 0,
+                  StreamingWAVWriter.repairHeaderInPlace(at: writer.url) else { return nil }
+            return (writer.url, duration)
         }
     }
 
@@ -216,7 +230,19 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     private func emit(_ samples: [Float]) {
         guard !samples.isEmpty else { return }
         writer?.append(samples)
+        reportWriteFailureIfNeeded()
         emitLevelIfNeeded(samples)
+    }
+
+    /// The writer drops every buffer after its first failed write, so a
+    /// recording that kept running would show a live clock over audio that's
+    /// being thrown away. Stop through the same path as a stream error instead.
+    private func reportWriteFailureIfNeeded() {
+        guard !reportedWriteFailure, let failure = writer?.failure else { return }
+        reportedWriteFailure = true
+        AppLog.audio.error("Meeting WAV write failed: \(failure.localizedDescription, privacy: .public)")
+        let callback = onStopWithError
+        Task { @MainActor in callback?(MeetingRecorderError.diskWriteFailed(failure)) }
     }
 
     private func emitLevelIfNeeded(_ samples: [Float]) {
@@ -288,15 +314,4 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
         }
     }
 
-}
-
-enum MeetingRecorderError: LocalizedError {
-    case noDisplayAvailable
-
-    var errorDescription: String? {
-        switch self {
-        case .noDisplayAvailable:
-            return "No display is available to capture system audio from."
-        }
-    }
 }

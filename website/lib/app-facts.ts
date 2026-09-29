@@ -5,8 +5,12 @@
 //   VoiceToText/Engine/ModelQualityScore.swift  the 1–10 quality formula
 //   VoiceToText/Settings/ModelsSettingsView.swift  chips and the LIVE badge
 //   VoiceToText/Actions/DictationAction.swift   built-in AI actions
-//   VoiceToText/Engine/WhisperKitEngine.swift   Whisper model loading (network)
+//   VoiceToText/Engine/WhisperKitEngine.swift   Whisper model loading (offline once installed)
 //   VoiceToText/Engine/OpenAIRealtimeEngine.swift, ElevenLabsRealtimeEngine.swift  live text
+// Two claims live outside this repo's copy and must be re-read with it: the
+// macOS microphone prompt (INFOPLIST_KEY_NSMicrophoneUsageDescription in
+// project.pbxproj) and the GitHub repository description. Neither may promise
+// audio stays on the Mac — cloud models send it to their provider.
 // When the app's catalog changes, update this file and bump CATALOG_SNAPSHOT.
 
 export const CATALOG_SNAPSHOT = "September 2026 · VoiceToText v0.0.57";
@@ -54,9 +58,9 @@ export type ModelFact = {
    */
   liveTextCadence?: LiveTextCadence;
   /**
-   * Loads and runs with the network off once downloaded. False for local
-   * Whisper: every load (after each launch) asks Hugging Face for the model's
-   * file list first, with no offline fallback. Always false for cloud models.
+   * Loads and runs with the network off once downloaded. True for every local
+   * model: an installed model loads from disk, and Hugging Face is contacted
+   * only to download one. Always false for cloud models.
    */
   worksOffline: boolean;
   /** Can transcribe Conversations recordings and imported files (live models are excluded there). */
@@ -64,9 +68,10 @@ export type ModelFact = {
   /** Labels speakers (Speaker 1, Speaker 2…). */
   diarize: boolean;
   /**
-   * What the model covers inside VoiceToText. Local Whisper is "English" even
-   * though the upstream model family is multilingual: the app prefills the
-   * English language token and has no language picker.
+   * What the model covers inside VoiceToText. Every model detects the spoken
+   * language itself; the app has no language picker. Local Whisper detects it
+   * once per recording (per 10-minute part of a longer one), from the first
+   * speech, and keeps it for the whole recording.
    */
   languagesInApp: string;
   /** Provider list price per hour of audio, billed to the user's own key. 0 for local models. */
@@ -125,10 +130,10 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     isDefault: false,
     live: false,
     showsLiveText: false,
-    worksOffline: false,
+    worksOffline: true,
     conversations: true,
     diarize: false,
-    languagesInApp: "English",
+    languagesInApp: "99 languages",
     pricePerHourUSD: 0,
     quality: 7.5,
     qualityApprox: false,
@@ -137,7 +142,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
       { benchmark: AA, percent: 4.6, estimate: false, note: "Best-host figure (Groq)." },
     ],
     approxDownloadMB: 632,
-    bestFor: "English on your Mac with Whisper, quicker than Large v3.",
+    bestFor: "Whisper on your Mac in 99 languages, quicker than Large v3.",
   },
   {
     id: "whisper-large-v3",
@@ -147,10 +152,10 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     isDefault: false,
     live: false,
     showsLiveText: false,
-    worksOffline: false,
+    worksOffline: true,
     conversations: true,
     diarize: false,
-    languagesInApp: "English",
+    languagesInApp: "99 languages",
     pricePerHourUSD: 0,
     quality: 8.0,
     qualityApprox: false,
@@ -160,7 +165,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     ],
     approxDownloadMB: 626,
     chip: "Most accurate",
-    bestFor: "The most accurate English that stays on your Mac, if you can wait a little longer.",
+    bestFor: "The most accurate model that stays on your Mac, if you can wait a little longer.",
   },
   {
     id: "whisper-small",
@@ -170,16 +175,16 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     isDefault: false,
     live: false,
     showsLiveText: false,
-    worksOffline: false,
+    worksOffline: true,
     conversations: true,
     diarize: false,
-    languagesInApp: "English",
+    languagesInApp: "99 languages",
     pricePerHourUSD: 0,
     quality: 7.4,
     qualityApprox: true,
     wer: [{ benchmark: OPEN_ASR, percent: 8.59, estimate: false }],
     approxDownloadMB: 244,
-    bestFor: "English on a Mac short on disk space, with more mistakes.",
+    bestFor: "Whisper on a Mac short on disk space, with more mistakes.",
   },
   {
     id: "whisper-base",
@@ -189,10 +194,10 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     isDefault: false,
     live: false,
     showsLiveText: false,
-    worksOffline: false,
+    worksOffline: true,
     conversations: true,
     diarize: false,
-    languagesInApp: "English",
+    languagesInApp: "99 languages",
     pricePerHourUSD: 0,
     quality: 6.6,
     qualityApprox: true,
@@ -208,10 +213,10 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     isDefault: false,
     live: false,
     showsLiveText: false,
-    worksOffline: false,
+    worksOffline: true,
     conversations: true,
     diarize: false,
-    languagesInApp: "English",
+    languagesInApp: "99 languages",
     pricePerHourUSD: 0,
     quality: 5.6,
     qualityApprox: true,
@@ -423,13 +428,14 @@ export const DOWNLOAD_SIZE_NOTE =
   "Download sizes are the app's catalog estimates; the space a model takes on disk can be larger (Whisper Large v3 is about 1.6 GB once installed).";
 
 /**
- * The offline caveat, worded once for every page that needs it in full.
- * Parakeet (FluidAudio) loads from disk once downloaded. WhisperKitEngine.prepare
- * calls WhisperKit.download on every load, which asks the Hugging Face API for
- * the file list before touching the local copy, so it fails with no connection.
+ * The offline note, worded once for every page that needs it in full.
+ * Parakeet (FluidAudio) and Whisper (WhisperKitEngine) both load an installed
+ * model from disk. Hugging Face is contacted only to download a model, or to
+ * fetch files missing from an installed one (a damaged file on disk is not
+ * re-checked).
  */
 export const WHISPER_OFFLINE_NOTE =
-  "Parakeet, the default, works with the network off after its one-time download. Whisper models also transcribe on your Mac, and your audio never leaves it, but the current version contacts Hugging Face whenever it loads a Whisper model (after each launch), so loading one needs an internet connection. For a fully offline Mac, use Parakeet.";
+  "Parakeet, the default, works with the network off after its one-time download. Whisper models do too: they transcribe on your Mac, your audio never leaves it, and an installed model loads from disk. The app contacts Hugging Face only to download a model.";
 
 /** The six built-in AI actions in the app's order. All start switched off. */
 export const BUILT_IN_ACTIONS = [

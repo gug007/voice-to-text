@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 struct UpdatesPane: View {
     @Bindable private var updater = AppUpdater.shared
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         PaneScaffold {
@@ -20,7 +22,9 @@ struct UpdatesPane: View {
                         id: "update-error",
                         level: .warning,
                         title: "Update failed",
-                        message: message
+                        message: message,
+                        actionTitle: "Download Manually",
+                        action: { openURL(AppUpdater.releasesPageURL) }
                     )
                 ])
             }
@@ -130,6 +134,9 @@ struct UpdatesPane: View {
                     .foregroundStyle(Palette.inkMuted)
             }
 
+        case .installed:
+            StatusLabel(level: .ready, text: "Installed")
+
         case .error:
             StatusLabel(level: .warning, text: "Error")
         }
@@ -145,6 +152,8 @@ struct UpdatesPane: View {
             return "Downloading update…"
         case .installing:
             return "Installing update…"
+        case .installed:
+            return "Update installed"
         case .upToDate:
             return "You're up to date"
         default:
@@ -155,11 +164,17 @@ struct UpdatesPane: View {
     private var actionSubtitle: String {
         switch updater.status {
         case .available:
-            return "The app will quit and relaunch automatically."
+            return conversationBusy
+                ? "Finish the current conversation first: installing quits and relaunches the app."
+                : "The app will quit and relaunch automatically."
         case .downloading(let fraction):
             return "\(Int(fraction * 100))% downloaded"
         case .installing:
             return "Mounting and copying the new app."
+        case .installed(let relaunches):
+            return relaunches
+                ? "Quit VoiceToText to finish; it reopens on the new version."
+                : "Quit and reopen VoiceToText to use the new version."
         case .upToDate:
             return "You have the latest version."
         case .error(let message):
@@ -167,6 +182,12 @@ struct UpdatesPane: View {
         default:
             return "Fetch the latest release from GitHub."
         }
+    }
+
+    /// Installing quits the app, so it waits for a recording or transcription
+    /// to finish (`installUpdate` refuses too, for the launch prompt).
+    private var conversationBusy: Bool {
+        MeetingController.shared.isBusy
     }
 
     @ViewBuilder
@@ -178,6 +199,15 @@ struct UpdatesPane: View {
         case .available:
             Button("Install Update") {
                 Task { await updater.installUpdate() }
+            }
+            .buttonStyle(.borderedProminent)
+            .controlSize(.regular)
+            .tint(Palette.accent)
+            .disabled(conversationBusy)
+
+        case .installed:
+            Button("Quit VoiceToText") {
+                NSApp.terminate(nil)
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.regular)

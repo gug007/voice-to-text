@@ -95,7 +95,7 @@ export const softwareApplicationJsonLd = {
     "Review before pasting, on by default: edit the transcript, then press Return or the shortcut again to paste, or turn review off to paste right away",
     "Resume with Command-R to record another take at the caret",
     "Text is pasted at the cursor with a standard Command-V, and your previous clipboard is put back",
-    "Speech to text on your Mac after a one-time model download; with a local model, audio never leaves the Mac, and the default Parakeet model works with the network off",
+    "Speech to text on your Mac after a one-time model download; with a local model, audio never leaves the Mac, and transcription works with the network off",
     `${MODEL_CATALOG.length} transcription models: ${lower(LOCAL.length)} local and ${lower(CLOUD.length)} optional cloud models`,
     `${countWord(LOCAL.length)} local models: ${DEFAULT_MODEL.name} (the default, ${DEFAULT_MODEL.languagesInApp}) and ${joinList(LOCAL.filter((m) => !m.isDefault).map((m) => m.name))}`,
     `${countWord(CLOUD.length)} optional cloud models with your own API key: ${CLOUD_BY_PROVIDER.join("; ")}`,
@@ -106,7 +106,7 @@ export const softwareApplicationJsonLd = {
     "Transcribe an audio or video file (MP3, M4A, WAV, AIFF, MP4, MOV, and other formats macOS can read) — on-device by default",
     "Speaker labels (Speaker 1, Speaker 2, …) from the optional cloud model GPT-4o Transcribe Diarize on your own OpenAI key, with names you can assign to each speaker",
     "AI summaries, action-item checklists, and custom-prompt results for any recording, using your own OpenAI key",
-    "Local history of up to 200 recordings, with search across transcripts, summaries, action items, and speaker names, plus favorites, playback, copy, and undoable deletes",
+    "Local history of every conversation and your latest 200 dictations, with search across transcripts, summaries, action items, and speaker names, plus favorites, playback, copy, and undoable deletes",
     "Regenerate any transcript with a different model and keep every version side by side",
     "Conversation recordings interrupted by a crash or power loss are recovered into History on next launch",
     "Menu bar item with dictation and conversation controls, and an optional menu-bar-only mode",
@@ -180,7 +180,7 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "Does it work offline? Is my voice data sent anywhere?",
     answer:
-      "Yes, with Parakeet, the default model: after a one-time download it works with the network off. With any local model, Parakeet or Whisper, your audio is transcribed on your Mac and never leaves it. The current version does contact Hugging Face each time it loads a Whisper model, so for a fully offline Mac, use Parakeet. Apart from model downloads and an update check, nothing leaves your Mac unless you opt in: a cloud model sends audio directly to OpenAI or ElevenLabs under your own API key, and AI actions, summaries, and action items send the transcript text to OpenAI. VoiceToText has no servers of its own, so it never receives your audio or your text.",
+      "Yes, with a local model, Parakeet (the default) or Whisper: after a one-time download it works with the network off, and your audio is transcribed on your Mac and never leaves it. Apart from model downloads and an update check, nothing leaves your Mac unless you opt in: a cloud model sends audio directly to OpenAI or ElevenLabs under your own API key, and AI actions, summaries, and action items send the transcript text to OpenAI. VoiceToText has no servers of its own, so it never receives your audio or your text.",
   },
   {
     question: "How do I use voice to text on my Mac?",
@@ -210,7 +210,7 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "Which languages does it support?",
     answer:
-      "It depends on the model, and there is no language setting to change. Parakeet TDT v3, the default, recognizes 25 European languages automatically. The local Whisper models transcribe English in VoiceToText. For any other language, use a cloud model with your own key: OpenAI's models cover 99 or more languages and ElevenLabs Scribe v2 Realtime more than 90, detected automatically.",
+      "It depends on the model, and there is no language setting to change. Parakeet TDT v3, the default, recognizes 25 European languages automatically. The local Whisper models cover 99 languages, also detected automatically. Or use a cloud model with your own key: OpenAI's models cover 99 or more languages and ElevenLabs Scribe v2 Realtime more than 90, detected automatically.",
   },
   {
     question: "Can it record meetings and write summaries or action items?",
@@ -220,7 +220,7 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "Do you collect any usage data or telemetry?",
     answer:
-      "No. The app has no analytics, no accounts, and no servers of its own. Without API keys, its only connections are to Hugging Face, for model downloads and each time a Whisper model loads, and an update check against GitHub Releases at launch and once a day. Adding a key sends a one-time verification request to that provider; after that, a cloud model sends audio, and AI actions or summaries send transcript text, directly from your Mac to the provider. The source is on GitHub if you want to check, or watch the traffic with a tool like Little Snitch. This website uses Google Analytics to count visits; the app contains no analytics code.",
+      "No. The app has no analytics, no accounts, and no servers of its own. Without API keys, its only connections are to Hugging Face, for model downloads, and an update check against GitHub Releases at launch and once a day. Adding a key sends a one-time verification request to that provider; after that, a cloud model sends audio, and AI actions or summaries send transcript text, directly from your Mac to the provider. The source is on GitHub if you want to check, or watch the traffic with a tool like Little Snitch. This website uses Google Analytics to count visits; the app contains no analytics code.",
   },
 ];
 

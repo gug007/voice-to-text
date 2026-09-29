@@ -25,9 +25,10 @@ struct HistoryPane: View {
     /// favourites filter self-disables when nothing is favorited, so it can't
     /// strand an empty list.
     ///
-    /// The match is a linear in-memory scan (see `HistorySearch`). The store's
-    /// retention cap is a hard 200 with no settings UI behind it, so an index
-    /// would be slower than the scan it replaced.
+    /// The match is a linear in-memory scan (see `HistorySearch`). The store
+    /// keeps a hard 200 plain dictations, plus whatever the user chose to keep,
+    /// with no settings UI behind it, so an index would be slower than the scan
+    /// it replaced.
     private var visibleEntries: [RecordingHistoryEntry] {
         let corpus = (favoritesOnly && hasFavorites)
             ? store.entries.filter(\.isFavorited)

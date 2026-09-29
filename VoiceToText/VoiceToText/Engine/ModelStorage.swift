@@ -16,11 +16,18 @@ enum ModelStorage {
         case .fluidAudio:
             return fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
         case .whisperKit:
-            return whisperKitBaseURL
-                .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(descriptor.backendModelId)", isDirectory: true)
+            return whisperKitModelFolder(variant: descriptor.backendModelId)
         case .openAI, .openAIRealtime, .elevenLabs:
             return nil
         }
+    }
+
+    /// Where `WhisperKit.download` puts a variant under `whisperKitBaseURL`:
+    /// the Hub snapshot of `argmaxinc/whisperkit-coreml`, then the variant's
+    /// own folder. `WhisperKitEngine` loads from here without the network.
+    nonisolated static func whisperKitModelFolder(variant: String) -> URL {
+        whisperKitBaseURL
+            .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(variant)", isDirectory: true)
     }
 
     static func isInstalled(_ descriptor: ModelDescriptor) -> Bool {

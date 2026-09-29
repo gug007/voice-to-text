@@ -68,13 +68,20 @@ nonisolated enum LiveHUDMode: Sendable, Equatable {
     /// A transcription failure. No longer a separate 480×200 panel — it renders
     /// as a banner inside the same card at the same review width.
     case failed
+    /// "Dictation discarded" with Undo, for a few seconds after the review was
+    /// cancelled. One line and a button: the user has already moved on, so it
+    /// neither takes key nor stays.
+    case discarded
 
     /// Whether the panel accepts key status (and therefore keyboard input) in
     /// this mode. Preparing, recording and transcribing must NOT: the user is
-    /// typing in another app and the caret has to stay there.
+    /// typing in another app and the caret has to stay there. Nor must the
+    /// discard notice — the Esc that raised it may have been the user leaving
+    /// the card to type elsewhere, and a notice that took key would swallow
+    /// their next keystrokes. Undo still works on first click.
     var acceptsKey: Bool {
         switch self {
-        case .preparing, .recording, .transcribing: return false
+        case .preparing, .recording, .transcribing, .discarded: return false
         case .resumeRecording, .reviewing, .failed: return true
         }
     }
@@ -148,10 +155,11 @@ final class LiveHUDState {
     /// transitions away from `.failed`.
     var failureMessage: String = ""
     /// Title of the failure card's action button, or nil for Close only.
-    /// Failures whose audio can't possibly succeed on a second pass (too-short,
-    /// VAD silent) offer nothing; transcription failures offer "Retry"; a
-    /// missing permission offers "Open Settings", because pressing the hotkey
-    /// again cannot fix it and the message alone leaves the user hunting.
+    /// Failures whose audio can't possibly succeed on a second pass (too
+    /// short) offer nothing; transcription failures offer "Retry"; audio the
+    /// speech gate rejected offers "Transcribe Anyway"; a missing permission
+    /// offers "Open Settings", because pressing the hotkey again cannot fix it
+    /// and the message alone leaves the user hunting.
     var failureActionTitle: String?
     var failureActionIcon: String = "arrow.clockwise"
     /// Samples the failed take captured, at the target rate. Non-zero replaces
@@ -164,6 +172,10 @@ final class LiveHUDState {
     /// already dropped the samples by the time it renders; a note promising
     /// they were kept would be a lie on the commonest card in the app.
     var salvagedSampleCount: Int = 0
+    /// Whether the failed take's audio was saved to History, which the card
+    /// then says — closing it no longer loses anything. Only ever true when
+    /// the save really happened (History can be off).
+    var failureSavedToHistory: Bool = false
     /// Replaces the failure card's empty-state line ("Nothing to review." /
     /// "N s captured.") when the failure has something more useful to say
     /// there — the paste fallback's "click where it goes" instruction.
@@ -171,6 +183,14 @@ final class LiveHUDState {
     /// Key hint on that button — only set where the key is really bound
     /// (Return runs Retry; nothing is bound to Open Settings).
     var failureActionHint: String?
+    /// A second action beside Retry — on the failure card's control row, or
+    /// on the review banner after a failed Resume take. "Check API Key" for a
+    /// refused key: Retry stays, since it is what works once the key is fixed.
+    var secondaryActionTitle: String?
+    var secondaryActionIcon: String?
+
+    /// The discard notice's one line ("Dictation discarded").
+    var noticeMessage: String = ""
 
     /// Display name of the model being downloaded or loaded, on the preparing
     /// card. The card names the model because "which model is this waiting on"
@@ -217,6 +237,9 @@ final class LiveHUDState {
     @ObservationIgnored var onResume: (@MainActor () -> Void)?
     @ObservationIgnored var onRetry: (@MainActor () -> Void)?
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
+    /// The discard notice's Undo.
+    @ObservationIgnored var onUndo: (@MainActor () -> Void)?
+    @ObservationIgnored var onSecondaryAction: (@MainActor () -> Void)?
 
     /// Steps back one action at a time: each call restores the text from
     /// before the most recent transform, so chained actions unwind in order
@@ -404,6 +427,9 @@ final class LiveHUDPanel {
         onCancel: @escaping @MainActor () -> Void,
         onResume: @escaping @MainActor () -> Void,
         onRetry: (@MainActor () -> Void)? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryActionIcon: String? = nil,
+        onSecondaryAction: (@MainActor () -> Void)? = nil,
         onRunAction: (@MainActor (DictationAction) -> Void)? = nil
     ) {
         let nsLen = (text as NSString).length
@@ -431,6 +457,9 @@ final class LiveHUDPanel {
         state.onResume = onResume
         // Retry on the failure banner: re-runs a failed Resume take's audio.
         state.onRetry = onRetry
+        state.secondaryActionTitle = secondaryActionTitle
+        state.secondaryActionIcon = secondaryActionIcon
+        state.onSecondaryAction = onSecondaryAction
         state.onRunAction = onRunAction
 
         present()
@@ -439,17 +468,21 @@ final class LiveHUDPanel {
 
     /// A failure, rendered as a banner inside the same card at the same width as
     /// review — the standalone failure panel is gone. `actionTitle` nil leaves
-    /// only Close (e.g. "no speech detected", where re-running the audio won't
-    /// help); "Retry" re-runs the audio; "Open Settings" is what a permission
-    /// failure offers instead, since the hotkey can't fix itself.
+    /// only Close (e.g. "recording too short", where re-running the audio
+    /// won't help); "Retry" re-runs the audio; "Open Settings" is what a
+    /// permission failure offers instead, since the hotkey can't fix itself.
     func showFailure(
         message: String,
         actionTitle: String?,
         actionIcon: String = "arrow.clockwise",
         actionHint: String? = nil,
         salvagedSampleCount: Int = 0,
+        savedToHistory: Bool = false,
         detail: String? = nil,
+        secondaryActionTitle: String? = nil,
+        secondaryActionIcon: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
+        onSecondaryAction: (@MainActor () -> Void)? = nil,
         onCancel: @escaping @MainActor () -> Void
     ) {
         state.mode = .failed
@@ -460,7 +493,11 @@ final class LiveHUDPanel {
         state.failureActionIcon = actionIcon
         state.failureActionHint = actionHint
         state.salvagedSampleCount = salvagedSampleCount
+        state.failureSavedToHistory = savedToHistory
         state.failureDetail = detail
+        state.secondaryActionTitle = secondaryActionTitle
+        state.secondaryActionIcon = secondaryActionIcon
+        state.onSecondaryAction = onSecondaryAction
         state.preparingMessage = ""
         state.preparingFraction = nil
         state.transcribingElapsedSeconds = 0
@@ -480,6 +517,49 @@ final class LiveHUDPanel {
 
         present()
         AppLog.hud.info("HUD failure shown: \(message)")
+    }
+
+    /// The review was just cancelled: the card shrinks to one line with Undo
+    /// and stops taking key, which hands the keyboard straight back to the
+    /// app the user is in. `DictationController` owns how long it stays.
+    func showDiscarded(message: String, onUndo: @escaping @MainActor () -> Void) {
+        state.mode = .discarded
+        state.isRecording = false
+        state.level = 0
+        state.noticeMessage = message
+        state.failureMessage = ""
+        state.failureActionTitle = nil
+        state.salvagedSampleCount = 0
+        state.failureDetail = nil
+        state.transcribingElapsedSeconds = 0
+        state.transcribingProgress = nil
+        state.reviewText = ""
+        state.reviewBanner = nil
+        state.showsLiveText = false
+        state.partialTranscript = ""
+        state.resumedSession = false
+        state.reviewShowsActions = false
+        state.reviewActions = []
+        state.runningActionId = nil
+        state.actionRevertStack = []
+        state.onPaste = nil
+        state.onCancel = nil
+        state.onStop = nil
+        state.onResume = nil
+        state.onRetry = nil
+        state.onRunAction = nil
+        state.onUndo = onUndo
+
+        present()
+        AppLog.hud.info("HUD discard notice shown")
+    }
+
+    /// Takes the discard notice down if it is still what the card shows —
+    /// and nothing else: by the time its window lapses a new dictation may
+    /// own the panel.
+    func hideDiscardedNotice() {
+        guard state.mode == .discarded, panel?.isVisible == true else { return }
+        hide()
     }
 
     func setElapsed(_ seconds: Double) {
@@ -524,6 +604,7 @@ final class LiveHUDPanel {
         state.failureMessage = ""
         state.failureActionTitle = nil
         state.salvagedSampleCount = 0
+        state.failureSavedToHistory = false
         state.failureDetail = nil
         state.preparingModelName = ""
         state.preparingMessage = ""
@@ -537,6 +618,11 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onUndo = nil
+        state.noticeMessage = ""
+        state.secondaryActionTitle = nil
+        state.secondaryActionIcon = nil
+        state.onSecondaryAction = nil
         panel?.orderOut(nil)
         panel?.acceptsKey = false
         morphDeadline = .distantPast
@@ -548,6 +634,18 @@ final class LiveHUDPanel {
     /// Settings). The mode test is what the second panel used to provide.
     func isReviewPanelEvent(_ event: NSEvent) -> Bool {
         event.window === panel && state.mode == .reviewing
+    }
+
+    /// Whether the given key event was delivered to the HUD at all — i.e. the
+    /// user was typing into the card, not into another of our windows.
+    func isPanelEvent(_ event: NSEvent) -> Bool {
+        event.window === panel
+    }
+
+    /// Whether the card currently holds key status, so keystrokes go to it
+    /// rather than to the app in front.
+    var isKey: Bool {
+        panel?.isKeyWindow == true
     }
 
     /// Current edited review text (read at paste time).

@@ -205,12 +205,12 @@ const MODELS: Choice[] = [
   {
     icon: "sparkle",
     title: "Whisper Large v3 and Turbo",
-    body: `Local Whisper models transcribe English in VoiceToText. Large v3 has the highest quality score of the local models (${LARGE_V3 ? formatQuality(LARGE_V3) : "8.0"}) but takes longer; Turbo (${TURBO ? formatQuality(TURBO) : "7.5"}) is quicker.`,
+    body: `Local Whisper models cover 99 languages and recognize which one you’re speaking. Large v3 has the highest quality score of the local models (${LARGE_V3 ? formatQuality(LARGE_V3) : "8.0"}) but takes longer; Turbo (${TURBO ? formatQuality(TURBO) : "7.5"}) is quicker.`,
   },
   {
     icon: "box",
     title: "Whisper Small, Base, and Tiny",
-    body: "Smaller downloads, from roughly 250 MB down to under 50 MB, for Macs short on disk space. They make noticeably more mistakes, and they also transcribe English.",
+    body: "Smaller downloads, from roughly 250 MB down to under 50 MB, for Macs short on disk space. They make noticeably more mistakes, and they cover the same 99 languages.",
   },
   {
     icon: "cloud",
@@ -295,8 +295,8 @@ const CHOICES: Choice[] = [
       <>
         Each dictation is saved on this Mac with its audio and transcript. In History you can search
         transcripts, star favorites, play audio back, and re-transcribe with another model. Turn off Save
-        recordings to stop keeping dictations. History holds your newest 200 recordings, meetings included, and
-        favorites are not exempt.
+        recordings to stop keeping dictations. History keeps your newest 200 dictations; favorites, meetings and
+        recordings with a summary or action items are never removed automatically.
       </>
     ),
   },
@@ -328,11 +328,11 @@ const TROUBLESHOOTING: { title: string; body: ReactNode }[] = [
   },
   {
     title: "The model is still downloading",
-    body: "The default model starts downloading when VoiceToText first opens; other local models download from the Models pane. If you dictate before one is ready, the recording card shows download and loading progress. The download needs an internet connection once; after that Parakeet works offline. Loading a Whisper model also needs a connection, after every launch. Press Esc to stop waiting.",
+    body: "The default model starts downloading when VoiceToText first opens; other local models download from the Models pane. If you dictate before one is ready, the recording card shows download and loading progress. The download needs an internet connection once; after that the model works offline. Press Esc to stop waiting.",
   },
   {
     title: "The words come out in the wrong language",
-    body: "There is no language setting. Parakeet covers 25 European languages automatically. For other languages, choose an OpenAI or ElevenLabs cloud model, which detects the language. Local Whisper models currently transcribe English, so other languages can come out translated or garbled.",
+    body: "There is no language setting. Parakeet covers 25 European languages automatically. For other languages, choose a Whisper model (99 languages) or an OpenAI or ElevenLabs cloud model; each detects the language on its own. Whisper is most accurate in English and other widely spoken languages.",
   },
   {
     title: "Saying “comma” or “new line” types the word",
@@ -340,7 +340,7 @@ const TROUBLESHOOTING: { title: string; body: ReactNode }[] = [
   },
   {
     title: "Transcription is slow or inaccurate",
-    body: "Try Parakeet for local speed, or Whisper Large v3 for the most accurate English on your Mac. Speak close to the microphone and cut background noise. VoiceToText records from the macOS default input, which you choose in System Settings → Sound.",
+    body: "Try Parakeet for local speed, or Whisper Large v3 for the most accurate transcription on your Mac. Speak close to the microphone and cut background noise. VoiceToText records from the macOS default input, which you choose in System Settings → Sound.",
   },
   {
     title: "My AirPods switched mid-sentence",
@@ -427,7 +427,7 @@ export default function VoiceToTextGuidePage() {
                   <p>
                     Current builds require {APP_REQUIREMENTS.os} and an {APP_REQUIREMENTS.processor} Mac.
                     Keep an internet connection for the first model download; after that the default Parakeet
-                    model works offline. Whisper models need a connection each time they load. The app checks
+                    model works offline, and so does any Whisper model you download. The app checks
                     GitHub for new versions and asks before installing one.
                   </p>
                 </div>
@@ -466,9 +466,8 @@ export default function VoiceToTextGuidePage() {
               </h2>
               <p className="section__deck">
                 VoiceToText has {spell(LOCAL.length)} local models. Each downloads once, then transcribes on your
-                Mac without sending audio anywhere. Parakeet also works with the network off, while loading a
-                Whisper model needs a connection. There is no language setting, so pick a model that covers the
-                language you speak.
+                Mac without sending audio anywhere, even with the network off. There is no language setting, so
+                pick a model that covers the language you speak.
               </p>
               <div className={`guide__choices ${styles.grid2}`}>
                 {MODELS.map(({ icon, title, body }) => (

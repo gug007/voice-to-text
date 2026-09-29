@@ -29,7 +29,9 @@ final class MeetingController {
         case transcribing
     }
 
-    private(set) var state: State = .idle
+    private(set) var state: State = .idle {
+        didSet { updateSleepActivity() }
+    }
     /// Only meaningful while `state == .importing`.
     private(set) var importStage: ImportStage = .extracting(0)
     /// File name of the media being imported, so the importing card can name what
@@ -55,6 +57,10 @@ final class MeetingController {
     /// the three are mutually exclusive even though `state` only flips at
     /// specific points. Mutated only on the main actor.
     private var transitioning = false
+    /// Held while a conversation records, transcribes or imports, so idle
+    /// system sleep can't stop the capture mid-meeting or stall a long
+    /// transcription after the user has walked away. See `updateSleepActivity`.
+    @ObservationIgnored private var sleepActivity: NSObjectProtocol?
 
     private static let placeholderTranscript = "⚠︎ Audio saved without a transcript."
 
@@ -131,7 +137,8 @@ final class MeetingController {
     // MARK: - Start
 
     func start() async {
-        guard !isBusy else { return }
+        // An update is being swapped in and the app is about to quit into it.
+        guard !isBusy, !AppUpdater.shared.isFinishingInstall else { return }
         transitioning = true
         defer { transitioning = false }
         lastSavedSummary = nil
@@ -169,9 +176,17 @@ final class MeetingController {
     // MARK: - Stop & transcribe
 
     func stop() async {
-        guard case .recording = state else { return }
+        guard beginStopping() else { return }
+        await finishStopping(interruption: nil)
+    }
+
+    /// The synchronous half of a stop, shared by the user's Stop and an
+    /// interruption. Flips out of `.recording` before any await so whichever
+    /// comes second — a Stop/Cancel racing a stream error, or the reverse —
+    /// sees a non-`.recording` state and bails. Returns false if not recording.
+    private func beginStopping() -> Bool {
+        guard case .recording = state, !transitioning else { return false }
         transitioning = true
-        defer { transitioning = false }
         stopElapsedTicker()
         resetLevels()
         // Clear any chunk counts from a prior transcription before showing the
@@ -179,16 +194,50 @@ final class MeetingController {
         transcribedChunks = 0
         totalChunks = 0
         state = .transcribing
+        return true
+    }
 
-        guard let result = await recorder.stop(), result.duration >= 1.0 else {
+    /// Finalizes, transcribes and archives what was captured. `interruption` is
+    /// the error that ended the recording when the user didn't; the card then
+    /// says why it stopped and that the audio up to that point was kept.
+    private func finishStopping(interruption: Error?) async {
+        defer { transitioning = false }
+        let result = await recorder.stop()
+        guard let result, MeetingInterruption.shouldSalvage(capturedSeconds: result.duration) else {
+            // nil also means finalize and the header repair both failed (the disk
+            // erroring as the file closed), yet the file can hold the whole
+            // conversation. Leave that for launch-time recovery, never delete it.
+            let onDisk = result == nil ? workingURL.map(Self.wavDuration(at:)) ?? 0 : 0
+            if MeetingInterruption.shouldSalvage(capturedSeconds: onDisk) {
+                workingURL = nil
+                state = .error(MeetingInterruption.unfinishedMessage(
+                    interruption: interruption,
+                    capturedSeconds: onDisk
+                ))
+                return
+            }
             discardWorkingFile()
-            state = .error("The conversation was too short to save.")
+            state = .error(interruption.map {
+                MeetingInterruption.message(
+                    for: $0,
+                    capturedSeconds: result?.duration ?? 0,
+                    transcriptionIssue: nil
+                )
+            } ?? "The conversation was too short to save.")
             return
         }
         // The recorder finalized the file at the same working URL.
         let (issue, summary) = await transcribeAndArchive(url: result.url, duration: result.duration)
         workingURL = nil
-        finish(issue: issue, summary: summary)
+        guard let interruption else {
+            finish(issue: issue, summary: summary)
+            return
+        }
+        state = .error(MeetingInterruption.message(
+            for: interruption,
+            capturedSeconds: result.duration,
+            transcriptionIssue: issue
+        ))
     }
 
     // MARK: - Import a file
@@ -198,7 +247,7 @@ final class MeetingController {
     /// video is treated exactly like a recorded conversation), then runs the same
     /// transcribe-and-save path as `stop()`.
     func importMedia(url: URL) async {
-        guard !isBusy else { return }
+        guard !isBusy, !AppUpdater.shared.isFinishingInstall else { return }
         transitioning = true
         defer { transitioning = false }
         lastSavedSummary = nil
@@ -266,7 +315,7 @@ final class MeetingController {
     /// Transcribes the WAV at `url` with the active model and files it into
     /// History as a conversation. Never throws — on any failure the audio is
     /// still archived (with a placeholder/notice) so a long recording is never
-    /// lost over a transcription hiccup. Returns a user-facing `issue` message
+    /// lost over a transcription hiccup. Returns the transcription `issue`
     /// (nil = clean) and a success `summary`. `sourceLabel` names the uploaded
     /// file when this came from an import, so the confirmation says which file
     /// landed rather than just how long it was. Drives `transcribedChunks` /
@@ -275,13 +324,13 @@ final class MeetingController {
         url: URL,
         duration: Double,
         sourceLabel: String? = nil
-    ) async -> (issue: String?, summary: String?) {
+    ) async -> (issue: MeetingTranscriptionIssue?, summary: String?) {
         transcribedChunks = 0
         totalChunks = 0
 
         let transcript: String
         let model: ModelDescriptor?
-        var issue: String?
+        var issue: MeetingTranscriptionIssue?
         if let descriptor = ModelRegistry.shared.conversationModel,
            let engine = await ModelRegistry.shared.prepareBackgroundEngine(id: descriptor.id) {
             model = descriptor
@@ -296,18 +345,18 @@ final class MeetingController {
                 )
                 if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     transcript = "(No speech detected.)"
-                    issue = "No speech was detected, but the audio was saved to History."
+                    issue = .noSpeech
                 } else {
                     transcript = text
                 }
             } catch {
                 transcript = Self.placeholderTranscript
-                issue = "Transcription failed (\(error.localizedDescription)). The audio was saved to History."
+                issue = .failed(error.localizedDescription)
             }
         } else {
             model = nil
             transcript = Self.placeholderTranscript
-            issue = "No transcription model was ready, but the audio was saved to History."
+            issue = .noModel
         }
 
         saveToHistory(url: url, transcript: transcript, duration: duration, model: model)
@@ -319,9 +368,9 @@ final class MeetingController {
     }
 
     /// Settles the state machine after a stop or import finishes.
-    private func finish(issue: String?, summary: String?) {
+    private func finish(issue: MeetingTranscriptionIssue?, summary: String?) {
         if let issue {
-            state = .error(issue)
+            state = .error(issue.message)
         } else {
             lastSavedSummary = summary
             state = .idle
@@ -368,22 +417,55 @@ final class MeetingController {
         if case .error = state { state = .idle }
     }
 
-    private func handleStreamError(_ error: Error) {
-        guard case .recording = state else { return }
-        stopElapsedTicker()
-        resetLevels()
-        state = .error("Recording stopped: \(error.localizedDescription)")
-        // Tear the recorder down off the hot path; keep `transitioning` set so a
-        // new start() can't race the teardown on the shared recorder.
-        transitioning = true
-        Task { @MainActor in
-            await recorder.cancel()
-            discardWorkingFile()
-            transitioning = false
+    // MARK: - Quit
+
+    /// Brings the conversation work in flight to a saved end so the app can
+    /// quit: a recording goes through the normal stop → transcribe → archive
+    /// path, and a transcription or import already under way is waited out.
+    /// Returns once nothing is busy.
+    func finishForQuit() async {
+        while isBusy, !Task.isCancelled {
+            if case .recording = state, !transitioning {
+                await stop()
+            } else {
+                // A start, stop, cancel or import is mid-flight and settles the
+                // state itself; wait for it rather than race it.
+                try? await Task.sleep(for: .milliseconds(250))
+            }
         }
     }
 
+    /// The stream stopped on its own or the disk write failed. Saves and
+    /// transcribes everything captured so far through the normal stop path —
+    /// the conversation up to this point is exactly what the user wants back.
+    /// No-op if the user already pressed Stop or Cancel.
+    private func handleStreamError(_ error: Error) {
+        guard beginStopping() else { return }
+        AppLog.audio.error("Meeting recording interrupted, saving what was captured: \(error.localizedDescription, privacy: .public)")
+        Task { @MainActor in await finishStopping(interruption: error) }
+    }
+
     // MARK: - Helpers
+
+    /// Follows `state` rather than each path in and out of it, so every exit
+    /// (Stop, Cancel, an interruption, an import finishing or failing) lets
+    /// the Mac sleep again, and no future exit can forget to.
+    private func updateSleepActivity() {
+        let working: Bool
+        switch state {
+        case .recording, .transcribing, .importing: working = true
+        case .idle, .error: working = false
+        }
+        if working, sleepActivity == nil {
+            sleepActivity = ProcessInfo.processInfo.beginActivity(
+                options: [.userInitiated, .idleSystemSleepDisabled],
+                reason: "Recording or transcribing a conversation"
+            )
+        } else if !working, let activity = sleepActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+            sleepActivity = nil
+        }
+    }
 
     private func discardWorkingFile() {
         if let url = workingURL { try? FileManager.default.removeItem(at: url) }
@@ -437,13 +519,16 @@ final class MeetingController {
     /// recovery note so the recording survives; deletes anything too short to
     /// matter. Call once at launch. Without it, an interrupted meeting is both
     /// lost (header still says 0 bytes) and leaked (never reclaimed).
+    /// The entry is dated when the recording began (the WAV was created at
+    /// start), not when it was found, so it files beside that day's work.
     static func recoverOrphanedTempFiles() {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(
             at: meetingsTempDirectory,
-            includingPropertiesForKeys: [.fileSizeKey]
+            includingPropertiesForKeys: [.fileSizeKey, .creationDateKey]
         ) else { return }
         for url in files where url.pathExtension == "wav" {
+            let recordedAt = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
             let repaired = StreamingWAVWriter.repairHeaderInPlace(at: url)
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
             let duration = Double(max(0, size - 44) / 2) / AudioConfig.targetSampleRate
@@ -453,7 +538,8 @@ final class MeetingController {
                     transcript: "⚠︎ Recovered recording — the app quit before transcription finished. Audio saved without a transcript.",
                     durationSeconds: duration,
                     model: nil,
-                    source: .meeting
+                    source: .meeting,
+                    createdAt: recordedAt
                 )
             } else {
                 try? fm.removeItem(at: url)

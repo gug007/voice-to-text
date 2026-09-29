@@ -13,10 +13,13 @@ nonisolated final class StreamingWAVWriter {
     private let handle: FileHandle
     private(set) var totalSamples: Int = 0
     private var finalized = false
-    /// Set once a write throws (e.g. disk full). FileHandle.write isn't
+    /// The first write error (e.g. disk full). FileHandle.write isn't
     /// guaranteed all-or-nothing, so a partial write could byte-misalign the
     /// rest of the file — stop appending entirely and keep what's aligned.
-    private var writeFailed = false
+    /// Exposed so the recorder can end the recording instead of letting the
+    /// clock run on over audio that's silently being dropped.
+    private(set) var failure: Error?
+    var didFail: Bool { failure != nil }
     private var samplesSinceHeaderSync = 0
 
     private static let headerSize = WAVEncoder.headerSize
@@ -32,7 +35,7 @@ nonisolated final class StreamingWAVWriter {
 
     /// Appends one buffer of samples, converting Float32 → Int16 LE.
     func append(_ samples: [Float]) {
-        guard !finalized, !writeFailed, !samples.isEmpty else { return }
+        guard !finalized, !didFail, !samples.isEmpty else { return }
         do {
             try handle.write(contentsOf: WAVEncoder.int16LEData(from: samples))
             totalSamples += samples.count
@@ -54,7 +57,7 @@ nonisolated final class StreamingWAVWriter {
                 try handle.synchronize()
             }
         } catch {
-            writeFailed = true
+            failure = error
         }
     }
 
@@ -64,6 +67,12 @@ nonisolated final class StreamingWAVWriter {
     func finalize() -> URL? {
         guard !finalized else { return totalSamples > 0 ? url : nil }
         finalized = true
+        if didFail {
+            // A failed write can leave part of a buffer past the last whole
+            // sample. Trim back to what `totalSamples` accounts for so the
+            // header, the bytes on disk and `durationSeconds` all agree.
+            try? handle.truncate(atOffset: UInt64(Self.headerSize + totalSamples * Self.bytesPerSample))
+        }
         do {
             try patchSizes()
             try handle.close()

@@ -53,7 +53,7 @@ export const products: Product[] = [
     privacy:
       "Parakeet and Whisper run on-device. An OpenAI or ElevenLabs model sends audio to that provider with your key; AI actions and summaries send transcript text to OpenAI.",
     languages:
-      "Model-dependent: Parakeet (local, default) covers 25 European languages; local Whisper currently transcribes English; optional cloud models detect 90–99+ automatically.",
+      "Model-dependent: Parakeet (local, default) covers 25 European languages; local Whisper covers 99; all detect the language automatically, as do optional cloud models (90–99+).",
     price:
       "Free, no paid tier. Your own OpenAI or ElevenLabs key is billed for cloud transcription, AI actions and AI summaries.",
     sourceHref: "https://github.com/gug007/voice-to-text",

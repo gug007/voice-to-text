@@ -119,6 +119,12 @@ swiftc -parse-as-library \
 "$TMPDIR/streaming-wav-writer-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Meetings/MeetingInterruption.swift \
+  Tests/MeetingInterruptionHarness.swift \
+  -o "$TMPDIR/meeting-interruption-harness"
+"$TMPDIR/meeting-interruption-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
   VoiceToText/VoiceToText/Audio/StreamingWAVWriter.swift \
   VoiceToText/VoiceToText/Support/AppConstants.swift \

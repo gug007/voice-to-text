@@ -44,6 +44,7 @@ const COLUMNS: FooterColumn[] = [
       { kind: "route", href: "/offline-speech-to-text-mac", label: "Offline speech to text" },
       { kind: "route", href: "/voice-to-text-for-coding", label: "Voice to text for coding" },
       { kind: "route", href: "/apple-dictation-alternative", label: "Apple Dictation alternative" },
+      { kind: "route", href: "/dragon-for-mac-alternative", label: "Dragon for Mac alternative" },
       { kind: "route", href: "/whisper-vs-parakeet-mac", label: "Whisper vs. Parakeet" },
       { kind: "route", href: "/superwhisper-alternative", label: "Superwhisper alternative" },
       { kind: "route", href: "/wispr-flow-alternative", label: "Wispr Flow alternative" },

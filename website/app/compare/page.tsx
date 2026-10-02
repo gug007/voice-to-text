@@ -18,7 +18,7 @@ const PATH = "/compare";
 const PAGE_URL = pageUrl(PATH);
 const TITLE = "Mac Dictation & Transcription App Comparisons";
 const DESCRIPTION =
-  "VoiceToText compared with Wispr Flow, Superwhisper, Apple Dictation, Granola and MacWhisper, each with a short verdict, sources and the date checked.";
+  "VoiceToText compared with Wispr Flow, Superwhisper, Apple Dictation, Dragon, Granola and MacWhisper, each with a verdict, sources and the date checked.";
 const H1 = "Compare VoiceToText with other Mac dictation and transcription apps.";
 
 type Comparison = {
@@ -64,6 +64,12 @@ const GROUPS: ComparisonGroup[] = [
         title: "VoiceToText vs. Apple Dictation",
         verdict:
           "Apple Dictation is built in and needs no install. VoiceToText adds a review step, model choice, meeting capture and file import.",
+      },
+      {
+        path: "/dragon-for-mac-alternative",
+        title: "Mac dictation vs. Dragon",
+        verdict:
+          "Dragon for Mac was discontinued in 2018. Voice Control now covers commands and custom words; VoiceToText adds reviewed dictation and recordings, but no voice commands.",
       },
     ],
   },
@@ -135,7 +141,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Every VoiceToText comparison in one place",
     description:
-      "Wispr Flow, Superwhisper, Apple Dictation, Granola, MacWhisper and Whisper vs. Parakeet: honest verdicts with sources.",
+      "Wispr Flow, Superwhisper, Apple Dictation, Dragon, Granola, MacWhisper and Whisper vs. Parakeet: honest verdicts with sources.",
   },
 };
 
@@ -290,7 +296,9 @@ export default function ComparePage() {
                   Facts about other apps come only from that vendor’s own website, pricing page, documentation or
                   store page. Each comparison links them under its sources and says when they were last checked.
                   If a feature can’t be found on an official page, it’s left out, and a price appears only where the
-                  vendor publishes one.
+                  vendor publishes one. The exception is Dragon for Mac, discontinued in 2018: Nuance no longer
+                  publishes its Mac pages, so its history comes from Microsoft and news reports at the time, and the
+                  page says so.
                 </p>
                 <p>
                   Every app comparison says where the other app wins and what you give up with VoiceToText. No page

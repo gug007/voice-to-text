@@ -257,6 +257,11 @@ export function BestDictationAppsPage() {
                     <Link href="/apple-dictation-alternative">vs Apple Dictation</Link>, or browse the{" "}
                     <Link href="/compare">comparison hub</Link>.
                   </p>
+                  <p>
+                    Dragon users: Nuance discontinued Dragon for Mac in 2018, so it isn’t in this list.{" "}
+                    <Link href="/dragon-for-mac-alternative">Mac dictation vs Dragon</Link> covers what replaced it,
+                    including Voice Control for commands and custom vocabulary.
+                  </p>
                 </div>
               </div>
             </div>

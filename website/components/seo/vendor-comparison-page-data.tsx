@@ -16,7 +16,7 @@ const WISPR_CHECKED = sourcesChecked("/wispr-flow-alternative");
 export const superwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/superwhisper-alternative",
   parent: { name: "Compare", path: "/compare" },
-  title: "Superwhisper Alternative for Mac — Free & Local",
+  title: "Free Superwhisper Alternative for Mac (2026): Local-First",
   description:
     "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, meetings and files, source access, requirements, and price.",
   breadcrumb: "Superwhisper alternative",
@@ -340,9 +340,9 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
 export const wisprFlowAlternativeConfig: SeoLandingConfig = {
   path: "/wispr-flow-alternative",
   parent: { name: "Compare", path: "/compare" },
-  title: "Wispr Flow Alternative for Mac: Free, Offline, No Account",
+  title: "Wispr Flow Alternative for Mac (2026): Free, Offline",
   description:
-    "VoiceToText vs Wispr Flow on Mac: local vs cloud transcription, meetings and AI summaries, privacy controls, price, and which app suits whom.",
+    "VoiceToText is free; Wispr Flow has a 2,000-word weekly free plan and $15/user/month Pro. On-device vs cloud transcription, meetings and privacy compared.",
   breadcrumb: "Wispr Flow alternative",
   eyebrow: "Balanced comparison",
   readingTime: "8 min",

@@ -31,7 +31,7 @@ export * from "./seo-ids";
 export * from "./seo-meeting";
 export * from "./seo-guide";
 
-export const HOME_TITLE = "Free Voice-to-Text App for Mac — Offline & No Account";
+export const HOME_TITLE = "VoiceToText: Free Voice to Text for Mac, Offline, No Account";
 export const HOME_DESCRIPTION =
   "Free voice to text for Mac. Press Option+Space to dictate into any app, or record meetings and transcribe them. Works offline by default, no account.";
 export const HOME_TWITTER_DESCRIPTION =

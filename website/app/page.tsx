@@ -95,6 +95,11 @@ const COMPARISONS: readonly ReadNextLink[] = [
     body: "When the built-in tool is enough, and what a review step and model choice add.",
   },
   {
+    href: "/dragon-for-mac-alternative",
+    title: "Mac dictation vs Dragon",
+    body: "What replaced Dragon for Mac: Voice Control for commands, Apple Dictation, and where VoiceToText fits.",
+  },
+  {
     href: "/granola-alternative",
     title: "VoiceToText vs Granola",
     body: "Meeting capture compared: what each app records, where transcription runs, and the tradeoffs.",

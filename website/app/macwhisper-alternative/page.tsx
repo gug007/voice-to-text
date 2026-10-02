@@ -2,7 +2,7 @@ import { macwhisperAlternativeConfig } from "@/components/seo/new-alternatives-p
 import { landingMetadata, SeoLandingPage } from "@/components/seo/seo-landing";
 
 export const metadata = landingMetadata(macwhisperAlternativeConfig, {
-  title: "A free MacWhisper alternative for dictation and meetings",
+  title: "A free MacWhisper alternative for dictation and calls (2026)",
   description:
     "Dictation into any app, bot-free meeting capture, and local models, free. MacWhisper's file and export strengths included.",
 });

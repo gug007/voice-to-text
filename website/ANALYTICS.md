@@ -54,7 +54,7 @@ Do not create renamed copies in GA4. Event names are case-sensitive.
 - Home: `home_hero`, `home_download` (the install section; formerly `home_footer`)
 - Guide and meetings: `guide_hero`, `guide_footer`, `meeting_hero`, `meeting_footer`
 - Compare hub and ranking: `compare_hub_hero`, `compare_hub_bottom`, `best_dictation_apps_bottom`
-- Landing pages, as `<prefix>_hero` and `<prefix>_bottom`: `offline_speech`, `coding_voice`, `apple_alternative`, `model_comparison`, `superwhisper_alternative`, `wispr_alternative`, `granola_alternative`, `macwhisper_alternative`
+- Landing pages, as `<prefix>_hero` and `<prefix>_bottom`: `offline_speech`, `coding_voice`, `apple_alternative`, `model_comparison`, `superwhisper_alternative`, `wispr_alternative`, `granola_alternative`, `macwhisper_alternative`, `dragon_alternative`
 
 `github_outbound` placements: `desktop_nav`, `mobile_nav`, `home_hero_release`, `home_download`, `home_download_release`, `privacy`, `everywhere_automation`, `contributors`, `meeting_footer`, `compare_hub_bottom`, `best_dictation_apps_bottom`, and each landing page's `<prefix>_bottom`.
 

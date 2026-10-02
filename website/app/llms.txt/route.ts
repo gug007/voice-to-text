@@ -32,7 +32,7 @@ const PAGE_SUMMARIES = {
   "/": ["Home", "What VoiceToText does, the model catalog, FAQ and download."],
   "/how-to-use-voice-to-text-on-mac": [
     "How to use voice to text on Mac",
-    "Install, permissions, the shortcut, review panel and settings, step by step.",
+    "Turning on the built-in Mac Dictation and its shortcut, then VoiceToText's install, permissions, shortcut, review panel and settings, step by step.",
   ],
   "/meeting-recording": [
     "Meeting recording (Conversations)",
@@ -69,6 +69,10 @@ const PAGE_SUMMARIES = {
   "/macwhisper-alternative": [
     "MacWhisper alternative",
     "VoiceToText compared with MacWhisper, with sources.",
+  ],
+  "/dragon-for-mac-alternative": [
+    "Dragon for Mac alternative",
+    "What replaced the discontinued Dragon for Mac (Apple Dictation, Voice Control, VoiceToText), with sources. VoiceToText is not a medical dictation product.",
   ],
   "/compare": ["Comparisons", "Index of every VoiceToText comparison page."],
   "/compare/best-dictation-apps-for-mac": [

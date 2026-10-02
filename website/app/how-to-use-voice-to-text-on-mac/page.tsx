@@ -8,6 +8,7 @@ import { Footer } from "@/components/sections/footer";
 import { Nav } from "@/components/sections/nav";
 import { StickyCta } from "@/components/sticky-cta";
 import { DownloadButton } from "@/components/ui/download-button";
+import { ExternalLink } from "@/components/ui/external-link";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
 import { Icon, type IconName } from "@/components/ui/icon";
 import {
@@ -33,15 +34,25 @@ import {
   INDEXABLE_ROBOTS,
   guideArticleJsonLd,
   guideBreadcrumbJsonLd,
+  guideFaqEntries,
+  guideFaqPageJsonLd,
   guidePageJsonLd,
   personJsonLd,
 } from "@/lib/seo";
 
 import styles from "./guide.module.css";
 
-const TITLE = "How to Use Voice to Text on Mac — Offline, Any App";
+const TITLE = "How to Use Voice to Text on Mac: Shortcut & Setup (2026)";
 const DESCRIPTION =
-  "Set up voice to text on your Mac: the shortcut, permissions, review panel keys, offline models for your language, and fixes for common problems.";
+  "Turn on Dictation in System Settings → Keyboard, then press the Microphone key or your shortcut. Or try VoiceToText for review, local models and meetings.";
+
+/* The built-in Dictation steps follow Apple's Mac User Guide and its Mac
+   keyboard shortcuts page (https://support.apple.com/en-us/102650); re-check
+   them there when macOS changes. */
+const APPLE_DICTATION_GUIDE = "https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac";
+const APPLE_DICTATION_COMMANDS =
+  "https://support.apple.com/guide/mac-help/commands-for-dictating-text-on-mac-mh40695/mac";
+const APPLE_FEATURE_AVAILABILITY = "https://www.apple.com/macos/feature-availability/";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -97,6 +108,70 @@ type GuideStep = {
   title: ReactNode;
   body: ReactNode;
 };
+
+const BUILT_IN_STEPS: GuideStep[] = [
+  {
+    title: "Turn on Dictation",
+    body: (
+      <p>
+        Choose Apple menu → System Settings, click <strong>Keyboard</strong> in the sidebar, go to{" "}
+        <strong>Dictation</strong> and turn it on, then click Enable. If macOS asks whether to share audio
+        recordings to improve Siri and Dictation, choose Share Audio Recordings or Not Now.
+      </p>
+    ),
+  },
+  {
+    title: "Click where the text goes, then start",
+    body: (
+      <>
+        <p>Start Dictation in any of these ways:</p>
+        <dl className={styles.keys}>
+          <dt><Key glyph="🎤" name="Microphone key" /></dt>
+          <dd>The Microphone key in the top row, if your keyboard has one</dd>
+          <dt><Key glyph="fn" name="Function or Globe" /><Key glyph="D" name="D" /></dt>
+          <dd>Start or stop dictation, from Apple’s list of Mac keyboard shortcuts</dd>
+          <dt>Your shortcut</dt>
+          <dd>The one set in Keyboard → Dictation → Shortcut</dd>
+          <dt>Edit menu</dt>
+          <dd>Edit → Start Dictation</dd>
+        </dl>
+        <p>Speak when the cursor pulses or you hear the tone.</p>
+      </>
+    ),
+  },
+  {
+    title: "Say punctuation and line breaks",
+    body: (
+      <p>
+        In supported languages, Dictation inserts commas, periods and question marks for you. You can also
+        say a mark such as “exclamation mark”, an emoji name such as “heart emoji”, or “new line” and “new
+        paragraph”. Apple’s{" "}
+        <ExternalLink className="link" href={APPLE_DICTATION_COMMANDS}>list of dictation commands</ExternalLink>{" "}
+        adds symbols and capitals. On a Mac with Apple silicon you can keep typing while you speak.
+      </p>
+    ),
+  },
+  {
+    title: "Stop",
+    body: (
+      <p>
+        Press <Key glyph="Esc" name="Escape" />, the Microphone key, or your shortcut again. There’s no length
+        limit, but Dictation stops on its own after 30 seconds without speech. If a word comes out underlined
+        in blue, click it to choose an alternative.
+      </p>
+    ),
+  },
+  {
+    title: "Change the shortcut",
+    body: (
+      <p>
+        In System Settings → Keyboard → Dictation, open the Shortcut pop-up menu to see which shortcut your Mac
+        uses, or pick another. On Macs with a Fn (🌐) key, one option is pressing that key twice. For a
+        combination that isn’t listed, choose Customize and press it, for example Option-Z.
+      </p>
+    ),
+  },
+];
 
 const STEPS: GuideStep[] = [
   {
@@ -177,6 +252,24 @@ type Choice = {
   title: string;
   body: ReactNode;
 };
+
+const APP_HELPS: Choice[] = [
+  {
+    icon: "sparkle",
+    title: "Review before it’s pasted",
+    body: "The whole transcript opens in a panel first, so you can fix names, numbers and negations before anything reaches the app, or add another take with ⌘R.",
+  },
+  {
+    icon: "cloud",
+    title: "A choice of models",
+    body: `${capitalize(spell(LOCAL.length))} local models work with the network off after one download: Parakeet for 25 European languages and Whisper for 99. ${capitalize(spell(CLOUD.length))} optional cloud models use your own key.`,
+  },
+  {
+    icon: "mic",
+    title: "Meetings and files",
+    body: "Record a call’s microphone and system audio with no bot, or transcribe an audio or video file, then search all of it in History.",
+  },
+];
 
 const PERMISSIONS: Choice[] = [
   {
@@ -362,6 +455,7 @@ export default function VoiceToTextGuidePage() {
       <JsonLd data={guideArticleJsonLd} />
       <JsonLd data={guidePageJsonLd} />
       <JsonLd data={guideBreadcrumbJsonLd} />
+      <JsonLd data={guideFaqPageJsonLd} />
       <JsonLd data={personJsonLd} />
 
       <Nav linkPrefix="/" current={GUIDE_PATH} />
@@ -377,15 +471,15 @@ export default function VoiceToTextGuidePage() {
               </nav>
               <p className="hero__eyebrow">
                 <span className="hero__eyebrow-dot" aria-hidden="true" />
-                Practical guide · about 8 minutes
+                Practical guide · about 13 minutes
               </p>
               <h1 id="guide-title" className="hero__title guide-hero__title">
                 {GUIDE_H1}
               </h1>
               <p className="hero__lead guide-hero__lead">
-                Install once, press a global shortcut, speak, and your words are pasted wherever the cursor is.
-                The default model works offline on Apple Silicon after a{" "}
-                <span style={{ whiteSpace: "nowrap" }}>one-time</span> download.
+                macOS has Dictation built in: turn it on in Keyboard settings and press the Microphone key or
+                your shortcut. For a review step, offline model choice and meeting transcripts, VoiceToText adds
+                a shortcut that pastes into any app.
               </p>
               <div className="hero__ctas">
                 <DownloadButton placement="guide_hero" />
@@ -401,10 +495,83 @@ export default function VoiceToTextGuidePage() {
             </div>
           </header>
 
+          <section className="section guide-section" id="built-in-dictation" aria-labelledby="built-in-title">
+            <div className="container guide__container">
+              <p className="section__eyebrow">Built into macOS</p>
+              <h2 id="built-in-title" className="section__title">Turn on Mac Dictation and learn the shortcut.</h2>
+              <p className="section__deck">
+                Every Mac has Dictation built in, so there is nothing to install: you can speak anywhere you can
+                type. These steps follow Apple’s{" "}
+                <ExternalLink className="link" href={APPLE_DICTATION_GUIDE}>Mac User Guide</ExternalLink>.
+              </p>
+              <ol className="guide__steps" role="list">
+                {BUILT_IN_STEPS.map(({ title, body }, index) => (
+                  <li key={index} className="guide__step">
+                    <span className="guide__step-number" aria-hidden="true">{index + 1}</span>
+                    <div>
+                      <h3>{title}</h3>
+                      <div className={styles.stepBody}>{body}</div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+              <aside className="guide__note" aria-label="Offline dictation">
+                <Icon name="cloud" size="lg" />
+                <div>
+                  <strong>Does Mac Dictation work offline?</strong>
+                  <p>
+                    It depends on your language and settings. In System Settings → Keyboard, the text below
+                    Dictation says whether your voice input is processed on your Mac rather than sent to Siri
+                    servers. Apple lists the languages with on-device Dictation on its{" "}
+                    <ExternalLink className="link" href={APPLE_FEATURE_AVAILABILITY}>
+                      macOS Feature Availability
+                    </ExternalLink>{" "}
+                    page, and they may need a one-time download of speech models. Dictation isn’t available in
+                    every language or region.
+                  </p>
+                </div>
+              </aside>
+              <p className="guide__context-link">
+                To control the whole Mac by voice, with commands like “Click Done”, turn on Voice Control in
+                System Settings → Accessibility; while it’s on, you dictate through Voice Control instead. Coming
+                from Dragon? Read{" "}
+                <Link className="link" href="/dragon-for-mac-alternative">Mac dictation vs Dragon</Link>.
+              </p>
+            </div>
+          </section>
+
+          <section className="section how" id="when-an-app-helps" aria-labelledby="app-helps-title">
+            <div className="container guide__container">
+              <p className="section__eyebrow">When an app helps</p>
+              <h2 id="app-helps-title" className="section__title">
+                Built-in Dictation covers quick text. An app adds three things.
+              </h2>
+              <p className="section__deck">
+                Apple’s Dictation is free, starts with a key press, and takes punctuation by voice. VoiceToText is a
+                free app for the jobs Dictation isn’t built for. It has no voice commands or spoken punctuation, so
+                keep Dictation for those.
+              </p>
+              <div className="guide__choices">
+                {APP_HELPS.map(({ icon, title, body }) => (
+                  <article key={title} className="guide__choice">
+                    <span className="feature-card__icon" aria-hidden="true"><Icon name={icon} size="lg" /></span>
+                    <h3>{title}</h3>
+                    <p>{body}</p>
+                  </article>
+                ))}
+              </div>
+              <p className="guide__context-link">
+                For the full comparison, read{" "}
+                <Link className="link" href="/apple-dictation-alternative">Apple Dictation vs VoiceToText</Link>.
+                To try the app, follow the five steps below.
+              </p>
+            </div>
+          </section>
+
           <section className="section guide-section" id="quick-start" aria-labelledby="quick-start-title">
             <div className="container guide__container">
-              <p className="section__eyebrow">Quick start</p>
-              <h2 id="quick-start-title" className="section__title">Set up Mac voice typing in five steps.</h2>
+              <p className="section__eyebrow">VoiceToText setup</p>
+              <h2 id="quick-start-title" className="section__title">Set up VoiceToText in five steps.</h2>
               <p className="section__deck">
                 VoiceToText works system-wide rather than inside one editor. Once the permissions are granted,
                 the same shortcut works in nearly any app that accepts a paste.
@@ -589,6 +756,24 @@ export default function VoiceToTextGuidePage() {
                   </h3>
                   <p>See how VoiceToText stacks up against Apple Dictation, Wispr Flow, Superwhisper, and others.</p>
                 </article>
+              </div>
+            </div>
+          </section>
+
+          <section className="section faq" id="faq" aria-labelledby="guide-faq-title">
+            <div className="container">
+              <p className="section__eyebrow">FAQ</p>
+              <h2 id="guide-faq-title" className="section__title">Voice to text on Mac: common questions.</h2>
+              <div className="faq__list">
+                {guideFaqEntries.map(({ question, answer }) => (
+                  <details key={question} className="faq-item">
+                    <summary className="faq-item__q">
+                      <span>{question}</span>
+                      <Icon name="chevron-down" className="faq-item__chevron" />
+                    </summary>
+                    <div className="faq-item__a">{answer}</div>
+                  </details>
+                ))}
               </div>
             </div>
           </section>

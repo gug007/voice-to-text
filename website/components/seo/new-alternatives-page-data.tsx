@@ -9,9 +9,9 @@ import type { SeoLandingConfig } from "./seo-landing";
 
 export const granolaAlternativeConfig: SeoLandingConfig = {
   path: "/granola-alternative",
-  title: "Granola Alternative for Mac: Free, Local Transcription",
+  title: "Free Granola Alternative for Mac (2026): Local Transcripts",
   description:
-    "VoiceToText vs. Granola for meetings on Mac: bot-free capture, on-device transcription, AI summaries with your own key, price, and the honest tradeoffs.",
+    "VoiceToText is free and keeps meetings past 30 days; Granola Basic keeps 30 and Business is $14/user/month. Bot-free capture, on-device transcripts.",
   breadcrumb: "Granola alternative",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Balanced comparison",
@@ -378,9 +378,9 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
 
 export const macwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/macwhisper-alternative",
-  title: "MacWhisper Alternative: Free Dictation and Transcription",
+  title: "Free MacWhisper Alternative (2026): Dictation + Calls on Mac",
   description:
-    "VoiceToText vs. MacWhisper on Mac: local Whisper and Parakeet models, file transcription, meetings, dictation, exports and price, with each app's wins.",
+    "VoiceToText is free; MacWhisper Pro is a €64 one-time license. Local Whisper and Parakeet models, files, meetings, dictation and exports compared.",
   breadcrumb: "MacWhisper alternative",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Balanced comparison",

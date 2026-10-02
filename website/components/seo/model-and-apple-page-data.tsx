@@ -23,9 +23,9 @@ const APPLE_SOURCES_CHECKED = formatDisplayDate(
 export const appleDictationAlternativeConfig: SeoLandingConfig = {
   path: "/apple-dictation-alternative",
   parent: { name: "Compare", path: "/compare" },
-  title: "Apple Dictation Alternative for Mac — Free & Offline",
+  title: "Apple Dictation Alternative for Mac (2026): Free & Offline",
   description:
-    "Compare Apple Dictation with VoiceToText for Mac: installation, privacy, review, model choice, meeting capture, and the situations where the built-in tool wins.",
+    "Apple Dictation vs VoiceToText on Mac: install, privacy, review before paste, model choice, meeting capture, and when the built-in tool wins.",
   breadcrumb: "Apple Dictation alternative",
   eyebrow: "Balanced comparison",
   readingTime: "7 min",
@@ -201,6 +201,13 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
             "If the main need is navigating the interface and issuing spoken editing commands, rather than turning speech into prose, Apple Voice Control is the more relevant system feature.",
         },
       ],
+      note: (
+        <>
+          Coming from Dragon? Dragon for Mac was discontinued in 2018.{" "}
+          <Link href="/dragon-for-mac-alternative">Mac dictation vs. Dragon</Link> covers what replaced it, from
+          Voice Control’s commands and custom vocabulary to VoiceToText.
+        </>
+      ),
     },
   ],
   comparison: {
@@ -377,9 +384,8 @@ const aaWer = (m: ModelFact) => werCell(m, "Artificial Analysis AA-WER");
 
 export const whisperVsParakeetConfig: SeoLandingConfig = {
   path: "/whisper-vs-parakeet-mac",
-  title: "Whisper vs. Parakeet on Mac — Which Local Model?",
-  description:
-    "Whisper vs. NVIDIA Parakeet for local speech to text on Mac: benchmark error rates, languages, download sizes, and how to test on your own audio.",
+  title: "Parakeet vs Whisper on Mac (2026): Accuracy, Languages, Size",
+  description: `Parakeet TDT v3 vs Whisper Large v3 on Mac: ${openAsr(PARAKEET)} vs ${openAsr(LARGE_V3)} WER on the Open ASR Leaderboard, 25 vs 99 languages, download sizes, and a fair test.`,
   breadcrumb: "Whisper vs. Parakeet on Mac",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Local model guide",

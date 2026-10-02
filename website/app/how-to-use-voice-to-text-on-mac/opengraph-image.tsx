@@ -10,7 +10,7 @@ export default function GuideOpengraphImage() {
     title: "How to use voice",
     titleMuted: "to text on Mac.",
     subtitle:
-      "Install → press Option+Space → speak → review and paste.",
-    chips: ["About 8 minutes", "Works in any app", "Local by default"],
+      "Turn on built-in Dictation and learn the shortcut, or press Option+Space → speak → review and paste.",
+    chips: ["Built-in Dictation", "Works in any app", "Local by default"],
   });
 }

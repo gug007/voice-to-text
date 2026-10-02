@@ -4,9 +4,9 @@ import type { SeoLandingConfig } from "./seo-landing";
 
 export const offlineSpeechToTextConfig: SeoLandingConfig = {
   path: "/offline-speech-to-text-mac",
-  title: "Offline Speech to Text for Mac — Private, Free",
+  title: "Offline Speech to Text on Mac: Free Local Transcription",
   description:
-    "Run speech to text locally on an Apple Silicon Mac. Learn what stays offline, how to set it up, which model to choose, and where cloud features begin.",
+    "Free offline speech to text and local transcription on an Apple Silicon Mac: what stays on the Mac, setup, which model to pick, and where cloud begins.",
   breadcrumb: "Offline speech to text for Mac",
   eyebrow: "Privacy guide",
   readingTime: "6 min",
@@ -299,9 +299,9 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
 
 export const codingVoiceToTextConfig: SeoLandingConfig = {
   path: "/voice-to-text-for-coding",
-  title: "Voice to Text for Coding on Mac — Cursor, VS Code & AI",
+  title: "Voice Coding on Mac: Voice to Text for Cursor & VS Code",
   description:
-    "Use voice to draft prompts, explain bugs, write comments, and capture implementation notes in Cursor, VS Code, terminals, and AI coding tools on Mac.",
+    "Dictate prompts, bug reports and review notes into Cursor, VS Code and terminals with a free, source-available Mac app, transcribed on-device by default.",
   breadcrumb: "Voice to text for coding",
   eyebrow: "Developer workflow",
   readingTime: "6 min",

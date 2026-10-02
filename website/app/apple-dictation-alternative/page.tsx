@@ -2,7 +2,7 @@ import { appleDictationAlternativeConfig } from "@/components/seo/model-and-appl
 import { landingMetadata, SeoLandingPage } from "@/components/seo/seo-landing";
 
 export const metadata = landingMetadata(appleDictationAlternativeConfig, {
-  title: "Apple Dictation vs. VoiceToText for Mac",
+  title: "Apple Dictation vs. VoiceToText for Mac (2026)",
   description:
     "A balanced comparison of the built-in option and a free alternative with source on GitHub, reviewed paste, and local model choice.",
 });

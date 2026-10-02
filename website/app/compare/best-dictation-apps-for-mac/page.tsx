@@ -6,9 +6,9 @@ import { page } from "@/lib/pages";
 import { INDEXABLE_ROBOTS } from "@/lib/seo-ids";
 
 const PATH = "/compare/best-dictation-apps-for-mac";
-const TITLE = "Best Dictation Apps for Mac (2026): An Honest Comparison";
+const TITLE = "7 Best Dictation & Speech-to-Text Apps for Mac (2026)";
 const DESCRIPTION =
-  "Seven Mac dictation apps compared on dictation, files, meetings, correction, privacy, languages and price, with a reproducible test protocol.";
+  "Seven Mac dictation and speech-to-text apps compared on dictation, files, meetings, correction, privacy, languages and price, with a reproducible test.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -29,7 +29,8 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: TITLE,
-    description: "Seven apps. Seven decision points. Competitor wins included. Unrun metrics left unranked.",
+    description:
+      "Seven Mac dictation and speech-to-text apps. Seven decision points. Competitor wins included. Unrun metrics left unranked.",
   },
 };
 

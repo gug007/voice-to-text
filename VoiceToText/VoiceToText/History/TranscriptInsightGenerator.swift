@@ -174,6 +174,10 @@ final class TranscriptInsightGenerator {
         guard !running.contains(job) else { return false }
         failures[job] = nil
 
+        guard !entry.transcriptIsPlaceholder else {
+            failures[job] = Self.untranscribedMessage
+            return false
+        }
         guard hasAPIKey else {
             failures[job] = Self.missingKeyMessage(for: kind)
             return false
@@ -347,6 +351,10 @@ final class TranscriptInsightGenerator {
         let instruction = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !instruction.isEmpty else {
             setFailure("Say what you want done with this transcript.", for: job)
+            return nil
+        }
+        guard !entry.transcriptIsPlaceholder else {
+            setFailure(Self.untranscribedMessage, for: job)
             return nil
         }
         guard hasAPIKey else {
@@ -664,6 +672,12 @@ final class TranscriptInsightGenerator {
     /// no count leaves the user counting tabs.
     private static let capReachedMessage =
         "This recording already has \(RecordingHistoryEntry.maxCustomInsights) custom results. Remove one first."
+
+    /// Said for a recording whose transcript is only a placeholder. The row
+    /// hides the insight menu for one, but a stale menu or a re-run from an
+    /// open tab can still ask, and the placeholder must never be sent off to
+    /// be summarized at the user's expense.
+    private static let untranscribedMessage = "Transcribe this recording first."
 
     private static func missingKeyMessage(for kind: InsightKind) -> String {
         switch kind {

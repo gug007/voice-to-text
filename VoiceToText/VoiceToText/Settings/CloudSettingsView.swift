@@ -3,6 +3,7 @@ import SwiftUI
 struct CloudPane: View {
     @Bindable private var keyStore = OpenAIAPIKeyStore.shared
     @Bindable private var elevenKeyStore = ElevenLabsAPIKeyStore.shared
+    @Bindable private var credit = CloudCreditStatus.shared
 
     /// The two provider tints, as light/dark pairs — raw `.blue` / `.purple`
     /// are not tokens and read differently in each appearance.
@@ -26,6 +27,7 @@ struct CloudPane: View {
                 subtitle: "GPT Realtime Whisper, GPT-4o Transcribe, Whisper-1 · AI actions, summaries and action items",
                 hasKey: keyStore.hasKey,
                 keySuffix: keyStore.keySuffix,
+                isOutOfCredit: credit.isOutOfCredit(.openAI),
                 autoFocusesField: true
             )
 
@@ -37,6 +39,7 @@ struct CloudPane: View {
                 subtitle: "Scribe v2 Realtime — live streaming transcription",
                 hasKey: elevenKeyStore.hasKey,
                 keySuffix: elevenKeyStore.keySuffix,
+                isOutOfCredit: credit.isOutOfCredit(.elevenLabs),
                 autoFocusesField: false
             )
 
@@ -56,6 +59,7 @@ struct CloudPane: View {
         subtitle: String,
         hasKey: Bool,
         keySuffix: String?,
+        isOutOfCredit: Bool,
         autoFocusesField: Bool
     ) -> some View {
         Plate {
@@ -72,8 +76,8 @@ struct CloudPane: View {
                     }
                     Spacer(minLength: Space.s5)
                     StatusLabel(
-                        level: hasKey ? .ready : .warning,
-                        text: statusText(hasKey: hasKey, keySuffix: keySuffix)
+                        level: hasKey && !isOutOfCredit ? .ready : .warning,
+                        text: statusText(hasKey: hasKey, keySuffix: keySuffix, isOutOfCredit: isOutOfCredit)
                     )
                 }
 
@@ -86,10 +90,17 @@ struct CloudPane: View {
         }
     }
 
-    private func statusText(hasKey: Bool, keySuffix: String?) -> String {
+    /// "Out of credit" takes the place of "Connected" once the provider has
+    /// refused a take for an empty balance: the key is fine, the account
+    /// behind it isn't. It clears on the next request that works or on a new
+    /// key pasted below, so this pane is also where it goes away. No billing
+    /// link — the provider's own dashboard is the place for that, and its
+    /// URL is theirs to move.
+    private func statusText(hasKey: Bool, keySuffix: String?, isOutOfCredit: Bool) -> String {
         guard hasKey else { return "Not set" }
-        guard let keySuffix else { return "Connected" }
-        return "Connected · …\(keySuffix)"
+        let status = isOutOfCredit ? FailureCardCopy.outOfCreditLabel : "Connected"
+        guard let keySuffix else { return status }
+        return "\(status) · …\(keySuffix)"
     }
 
     // MARK: - Privacy footer

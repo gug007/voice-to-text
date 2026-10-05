@@ -105,11 +105,13 @@ swiftc -parse-as-library \
 "$TMPDIR/api-key-vault-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/CloudProvider.swift \
   VoiceToText/VoiceToText/Support/OpenAIAPIKey.swift \
   VoiceToText/VoiceToText/Support/APIKeyVault.swift \
   VoiceToText/VoiceToText/Support/KeychainAPIKeyStore.swift \
   VoiceToText/VoiceToText/Support/CodeSigning.swift \
   VoiceToText/VoiceToText/Support/AppLogger.swift \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Actions/DictationAction.swift \
   VoiceToText/VoiceToText/Actions/ActionRunner.swift \
   Tests/ActionRunnerHarness.swift \
@@ -155,6 +157,7 @@ swiftc -parse-as-library \
 "$TMPDIR/streaming-wav-writer-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Meetings/MeetingInterruption.swift \
   Tests/MeetingInterruptionHarness.swift \
   -o "$TMPDIR/meeting-interruption-harness"
@@ -251,3 +254,63 @@ swiftc -parse-as-library \
   Tests/ReviewResumeShortcutHarness.swift \
   -o "$TMPDIR/review-resume-shortcut-harness"
 "$TMPDIR/review-resume-shortcut-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Dictation/DictationTakePolicy.swift \
+  Tests/DictationTakePolicyHarness.swift \
+  -o "$TMPDIR/dictation-take-policy-harness"
+"$TMPDIR/dictation-take-policy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Dictation/DictationTakePolicy.swift \
+  VoiceToText/VoiceToText/Dictation/FailureCardCopy.swift \
+  Tests/FailureCardCopyHarness.swift \
+  -o "$TMPDIR/failure-card-copy-harness"
+"$TMPDIR/failure-card-copy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Dictation/DictationTakePolicy.swift \
+  VoiceToText/VoiceToText/Dictation/DictationRescue.swift \
+  Tests/DictationRescueHarness.swift \
+  -o "$TMPDIR/dictation-rescue-harness"
+"$TMPDIR/dictation-rescue-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/CloudProvider.swift \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Support/CloudCreditStatus.swift \
+  Tests/CloudCreditStatusHarness.swift \
+  -o "$TMPDIR/cloud-credit-status-harness"
+"$TMPDIR/cloud-credit-status-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
+  VoiceToText/VoiceToText/Dictation/DictationTakePolicy.swift \
+  VoiceToText/VoiceToText/Support/SpokenLanguages.swift \
+  Tests/SpokenLanguagesHarness.swift \
+  -o "$TMPDIR/spoken-languages-harness"
+"$TMPDIR/spoken-languages-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ParakeetSupport.swift \
+  Tests/ParakeetSupportHarness.swift \
+  -o "$TMPDIR/parakeet-support-harness"
+"$TMPDIR/parakeet-support-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistorySearch.swift \
+  Tests/HistorySearchHarness.swift \
+  -o "$TMPDIR/history-search-harness"
+"$TMPDIR/history-search-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/UpdateEligibility.swift \
+  VoiceToText/VoiceToText/Support/UpdateCheckPolicy.swift \
+  Tests/UpdateCheckPolicyHarness.swift \
+  -o "$TMPDIR/update-check-policy-harness"
+"$TMPDIR/update-check-policy-harness"

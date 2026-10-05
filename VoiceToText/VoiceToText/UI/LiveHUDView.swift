@@ -85,7 +85,7 @@ private struct HUDCard: View {
                     showsRetry: hasBannerRetry,
                     actionTitle: bannerActionTitle,
                     actionIcon: state.secondaryActionIcon,
-                    onAction: { state.onSecondaryAction?() }
+                    onAction: { state.click(state.onSecondaryAction) }
                 ) {
                     performBannerRetry()
                 }
@@ -100,13 +100,26 @@ private struct HUDCard: View {
             }
 
             if layout.showsMeter {
-                LevelBars(
-                    samples: state.levelHistory,
-                    isFrozen: state.mode == .transcribing,
-                    isOverloaded: state.level > LevelBars.overloadThreshold
-                )
-                .frame(height: HUDMetrics.meterHeight)
-                .frame(maxWidth: .infinity)
+                // While the take waits on its model, the meter's slot says
+                // which model and how far along — the preparing card's block,
+                // which fits the slot exactly, so nothing around it moves.
+                Group {
+                    if let phase = modelWaitPhase {
+                        HUDPreparingBlock(state: state, phase: phase)
+                            .frame(height: HUDMetrics.meterHeight, alignment: .topLeading)
+                            .transition(.opacity)
+                    } else {
+                        LevelBars(
+                            samples: state.levelHistory,
+                            isFrozen: state.mode == .transcribing,
+                            isOverloaded: state.level > LevelBars.overloadThreshold
+                        )
+                        .frame(height: HUDMetrics.meterHeight)
+                        .frame(maxWidth: .infinity)
+                        .transition(.opacity)
+                    }
+                }
+                .animation(motion.layout, value: modelWaitPhase == nil)
             }
 
             if layout.showsStreamText {
@@ -168,14 +181,22 @@ private struct HUDCard: View {
         }
     }
 
-    /// What the failure card says it kept: nothing, how much it captured, and
-    /// — once the take is in History — where to find it again.
+    /// What the failure card says it kept: nothing, or how much it captured
+    /// and whether that is in History. Said both ways, because the one a
+    /// user can't afford to guess is "not": a take the speech gate turned
+    /// away lives only on this card, and closing it lets the audio go.
     private func emptyStateLine(_ layout: HUDLayout) -> String {
         guard layout.hasSalvagedAudio else { return "Nothing to review." }
         let captured = Self.capturedDuration(layout.salvagedSeconds)
         return state.failureSavedToHistory
             ? "\(captured) captured — saved to History."
-            : "\(captured) captured."
+            : "\(captured) captured — not saved."
+    }
+
+    /// "Downloading" or "Loading" while a transcribing take waits on its
+    /// model; nil otherwise, in every mode.
+    private var modelWaitPhase: String? {
+        state.mode == .transcribing ? state.transcribingWaitPhase : nil
     }
 
     /// Tenths below a minute, where the difference between 0.3s and 8.6s is
@@ -202,8 +223,9 @@ private struct HUDCard: View {
     }
 
     /// Only the review banner carries its own Retry. In `.failed` the control
-    /// row owns it (and Return is bound to it there), so putting one in the
-    /// banner too would offer the same action twice in the same card.
+    /// row owns the card's actions (and Return is bound to the primary one
+    /// there), so putting one in the banner too would offer the same action
+    /// twice in the same card.
     private var hasBannerRetry: Bool {
         switch state.mode {
         case .reviewing, .resumeRecording: return state.onRetry != nil
@@ -221,7 +243,7 @@ private struct HUDCard: View {
     }
 
     private func performBannerRetry() {
-        state.onRetry?()
+        state.click(state.onRetry)
     }
 
     // MARK: Entrance
@@ -409,21 +431,38 @@ private struct HUDControlRow: View {
                 }
                 Spacer(minLength: Space.s4)
                 cancelButton(title: "Cancel", hint: escCancelHint)
-                primaryButton(title: "Finish", hint: finishHint) { state.onStop?() }
+                primaryButton(title: "Finish", hint: finishHint) { state.click(state.onStop) }
 
             case .transcribing:
-                ShimmerText("Transcribing")
-                    .typo(.headline)
-                Text(transcribingDetail)
-                    .typo(.mono)
-                    .foregroundStyle(Palette.inkFaint)
-                    .contentTransition(.numericText())
+                if let phase = state.transcribingWaitPhase {
+                    // Waiting on the model, not transcribing yet: the elapsed
+                    // clock would count the download as transcription time.
+                    // On the compact card the name drops out first.
+                    ShimmerText(phase)
+                        .typo(.headline)
+                    ViewThatFits(in: .horizontal) {
+                        transcribingDetailText(modelWaitDetail)
+                        transcribingDetailText(FailureCardCopy.percent(state.preparingFraction) ?? "")
+                    }
+                } else {
+                    ShimmerText("Transcribing")
+                        .typo(.headline)
+                    // Finish's slot below costs the row its slack: with a long
+                    // hotkey hint, chunk progress drops out before anything wraps.
+                    ViewThatFits(in: .horizontal) {
+                        transcribingDetailText(transcribingDetail)
+                        transcribingDetailText(transcribingElapsed)
+                    }
+                }
                 Spacer(minLength: Space.s4)
-                // Finish is gone — there is nothing left to finish — but a
-                // hung cloud request has to have a way out, so Cancel stays
-                // exactly where recording left it, with the same `esc` hint
-                // recording showed.
+                // A hung cloud request has to have a way out, so Cancel stays,
+                // with the same `esc` hint recording showed. Finish has nothing
+                // left to finish, but its slot is held by an invisible stand-in
+                // of the same size: without it Cancel slid right into the spot
+                // Finish had just left, and the second click of a double-click
+                // on Finish cancelled the take it had just finished.
                 cancelButton(title: "Cancel", hint: escCancelHint)
+                finishSlot
 
             case .reviewing:
                 cancelButton(title: "Cancel", hint: "esc")
@@ -433,7 +472,7 @@ private struct HUDControlRow: View {
                         title: "Undo",
                         systemImage: "arrow.uturn.backward",
                         role: .secondary
-                    ) { state.undoLastAction() }
+                    ) { state.click { state.undoLastAction() } }
                         .help("Undo last action")
                         .transition(.opacity)
                 }
@@ -442,11 +481,11 @@ private struct HUDControlRow: View {
                     systemImage: "mic.fill",
                     hint: "⌘R",
                     role: .accent
-                ) { state.onResume?() }
+                ) { state.click(state.onResume) }
                 primaryButton(
                     title: "Paste",
                     hint: HotkeyStore.shared.binding.displayKeys.joined()
-                ) { state.onPaste?() }
+                ) { state.click(state.onPaste) }
 
             case .failed:
                 Spacer(minLength: Space.s4)
@@ -455,7 +494,7 @@ private struct HUDControlRow: View {
                         title: secondaryTitle,
                         systemImage: state.secondaryActionIcon,
                         role: .secondary
-                    ) { state.onSecondaryAction?() }
+                    ) { state.click(state.onSecondaryAction) }
                 }
                 // Esc in the key card always closes it, whatever "Esc cancels
                 // dictation" says — that setting is about Esc in other apps.
@@ -465,7 +504,7 @@ private struct HUDControlRow: View {
                         title: actionTitle,
                         systemImage: state.failureActionIcon,
                         hint: state.failureActionHint
-                    ) { state.onRetry?() }
+                    ) { state.click(state.onRetry) }
                 }
 
             case .discarded:
@@ -476,8 +515,10 @@ private struct HUDControlRow: View {
                 Spacer(minLength: Space.s4)
                 // Same identity as the primary action it replaces, so the
                 // button slides out of the review card instead of popping.
-                primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
-                    state.onUndo?()
+                if state.noticeOffersUndo {
+                    primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
+                        state.click(state.onUndo)
+                    }
                 }
             }
         }
@@ -485,7 +526,7 @@ private struct HUDControlRow: View {
     }
 
     private func cancelButton(title: String, hint: String?) -> some View {
-        HUDButton(title: title, hint: hint, role: .secondary) { state.onCancel?() }
+        HUDButton(title: title, hint: hint, role: .secondary) { state.click(state.onCancel) }
             .matchedGeometryEffect(id: "hud.cancel", in: namespace)
     }
 
@@ -507,6 +548,16 @@ private struct HUDControlRow: View {
             .matchedGeometryEffect(id: "hud.primary", in: namespace)
     }
 
+    /// Finish's exact footprint with nothing in it. Deliberately without the
+    /// primary action's geometry identity: it only holds the slot, and the
+    /// real Finish leaving must not morph into it.
+    private var finishSlot: some View {
+        HUDButton(title: "Finish", hint: finishHint, role: .primary) {}
+            .hidden()
+            .disabled(true)
+            .accessibilityHidden(true)
+    }
+
     /// Toggle mode finishes on the same hotkey, so show it; hold mode finishes
     /// on release, which has no key to surface, so the button stands alone.
     private var finishHint: String? {
@@ -517,9 +568,26 @@ private struct HUDControlRow: View {
     }
 
     private var transcribingDetail: String {
-        let elapsed = String(format: "%0.1fs", state.transcribingElapsedSeconds)
-        guard let progress = state.transcribingProgress else { return elapsed }
-        return "\(progress.current) / \(progress.total) · \(elapsed)"
+        guard let progress = state.transcribingProgress else { return transcribingElapsed }
+        return "\(progress.current) / \(progress.total) · \(transcribingElapsed)"
+    }
+
+    private var transcribingElapsed: String {
+        String(format: "%0.1fs", state.transcribingElapsedSeconds)
+    }
+
+    /// "Parakeet TDT v3 · 42%", or the name alone while there is no fraction
+    /// to show.
+    private var modelWaitDetail: String {
+        FailureCardCopy.downloadProgress(modelName: state.preparingModelName, fraction: state.preparingFraction)
+    }
+
+    private func transcribingDetailText(_ detail: String) -> some View {
+        Text(detail)
+            .typo(.mono)
+            .foregroundStyle(Palette.inkFaint)
+            .lineLimit(1)
+            .contentTransition(.numericText())
     }
 
     /// Blank until the registry reports its first sample — an honest "we don't
@@ -538,6 +606,9 @@ private struct HUDControlRow: View {
 /// glyph, which reads as a dead hotkey.
 private struct HUDPreparingBlock: View {
     @Bindable var state: LiveHUDState
+    /// The phase to name — "Downloading", "Loading" — when the caller has
+    /// already worked it out; nil reads it off the engine's message.
+    var phase: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s4) {
@@ -562,6 +633,7 @@ private struct HUDPreparingBlock: View {
     private var title: String {
         let name = state.preparingModelName
         guard !name.isEmpty else { return "Preparing model" }
+        if let phase { return "\(phase) \(name)" }
         if state.preparingMessage.localizedCaseInsensitiveContains("download") {
             return "Downloading \(name)"
         }
@@ -733,7 +805,7 @@ private struct HUDActionChipRow: View {
                         hint: index < 9 ? "⌘\(index + 1)" : nil,
                         isRunning: state.runningActionId == action.id,
                         isDisabled: state.runningActionId != nil && state.runningActionId != action.id
-                    ) { state.onRunAction?(action) }
+                    ) { state.click { state.onRunAction?(action) } }
                 }
             }
             .padding(.horizontal, HUDActionChipRow.fadeWidth)

@@ -44,6 +44,17 @@ struct SettingsView: View {
             case .updates: return "arrow.down.circle"
             }
         }
+        /// What a dot beside the row's title stands for, or nil for no dot.
+        /// Only Updates has one: an update found by a background check doesn't
+        /// prompt, so this and the menu bar item are where it waits.
+        var badge: String? {
+            switch self {
+            case .updates:
+                return AppUpdater.shared.indicatedVersion.map { "Version \($0) available" }
+            case .general, .meetings, .history, .hotkey, .models, .actions, .cloud:
+                return nil
+            }
+        }
     }
 
     var body: some View {

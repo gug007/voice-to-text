@@ -19,7 +19,8 @@ private func makeEntry(
     speakerNames: [String: String]? = nil,
     summary: TranscriptSummary? = nil,
     actionItems: TranscriptActionItems? = nil,
-    customInsights: [CustomInsight]? = nil
+    customInsights: [CustomInsight]? = nil,
+    status: RecordingHistoryEntry.Status? = nil
 ) -> RecordingHistoryEntry {
     RecordingHistoryEntry(
         id: id,
@@ -35,7 +36,8 @@ private func makeEntry(
         speakerNames: speakerNames,
         summary: summary,
         actionItems: actionItems,
-        customInsights: customInsights
+        customInsights: customInsights,
+        status: status
     )
 }
 
@@ -64,6 +66,11 @@ private let sampleCustomInsight = CustomInsight(
     generatedAt: Date(timeIntervalSinceReferenceDate: 0),
     modelId: "gpt-5.5",
     sourceDigest: "0123456789abcdef"
+)
+
+private let failedStatus = RecordingHistoryEntry.Status(
+    kind: .failed,
+    message: "OpenAI says your account is out of credit."
 )
 
 /// What `RecordingHistoryStore.insert` does to the visible list: prepend the
@@ -113,6 +120,7 @@ struct RecordingHistoryHarness {
         try favoriteSurvives250Inserts()
         try conversationSurvives250Dictations()
         try insightAndSpeakerEntriesSurvive250Inserts()
+        try failedTakeSurvives250DictationsUntilTranscribed()
         try protectedEntriesBeyondCapAreAllKept()
         try lostProtectionIsStampedOnlyWhenLost()
         try unprotectedAtRoundTripsAndSurvivesEdits()
@@ -120,6 +128,8 @@ struct RecordingHistoryHarness {
         try entryWithARunningJobSurvivesInserts()
         try undoAfterClearAllKeepsTheNewRecording()
         try undoBringsBackEvenTheOldestEntry()
+        try clearAllSparesATakeStillTranscribing()
+        try aTakeReclaimsItsRowFromTheUndoWindow()
         try codableRoundTrips()
         try favoriteFieldRoundTrips()
         try alternatesRoundTripAndDefaultEmpty()
@@ -195,6 +205,8 @@ struct RecordingHistoryHarness {
         try expect(!isProtected(makeEntry(offset: 1, customInsights: [])), "an empty custom list is no insight")
         try expect(isProtected(makeEntry(offset: 1, speakerNames: ["Speaker 1": "Kara"])), "speaker names protect their recording")
         try expect(!isProtected(makeEntry(offset: 1, speakerNames: [:])), "an empty name map is no names")
+        try expect(isProtected(makeEntry(offset: 1, source: .dictation, status: failedStatus)),
+                   "a take still waiting for its transcript is protected")
     }
 
     private static func favoriteSurvives250Inserts() throws {
@@ -235,6 +247,27 @@ struct RecordingHistoryHarness {
         try expect(removed.allSatisfy { !RecordingHistoryPruner.isProtected($0) }, "only unprotected entries are pruned")
         try expect(unprotectedCount(library) == cap, "the dictations still fill exactly the cap")
         try expect(isNewestFirst(library), "the library stays newest-first")
+    }
+
+    /// A take whose transcription failed waits in History for a top-up or
+    /// another model. Hundreds of dictations made meanwhile must not prune it,
+    /// and once it is transcribed it is an ordinary dictation again, ranked
+    /// from that moment.
+    private static func failedTakeSurvives250DictationsUntilTranscribed() throws {
+        let failed = makeEntry(offset: 0, transcript: "placeholder", source: .dictation, status: failedStatus)
+        let (library, removed) = insertingDictations(250, after: 0, into: [failed])
+        try expect(library.contains(failed), "a failed take survives 250 dictations")
+        try expect(!removed.contains(failed), "the failed take is never handed back for deletion")
+        try expect(unprotectedCount(library) == cap, "the dictations still fill exactly the cap")
+
+        guard let resolved = failed.resolvingPlaceholder(transcript: "hello", modelId: "parakeet", modelName: "Parakeet") else {
+            throw RecordingHistoryHarnessFailure(description: "a failed take resolves")
+        }
+        let now = Date(timeIntervalSinceReferenceDate: 1_000)
+        let stamped = RecordingHistoryPruner.stampingLostProtection(from: failed, to: resolved, at: now)
+        try expect(!RecordingHistoryPruner.isProtected(stamped), "a transcribed take is an ordinary dictation")
+        try expect(RecordingHistoryPruner.retainedSince(stamped) == now,
+                   "and queues behind the cap from when it was transcribed, not from when it was recorded")
     }
 
     /// Protected entries are never evicted, even when they alone outnumber the
@@ -430,6 +463,50 @@ struct RecordingHistoryHarness {
         let afterUndo = inserting(next, into: library).kept
         let neverDeleted = inserting(next, into: inserting(fresh, into: full).kept).kept
         try expect(afterUndo == neverDeleted, "one insert later, the library matches a world without the deletion")
+    }
+
+    /// Review: Clear All parked a dictation's row mid-transcription; the take
+    /// then filed a second row, and Undo brought the first back beside it.
+    private static func clearAllSparesATakeStillTranscribing() throws {
+        let transcribing = makeEntry(offset: 3, transcript: RecordingHistoryEntry.placeholderTranscript, status: failedStatus)
+        let older = makeEntry(offset: 1)
+        let old = makeEntry(offset: 2, isFavorite: true)
+        let library = [transcribing, old, older]
+
+        let cleared = RecordingHistoryPruner.clearingAll(library, sparing: [transcribing.id])
+        try expect(cleared.kept == [transcribing], "the row being transcribed stays")
+        try expect(cleared.removed == [old, older], "everything else goes to the undo window, in order")
+
+        let everything = RecordingHistoryPruner.clearingAll(library, sparing: [])
+        try expect(everything.kept.isEmpty && everything.removed == library, "with nothing in flight, all of it goes")
+    }
+
+    /// Review: a take whose row sat in the undo window filed a second row, and
+    /// Undo then restored the first beside it.
+    private static func aTakeReclaimsItsRowFromTheUndoWindow() throws {
+        let take = makeEntry(offset: 2, transcript: RecordingHistoryEntry.placeholderTranscript, status: failedStatus)
+        let other = makeEntry(offset: 1)
+        let fresh = makeEntry(offset: 3)
+        let parked = [take, other]
+
+        guard let reclaimed = RecordingHistoryPruner.reclaiming(take.id, from: parked, into: [fresh]) else {
+            throw RecordingHistoryHarnessFailure(description: "a parked row can be reclaimed")
+        }
+        try expect(reclaimed.entries == [fresh, take], "the row is visible again, newest-first")
+        try expect(reclaimed.parked == [other], "the rest of the batch stays in its window")
+        try expect(
+            Set((reclaimed.entries + reclaimed.parked).map(\.id)) == Set((parked + [fresh]).map(\.id)),
+            "visible and parked together still hold what the index lists"
+        )
+        let undone = RecordingHistoryPruner.restoring(reclaimed.parked, into: reclaimed.entries)
+        try expect(undone.filter { $0.id == take.id }.count == 1, "Undo afterwards can't bring the take back twice")
+
+        try expect(
+            RecordingHistoryPruner.reclaiming(fresh.id, from: parked, into: [fresh]) == nil,
+            "a row not in the window isn't reclaimed"
+        )
+        let alone = RecordingHistoryPruner.reclaiming(take.id, from: [take], into: [])
+        try expect(alone?.parked.isEmpty == true, "reclaiming a lone deletion empties the window")
     }
 
     private static func codableRoundTrips() throws {

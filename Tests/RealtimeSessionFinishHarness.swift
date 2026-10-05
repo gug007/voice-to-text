@@ -30,6 +30,9 @@ struct RealtimeSessionFinishHarness {
         try policyDeliversOnlyCleanSessions()
         try refusalsNeverResend()
         try refusalsMapFromProviderEvents()
+        try emptyBalanceIsNotARateLimit()
+        try handshakeCarriesRetryAfter()
+        try preConfigErrorsThatAreNotAboutTheConfig()
         try failureErrorsReachTheFailureCard()
         try policyFailureReasonNamesProviderAndCause()
         try capsScaleAndStayUnderTheWatchdog()
@@ -50,6 +53,13 @@ struct RealtimeSessionFinishHarness {
         try openAICloseAfterSettledFinishIsBenign()
         try openAIFailedUtteranceDegrades()
         try openAIFirstReasonWins()
+        try openAIRefusalOutranksEarlierCauses()
+        try openAIEveryUtteranceFailing()
+        try openAINothingTranscribedNeedsStrongEvidence()
+        try openAIFailedUtteranceDoesNotEndTheWait()
+        try openAIPreConfigHiccupDoesNotCostTheTake()
+        try openAIItemFailureCanBeARefusal()
+        try openAIConfigRejectionOutlivesTheDrop()
         try openAITimeoutDegrades()
 
         try elevenLabsSkipsFlushWithNothingUncommitted()
@@ -85,12 +95,20 @@ struct RealtimeSessionFinishHarness {
     }
 
     private static func refusalsNeverResend() throws {
-        for refusal in [RealtimeRefusal.unauthorized, .quotaExceeded, .rateLimited, .termsNotAccepted, .sessionLimit, .overloaded] {
+        let refusals: [RealtimeRefusal] = [
+            .unauthorized, .quotaExceeded, .rateLimited(), .rateLimited(retryAfter: 20),
+            .termsNotAccepted, .sessionLimit, .overloaded, .rejected,
+        ]
+        for refusal in refusals {
             let degradation = RealtimeDegradation.refused(refusal, "no")
             try expect(!degradation.allowsResend, "\(refusal) rules out a re-send")
             try expect(RealtimeFinishPolicy.action(for: degradation, session: .live, hasRetainedTake: true) == .fail(degradation),
                        "\(refusal) goes straight to the failure path")
         }
+        let nothing = RealtimeDegradation.nothingTranscribed("no")
+        try expect(!nothing.allowsResend, "a take the server transcribed none of isn't re-sent")
+        try expect(RealtimeFinishPolicy.action(for: nothing, session: .live, hasRetainedTake: true) == .fail(nothing),
+                   "it goes straight to the failure path")
         try expect(RealtimeDegradation.connectionLost.allowsResend && RealtimeDegradation.finishTimedOut.allowsResend,
                    "a drop or a timeout can do better on a second try")
     }
@@ -105,27 +123,160 @@ struct RealtimeSessionFinishHarness {
                    "a transcriber hiccup is worth a re-send")
         try expect(RealtimeRefusal.openAI(type: "invalid_request_error", code: "invalid_api_key") == .unauthorized, "OpenAI bad key")
         try expect(RealtimeRefusal.openAI(type: nil, code: "insufficient_quota") == .quotaExceeded, "OpenAI quota")
-        try expect(RealtimeRefusal.openAI(type: "rate_limit_error", code: nil) == .rateLimited, "OpenAI rate limit")
+        try expect(RealtimeRefusal.openAI(type: "rate_limit_error", code: nil) == .rateLimited(), "OpenAI rate limit")
         try expect(RealtimeRefusal.openAI(type: "invalid_request_error", code: "session_expired") == .sessionLimit, "OpenAI session limit")
         try expect(RealtimeRefusal.openAI(type: "server_error", code: nil) == nil, "a server error is worth a re-send")
-        try expect(RealtimeRefusal.handshake(status: 401) == .unauthorized && RealtimeRefusal.handshake(status: 429) == .rateLimited,
+        try expect(RealtimeRefusal.handshake(status: 401) == .unauthorized && RealtimeRefusal.handshake(status: 429) == .rateLimited(),
                    "a refused handshake says why by its status")
+        try expect(RealtimeRefusal.handshake(status: 402) == .quotaExceeded, "payment required is an empty balance")
         try expect(RealtimeRefusal.handshake(status: 502) == nil, "a gateway error isn't a refusal")
+    }
+
+    // The incident: an empty OpenAI balance read as something to wait out, or
+    // as nothing at all.
+    private static func emptyBalanceIsNotARateLimit() throws {
+        try expect(
+            RealtimeRefusal.openAI(
+                type: "tokens",
+                code: "rate_limit_exceeded",
+                message: "You exceeded your current quota, please check your plan and billing details."
+            ) == .quotaExceeded,
+            "OpenAI's realtime quota error comes as rate_limit_exceeded; its message says what it is"
+        )
+        try expect(RealtimeRefusal.openAI(type: "insufficient_quota", code: nil) == .quotaExceeded, "quota as a type")
+        try expect(RealtimeRefusal.openAI(type: nil, code: "billing_not_active") == .quotaExceeded, "billing not active")
+        try expect(RealtimeRefusal.openAI(type: nil, code: "billing_hard_limit_reached") == .quotaExceeded, "hard limit")
+        try expect(
+            RealtimeRefusal.openAI(type: "invalid_request_error", code: nil, message: "Your credit balance is too low.") == .quotaExceeded,
+            "a message about credit"
+        )
+        try expect(
+            RealtimeRefusal.openAI(
+                type: "requests",
+                code: "rate_limit_exceeded",
+                message: "Rate limit reached for gpt-4o-transcribe on requests per min (RPM): Limit 3, Used 3."
+            ) == .rateLimited(),
+            "a real rate limit stays one"
+        )
+        // Review: a low-tier rate limit links to the billing page, and that
+        // link used to read as an empty balance.
+        let freeTier = "Rate limit reached for gpt-4o-transcribe in organization org-abc on requests per min (RPM): "
+            + "Limit 3, Used 3, Requested 1. Please try again in 20s. Visit https://platform.openai.com/account/rate-limits "
+            + "to learn more. You can increase your rate limit by adding a payment method to your account at "
+            + "https://platform.openai.com/account/billing."
+        try expect(
+            RealtimeRefusal.openAI(type: "requests", code: "rate_limit_exceeded", message: freeTier) == .rateLimited(),
+            "a rate limit that links to the billing page is still a rate limit"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "requests", code: "rate_limit_exceeded", message: freeTier) == .rateLimited(),
+            "before the session is set up too"
+        )
+        try expect(!RealtimeRefusal.mentionsBalance(freeTier), "a link to the billing page says nothing about the balance")
+        try expect(
+            RealtimeRefusal.openAI(
+                type: "insufficient_quota",
+                code: "insufficient_quota",
+                message: "You exceeded your current quota, please check your plan and billing details. "
+                    + "For more information on this error, read the docs: https://platform.openai.com/docs/guides/error-codes/api-errors."
+            ) == .quotaExceeded,
+            "OpenAI's real quota text is the empty balance it says"
+        )
+        try expect(
+            RealtimeRefusal.openAI(type: "server_error", code: nil, message: "Check your billing at https://platform.openai.com/account/billing") == nil,
+            "a link alone names no refusal"
+        )
+        try expect(
+            RealtimeRefusal.openAI(type: "invalid_request_error", code: "invalid_api_key", message: "Incorrect API key; check billing") == .unauthorized,
+            "a refused key is named first"
+        )
+    }
+
+    private static func handshakeCarriesRetryAfter() throws {
+        let url = URL(string: "wss://api.openai.com/v1/realtime")!
+        let seconds = HTTPURLResponse(url: url, statusCode: 429, httpVersion: nil, headerFields: ["Retry-After": "20"])!
+        try expect(RealtimeRefusal.handshake(response: seconds) == .rateLimited(retryAfter: 20), "Retry-After in seconds")
+        let millis = HTTPURLResponse(url: url, statusCode: 429, httpVersion: nil, headerFields: ["retry-after-ms": "1500"])!
+        try expect(RealtimeRefusal.handshake(response: millis) == .rateLimited(retryAfter: 1.5), "retry-after-ms wins")
+        let bare = HTTPURLResponse(url: url, statusCode: 429, httpVersion: nil, headerFields: nil)!
+        try expect(RealtimeRefusal.handshake(response: bare) == .rateLimited(), "no header, no wait")
+        let paid = HTTPURLResponse(url: url, statusCode: 402, httpVersion: nil, headerFields: ["Retry-After": "20"])!
+        try expect(RealtimeRefusal.handshake(response: paid) == .quotaExceeded, "an empty balance has no wait")
+        let ok = HTTPURLResponse(url: url, statusCode: 101, httpVersion: nil, headerFields: nil)!
+        try expect(RealtimeRefusal.handshake(response: ok) == nil, "a switched protocol is no refusal")
+
+        let error = RealtimeFinishPolicy.failureError(
+            provider: "OpenAI",
+            .refused(.rateLimited(retryAfter: 20), "HTTP 429"),
+            transport: nil
+        )
+        try expect(TranscriptionFailure.classify(error) == .rateLimited(retryAfter: 20),
+                   "the wait reaches the failure card")
+    }
+
+    private static func preConfigErrorsThatAreNotAboutTheConfig() throws {
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "invalid_request_error", code: "unknown_parameter", message: "Unknown parameter: 'session.audio.input.transcription.keywords'.") == nil,
+            "a rejected config field stays on the ladder"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: nil, code: nil, message: "Something went wrong.") == nil,
+            "an untyped error says nothing either way"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "server_error", code: nil, message: "The server had an error.") == nil,
+            "a transient server error isn't a refusal: the ladder answers it, and the session can still deliver"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "server_error", code: nil, message: "upstream connect error at the load balancer") == nil,
+            "nor is one that names a load balancer"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "invalid_request_error", code: nil, message: "Your account is not active.") == .rejected,
+            "an account problem isn't either"
+        )
+        try expect(
+            RealtimeRefusal.openAIBeforeConfig(type: "invalid_request_error", code: nil, message: "You exceeded your current quota.") == .quotaExceeded,
+            "and a quota message keeps its name"
+        )
+        let rejected = RealtimeFinishPolicy.failureReason(provider: "OpenAI", .refused(.rejected, "Your account is not active."))
+        try expect(rejected == "OpenAI refused the session (Your account is not active.).",
+                   "a nameless refusal reads as the server's own words: \(rejected)")
     }
 
     private static func failureErrorsReachTheFailureCard() throws {
         let key = RealtimeFinishPolicy.failureError(provider: "ElevenLabs", .refused(.unauthorized, "bad key"), transport: nil)
         try expect(TranscriptionFailure.classify(key) == .unauthorized, "a refused key sends the user to fix it, no Retry")
-        let limit = RealtimeFinishPolicy.failureError(provider: "OpenAI", .refused(.rateLimited, "slow down"), transport: nil)
+        let limit = RealtimeFinishPolicy.failureError(provider: "OpenAI", .refused(.rateLimited(), "slow down"), transport: nil)
         try expect(TranscriptionFailure.classify(limit) == .rateLimited(retryAfter: nil), "a rate limit reads as one")
         let quota = RealtimeFinishPolicy.failureError(provider: "OpenAI", .refused(.quotaExceeded, "no credits"), transport: nil)
-        try expect(TranscriptionFailure.classify(quota) == .other, "an empty quota keeps the provider's own message")
+        try expect(TranscriptionFailure.classify(quota) == .quotaExhausted, "an empty quota reads as one, not as a rate limit")
         let offline = RealtimeFinishPolicy.failureError(provider: "OpenAI", .connectionLost, transport: .notConnectedToInternet)
         try expect(TranscriptionFailure.classify(offline) == .offline, "a drop with no network reads as offline")
         let plain = RealtimeFinishPolicy.failureError(provider: "OpenAI", .finishTimedOut, transport: nil)
         try expect(plain is TranscriptionEngineError, "anything else stays an engine error")
         try expect(plain.localizedDescription.hasPrefix("Transcription failed: OpenAI didn't return the complete transcript"),
                    "and reads as before: \(plain.localizedDescription)")
+        let nothing = RealtimeFinishPolicy.failureError(provider: "OpenAI", .nothingTranscribed("Audio could not be processed."), transport: nil)
+        try expect(TranscriptionFailure.classify(nothing) == .other, "a take with no text keeps its own words on the card")
+        try expect(
+            nothing.localizedDescription
+                == "Transcription failed: OpenAI transcribed none of this take (Audio could not be processed.).",
+            "with nothing pointing at the balance, no top-up advice: \(nothing.localizedDescription)"
+        )
+        let unpaid = RealtimeFinishPolicy.failureError(
+            provider: "OpenAI",
+            .nothingTranscribed("Your account is not active, please check your billing details."),
+            transport: nil
+        )
+        try expect(
+            unpaid.localizedDescription
+                == "Transcription failed: OpenAI transcribed none of this take (Your account is not active, please check your billing details.). "
+                + "If your OpenAI balance is empty, top up — or use a model on this Mac.",
+            "a failure about billing says what might fix it: \(unpaid.localizedDescription)"
+        )
+        let rejected = RealtimeFinishPolicy.failureError(provider: "OpenAI", .refused(.rejected, "Account disabled."), transport: nil)
+        try expect(rejected is TranscriptionEngineError, "a nameless refusal is an engine error with the server's words")
     }
 
     private static func policyFailureReasonNamesProviderAndCause() throws {
@@ -357,11 +508,259 @@ struct RealtimeSessionFinishHarness {
     private static func openAIFirstReasonWins() throws {
         var t = OpenAIRealtimeFinishTracker()
         t.sendFailed("socket not connected", transport: .notConnectedToInternet)
-        t.refused(.unauthorized, "late")
         t.connectionClosed(transport: .timedOut)
         t.finishWindowExpired()
         try expect(t.degradation == .sendFailed("socket not connected"), "the first cause is the one reported")
         try expect(t.transport == .notConnectedToInternet, "and the first network error")
+    }
+
+    // A refused handshake often shows up first as the send that failed on it.
+    // Reporting the send would re-send a take the provider already refused.
+    private static func openAIRefusalOutranksEarlierCauses() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.sendFailed("socket not connected", transport: .networkConnectionLost)
+        t.refused(.quotaExceeded, "HTTP 402")
+        t.connectionClosed(transport: .timedOut)
+        t.finishWindowExpired()
+        try expect(t.degradation == .refused(.quotaExceeded, "HTTP 402"), "the refusal replaces the send failure")
+        try expect(t.transport == .networkConnectionLost, "the first network error is still kept")
+        try expect(RealtimeFinishPolicy.action(for: t.outcome, session: .live, hasRetainedTake: true)
+                   == .fail(.refused(.quotaExceeded, "HTTP 402")), "and nothing is re-sent")
+
+        var twice = OpenAIRealtimeFinishTracker()
+        twice.refused(.unauthorized, "first")
+        twice.refused(.quotaExceeded, "second")
+        try expect(twice.degradation == .refused(.unauthorized, "first"), "between two refusals the first stands")
+    }
+
+    private static func openAIEveryUtteranceFailing() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.speechStarted()
+        t.bufferCommitted()
+        t.transcriptFailed("Audio could not be processed.")
+        t.speechStarted()
+        t.bufferCommitted()
+        t.transcriptFailed("Audio could not be processed again.")
+        t.beginFinish()
+        try expect(t.degradation == .serverError("Audio could not be processed."), "each failure costs its text")
+        try expect(t.outcome == .nothingTranscribed("Audio could not be processed."),
+                   "with none transcribed the finish says so: \(String(describing: t.outcome))")
+        try expect(RealtimeFinishPolicy.action(for: t.outcome, session: .live, hasRetainedTake: true)
+                   == .fail(.nothingTranscribed("Audio could not be processed.")),
+                   "and a whole-take re-send isn't tried")
+
+        var some = OpenAIRealtimeFinishTracker()
+        some.speechStarted()
+        some.bufferCommitted()
+        some.transcriptCompleted()
+        some.speechStarted()
+        some.bufferCommitted()
+        some.transcriptFailed("one line lost")
+        try expect(some.outcome == .serverError("one line lost"), "one lost line among others is still worth a re-send")
+        try expect(RealtimeFinishPolicy.action(for: some.outcome, session: .live, hasRetainedTake: true) == .rerunBuffered,
+                   "so it gets one")
+
+        try expect(OpenAIRealtimeFinishTracker().outcome == nil, "a clean session reports nothing")
+    }
+
+    // Review: "nothing transcribed" used to follow from any failure with no
+    // completion, so one transient hiccup or a drop after it lost the re-send
+    // that recovers it, and the card blamed the balance.
+    private static func openAINothingTranscribedNeedsStrongEvidence() throws {
+        typealias Policy = RealtimeFinishPolicy
+
+        var one = OpenAIRealtimeFinishTracker()
+        one.speechStarted()
+        one.bufferCommitted()
+        one.beginFinish()
+        one.transcriptFailed("Audio could not be processed.")
+        try expect(one.outcome == .serverError("Audio could not be processed."),
+                   "one failed utterance is a hiccup: \(String(describing: one.outcome))")
+        try expect(Policy.action(for: one.outcome, session: .live, hasRetainedTake: true) == .rerunBuffered,
+                   "and the take gets its re-send")
+
+        var unpaid = OpenAIRealtimeFinishTracker()
+        unpaid.speechStarted()
+        unpaid.bufferCommitted()
+        unpaid.transcriptFailed("Your account is not active, please check your billing details.")
+        try expect(unpaid.outcome == .nothingTranscribed("Your account is not active, please check your billing details."),
+                   "one failure that blames the account is enough: \(String(describing: unpaid.outcome))")
+
+        var accountSecond = OpenAIRealtimeFinishTracker()
+        for message in ["Audio could not be processed.", "This account has been deactivated."] {
+            accountSecond.speechStarted()
+            accountSecond.bufferCommitted()
+            accountSecond.transcriptFailed(message)
+        }
+        try expect(accountSecond.outcome == .nothingTranscribed("This account has been deactivated."),
+                   "the failure that says why is the one reported")
+
+        var dropped = OpenAIRealtimeFinishTracker()
+        for _ in 0..<2 {
+            dropped.speechStarted()
+            dropped.bufferCommitted()
+            dropped.transcriptFailed("failed")
+        }
+        dropped.connectionClosed(transport: .networkConnectionLost)
+        try expect(dropped.outcome == .serverError("failed"),
+                   "a drop leaves the take to the re-send: \(String(describing: dropped.outcome))")
+        try expect(Policy.action(for: dropped.outcome, session: .live, hasRetainedTake: true) == .rerunBuffered,
+                   "which it gets")
+
+        var unsent = OpenAIRealtimeFinishTracker()
+        for _ in 0..<2 {
+            unsent.speechStarted()
+            unsent.bufferCommitted()
+            unsent.transcriptFailed("failed")
+        }
+        unsent.sendFailed("Socket is not connected", transport: .notConnectedToInternet)
+        try expect(unsent.outcome == .serverError("failed"), "so does audio that never got there")
+
+        var owed = OpenAIRealtimeFinishTracker()
+        owed.speechStarted()
+        owed.bufferCommitted()
+        owed.speechStarted()
+        owed.bufferCommitted()
+        owed.transcriptFailed("Your account is not active.")
+        owed.beginFinish()
+        owed.finishWindowExpired()
+        try expect(owed.outcome == .serverError("Your account is not active."),
+                   "an utterance still owed when the wait ran out could have come back")
+
+        var unanswered = OpenAIRealtimeFinishTracker()
+        for _ in 0..<2 {
+            unanswered.speechStarted()
+            unanswered.bufferCommitted()
+            unanswered.transcriptFailed("Audio could not be processed.")
+        }
+        unanswered.beginFinish()
+        unanswered.speechStarted()
+        unanswered.finishCommitSent()
+        unanswered.finishWindowExpired()
+        try expect(unanswered.outcome == .serverError("Audio could not be processed."),
+                   "a finish commit never answered still owed the last utterance: \(String(describing: unanswered.outcome))")
+        try expect(Policy.action(for: unanswered.outcome, session: .live, hasRetainedTake: true) == .rerunBuffered,
+                   "so the take keeps its re-send")
+
+        var unheard = OpenAIRealtimeFinishTracker()
+        for _ in 0..<2 {
+            unheard.speechStarted()
+            unheard.bufferCommitted()
+            unheard.transcriptFailed("Audio could not be processed.")
+        }
+        unheard.beginFinish()
+        unheard.speechStarted()
+        unheard.finishWindowExpired()
+        try expect(unheard.outcome == .serverError("Audio could not be processed."),
+                   "speech no commit covered was still owed too")
+    }
+
+    // Review: the finish stopped at the first failed utterance, so the ones
+    // still owed never got the chance to come back.
+    private static func openAIFailedUtteranceDoesNotEndTheWait() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.speechStarted()
+        t.bufferCommitted()
+        t.speechStarted()
+        t.bufferCommitted()
+        t.beginFinish()
+        t.transcriptFailed("Audio could not be processed.")
+        try expect(!t.interrupted && !t.isSettled, "another utterance is still owed, so the finish waits for it")
+        t.speechStarted()
+        try expect(t.needsFollowUpCommit, "late speech still gets its commit")
+        t.finishCommitSent()
+        t.bufferCommitted()
+        t.transcriptCompleted()
+        t.transcriptCompleted()
+        try expect(t.isSettled, "settles once every owed utterance is in")
+        try expect(t.outcome == .serverError("Audio could not be processed."), "one line lost among others: a re-send")
+
+        var certain = OpenAIRealtimeFinishTracker()
+        for _ in 0..<4 {
+            certain.speechStarted()
+            certain.bufferCommitted()
+        }
+        certain.beginFinish()
+        certain.transcriptCompleted()
+        try expect(!certain.resendIsCertain, "a healthy finish has nothing to re-send")
+        certain.transcriptFailed("Audio could not be processed.")
+        try expect(!certain.isSettled && certain.resendIsCertain,
+                   "with a line already back, a failure makes the re-send certain while two are still owed")
+        try expect(certain.outcome == .serverError("Audio could not be processed."), "and the outcome is that re-send")
+
+        var undecided = OpenAIRealtimeFinishTracker()
+        for _ in 0..<2 {
+            undecided.speechStarted()
+            undecided.bufferCommitted()
+        }
+        undecided.beginFinish()
+        undecided.transcriptFailed("Audio could not be processed.")
+        try expect(!undecided.resendIsCertain, "with nothing back yet, the rest decide between a re-send and nothing")
+
+        var refused = OpenAIRealtimeFinishTracker()
+        refused.speechStarted()
+        refused.bufferCommitted()
+        refused.speechStarted()
+        refused.bufferCommitted()
+        refused.beginFinish()
+        refused.transcriptFailed("no", refusal: .quotaExceeded)
+        try expect(refused.interrupted && refused.isSettled, "a refusal ends the wait at once")
+
+        var closed = OpenAIRealtimeFinishTracker()
+        closed.speechStarted()
+        closed.bufferCommitted()
+        closed.speechStarted()
+        closed.bufferCommitted()
+        closed.beginFinish()
+        closed.transcriptFailed("failed")
+        closed.connectionClosed(transport: .networkConnectionLost)
+        try expect(closed.isSettled && closed.transport == .networkConnectionLost,
+                   "a close while the rest is owed ends it, and keeps the network error")
+    }
+
+    // Review: a transient error before `session.updated` used to refuse a
+    // session that went on to transcribe every utterance.
+    private static func openAIPreConfigHiccupDoesNotCostTheTake() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.configRejected("The server had an error while processing your request.")
+        t.configAccepted()
+        t.speechStarted()
+        t.bufferCommitted()
+        t.transcriptCompleted()
+        t.beginFinish()
+        try expect(t.outcome == nil, "once the session is acknowledged, its transcript is delivered")
+        try expect(RealtimeFinishPolicy.action(for: t.outcome, session: .live, hasRetainedTake: true) == .deliver,
+                   "as it was")
+    }
+
+    private static func openAIItemFailureCanBeARefusal() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.speechStarted()
+        t.bufferCommitted()
+        let message = "You exceeded your current quota, please check your plan and billing details."
+        t.transcriptFailed(message, refusal: RealtimeRefusal.openAI(type: "tokens", code: "rate_limit_exceeded", message: message))
+        try expect(t.outcome == .refused(.quotaExceeded, message), "an item's quota error is the refusal it names")
+        let error = RealtimeFinishPolicy.failureError(provider: "OpenAI", t.outcome!, transport: nil)
+        try expect(TranscriptionFailure.classify(error) == .quotaExhausted, "and the card says the balance is empty")
+    }
+
+    private static func openAIConfigRejectionOutlivesTheDrop() throws {
+        var t = OpenAIRealtimeFinishTracker()
+        t.configRejected("Invalid value: 'xx'. Supported languages are …")
+        t.connectionClosed(transport: .networkConnectionLost)
+        try expect(t.degradation == .serverError("Invalid value: 'xx'. Supported languages are …"),
+                   "a drop after a rejected config fails with the server's words, not \"the connection dropped\"")
+
+        var send = OpenAIRealtimeFinishTracker()
+        send.configRejected("Unknown parameter.")
+        send.sendFailed("Socket is not connected")
+        try expect(send.degradation == .serverError("Unknown parameter."), "so does a failed send")
+
+        var accepted = OpenAIRealtimeFinishTracker()
+        accepted.configRejected("Unknown parameter.")
+        accepted.configAccepted()
+        accepted.connectionClosed()
+        try expect(accepted.degradation == .connectionLost, "once a reduced config is accepted, a drop is just a drop")
     }
 
     private static func openAITimeoutDegrades() throws {
@@ -531,6 +930,12 @@ struct RealtimeSessionFinishHarness {
         var refused = elevenLabs()
         refused.refused(.quotaExceeded, "out of credits")
         try expect(refused.degradation == .refused(.quotaExceeded, "out of credits"), "a refusal is recorded as one")
+
+        var late = elevenLabs()
+        late.sendFailed("socket not connected")
+        late.refused(.unauthorized, "HTTP 401")
+        late.connectionClosed()
+        try expect(late.degradation == .refused(.unauthorized, "HTTP 401"), "a refusal replaces an earlier send failure")
     }
 
     private static func elevenLabsCountsTranscriptEvents() throws {

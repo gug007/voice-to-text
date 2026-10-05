@@ -97,6 +97,11 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
     /// Too many requests. `retryAfter` is when the provider said to try
     /// again, if it said.
     case rateLimited(retryAfter: TimeInterval?)
+    /// The account has no credit left (OpenAI's 429 `insufficient_quota`, a
+    /// 402). Waiting doesn't help and neither does another model from the same
+    /// provider — they all bill the same balance. A model on this Mac, or a
+    /// top-up, does.
+    case quotaExhausted
     /// The provider's own failure (5xx). Usually passes.
     case server
     /// Anything else — the engine's own message says it best.
@@ -126,11 +131,12 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
             // names the key is one.
             case 403:
                 return apiCode.map(keyRelatedAPICodes.contains) == true ? .unauthorized : .other
+            case 402:
+                return .quotaExhausted
             case 429:
                 // OpenAI answers an exhausted balance with a 429 too, and no
-                // amount of waiting fixes that — its own message (about
-                // billing) is the useful one.
-                return apiCode == "insufficient_quota" ? .other : .rateLimited(retryAfter: retryAfter)
+                // amount of waiting fixes that.
+                return apiCode == "insufficient_quota" ? .quotaExhausted : .rateLimited(retryAfter: retryAfter)
             case 500...599:
                 return .server
             default:
@@ -174,6 +180,8 @@ nonisolated enum TranscriptionFailure: Equatable, Sendable {
                 return "\(service) is rate-limiting requests. Wait a moment, then retry."
             }
             return "\(service) is rate-limiting requests. Retry in \(wait)."
+        case .quotaExhausted:
+            return "\(service) says your account is out of credit. Top up, or transcribe with a model on this Mac."
         case .server:
             return "\(service) is having trouble right now. Retry in a moment."
         case .other:

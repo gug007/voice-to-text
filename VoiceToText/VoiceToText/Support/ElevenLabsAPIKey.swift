@@ -51,7 +51,7 @@ final class ElevenLabsAPIKeyStore {
     /// Posted after `setKey`/`clearKey`, and when a key turns up late (see
     /// `refreshFromStorage`), so non-SwiftUI components
     /// (e.g. `ModelRegistry`) can refresh derived readiness state.
-    static let didChangeNotification = Notification.Name("ElevenLabsAPIKeyStore.didChange")
+    static let didChangeNotification = CloudProvider.elevenLabs.keyDidChangeNotification
 
     private(set) var hasKey: Bool
 

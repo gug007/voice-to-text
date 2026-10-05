@@ -437,6 +437,15 @@ struct MeetingsPane: View {
                 .typo(.caption)
                 .foregroundStyle(Palette.signalWarn)
                 .fixedSize(horizontal: false, vertical: true)
+            // Only when the recording reached History: after a failed start or
+            // a too-short stop there is nothing there to show.
+            if controller.erroredRecording != nil {
+                Button("Show in History") { WindowOpener.shared.showMain(section: .history) }
+                    .buttonStyle(.plain)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.accent)
+                    .fixedSize()
+            }
             Button("Dismiss") { controller.dismissError() }
                 .buttonStyle(.plain)
                 .typo(.captionMedium)

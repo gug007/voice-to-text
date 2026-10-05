@@ -68,9 +68,10 @@ nonisolated enum LiveHUDMode: Sendable, Equatable {
     /// A transcription failure. No longer a separate 480×200 panel — it renders
     /// as a banner inside the same card at the same review width.
     case failed
-    /// "Dictation discarded" with Undo, for a few seconds after the review was
-    /// cancelled. One line and a button: the user has already moved on, so it
-    /// neither takes key nor stays.
+    /// A few seconds of one-line notice after a cancel: "Dictation discarded"
+    /// or "Recording discarded" with Undo, or where a cancelled transcription's
+    /// audio went. The user has already moved on, so it neither takes key nor
+    /// stays.
     case discarded
 
     /// Whether the panel accepts key status (and therefore keyboard input) in
@@ -116,7 +117,21 @@ final class LiveHUDState {
     static let shared = LiveHUDState()
     static let levelHistoryCount = 140
 
-    var mode: LiveHUDMode = .recording
+    var mode: LiveHUDMode = .recording {
+        didSet {
+            if mode != oldValue { modeChangedAt = ProcessInfo.processInfo.systemUptime }
+        }
+    }
+    /// When `mode` last changed, or the card last appeared from hidden, on
+    /// the monotonic clock. See `click(_:)`.
+    @ObservationIgnored fileprivate var modeChangedAt: TimeInterval = 0
+    /// How long the card's buttons ignore clicks after it changes mode. A
+    /// double-click is two clicks about 200–400 ms apart, and the first one
+    /// usually *is* the mode change: Finish turns the card into transcribing,
+    /// Cancel into the discard notice. The second click then lands on
+    /// whatever button now sits under the pointer — Cancel, Undo — and does
+    /// the opposite of what the user meant.
+    static let clickGuardAfterModeChange: TimeInterval = 0.4
     var isRecording: Bool = false
     var elapsedSeconds: Double = 0
     /// Smoothed mic level, 0...1.
@@ -174,23 +189,29 @@ final class LiveHUDState {
     var salvagedSampleCount: Int = 0
     /// Whether the failed take's audio was saved to History, which the card
     /// then says — closing it no longer loses anything. Only ever true when
-    /// the save really happened (History can be off).
+    /// the save really happened; false, with audio captured, makes the card
+    /// say it is not saved (the speech gate's rejections aren't kept).
     var failureSavedToHistory: Bool = false
     /// Replaces the failure card's empty-state line ("Nothing to review." /
     /// "N s captured.") when the failure has something more useful to say
     /// there — the paste fallback's "click where it goes" instruction.
     var failureDetail: String?
     /// Key hint on that button — only set where the key is really bound
-    /// (Return runs Retry; nothing is bound to Open Settings).
+    /// (Return runs it — Retry, Transcribe on Mac — and nothing is bound to
+    /// Open Settings).
     var failureActionHint: String?
-    /// A second action beside Retry — on the failure card's control row, or
-    /// on the review banner after a failed Resume take. "Check API Key" for a
-    /// refused key: Retry stays, since it is what works once the key is fixed.
+    /// A second action beside the first — on the failure card's control row,
+    /// or on the review banner after a failed Resume take. "Check API Key"
+    /// for a refused key, beside the Retry that works once it's fixed;
+    /// "Retry OpenAI" beside a model on this Mac when the balance is empty.
     var secondaryActionTitle: String?
     var secondaryActionIcon: String?
 
     /// The discard notice's one line ("Dictation discarded").
     var noticeMessage: String = ""
+    /// Whether the notice offers Undo. A notice that only says where a
+    /// cancelled take went ("saved to History") has nothing to undo.
+    var noticeOffersUndo: Bool = false
 
     /// Display name of the model being downloaded or loaded, on the preparing
     /// card. The card names the model because "which model is this waiting on"
@@ -203,6 +224,14 @@ final class LiveHUDState {
     /// "Compiling parakeet_encoder…". This is the line that distinguishes a
     /// running download from a wedged one.
     var preparingMessage: String = ""
+    /// What a transcribing take is waiting on before it can transcribe —
+    /// "Downloading" or "Loading" — while a failure card's "Download &
+    /// Transcribe" fetches the model on this Mac it chose, or loads one that
+    /// isn't warm. Named in the control row in place of "Transcribing", with
+    /// the model and its progress in the three `preparing…` fields above. Nil
+    /// the rest of the time — for a model that is already warm, the whole
+    /// take.
+    var transcribingWaitPhase: String?
 
     /// Whether this review session shows the action chips row. Snapshotted
     /// from `ActionsStore.shared.showsInReview` when the review HUD is shown
@@ -240,18 +269,34 @@ final class LiveHUDState {
     /// The discard notice's Undo.
     @ObservationIgnored var onUndo: (@MainActor () -> Void)?
     @ObservationIgnored var onSecondaryAction: (@MainActor () -> Void)?
+    /// Called when Undo steps back an action.
+    @ObservationIgnored var onActionUndone: (@MainActor () -> Void)?
 
     /// Steps back one action at a time: each call restores the text from
     /// before the most recent transform, so chained actions unwind in order
     /// until the original transcript is back (then the Undo button hides).
     func undoLastAction() {
         guard let original = actionRevertStack.popLast() else { return }
-        reviewBanner = nil
+        // The controller decides what the banner shows now: an action's
+        // failure goes, a take's own notice stays.
+        onActionUndone?()
         // No-op restore would desync the recorded caret from the visible one
         // (the editor skips syncs when the text is unchanged).
         guard original != reviewText else { return }
         selectedRange = NSRange(location: (original as NSString).length, length: 0)
         reviewText = original
+    }
+
+    /// Runs a card button's action — unless the card changed mode within
+    /// `clickGuardAfterModeChange`, in which case the click was aimed at the
+    /// card it replaced and is dropped.
+    func click(_ action: (@MainActor () -> Void)?) {
+        let sinceModeChange = ProcessInfo.processInfo.systemUptime - modeChangedAt
+        guard sinceModeChange >= Self.clickGuardAfterModeChange else {
+            AppLog.hud.info("HUD click ignored \(Int(sinceModeChange * 1000)) ms after a mode change")
+            return
+        }
+        action?()
     }
 }
 
@@ -405,14 +450,16 @@ final class LiveHUDPanel {
     /// keeps its samples and freezes in place rather than being replaced.
     ///
     /// `onCancel` is rebound rather than inherited from the recording session:
-    /// the control row still shows Cancel here (Finish is gone), and by this
-    /// point cancelling means abandoning the transcription, not the recording.
+    /// the control row still shows Cancel here, at the same spot (Finish's
+    /// slot is held empty), and by this point cancelling means abandoning the
+    /// transcription, not the recording.
     func showTranscribing(onCancel: @escaping @MainActor () -> Void) {
         state.mode = .transcribing
         state.isRecording = false
         state.level = 0
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
+        state.transcribingWaitPhase = nil
         state.onCancel = onCancel
         state.onStop = nil
 
@@ -500,6 +547,7 @@ final class LiveHUDPanel {
         state.onSecondaryAction = onSecondaryAction
         state.preparingMessage = ""
         state.preparingFraction = nil
+        state.transcribingWaitPhase = nil
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.reviewText = ""
@@ -519,14 +567,16 @@ final class LiveHUDPanel {
         AppLog.hud.info("HUD failure shown: \(message)")
     }
 
-    /// The review was just cancelled: the card shrinks to one line with Undo
-    /// and stops taking key, which hands the keyboard straight back to the
-    /// app the user is in. `DictationController` owns how long it stays.
-    func showDiscarded(message: String, onUndo: @escaping @MainActor () -> Void) {
+    /// The review, a recording or a transcription was just cancelled: the
+    /// card shrinks to one line — with Undo when `onUndo` is given — and stops
+    /// taking key, which hands the keyboard straight back to the app the user
+    /// is in. `DictationController` owns how long it stays.
+    func showDiscarded(message: String, onUndo: (@MainActor () -> Void)?) {
         state.mode = .discarded
         state.isRecording = false
         state.level = 0
         state.noticeMessage = message
+        state.noticeOffersUndo = onUndo != nil
         state.failureMessage = ""
         state.failureActionTitle = nil
         state.salvagedSampleCount = 0
@@ -574,6 +624,23 @@ final class LiveHUDPanel {
         state.transcribingProgress = TranscribingProgress(current: current, total: total)
     }
 
+    /// The transcribing take is waiting on `modelName` — downloading or
+    /// loading it, per `phase` — rather than transcribing. Polled while the
+    /// wait lasts; pass nil for `phase` once the model is ready, and the card
+    /// goes back to "Transcribing". `fraction` nil keeps the progress
+    /// indeterminate.
+    func setTranscribingWait(
+        phase: String?,
+        modelName: String = "",
+        fraction: Double? = nil,
+        message: String = ""
+    ) {
+        state.transcribingWaitPhase = phase
+        state.preparingModelName = modelName
+        state.preparingFraction = fraction
+        state.preparingMessage = message
+    }
+
     /// Live transcript update from a streaming engine (committed + partial).
     func setPartialTranscript(_ text: String) {
         state.partialTranscript = text
@@ -609,6 +676,7 @@ final class LiveHUDPanel {
         state.preparingModelName = ""
         state.preparingMessage = ""
         state.preparingFraction = nil
+        state.transcribingWaitPhase = nil
         state.reviewShowsActions = false
         state.reviewActions = []
         state.runningActionId = nil
@@ -620,6 +688,7 @@ final class LiveHUDPanel {
         state.onRunAction = nil
         state.onUndo = nil
         state.noticeMessage = ""
+        state.noticeOffersUndo = false
         state.secondaryActionTitle = nil
         state.secondaryActionIcon = nil
         state.onSecondaryAction = nil
@@ -668,6 +737,9 @@ final class LiveHUDPanel {
         if !wasVisible {
             state.presentationCount &+= 1
             measuredCardSize = .zero
+            // A card that pops up under a moving pointer is as easy to
+            // misclick as one that changed mode under it.
+            state.modeChangedAt = ProcessInfo.processInfo.systemUptime
         }
 
         // The card animates on the same spring, starting in the same runloop

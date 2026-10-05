@@ -30,8 +30,38 @@ enum ModelStorage {
             .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(variant)", isDirectory: true)
     }
 
+    /// Whether the model's folder holds any file. Stops at the first one,
+    /// where `installedState` sizes the whole tree.
     static func isInstalled(_ descriptor: ModelDescriptor) -> Bool {
-        installedState(descriptor).installed
+        guard let url = location(for: descriptor) else { return false }
+        var isDir: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue,
+              let enumerator = FileManager.default.enumerator(
+                  at: url,
+                  includingPropertiesForKeys: nil,
+                  options: [.skipsHiddenFiles]
+              ) else { return false }
+        return enumerator.nextObject() != nil
+    }
+
+    /// Whether the model is downloaded, ready to load without the network:
+    /// on disk, and not still being fetched (`readiness`). `isInstalled`
+    /// alone is true once the folder holds any file, and a download writes
+    /// into that same folder as it goes. The folder must also hold every
+    /// file a load needs — Whisper's CoreML bundles (`WhisperKitModelFiles`),
+    /// Parakeet's bundles and vocabulary (`ParakeetModelFiles`) — which
+    /// catches a download cancelled, dropped or stalled out part way, which
+    /// leaves the files it finished behind.
+    static func isDownloaded(_ descriptor: ModelDescriptor, readiness: ModelReadiness) -> Bool {
+        guard !readiness.isDownloading, isInstalled(descriptor) else { return false }
+        switch descriptor.backend {
+        case .whisperKit:
+            return WhisperKitModelFiles.hasRequiredModels(in: whisperKitModelFolder(variant: descriptor.backendModelId))
+        case .fluidAudio:
+            return location(for: descriptor).map { ParakeetModelFiles.hasRequiredModels(in: $0) } ?? false
+        case .openAI, .openAIRealtime, .elevenLabs:
+            return true
+        }
     }
 
     static func diskUsageBytes(_ descriptor: ModelDescriptor) -> Int64 {

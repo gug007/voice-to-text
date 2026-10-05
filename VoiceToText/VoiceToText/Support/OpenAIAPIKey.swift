@@ -55,7 +55,7 @@ final class OpenAIAPIKeyStore {
     /// Posted after `setKey`/`clearKey`, and when a key turns up late (see
     /// `refreshFromStorage`), so non-SwiftUI components
     /// (e.g. `ModelRegistry`) can refresh derived state.
-    static let didChangeNotification = Notification.Name("OpenAIAPIKeyStore.didChange")
+    static let didChangeNotification = CloudProvider.openAI.keyDidChangeNotification
 
     private(set) var hasKey: Bool
 

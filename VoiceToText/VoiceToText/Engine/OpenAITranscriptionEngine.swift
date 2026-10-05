@@ -38,12 +38,12 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     /// discover a NAT/VPN-expired connection reactively — the exact scenario
     /// `send`'s reactive retry exists for, and the difference between a quick
     /// take and a stall that silently doubles the request timeout.
-    private static let staleSessionIdleThreshold: TimeInterval = 30
+    private nonisolated static let staleSessionIdleThreshold: TimeInterval = 30
 
     /// Tail of the prior chunk's transcript passed as `prompt` to the next
     /// — gives the model rolling context for consistent punctuation and
     /// proper-noun spelling across boundaries.
-    private static let contextPromptTailLength = 200
+    private nonisolated static let contextPromptTailLength = 200
 
     init(modelId: String, sampleRate: Int = 16_000) {
         self.modelId = modelId
@@ -88,6 +88,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
+        #if DEBUG
+        try CloudQuotaSimulation.throwIfEnabled(for: .openAI)
+        #endif
 
         // The diarizing model has its own request shape and its own cross-request
         // continuity mechanism (speaker pinning); see `transcribeDiarize`.

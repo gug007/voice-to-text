@@ -187,6 +187,12 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         guard let apiKey = OpenAIAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
+        // Before the socket opens: a live take then falls back to buffered
+        // recording, as on a real refused handshake, and Finish meets the
+        // refusal again in `transcribeBuffered`.
+        #if DEBUG
+        try CloudQuotaSimulation.throwIfEnabled(for: .openAI)
+        #endif
 
         // Tear down any prior session first so a reused actor never orphans its
         // old socket / receive + sender tasks.
@@ -324,8 +330,16 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         }
         let settleMs = wholeTakeOwed ? Self.bulkCommitSettleMs : 0
         var waitedMs = 0
+        // A failed utterance doesn't end a live wait: the ones still owed
+        // decide between a re-send and "nothing transcribed" — until one has
+        // come back, which settles it as a re-send (`resendIsCertain`). A
+        // buffered session fails on any degradation, so it has nothing left
+        // to wait for.
         func isDone() -> Bool {
-            finish.degradation != nil || (finish.isSettled && waitedMs >= settleMs)
+            finish.interrupted
+                || (isBufferedSession && finish.degradation != nil)
+                || finish.resendIsCertain
+                || (finish.isSettled && waitedMs >= settleMs)
         }
         while true {
             guard generation == sessionGeneration else { throw Self.supersededError }
@@ -341,7 +355,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         if !isDone() { finish.finishWindowExpired() }
 
         let text = liveText.trimmingCharacters(in: .whitespacesAndNewlines)
-        return (text, finish.degradation)
+        return (text, finish.outcome)
     }
 
     /// Also stops a finish wait, or the re-send behind it, that is still
@@ -452,7 +466,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             try await task.send(.string(json))
         } catch {
             guard generation == sessionGeneration else { return }
-            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+            recordSendFailure(error, on: task)
         }
     }
 
@@ -476,8 +490,10 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
     /// The server rejected a `session.update` that was never acknowledged, so the
     /// session as configured transcribes nothing. Step one rung down the ladder
     /// and resend; after the last rung, record the server's own message so the
-    /// finish fails with it instead of an empty transcript.
+    /// finish fails with it instead of an empty transcript. Until a rung is
+    /// accepted, a drop or a failed send also fails with that message.
     private func downgradeSessionConfig(rejection message: String) {
+        finish.configRejected(message)
         let next: SessionConfigStage?
         switch configStage {
         case .full: next = .minimal
@@ -511,6 +527,10 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         sessionSampleCount += samples.count
         samplesSinceCommit += samples.count
         guard let task else { return }
+        // A buffered session fails on any degradation — its input already is
+        // the whole take — so once one is recorded, the rest of the audio
+        // would only be sent to a server that has refused it or lost it.
+        if isBufferedSession, finish.degradation != nil { return }
         guard let base64 = resampleToPCM16Base64(samples) else {
             finish.sendFailed("audio couldn't be resampled to 24 kHz")
             return
@@ -523,7 +543,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+            recordSendFailure(error, on: task)
         }
     }
 
@@ -536,7 +556,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+            recordSendFailure(error, on: task)
         }
     }
 
@@ -573,13 +593,25 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
         }
         guard generation == sessionGeneration else { return }
         streamClosed = true
-        // A handshake the server refused (a bad key, a rate limit) surfaces
-        // here as a failed receive; its HTTP status says which.
-        if let status = (task.response as? HTTPURLResponse)?.statusCode,
-           let refusal = RealtimeRefusal.handshake(status: status) {
-            finish.refused(refusal, "HTTP \(status)")
-        }
+        // A handshake the server refused (a bad key, a rate limit, an empty
+        // balance) surfaces here as a failed receive; its HTTP status says which.
+        noteHandshakeRefusal(of: task)
         finish.connectionClosed(transport: (failure as? URLError)?.code)
+    }
+
+    /// A send that failed because the server refused the handshake is that
+    /// refusal, not a network problem worth a re-send.
+    private func recordSendFailure(_ error: Error, on task: URLSessionWebSocketTask) {
+        if noteHandshakeRefusal(of: task) { return }
+        finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+    }
+
+    @discardableResult
+    private func noteHandshakeRefusal(of task: URLSessionWebSocketTask) -> Bool {
+        guard let response = task.response as? HTTPURLResponse,
+              let refusal = RealtimeRefusal.handshake(response: response) else { return false }
+        finish.refused(refusal, "HTTP \(response.statusCode)")
+        return true
     }
 
     private func handleMessage(_ text: String) {
@@ -596,6 +628,7 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             // answered, so none of them counts against the take.
             if type.hasSuffix(".updated") {
                 sessionConfigured = true
+                finish.configAccepted()
             }
             AppLog.dictation.info("OpenAI realtime session ready (\(type))")
         case "input_audio_buffer.speech_started":
@@ -621,19 +654,28 @@ actor OpenAIRealtimeEngine: StreamingTranscriptionEngine {
             emitLiveText()
         case "error", "conversation.item.input_audio_transcription.failed":
             let error = obj["error"] as? [String: Any]
-            let err = error?["message"] as? String ?? type
+            let message = error?["message"] as? String
+            let err = message ?? type
             let code = error?["code"] as? String
+            let errorType = error?["type"] as? String
             // Verbatim: for a rejected `session.update` this is the only
             // diagnostic there is — the server never says which field it disliked
             // anywhere else.
-            AppLog.dictation.error("OpenAI realtime error: \(err)")
+            AppLog.dictation.error("OpenAI realtime error (\(errorType ?? "-", privacy: .public)/\(code ?? "-", privacy: .public)): \(err)")
             if type == "conversation.item.input_audio_transcription.failed" {
+                // One utterance's failure can still name a refusal — an empty
+                // balance is reported per item when the socket was let in.
                 transcripts.failed(itemID: Self.itemID(in: obj, fallback: UUID().uuidString))
-                finish.transcriptFailed(err)
+                finish.transcriptFailed(
+                    err,
+                    refusal: RealtimeRefusal.openAI(type: errorType, code: code, message: message)
+                )
             } else if code == "input_audio_buffer_commit_empty" {
                 // The finishing commit found nothing left — an answer, not a loss.
                 finish.commitFoundEmptyBuffer()
-            } else if let refusal = RealtimeRefusal.openAI(type: error?["type"] as? String, code: code) {
+            } else if let refusal = sessionConfigured
+                ? RealtimeRefusal.openAI(type: errorType, code: code, message: message)
+                : RealtimeRefusal.openAIBeforeConfig(type: errorType, code: code, message: message) {
                 // Not a config problem the ladder could fix, and not one a
                 // re-send could either.
                 finish.refused(refusal, err)

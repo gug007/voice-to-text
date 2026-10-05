@@ -21,6 +21,9 @@ struct ActionRunnerHarness {
         try testParseResponse()
         try testSanitize()
         try testErrorMessage()
+        try testRequestErrorClassification()
+        try testReviewActionFailureCopy()
+        try testTimeoutScaling()
         try testCatalog()
         try testActionCodableRoundTrip()
         try testCatalogSync()
@@ -119,6 +122,244 @@ struct ActionRunnerHarness {
             "plain failure",
             "non-envelope bodies fall back to raw text"
         )
+        try expect(
+            ActionRunner.errorMessage(from: Data(" \n".utf8)),
+            nil,
+            "an empty body leaves the caller's HTTP status to say it"
+        )
+    }
+
+    private static func response(_ status: Int, headers: [String: String] = [:]) -> HTTPURLResponse {
+        HTTPURLResponse(url: ActionRunner.endpoint, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!
+    }
+
+    private static func body(code: String?, message: String) -> Data {
+        let codeField = code.map { #","code":"\#($0)""# } ?? ""
+        return Data(#"{"error":{"message":"\#(message)"\#(codeField)}}"#.utf8)
+    }
+
+    private static func testRequestErrorClassification() throws {
+        let quota = ActionRunner.httpError(
+            response(429),
+            body: body(code: "insufficient_quota", message: "You exceeded your current quota.")
+        )
+        try expect(quota.failure, .quotaExhausted, "429 insufficient_quota is an exhausted balance, not a rate limit")
+        try expect(
+            quota.localizedDescription,
+            "OpenAI: You exceeded your current quota.",
+            "the description stays the sentence insight tabs always showed"
+        )
+
+        let limited = ActionRunner.httpError(
+            response(429, headers: ["Retry-After": "20"]),
+            body: body(code: "rate_limit_exceeded", message: "Rate limit reached")
+        )
+        try expect(limited.failure, .rateLimited(retryAfter: 20), "plain 429 is a rate limit with its Retry-After")
+
+        try expect(
+            ActionRunner.httpError(response(402), body: Data()).failure,
+            .quotaExhausted,
+            "402 is an exhausted balance"
+        )
+        try expect(
+            ActionRunner.httpError(response(401), body: body(code: "invalid_api_key", message: "Incorrect API key")).failure,
+            .unauthorized,
+            "401 is a refused key"
+        )
+        try expect(
+            ActionRunner.httpError(response(503), body: Data()).failure,
+            .server,
+            "5xx is the provider's own trouble"
+        )
+        let bare = ActionRunner.httpError(response(400), body: Data())
+        try expect(bare.failure, .other, "an unexplained 400 stays unclassified")
+        try expect(bare.detail, "OpenAI: HTTP 400", "an empty body falls back to the status")
+
+        let timeout = ActionRequestError(cause: .transport(.timedOut), detail: "Network error: The request timed out.")
+        try expect(timeout.isTimeout, true, "a timed-out request is told apart from other transport errors")
+        try expect(timeout.failure, .other, "a timeout is not reported as being offline")
+
+        let offline = ActionRequestError(cause: .transport(.notConnectedToInternet), detail: "Network error: offline")
+        try expect(offline.isTimeout, false, "no connection is not a timeout")
+        try expect(offline.failure, .offline, "no connection is offline")
+    }
+
+    private static func testReviewActionFailureCopy() throws {
+        let quota = ReviewActionFailure(
+            actionName: "Improve prompt",
+            error: ActionRunner.httpError(
+                response(429),
+                body: body(code: "insufficient_quota", message: "You exceeded your current quota.")
+            )
+        )
+        try expect(
+            quota.message,
+            "Couldn't run “Improve prompt”: OpenAI says your account is out of credit. Your transcript is unchanged — Paste still works.",
+            "an exhausted balance names the action and says the transcript is safe"
+        )
+        try expect(quota.keyAction, nil, "no key fix is offered for a balance")
+
+        let unauthorized = ReviewActionFailure(
+            actionName: "Improve prompt",
+            error: ActionRunner.httpError(response(401), body: body(code: "invalid_api_key", message: "Incorrect API key"))
+        )
+        try expect(
+            unauthorized.message,
+            "Couldn't run “Improve prompt”: OpenAI didn't accept your API key. Your transcript is unchanged.",
+            "a refused key says so"
+        )
+        try expect(unauthorized.keyAction, .check, "a refused key offers Check API Key")
+
+        let noKey = ReviewActionFailure(actionName: "Improve prompt", error: ActionRunnerError.noAPIKey)
+        try expect(noKey.keyAction, .add, "a missing key offers Add API Key")
+
+        let longTimeout = ReviewActionFailure(
+            actionName: "Improve prompt",
+            error: ActionRequestError(
+                cause: .transport(.timedOut),
+                detail: "Network error: The request timed out.",
+                timeout: ActionRunner.timeout(forCharacterCount: 5_000)
+            )
+        )
+        try expect(
+            longTimeout.message,
+            "“Improve prompt” took too long for this much text. Your transcript is unchanged.",
+            "a timeout the text stretched blames the length"
+        )
+
+        let stalledMessage =
+            "Couldn't run “Fix grammar”: OpenAI didn't answer in time — check your connection. Your transcript is unchanged."
+        let shortTimeout = ReviewActionFailure(
+            actionName: "Fix grammar",
+            error: ActionRequestError(
+                cause: .transport(.timedOut),
+                detail: "Network error: The request timed out.",
+                timeout: ActionRunner.timeout(forCharacterCount: 0)
+            )
+        )
+        try expect(
+            shortTimeout.message,
+            stalledMessage,
+            "a short text that ran out the base minute points at the connection, not the length"
+        )
+        let sentenceTimeout = ReviewActionFailure(
+            actionName: "Fix grammar",
+            error: ActionRequestError(
+                cause: .transport(.timedOut),
+                detail: "Network error: The request timed out.",
+                timeout: ActionRunner.timeout(forCharacterCount: "Can you send me the notes from this morning's call.".count)
+            )
+        )
+        try expect(
+            sentenceTimeout.message,
+            stalledMessage,
+            "a one-sentence text, which stretches the limit by a second, points at the connection"
+        )
+        let thresholdTimeout = ReviewActionFailure(
+            actionName: "Fix grammar",
+            error: ActionRequestError(
+                cause: .transport(.timedOut),
+                detail: "Network error: The request timed out.",
+                timeout: ActionRunner.timeout(forCharacterCount: 1_500)
+            )
+        )
+        try expect(
+            thresholdTimeout.message,
+            "“Fix grammar” took too long for this much text. Your transcript is unchanged.",
+            "a text that stretched the limit by half a minute blames the length"
+        )
+        try expect(
+            ActionRunner.timeoutReflectsLength(ActionRunner.timeout(forCharacterCount: 1_000)),
+            false,
+            "a few paragraphs' extra seconds are not blamed"
+        )
+        let unknownTimeout = ReviewActionFailure(
+            actionName: "Fix grammar",
+            error: ActionRequestError(cause: .transport(.timedOut), detail: "Network error: The request timed out.")
+        )
+        try expect(unknownTimeout.message, stalledMessage, "a timeout of unknown length does not blame the text")
+
+        let limited = ReviewActionFailure(
+            actionName: "Translate",
+            error: ActionRequestError(
+                cause: .http(status: 429, retryAfter: 20, apiCode: nil),
+                detail: "OpenAI: Rate limit reached"
+            )
+        )
+        try expect(
+            limited.message,
+            "Couldn't run “Translate”: OpenAI is rate-limiting requests, try again in 20s. Your transcript is unchanged — Paste still works.",
+            "a rate limit says when to try again"
+        )
+
+        let other = ReviewActionFailure(
+            actionName: "Translate",
+            error: ActionRequestError(
+                cause: .http(status: 400, retryAfter: nil, apiCode: "model_not_found"),
+                detail: "OpenAI: The model does not exist."
+            )
+        )
+        try expect(
+            other.message,
+            "Couldn't run “Translate” (OpenAI: The model does not exist). Your transcript is unchanged — Paste still works.",
+            "an unclassified error keeps its own words, bracketed"
+        )
+
+        let lost = ReviewActionFailure(
+            actionName: "Translate",
+            error: ActionRequestError(
+                cause: .transport(.networkConnectionLost),
+                detail: "Network error: The network connection was lost."
+            )
+        )
+        try expect(
+            lost.message,
+            "Couldn't run “Translate” (Network error: The network connection was lost). Your transcript is unchanged — Paste still works.",
+            "a dropped connection is not called offline"
+        )
+
+        let empty = ReviewActionFailure(actionName: "Translate", error: ActionRunnerError.emptyResult)
+        try expect(
+            empty.message,
+            "“Translate” came back empty. Your transcript is unchanged — Paste still works.",
+            "an empty reply says the transcript is safe"
+        )
+
+        let longName = String(repeating: "a", count: 60)
+        let clipped = ReviewActionFailure(actionName: longName, error: ActionRunnerError.emptyResult)
+        try expect(
+            clipped.message.hasPrefix("“\(String(repeating: "a", count: ReviewActionFailure.longestNameShown - 1))…”"),
+            true,
+            "a long action name is clipped so the reassurance still fits"
+        )
+
+        let longBody = String(repeating: "x", count: 400)
+        let clippedDetail = ReviewActionFailure(
+            actionName: "Translate",
+            error: ActionRequestError(cause: .http(status: 400, retryAfter: nil, apiCode: nil), detail: longBody)
+        )
+        try expect(
+            clippedDetail.message.hasSuffix("Your transcript is unchanged — Paste still works."),
+            true,
+            "a long error body is clipped so the reassurance still fits"
+        )
+        try expect(
+            ReviewActionFailure.clipped("line one\n\n  line two  ", to: 40),
+            "line one line two",
+            "an error body is folded onto one line"
+        )
+    }
+
+    private static func testTimeoutScaling() throws {
+        try expect(ActionRunner.timeout(forCharacterCount: 0), 60, "a short rewrite keeps the 60s cap")
+        try expect(ActionRunner.timeout(forCharacterCount: 200), 64, "the cap grows with the text")
+        try expect(ActionRunner.timeout(forCharacterCount: 5_000), 160, "a long prompt gets minutes, not seconds")
+        try expect(
+            ActionRunner.timeout(forCharacterCount: 1_000_000),
+            ActionRunner.maxActionTimeout,
+            "the cap never exceeds the long-call limit"
+        )
+        try expect(ActionRunner.maxActionTimeout, 240, "the long-call limit matches insight requests'")
     }
 
     private static func testCatalog() throws {

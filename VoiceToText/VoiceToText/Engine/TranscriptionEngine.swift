@@ -64,10 +64,14 @@ protocol StreamingTranscriptionEngine: TranscriptionEngine {
     /// audio thread in capture order — the engine buffers internally and sends
     /// in order, which avoids the frame reordering that per-chunk `Task`s would
     /// risk (actors give no FIFO guarantee across unstructured tasks).
-    func feedAudio(_ samples: [Float])
+    nonisolated func feedAudio(_ samples: [Float])
 
     /// Flushes buffered audio, closes the session, and returns the final
-    /// committed transcript.
+    /// committed transcript. Never returns part of a take: a session that
+    /// lost text either re-sends the whole take itself or throws, and one the
+    /// provider refused — a bad key, a rate limit, an empty balance — throws
+    /// at once as a `CloudTranscriptionError` the failure card can name,
+    /// since a re-send would only be refused again.
     func finishStream() async throws -> String
 
     /// Tears the session down without producing a result (e.g. user cancel).

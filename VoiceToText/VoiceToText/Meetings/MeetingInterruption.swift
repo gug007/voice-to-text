@@ -72,8 +72,7 @@ nonisolated enum MeetingInterruption {
             return "Recording stopped — \(reason). Nothing was captured."
         }
         var text = "Recording stopped at \(clock(capturedSeconds)) — \(reason). Everything up to then was saved to History"
-        if let transcriptionIssue { text += ", but " + transcriptionIssue.clause }
-        text += "."
+        text += transcriptionIssue.map { ", but " + $0.clause } ?? "."
         // History's index is rewritten on the same full disk, and that write can
         // fail too — the transcript only sticks once a later write gets through.
         if isOutOfSpace(interruption) {
@@ -138,35 +137,98 @@ nonisolated enum MeetingInterruption {
 }
 
 /// Why a saved conversation has no usable transcript. The audio is archived
-/// either way; this only shapes what the pane says about it.
+/// either way; this shapes what the pane says about it and, for the two
+/// failures, what its History row says about why it has no transcript.
+///
+/// Compiled with `TranscriptionFailure` into its harness, so a refusal reads
+/// the same here as on the dictation card.
 nonisolated enum MeetingTranscriptionIssue: Equatable {
     case noSpeech
-    case failed(String)
-    case noModel
+    /// The transcription ran and failed. `reason` is whole sentences in the
+    /// dictation card's words ("OpenAI says your account is out of credit.
+    /// Top up, or transcribe with a model on this Mac.").
+    case failed(reason: String)
+    /// No engine could be loaded to try. `reason` names the model and why.
+    case noModel(reason: String)
 
-    /// Standalone sentence for a normal Stop or an import.
-    var message: String {
+    /// A transcription that threw, explained the way the dictation card
+    /// explains it. `provider` names the cloud service of the model that
+    /// failed ("OpenAI"), nil for a model on this Mac.
+    static func failed(_ error: Error, provider: String?) -> MeetingTranscriptionIssue {
+        let fallback = sentence(engineReason(for: error))
+        return .failed(reason: TranscriptionFailure.classify(error).message(provider: provider, fallback: fallback))
+    }
+
+    /// The model a conversation was meant for couldn't be loaded. Says which,
+    /// and the most specific why there is: no model at all, a cloud model
+    /// without its key (`missingKeyFor` names the provider), the error the
+    /// last load left behind, or — a stalled download, say — only that it
+    /// isn't ready.
+    static func noModel(
+        named modelName: String?,
+        missingKeyFor provider: String?,
+        loadFailure: String?
+    ) -> MeetingTranscriptionIssue {
+        guard let modelName else {
+            return .noModel(reason: "No transcription model is selected.")
+        }
+        if let provider {
+            return .noModel(reason: "\(modelName) needs an \(provider) API key.")
+        }
+        if let loadFailure, !loadFailure.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return .noModel(reason: "Couldn't load \(modelName): \(sentence(loadFailure))")
+        }
+        return .noModel(reason: "\(modelName) isn't ready. Check it in Models.")
+    }
+
+    /// Why the recording has no transcript, for its History row — which
+    /// already says it isn't transcribed and offers to, so the reason is all
+    /// it needs. Nil for no speech: that transcript is the model's answer.
+    var historyReason: String? {
+        switch self {
+        case .noSpeech: return nil
+        case .failed(let reason), .noModel(let reason): return reason
+        }
+    }
+
+    /// Standalone text for a normal Stop or, naming `fileName`, an import.
+    func message(fileName: String? = nil) -> String {
         switch self {
         case .noSpeech:
             return "No speech was detected, but the audio was saved to History."
-        case .failed(let description):
-            return "Transcription failed (\(description)). The audio was saved to History."
-        case .noModel:
-            return "No transcription model was ready, but the audio was saved to History."
+        case .failed(let reason), .noModel(let reason):
+            let subject = fileName.map { "“\($0)”" } ?? "the conversation"
+            return "Couldn't transcribe \(subject): \(reason) The audio is saved in History, so you can transcribe it from there."
         }
     }
 
     /// Continues "…was saved to History, but " after an interruption, which has
-    /// already said the audio was kept.
+    /// already said the audio was kept. Ends the sentence itself.
     var clause: String {
         switch self {
         case .noSpeech:
-            return "no speech was detected"
-        case .failed(let description):
-            return "transcription failed (\(description))"
-        case .noModel:
-            return "no transcription model was ready to transcribe it"
+            return "no speech was detected."
+        case .failed(let reason), .noModel(let reason):
+            return "it couldn't be transcribed: \(reason) You can transcribe it from History."
         }
+    }
+
+    /// The engine's own account of what went wrong, without the "Transcription
+    /// failed: " both engine error types lead with: the card already says so,
+    /// and saying it twice was the old card's tell.
+    static func engineReason(for error: Error) -> String {
+        if let cloud = error as? CloudTranscriptionError { return cloud.reason }
+        let description = error.localizedDescription
+        let prefix = "Transcription failed: "
+        return description.hasPrefix(prefix) ? String(description.dropFirst(prefix.count)) : description
+    }
+
+    /// `text` as a sentence another can follow: trimmed, with a full stop
+    /// when it ends without one.
+    static func sentence(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let last = trimmed.last else { return "Something went wrong." }
+        return ".!?。．！？".contains(last) ? trimmed : trimmed + "."
     }
 }
 

@@ -118,6 +118,12 @@ private struct SidebarRow: View {
                 Text(section.title)
                     .typo(.body)
                 Spacer(minLength: 0)
+                if let badge = section.badge {
+                    Circle()
+                        .fill(Palette.accent)
+                        .frame(width: 6, height: 6)
+                        .accessibilityLabel(badge)
+                }
             }
             // Icon and label share one derived colour — nothing in this view
             // tracks the selection tint by hand.

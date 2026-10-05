@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import Network
 import Observation
 import OSLog
 import Security
@@ -40,13 +41,51 @@ final class AppUpdater {
     /// Where every failed or refused install sends the user: the latest
     /// release's page, to download the DMG and install it by hand.
     nonisolated static let releasesPageURL = URL(string: "https://github.com/\(repo)/releases/latest")!
-    private static let checkInterval: TimeInterval = 24 * 60 * 60  // 24h
     private static let skippedVersionKey = "updater.skippedVersion"
 
-    private init() {}
+    /// The newest release the last answered check found, while it's newer
+    /// than this build. Kept apart from `status` so an install that fails, or
+    /// a background check that can't get through, doesn't hide it.
+    private(set) var availableVersion: String?
 
-    /// Background auto-check loop. Runs once on start (and prompts the user
-    /// if an update is available) then checks again every 24h.
+    /// The version "Skip This Version" was pressed for. Mirrored from
+    /// UserDefaults so the indicators drop it the moment it's skipped.
+    private(set) var skippedVersion: String?
+
+    /// The update the menu bar item and the sidebar badge point at, or nil
+    /// when there's nothing to point at.
+    var indicatedVersion: String? {
+        var isInstalled = false
+        if case .installed = status { isInstalled = true }
+        return UpdateCheckPolicy.indicatedVersion(
+            available: availableVersion,
+            running: currentVersion,
+            skippedVersion: skippedVersion,
+            isInstalled: isInstalled
+        )
+    }
+
+    /// Versions the modal prompt has already been shown for this session.
+    @ObservationIgnored private var promptedVersions: Set<String> = []
+    /// Whether any check this session has had an answer from GitHub. Only
+    /// the first answer may prompt.
+    @ObservationIgnored private var hasAnsweredCheck = false
+    @ObservationIgnored private var lastFailure: UpdateCheckPolicy.Failure?
+    @ObservationIgnored private var consecutiveFailures = 0
+    @ObservationIgnored private var notBefore: Date?
+    @ObservationIgnored private var lastAttemptAt: Date?
+    /// The wait before the next background check, cancelled to check early
+    /// when the network comes back.
+    @ObservationIgnored private var pendingSleep: Task<Void, Never>?
+    @ObservationIgnored private var pathMonitor: NWPathMonitor?
+
+    private init() {
+        skippedVersion = UserDefaults.standard.string(forKey: Self.skippedVersionKey)
+    }
+
+    /// Background auto-check loop. Checks once on start, then on the cadence
+    /// `UpdateCheckPolicy` sets: a short backoff after a failure, every 24h
+    /// otherwise, and early when the network returns after a failure.
     /// No-op in Debug builds so local runs don't thrash the GitHub API.
     func autoCheckLoop() async {
         // A crash or a failure mid-install can leave a staging copy or the old
@@ -55,25 +94,97 @@ final class AppUpdater {
         #if DEBUG
         return
         #else
-        var isFirstCheck = true
+        startNetworkMonitor()
         while !Task.isCancelled {
-            _ = try? await checkForUpdate(silent: true)
-            if isFirstCheck {
-                isFirstCheck = false
-                await promptForAvailableUpdateIfNeeded()
+            let isFirstAnsweredCheck = !hasAnsweredCheck
+            if await checkForUpdate(silent: true) == .answered {
+                await offerAvailableUpdate(isFirstAnsweredCheck: isFirstAnsweredCheck)
             }
-            try? await Task.sleep(for: .seconds(Self.checkInterval))
+            let delay = UpdateCheckPolicy.nextCheckDelay(
+                after: lastFailure,
+                consecutiveFailures: consecutiveFailures
+            )
+            await sleepUntilNextCheck(delay)
         }
         #endif
     }
 
-    // MARK: - Launch prompt
-
-    private func promptForAvailableUpdateIfNeeded() async {
-        guard case .available(let latest, _, let notes) = status,
-              !isVersionSkipped(latest) else {
-            return
+    private func sleepUntilNextCheck(_ delay: TimeInterval) async {
+        let sleeper = Task<Void, Never> { try? await Task.sleep(for: .seconds(delay)) }
+        pendingSleep = sleeper
+        await withTaskCancellationHandler {
+            await sleeper.value
+        } onCancel: {
+            sleeper.cancel()
         }
+        pendingSleep = nil
+    }
+
+    // MARK: - Network
+
+    private func startNetworkMonitor() {
+        guard pathMonitor == nil else { return }
+        pathMonitor = Self.makePathMonitor()
+    }
+
+    /// Built outside the main actor: the handler runs on the monitor's queue,
+    /// where a closure inferred as main-actor isolated would trap.
+    private nonisolated static func makePathMonitor() -> NWPathMonitor {
+        let monitor = NWPathMonitor()
+        monitor.pathUpdateHandler = { path in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor in AppUpdater.shared.networkBecameAvailable() }
+        }
+        monitor.start(queue: DispatchQueue(label: "voice-to-text-ai.VoiceToText.updater.network", qos: .utility))
+        return monitor
+    }
+
+    /// A check that failed for want of a connection shouldn't wait out its
+    /// backoff (up to a day) once there is one again.
+    private func networkBecameAvailable() {
+        guard let pendingSleep,
+              UpdateCheckPolicy.shouldCheckWhenNetworkReturns(
+                  lastFailure: lastFailure,
+                  notBefore: notBefore,
+                  lastAttemptAt: lastAttemptAt,
+                  now: Date()
+              ) else { return }
+        AppLog.app.notice("Network is back; checking for updates now")
+        pendingSleep.cancel()
+    }
+
+    // MARK: - Prompt
+
+    /// Shows the modal for an update a background check just found, when the
+    /// policy says this is the moment: the session's first answered check,
+    /// once per version. Everything else is left to the indicators.
+    private func offerAvailableUpdate(isFirstAnsweredCheck: Bool) async {
+        guard case .available(let latest, _, _) = status else { return }
+        let offer = UpdateCheckPolicy.offer(
+            latest: latest,
+            running: currentVersion,
+            skippedVersion: skippedVersion,
+            promptedVersions: promptedVersions,
+            isFirstAnsweredCheck: isFirstAnsweredCheck
+        )
+        guard offer == .prompt else { return }
+
+        // A retry of the launch check can land mid-dictation or mid-meeting,
+        // where a modal would steal focus from the text field or the call —
+        // or sit over a HUD card the user still has to act on.
+        var notes = ""
+        repeat {
+            await waitUntilUserIsFree()
+            // Installed, skipped or superseded from the Updates pane meanwhile.
+            guard case .available(let current, _, let currentNotes) = status,
+                  current == latest, skippedVersion != latest, !Task.isCancelled else {
+                return
+            }
+            notes = currentNotes
+            // Looked at again in the same main-actor turn as the alert, so
+            // nothing that took the HUD after the wait can end up under it.
+        } while isUserBusy
+        promptedVersions.insert(latest)
 
         switch presentUpdateAlert(latestVersion: latest, notes: notes) {
         case .install:
@@ -87,6 +198,24 @@ final class AppUpdater {
             skipVersion(latest)
         case .later:
             break
+        }
+    }
+
+    private func waitUntilUserIsFree() async {
+        while isUserBusy, !Task.isCancelled {
+            try? await Task.sleep(for: .seconds(5))
+        }
+    }
+
+    /// Recording, transcribing, reviewing — or idle with a card still up that
+    /// the alert would block: a discard's Undo, whose window runs out under a
+    /// modal and takes the audio with it, or a failure card's Retry.
+    private var isUserBusy: Bool {
+        if MeetingController.shared.isBusy { return true }
+        if DictationController.shared.isHoldingUserAttention { return true }
+        switch DictationController.shared.state {
+        case .idle, .error: return false
+        case .preparing, .recording, .transcribing, .reviewing, .delivering: return true
         }
     }
 
@@ -122,11 +251,8 @@ final class AppUpdater {
         }
     }
 
-    private func isVersionSkipped(_ version: String) -> Bool {
-        UserDefaults.standard.string(forKey: Self.skippedVersionKey) == version
-    }
-
     private func skipVersion(_ version: String) {
+        skippedVersion = version
         UserDefaults.standard.set(version, forKey: Self.skippedVersionKey)
     }
 
@@ -144,37 +270,89 @@ final class AppUpdater {
         return "\(header)\n\n\(preview)"
     }
 
-    /// - Parameter silent: When true (background checks), failures reset status
-    ///   to `.idle` instead of surfacing `.error` to the Updates pane.
+    // MARK: - Check
+
+    enum CheckOutcome: Equatable {
+        /// GitHub answered: up to date, or an update is available.
+        case answered
+        case failed
+        /// Not run: another check, a download or an install is under way, or
+        /// the update is already installed.
+        case skipped
+    }
+
+    /// - Parameter silent: When true (background checks), a failure leaves
+    ///   the status as it was instead of surfacing `.error` to the Updates
+    ///   pane, so an update found earlier stays on offer.
     @discardableResult
-    func checkForUpdate(silent: Bool = false) async throws -> Bool {
-        // The running version predates the one already on disk, so a check
-        // would offer it again.
-        if case .installed = status { return false }
+    func checkForUpdate(silent: Bool = false) async -> CheckOutcome {
+        switch status {
+        case .installed:
+            // The running version predates the one already on disk, so a check
+            // would offer it again.
+            return .skipped
+        case .checking, .downloading, .installing:
+            // A check now would overwrite the progress the pane is showing.
+            return .skipped
+        case .idle, .upToDate, .available, .error:
+            break
+        }
+        let previous = status
         status = .checking
+        lastAttemptAt = Date()
         do {
             let release = try await fetchLatestRelease()
             let latest = UpdateEligibility.stripV(release.tagName)
             let current = UpdateEligibility.stripV(currentVersion)
             guard UpdateEligibility.isNewer(latest: latest, current: current) else {
+                recordAnswer()
+                availableVersion = nil
                 status = .upToDate
-                return false
+                return .answered
             }
             guard let asset = release.assets.first(where: { asset in
                 asset.name.hasPrefix("VoiceToText-") && asset.name.hasSuffix(".dmg")
             }) else {
-                status = silent ? .idle : .error("Release v\(latest) has no DMG asset")
-                return false
+                throw UpdaterError.missingAsset(version: latest)
             }
+            recordAnswer()
+            availableVersion = latest
             status = .available(
                 latestVersion: latest,
                 assetURL: asset.browserDownloadURL,
                 notes: release.body ?? ""
             )
-            return true
+            return .answered
         } catch {
-            status = silent ? .idle : .error(error.localizedDescription)
-            throw error
+            recordFailure(Self.checkFailure(for: error))
+            AppLog.app.notice("Update check failed (\(self.consecutiveFailures, privacy: .public) in a row): \(error.localizedDescription, privacy: .public)")
+            status = silent ? previous : .error(error.localizedDescription)
+            return .failed
+        }
+    }
+
+    private func recordAnswer() {
+        hasAnsweredCheck = true
+        lastFailure = nil
+        consecutiveFailures = 0
+        notBefore = nil
+    }
+
+    private func recordFailure(_ failure: UpdateCheckPolicy.Failure) {
+        lastFailure = failure
+        consecutiveFailures += 1
+        notBefore = UpdateCheckPolicy.notBefore(after: failure, now: Date())
+    }
+
+    private static func checkFailure(for error: Error) -> UpdateCheckPolicy.Failure {
+        switch error as? UpdaterError {
+        case .httpStatus(let code, let retryAfter):
+            return UpdateCheckPolicy.failure(forHTTPStatus: code, retryAfter: retryAfter)
+        case .missingAsset:
+            // Most likely published moments before its DMG finished uploading.
+            return .transient
+        case .network, .install, .unverifiableBuild, nil:
+            return UpdateCheckPolicy.failure(for: error)
         }
     }
 
@@ -305,7 +483,15 @@ final class AppUpdater {
             throw UpdaterError.network("Invalid response")
         }
         guard http.statusCode == 200 else {
-            throw UpdaterError.network("GitHub API returned status \(http.statusCode)")
+            throw UpdaterError.httpStatus(
+                http.statusCode,
+                retryAfter: UpdateCheckPolicy.retryAfter(
+                    retryAfterHeader: http.value(forHTTPHeaderField: "Retry-After"),
+                    rateLimitRemaining: http.value(forHTTPHeaderField: "X-RateLimit-Remaining"),
+                    rateLimitReset: http.value(forHTTPHeaderField: "X-RateLimit-Reset"),
+                    now: Date()
+                )
+            )
         }
         return try JSONDecoder().decode(Release.self, from: data)
     }
@@ -552,6 +738,11 @@ final class AppUpdater {
 
     enum UpdaterError: LocalizedError {
         case network(String)
+        /// The release feed answered with something other than 200.
+        /// `retryAfter` is the wait GitHub asked for, when it said.
+        case httpStatus(Int, retryAfter: TimeInterval?)
+        /// The latest release has no DMG to install, at least not yet.
+        case missingAsset(version: String)
         case install(String)
         /// The running build has no Developer ID signature to hold an update
         /// to (an ad-hoc or unsigned local build), so nothing can be verified.
@@ -560,6 +751,10 @@ final class AppUpdater {
         var errorDescription: String? {
             switch self {
             case .network(let msg): return msg
+            case .httpStatus(403, _), .httpStatus(429, _):
+                return "GitHub is limiting update checks from this network for now. VoiceToText will try again on its own."
+            case .httpStatus(let code, _): return "GitHub API returned status \(code)"
+            case .missingAsset(let version): return "Release v\(version) has no DMG asset"
             case .install(let msg): return msg
             case .unverifiableBuild:
                 return "This build of VoiceToText isn't signed with a Developer ID, so it can't verify an update and won't install one automatically."

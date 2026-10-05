@@ -27,8 +27,10 @@ final class RecordingHistoryStore {
     /// the pane header the same way the Models pane shows model disk usage.
     private(set) var totalDiskUsageBytes: Int64 = 0
 
-    /// When off, new dictations aren't saved. Existing history is kept until the
-    /// user clears it. Persisted so the choice survives relaunch.
+    /// When off, new dictations aren't saved — except one whose transcription
+    /// fails or is cancelled, whose audio exists nowhere else (`recordFailed`).
+    /// Existing history is kept until the user clears it. Persisted so the
+    /// choice survives relaunch.
     var isEnabled: Bool {
         didSet {
             guard oldValue != isEnabled else { return }
@@ -146,22 +148,47 @@ final class RecordingHistoryStore {
 
     /// Stands in for the transcript of a dictation saved without one. Same
     /// words as a conversation archived without a transcript.
-    nonisolated static let placeholderTranscript = "⚠︎ Audio saved without a transcript."
+    nonisolated static let placeholderTranscript = RecordingHistoryEntry.placeholderTranscript
+
+    /// What a dictation saved ahead of its transcription says went wrong, if
+    /// the app never comes back to it. The row is written with this already
+    /// in place, so a quit, a crash or an update relaunch mid-request leaves
+    /// a row that is correct as it stands — nothing has to sweep it at launch.
+    nonisolated static let writeAheadStatus = RecordingHistoryEntry.Status(
+        kind: .failed,
+        message: "VoiceToText closed before this dictation was transcribed."
+    )
+
+    /// Saves a dictation the moment recording stops, before anything can fail
+    /// it — the speech gate, the engine, the network, the app itself. It is
+    /// an untranscribed row (`writeAheadStatus`) until the transcript fills it
+    /// in (`resolveFailedTranscript`), the failure that ends the attempt
+    /// replaces its status, or the caller takes it back (`retract`). Returns
+    /// the new entry's id, or nil when saving is disabled: with History off a
+    /// dictation that transcribes is never written at all.
+    @discardableResult
+    func recordPending(samples: [Float], model: ModelDescriptor?) -> UUID? {
+        guard isEnabled else { return nil }
+        return recordFailed(samples: samples, model: model, status: Self.writeAheadStatus)
+    }
 
     /// Saves a dictation whose transcription failed, so
     /// its audio outlives the failure card: closing it, starting another
     /// dictation, quitting or a crash no longer lose the take. The row carries
     /// `status` and a placeholder transcript until `resolveFailedTranscript`
-    /// fills it in. Returns the new entry's id, or nil when saving is disabled
-    /// — a failed take is still a dictation, and History-off means none are
-    /// kept.
+    /// fills it in. Returns the new entry's id, or nil when there is no audio.
+    ///
+    /// Saves whatever the History toggle says, like `ingest`: the toggle
+    /// means "don't keep my dictations", and a take that never became text
+    /// can't be dictated again — dropping it would lose the user's words, not
+    /// a copy of them.
     @discardableResult
     func recordFailed(
         samples: [Float],
         model: ModelDescriptor?,
         status: RecordingHistoryEntry.Status
     ) -> UUID? {
-        guard isEnabled, !samples.isEmpty else { return nil }
+        guard !samples.isEmpty else { return nil }
         let sampleRate = Int(AudioConfig.targetSampleRate)
         let entry = makeEntry(
             transcript: Self.placeholderTranscript,
@@ -229,6 +256,22 @@ final class RecordingHistoryStore {
         return entry.id
     }
 
+    /// Dictation takes saved the moment recording stopped whose transcription
+    /// is still running. Each row's stored status already says what to do if
+    /// the app never comes back to it (it quit or crashed mid-request), so
+    /// this set only changes how the row reads in this session: "Transcribing…"
+    /// instead of that failure, and no "Transcribe Again" racing the request
+    /// in flight. Owned by `DictationController`; never persisted.
+    private(set) var inFlightIDs: Set<UUID> = []
+
+    func markInFlight(_ id: UUID) {
+        inFlightIDs.insert(id)
+    }
+
+    func endInFlight(_ id: UUID) {
+        inFlightIDs.remove(id)
+    }
+
     /// Recordings a job is working on right now: an insight being generated or
     /// a transcript being regenerated. Pruning one mid-request would delete the
     /// row its paid result is about to land on, and `mutateEntry` would drop
@@ -238,7 +281,7 @@ final class RecordingHistoryStore {
         if let regenerating = TranscriptRegenerator.shared.activeID {
             ids.insert(regenerating)
         }
-        return ids
+        return ids.union(inFlightIDs)
     }
 
     // MARK: - Mutation
@@ -253,7 +296,9 @@ final class RecordingHistoryStore {
 
     /// Removes one recording at once, with no undo window — used to retract an
     /// uncommitted dictation review take on Cancel, which is its own explicit
-    /// discard and shouldn't raise a confusing "undo the cancel" toast.
+    /// discard and shouldn't raise a confusing "undo the cancel" toast, and a
+    /// take saved ahead of transcription (`recordPending`) that turned out to
+    /// hold no speech.
     func retract(id: UUID) {
         guard let removed = removeEntry(id: id) else { return }
         commitRemoval([removed])
@@ -292,9 +337,12 @@ final class RecordingHistoryStore {
 
     /// Timer hand-off: commit the pending deletion once the window elapses, but
     /// only if it's still the same one (a later delete may have replaced it; that
-    /// also cancels this task, so the id check is a backstop).
+    /// also cancels this task, so the id check is a backstop). The same one may
+    /// have lost an entry to `reclaimFromPendingDeletion` meanwhile, so what is
+    /// left only has to be among the ids it started with.
     private func finalizePendingDeletion(expecting ids: [UUID]) {
-        guard let pending = pendingDeletion, pending.entries.map(\.id) == ids else { return }
+        guard let pending = pendingDeletion,
+              Set(pending.entries.map(\.id)).isSubset(of: ids) else { return }
         pendingDeletion = nil
         pendingDeletionTask = nil
         commitRemoval(pending.entries)
@@ -314,6 +362,33 @@ final class RecordingHistoryStore {
         pendingDeletion = nil
         entries = RecordingHistoryPruner.restoring(pending.entries, into: entries)
         persistIndex()
+    }
+
+    /// Takes one recording back out of the undo window into the visible list,
+    /// as if its deletion alone had been undone; the rest of a Clear All's
+    /// batch keeps its window and its toast. Returns whether it was there.
+    ///
+    /// For a dictation take whose row the user deleted while a card held it
+    /// for Retry: whatever settles the take — a transcript, a failure, a
+    /// cancel, silence — settles it in this row, instead of filing a second
+    /// row that History's Undo would then bring the first back beside.
+    ///
+    /// No index write: the index lists visible and parked entries alike
+    /// (`indexSnapshot`), so moving one between them changes nothing on disk.
+    @discardableResult
+    func reclaimFromPendingDeletion(id: UUID) -> Bool {
+        guard let pending = pendingDeletion,
+              let reclaimed = RecordingHistoryPruner.reclaiming(id, from: pending.entries, into: entries)
+        else { return false }
+        entries = reclaimed.entries
+        if reclaimed.parked.isEmpty {
+            pendingDeletionTask?.cancel()
+            pendingDeletionTask = nil
+            pendingDeletion = nil
+        } else {
+            pendingDeletion = PendingDeletion(entries: reclaimed.parked)
+        }
+        return true
     }
 
     /// Finalizes a deletion: removes the audio from disk and rewrites the index
@@ -586,11 +661,13 @@ final class RecordingHistoryStore {
     /// Removes every saved recording, deferred behind the undo window like a
     /// single delete (the pane still confirms first). Audio is removed from disk
     /// only when the window commits, so an accidental Clear All is recoverable.
+    /// A dictation still being transcribed stays (`inFlightIDs`), as it has no
+    /// trash button of its own; see `RecordingHistoryPruner.clearingAll`.
     func clearAll() {
-        guard !entries.isEmpty else { return }
-        let removed = entries
-        entries = []
-        beginPendingDeletion(removed)
+        let outcome = RecordingHistoryPruner.clearingAll(entries, sparing: inFlightIDs)
+        guard !outcome.removed.isEmpty else { return }
+        entries = outcome.kept
+        beginPendingDeletion(outcome.removed)
     }
 
     /// Saves an already-recorded audio file (e.g. a meeting captured to disk by
@@ -599,6 +676,8 @@ final class RecordingHistoryStore {
     /// isn't gated by the auto-save toggle. Returns the new entry's id, or nil
     /// when the transcript is blank or the source file is missing. `createdAt`
     /// defaults to now; launch recovery passes when the recording was made.
+    /// `status` marks a recording saved without a real transcript — its
+    /// transcription failed — exactly as `recordFailed` does for a dictation.
     @discardableResult
     func ingest(
         fileURL: URL,
@@ -606,7 +685,8 @@ final class RecordingHistoryStore {
         durationSeconds: Double,
         model: ModelDescriptor?,
         source: RecordingHistoryEntry.Source,
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        status: RecordingHistoryEntry.Status? = nil
     ) -> UUID? {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
@@ -618,7 +698,8 @@ final class RecordingHistoryStore {
             sampleRate: Int(AudioConfig.targetSampleRate),
             model: model,
             source: source,
-            createdAt: createdAt
+            createdAt: createdAt,
+            status: status
         )
         return insert(entry) { dest in
             try? FileManager.default.removeItem(at: dest)

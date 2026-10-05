@@ -25,6 +25,7 @@ struct ModelsPane: View {
     @Environment(\.motion) private var motion
     @State private var scope: ModelScope = .all
     @State private var sort: ModelSort = .quality
+    @Bindable private var credit = CloudCreditStatus.shared
 
     enum ModelScope: String, CaseIterable, Identifiable {
         case all, local, cloud
@@ -124,6 +125,8 @@ struct ModelsPane: View {
                 subtitle: "Pick the model you want to use for dictation."
             )
 
+            SwitchedFromCloudBanner(registry: registry, credit: credit)
+
             ActiveModelCard(registry: registry, onShowCloudSettings: onShowCloudSettings)
 
             ForEach(visibleGroups) { group in
@@ -138,6 +141,8 @@ struct ModelsPane: View {
         // Selection changes animate across the whole pane rather than per-row,
         // so the hero and the chosen row adopt the accent in one motion.
         .animation(motion.select, value: registry.activeModelId)
+        // The switched-from banner comes and goes as a block, which is layout.
+        .animation(motion.layout, value: credit.switchedFromModelId)
         // Filtering and reordering move rows, which is layout, not selection.
         .animation(motion.layout, value: scope)
         .animation(motion.layout, value: sort)
@@ -337,7 +342,13 @@ private struct GroupHeaderRow: View {
     private var trailing: some View {
         if let provider = group.provider {
             if provider.hasAPIKey {
-                StatusLabel(level: .ready, text: connectedText(provider))
+                // The Cloud pane's label for the same key, so the two panes
+                // never disagree about whether a provider is usable.
+                if CloudCreditStatus.shared.isOutOfCredit(provider) {
+                    StatusLabel(level: .warning, text: keyStatusText(provider, FailureCardCopy.outOfCreditLabel))
+                } else {
+                    StatusLabel(level: .ready, text: keyStatusText(provider, "Connected"))
+                }
             } else {
                 AddAPIKeyButton(provider: provider, onShowCloudSettings: onShowCloudSettings)
             }
@@ -352,9 +363,58 @@ private struct GroupHeaderRow: View {
         }
     }
 
-    private func connectedText(_ provider: CloudProvider) -> String {
-        guard let suffix = provider.apiKeySuffix else { return "Connected" }
-        return "Connected · …\(suffix)"
+    /// "Connected · …abcd", or "Out of credit · …abcd" — the suffix says which
+    /// key, which matters most when it is the one that ran dry.
+    private func keyStatusText(_ provider: CloudProvider, _ status: String) -> String {
+        guard let suffix = provider.apiKeySuffix else { return status }
+        return "\(status) · …\(suffix)"
+    }
+}
+
+// MARK: - Switched-from banner
+
+/// "Switched from GPT Transcribe when OpenAI ran out of credit." [Switch Back]
+///
+/// Shown only while the switch a failure card's "Use for Dictation" made still
+/// stands. Every pick in this pane goes through `ModelRegistry.setActive`,
+/// which forgets the switch — so a user who chose another model themselves,
+/// or pressed Switch Back, never sees it again. The extra check that the
+/// active model is still a local one covers a dictation model changed by any
+/// other route.
+///
+/// It doesn't follow the provider's flag: with dictation running on this Mac,
+/// nothing sends the provider the request that would clear it, so a top-up
+/// goes unseen — and the way back should stay one click for as long as the
+/// user is on the stand-in.
+private struct SwitchedFromCloudBanner: View {
+    @Bindable var registry: ModelRegistry
+    @Bindable var credit: CloudCreditStatus
+
+    var body: some View {
+        if let cloudModel {
+            StatusPlate([
+                StatusItem(
+                    id: "switchedFromCloud",
+                    level: .warning,
+                    title: FailureCardCopy.switchedBanner(
+                        cloudModelName: cloudModel.model.sectionedDisplayName,
+                        provider: cloudModel.provider.displayName
+                    ),
+                    actionTitle: FailureCardCopy.switchBackTitle,
+                    action: { registry.setActive(cloudModel.model.id) }
+                ),
+            ])
+        }
+    }
+
+    private var cloudModel: (model: ModelDescriptor, provider: CloudProvider)? {
+        guard let cloudId = credit.switchedFromModelId,
+              let model = ModelCatalog.model(for: cloudId),
+              let provider = model.backend.cloudProvider,
+              let active = registry.activeModel,
+              !active.isCloud
+        else { return nil }
+        return (model, provider)
     }
 }
 
@@ -411,9 +471,14 @@ private struct ActiveModelCard: View {
         if let provider = model.backend.cloudProvider {
             // Never `registry.readiness(for:)` for a cloud model: the registry
             // writes `.preparing` to one before every dictation. Having the key
-            // is the whole of cloud readiness.
+            // is the whole of cloud readiness — short of a provider that has
+            // refused a take for an empty balance.
             if provider.hasAPIKey {
-                StatusLabel(level: .ready, text: "Connected")
+                if CloudCreditStatus.shared.isOutOfCredit(provider) {
+                    StatusLabel(level: .warning, text: FailureCardCopy.outOfCreditLabel)
+                } else {
+                    StatusLabel(level: .ready, text: "Connected")
+                }
             } else {
                 AddAPIKeyButton(provider: provider, onShowCloudSettings: onShowCloudSettings)
             }
@@ -472,6 +537,11 @@ private struct ModelRow: View {
 
     private var isActive: Bool { registry.activeModelId == model.id }
     private var readiness: ModelReadiness { registry.readiness(for: model.id) }
+    /// Cloud rows only: this model's provider refused a take for an empty
+    /// balance and nothing has worked since.
+    private var isOutOfCredit: Bool {
+        CloudCreditStatus.shared.isOutOfCredit(model.backend.cloudProvider)
+    }
     private var name: String { model.sectionedDisplayName }
 
     var body: some View {
@@ -537,7 +607,7 @@ private struct ModelRow: View {
                         .lineLimit(1)
                     badges
                 }
-                Text(ModelFacts.facets(for: model, readiness: readiness))
+                Text(ModelFacts.facets(for: model, readiness: readiness, isOutOfCredit: isOutOfCredit))
                     .typo(.caption)
                     .monospacedDigit()
                     .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
@@ -689,14 +759,16 @@ private struct ModelRow: View {
 
     /// The facets a sighted reader gets from the meta line, plus the readiness
     /// word they get from the trailing control — which VoiceOver would otherwise
-    /// reach only after the row itself.
+    /// reach only after the row itself. "Out of credit" rides on the readiness
+    /// word rather than the facets, so it is read once.
     private var accessibilityValue: String {
         ModelFacts.facets(for: model, readiness: readiness) + ", " + readinessWord
     }
 
     private var readinessWord: String {
         if let provider = model.backend.cloudProvider {
-            return provider.hasAPIKey ? "Connected" : "Needs API key"
+            guard provider.hasAPIKey else { return "Needs API key" }
+            return isOutOfCredit ? FailureCardCopy.outOfCreditLabel : "Connected"
         }
         switch readiness {
         case .notInstalled: return "Not downloaded"
@@ -866,13 +938,26 @@ private enum ModelFacts {
     /// line a monospaced wall. What is left is exactly the axes two rows in the
     /// same group differ on.
     ///
+    /// `isOutOfCredit` leads the line with "Out of credit" for a cloud model
+    /// whose provider refused a take for an empty balance — first, so the
+    /// tail truncation of a narrow window can never be what hides it, and in
+    /// the line's own faint ink, because the model isn't broken: the account
+    /// behind it is, and the group header already says so in the warning
+    /// tint.
+    ///
     /// Raw word error rates stay in the details popover rather than earning a
     /// segment: local and cloud models are measured on different benchmarks, and
     /// two benchmarks' percentages in one column would invite precisely the
     /// comparison they don't support. The quality score is the comparable
     /// number, because it is expressed against a model both benchmarks measure.
-    static func facets(for model: ModelDescriptor, readiness: ModelReadiness) -> String {
-        var parts = [quality(model)]
+    static func facets(
+        for model: ModelDescriptor,
+        readiness: ModelReadiness,
+        isOutOfCredit: Bool = false
+    ) -> String {
+        var parts: [String] = []
+        if isOutOfCredit, model.isCloud { parts.append(FailureCardCopy.outOfCreditLabel) }
+        parts.append(quality(model))
         if model.isCloud {
             if let price = price(model) { parts.append(price) }
         } else if let size = size(model, readiness: readiness) {

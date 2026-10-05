@@ -97,7 +97,11 @@ struct HistoryPane: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This permanently removes every saved recording and its transcript from this Mac.")
+            // Clear All leaves a dictation that is still being transcribed;
+            // the dialog shouldn't promise otherwise.
+            Text(store.inFlightIDs.isEmpty
+                ? "This permanently removes every saved recording and its transcript from this Mac."
+                : "This permanently removes every saved recording and its transcript from this Mac, except a dictation still being transcribed.")
         }
         // Floating Undo toast for the few-seconds grace window after a delete.
         .overlay { UndoDeletionBar(store: store) }
@@ -132,7 +136,8 @@ struct HistoryPane: View {
                 Toggle("Save recordings", isOn: $store.isEnabled)
                 Divider()
                 Button("Clear All…", role: .destructive) { confirmingClear = true }
-                    .disabled(store.entries.isEmpty)
+                    // Rows still transcribing are spared (see `clearAll`).
+                    .disabled(store.entries.allSatisfy { store.inFlightIDs.contains($0.id) })
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }
@@ -157,7 +162,7 @@ struct HistoryPane: View {
             .padding(.horizontal, Space.s3)
             GroupFooter(text: store.isEnabled
                         ? "New dictations are saved here automatically."
-                        : "New dictations won't be saved. Existing history is kept until you clear it.")
+                        : "New dictations won't be saved. One that fails to transcribe is still kept here, so you can transcribe it again.")
         }
     }
 

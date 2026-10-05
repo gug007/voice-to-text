@@ -7,7 +7,8 @@ import OSLog
 /// back on the next launch as an untranscribed placeholder. Now the user
 /// chooses: Stop & Save runs the normal stop → transcribe → archive and then
 /// quits, Keep Recording cancels the quit, Quit Anyway quits at once and leaves
-/// the audio for launch-time recovery.
+/// the audio for launch-time recovery. A save that ends without a transcript
+/// says so before the app quits, and offers to stay and show it in History.
 @MainActor
 final class ConversationQuitGuard {
     static let shared = ConversationQuitGuard()
@@ -66,6 +67,13 @@ final class ConversationQuitGuard {
             answer(true)
         case .save where mainQueueIsLive:
             saveWithProgress()
+            // Still busy means Quit Now, whose alert already said the audio
+            // waits for the next launch.
+            if !meetings.isBusy, !confirmQuitAfterFailedSave() {
+                answer(false)
+                WindowOpener.shared.showMain(section: .history)
+                return
+            }
             answer(true)
         case .save:
             // The save can't progress while this quit waits (see `reply(to:)`).
@@ -78,9 +86,32 @@ final class ConversationQuitGuard {
                 await meetings.finishForQuit()
                 guard quitAfterSave else { return }
                 quitAfterSave = false
+                guard confirmQuitAfterFailedSave() else {
+                    WindowOpener.shared.showMain(section: .history)
+                    return
+                }
                 NSApp.terminate(nil)
             }
         }
+    }
+
+    /// The user chose to save and quit, and the save ended without a
+    /// transcript — an out-of-credit key, a model that wouldn't load. Quitting
+    /// straight through would leave them believing it was transcribed, so say
+    /// so first. True to go on quitting, false to stay and look at it.
+    private func confirmQuitAfterFailedSave() -> Bool {
+        guard case .error = MeetingController.shared.state,
+              let saved = MeetingController.shared.erroredRecording,
+              let reason = saved.untranscribedReason else { return true }
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "The conversation couldn't be transcribed"
+        alert.informativeText = "\(reason) Its audio is saved in History, so you can transcribe it later."
+        alert.addButton(withTitle: "Quit")
+        // Escape stays in the app, like the other prompts' second button.
+        alert.addButton(withTitle: "Show in History").keyEquivalent = "\u{1b}"
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn
     }
 
     private func answer(_ terminate: Bool) {

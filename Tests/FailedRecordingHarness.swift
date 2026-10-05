@@ -21,11 +21,14 @@ private let placeholder = "⚠︎ Audio saved without a transcript."
 private let refusedKey = RecordingHistoryEntry.Status(kind: .failed, message: "OpenAI didn't accept your API key.")
 
 /// A dictation saved the way `recordFailed` saves one.
-private func makeFailed(status: RecordingHistoryEntry.Status? = refusedKey) -> RecordingHistoryEntry {
+private func makeFailed(
+    status: RecordingHistoryEntry.Status? = refusedKey,
+    transcript: String = placeholder
+) -> RecordingHistoryEntry {
     RecordingHistoryEntry(
         id: failedID,
         createdAt: Date(timeIntervalSince1970: 1_790_000_000),
-        transcript: placeholder,
+        transcript: transcript,
         audioFileName: "\(failedID.uuidString).wav",
         durationSeconds: 7.25,
         sampleRate: 16_000,
@@ -62,7 +65,83 @@ struct FailedRecordingHarness {
         try resolvingNeedsAFailedEntry()
         try aRetryCanRestateTheFailure()
         try otherEditsKeepTheStatus()
+        try placeholdersLiveOnTheEntry()
+        try legacyPlaceholderRowsResolveInPlace()
+        try legacyLookalikesAreLeftAlone()
         print("Failed recording harness passed")
+    }
+
+    /// The store, the conversation controller and this harness all write the
+    /// same words; the entry is where they are defined and recognized.
+    private static func placeholdersLiveOnTheEntry() throws {
+        try expect(RecordingHistoryEntry.placeholderTranscript, placeholder, "the placeholder every build has written")
+        try expect(
+            RecordingHistoryEntry.knownPlaceholderTranscripts.contains(RecordingHistoryEntry.legacyRecoveredTranscript),
+            true,
+            "launch recovery's old wording is known too"
+        )
+        try expect(makeFailed().transcriptIsPlaceholder, true, "a failed take's transcript is a placeholder")
+        try expect(makeFailed(status: nil).transcriptIsPlaceholder, true, "and so is the same text without a status")
+    }
+
+    /// A conversation archived by a build before `status`: the placeholder
+    /// and nothing to say it is one. Transcribing it again must replace it —
+    /// not file it as a "version" beside the real transcript.
+    private static func legacyPlaceholderRowsResolveInPlace() throws {
+        for legacyText in RecordingHistoryEntry.knownPlaceholderTranscripts {
+            let legacy = legacyConversation(transcript: legacyText)
+            try expect(legacy.needsTranscript, false, "no status, so the row doesn't claim a failure it can't explain")
+            try expect(legacy.transcriptIsPlaceholder, true, "but its text is recognized as no transcript")
+            guard let resolved = legacy.resolvingPlaceholder(
+                transcript: "Kara: Let's ship on Friday.",
+                modelId: "parakeet",
+                modelName: "Parakeet"
+            ) else {
+                throw FailedRecordingHarnessFailure(description: "a legacy placeholder row resolves: \(legacyText)")
+            }
+            try expect(resolved.transcript, "Kara: Let's ship on Friday.", "the transcript replaces the placeholder")
+            try expect(resolved.alternates, nil, "the placeholder isn't kept as an alternate")
+            try expect(resolved.status, nil, "still no status")
+            try expect(resolved.modelName, "Parakeet", "the model that transcribed it is credited")
+            try expect(resolved.transcriptIsPlaceholder, false, "and it's a real transcript now")
+            try expect(resolved.resolvingPlaceholder(transcript: "x", modelId: nil, modelName: nil), nil, "which is never replaced again")
+        }
+    }
+
+    /// Only an exact placeholder with nothing else behind it qualifies.
+    private static func legacyLookalikesAreLeftAlone() throws {
+        let mentioned = legacyConversation(transcript: "I said ⚠︎ Audio saved without a transcript. on the call")
+        try expect(mentioned.transcriptIsPlaceholder, false, "a transcript that merely contains the words is real")
+        try expect(mentioned.resolvingPlaceholder(transcript: "x", modelId: nil, modelName: nil), nil, "and isn't replaced")
+
+        let regenerated = legacyConversation(
+            transcript: placeholder,
+            alternates: [TranscriptVariant(id: UUID(), text: "the real one", modelId: "parakeet", modelName: "Parakeet")]
+        )
+        try expect(regenerated.transcriptIsPlaceholder, false, "a row with versions has had a transcript; its active one was chosen")
+        try expect(regenerated.resolvingPlaceholder(transcript: "x", modelId: nil, modelName: nil), nil, "so it isn't replaced")
+
+        let padded = legacyConversation(transcript: "  \(placeholder)\n")
+        try expect(padded.transcriptIsPlaceholder, true, "surrounding whitespace doesn't hide a placeholder")
+    }
+
+    private static func legacyConversation(
+        transcript: String,
+        alternates: [TranscriptVariant]? = nil
+    ) -> RecordingHistoryEntry {
+        let id = UUID(uuidString: "7B1C2D3E-4F50-4A61-9B72-8C9DAEBFC0D1")!
+        return RecordingHistoryEntry(
+            id: id,
+            createdAt: Date(timeIntervalSince1970: 1_780_000_000),
+            transcript: transcript,
+            audioFileName: "\(id.uuidString).wav",
+            durationSeconds: 2_400,
+            sampleRate: 16_000,
+            modelId: nil,
+            modelName: nil,
+            source: .meeting,
+            alternates: alternates
+        )
     }
 
     private static func indexesWithoutStatusStillDecode() throws {
@@ -126,7 +205,8 @@ struct FailedRecordingHarness {
 
     private static func resolvingNeedsAFailedEntry() throws {
         try expect(
-            makeFailed(status: nil).resolvingPlaceholder(transcript: "x", modelId: nil, modelName: nil),
+            makeFailed(status: nil, transcript: "Send the draft to Kara.")
+                .resolvingPlaceholder(transcript: "x", modelId: nil, modelName: nil),
             nil,
             "a real transcript is never replaced as if it were a placeholder"
         )
@@ -136,7 +216,23 @@ struct FailedRecordingHarness {
         let offline = RecordingHistoryEntry.Status(kind: .failed, message: "You're offline.")
         try expect(makeFailed().updatingStatus(offline)?.status, offline, "a retry that failed differently says so")
         try expect(makeFailed().updatingStatus(offline)?.transcript, placeholder, "and changes nothing else")
-        try expect(makeFailed(status: nil).updatingStatus(offline), nil, "a transcribed entry can't be marked failed")
+        try expect(
+            makeFailed(status: nil, transcript: "Send the draft to Kara.").updatingStatus(offline),
+            nil,
+            "a transcribed entry can't be marked failed"
+        )
+        let legacy = makeFailed(status: nil, transcript: RecordingHistoryEntry.legacyRecoveredTranscript)
+        try expect(legacy.updatingStatus(offline)?.status, offline, "an older build's placeholder row takes the reason it never had")
+        try expect(
+            legacy.updatingStatus(offline)?.transcript,
+            RecordingHistoryEntry.legacyRecoveredTranscript,
+            "and keeps its placeholder until a transcript replaces it"
+        )
+        try expect(
+            makeFailed(status: nil).updatingStatus(offline)?.status,
+            offline,
+            "so does one carrying today's placeholder with no status"
+        )
     }
 
     /// The `replacing` funnel's point: an edit that knows nothing about the

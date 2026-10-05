@@ -215,7 +215,7 @@ struct UpdatesPane: View {
 
         default:
             Button("Check Now") {
-                Task { try? await updater.checkForUpdate() }
+                Task { await updater.checkForUpdate() }
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)

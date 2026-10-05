@@ -60,6 +60,9 @@ struct RecordingRow: View {
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var showRegenerateMenu = false
+    /// The model picker inside a failed row's notice — the same list as the
+    /// hover menu, but on an anchor that is always on screen.
+    @State private var showOtherModelMenu = false
     @State private var showInsightMenu = false
     /// The "Format with AI" popover, anchored to the same sparkles button as the
     /// menu that offers it.
@@ -78,6 +81,13 @@ struct RecordingRow: View {
     @State private var isHovering = false
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
+
+    /// The dictation that saved this row is still transcribing it. Its stored
+    /// status is what the row would say if that never finished; until then
+    /// the row says it is working, and offers nothing that would race it.
+    private var isInFlight: Bool {
+        RecordingHistoryStore.shared.inFlightIDs.contains(entry.id)
+    }
 
     /// Tertiary ink for this row's metadata, collapsed into `inkMuted` under
     /// Increase Contrast. The row is the surface History's search highlight
@@ -127,6 +137,10 @@ struct RecordingRow: View {
 
             contentSection
 
+            if isRegenerating, let modelId = regenerator.downloadingModelID {
+                modelDownloadNotice(modelId)
+            }
+
             insightFailures
 
             if let failure = regenerator.failure, failure.id == entry.id {
@@ -153,6 +167,11 @@ struct RecordingRow: View {
     /// Favorite / regenerate / copy / delete. Quiet by default: only the star
     /// shows when a recording is favorited; the full set appears on hover (and
     /// the regenerate spinner stays put while a regeneration is in flight).
+    ///
+    /// A row still in flight offers neither regenerate nor delete: its
+    /// dictation files the transcript into it when it lands, and a row deleted
+    /// under it is re-recorded as a second one — which an Undo then turns
+    /// into a duplicate claiming the app closed before transcribing it.
     @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: Space.s3) {
@@ -172,9 +191,11 @@ struct RecordingRow: View {
                 if !speakerLabels.isEmpty {
                     renameSpeakersControl
                 }
-                regenerateControl
+                if !isInFlight {
+                    regenerateControl
+                }
                 // A placeholder is nothing to summarize or copy.
-                if !entry.needsTranscript {
+                if !entry.transcriptIsPlaceholder {
                     insightControl
                     iconButton(
                         systemName: copied ? "checkmark" : "doc.on.doc",
@@ -183,12 +204,14 @@ struct RecordingRow: View {
                         action: copyActiveTranscript
                     )
                 }
-                iconButton(
-                    systemName: "trash",
-                    help: "Delete recording",
-                    tint: Palette.inkMuted,
-                    action: onDelete
-                )
+                if !isInFlight {
+                    iconButton(
+                        systemName: "trash",
+                        help: "Delete recording",
+                        tint: Palette.inkMuted,
+                        action: onDelete
+                    )
+                }
             }
         }
     }
@@ -262,7 +285,9 @@ struct RecordingRow: View {
     /// Conversations only. A five-second dictation has nothing to summarize and
     /// commits nobody to anything, so on a History full of dictations this strip
     /// would be pure noise under every row — and the sparkles menu is still
-    /// there for the rare dictation that is worth summarizing.
+    /// there for the rare dictation that is worth summarizing. A conversation
+    /// whose transcription failed has only a placeholder to send, so it gets
+    /// no strip until it has a transcript.
     /// Every insight leaves the Mac, even for a conversation transcribed by a
     /// local model — say so wherever one can be started.
     private static let sendsTranscript = "Sends the transcript to OpenAI (\(ActionRunner.modelId))."
@@ -270,6 +295,7 @@ struct RecordingRow: View {
     @ViewBuilder
     private var generateStrip: some View {
         if entry.source == .meeting,
+           !entry.transcriptIsPlaceholder,
            !entry.hasInsights,
            entry.customInsightList.isEmpty,
            !hasRunningInsight {
@@ -446,12 +472,16 @@ struct RecordingRow: View {
     }
 
     /// One plain transcript, or — when the recording has alternate versions — a
-    /// labeled, removable block per version (newest/active first). A dictation
+    /// labeled, removable block per version (newest/active first). A recording
     /// saved without a transcript says why instead, with the way to fix it.
     @ViewBuilder
     private var transcriptSection: some View {
-        if let status = entry.status {
-            untranscribedNotice(status)
+        if let status = HistorySearch.untranscribedStatus(of: entry) {
+            if isInFlight {
+                transcribingNotice
+            } else {
+                untranscribedNotice(status)
+            }
         } else if entry.hasAlternateTranscripts {
             VStack(alignment: .leading, spacing: Space.s5) {
                 ForEach(entry.transcriptVariants) { variant in
@@ -475,31 +505,158 @@ struct RecordingRow: View {
         }
     }
 
-    /// What went wrong, in the failure card's own words, and one click to try
-    /// again with the model the take was meant for. Any other model is in the
-    /// regenerate menu; either way the transcript replaces this notice.
+    /// A take saved the moment recording stopped, while its dictation is
+    /// still transcribing it.
+    private var transcribingNotice: some View {
+        HStack(spacing: Space.s3) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.7)
+                .frame(width: 16, height: 16)
+            Text("Transcribing…")
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.inkMuted)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    /// "Downloading Parakeet TDT v3 · 42%" while this row's regeneration waits
+    /// on a model that isn't on this Mac yet — a first download runs for
+    /// minutes, and a bare spinner would read as stuck. The registry's
+    /// readiness drives it: no percentage until the first progress arrives,
+    /// then "Loading" for the compile tail and for the load once the files
+    /// are here (`.installed`, with the engine still being prepared). Text
+    /// only: the header's regenerate control already spins for this row.
+    private func modelDownloadNotice(_ modelId: String) -> some View {
+        let name = ModelCatalog.model(for: modelId)?.displayName ?? modelId
+        let readiness = ModelRegistry.shared.readiness(for: modelId)
+        let text: String
+        switch readiness {
+        case .preparing(let fraction, _) where !readiness.isLoadingOrCompiling:
+            text = FailureCardCopy.historyDownloading(modelName: name, fraction: fraction)
+        case .preparing, .installed:
+            text = "\(FailureCardCopy.preparePhaseTitle(isLoading: true)) \(name)"
+        case .notInstalled, .failed:
+            text = FailureCardCopy.historyDownloading(modelName: name, fraction: nil)
+        }
+        return Text(text)
+            .typo(.captionMedium)
+            .foregroundStyle(Palette.inkMuted)
+            .contentTransition(.numericText())
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// What went wrong, in the failure card's own words, and the two ways on:
+    /// the model the take was meant for, named — the fix for a key or a
+    /// balance that has since been sorted out — and any other model, right
+    /// here rather than behind the hover menu. An empty balance applies to
+    /// every model of that provider, which is why the picker leads with the
+    /// ones on this Mac. Either way the transcript replaces this notice.
+    ///
+    /// While that provider is known to be out of credit (`CloudCreditStatus`),
+    /// retrying it first would only be refused again, so the notice leads
+    /// with the model on this Mac the dictation card would offer — downloading
+    /// it first if need be — and keeps the retry second, for a balance topped
+    /// up since.
     private func untranscribedNotice(_ status: RecordingHistoryEntry.Status) -> some View {
         VStack(alignment: .leading, spacing: Space.s3) {
             Text("Not transcribed")
                 .typo(.captionMedium)
                 .foregroundStyle(Palette.signalWarn)
-            Text(status.message)
+            Text(HistorySearch.highlighted(status.message, query: highlight))
                 .typo(.body)
                 .foregroundStyle(Palette.inkMuted)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)
-            if !isRegenerating, let model = transcribeAgainModel {
-                Button("Transcribe Again") {
-                    Task { await regenerator.regenerate(entry: entry, modelId: model.id) }
-                }
-                .buttonStyle(.plain)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
-                .disabled(regenerator.isRunning)
-                .help("Transcribe this recording with \(model.displayName)")
+            if !isRegenerating {
+                untranscribedLinks
+                    .disabled(regenerator.isRunning)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// The notice's ways on. With a provider out of credit the model on this
+    /// Mac leads on a line of its own — "Download & transcribe with … (470 MB)"
+    /// would crowd the other two off a narrow pane — and the retry and the
+    /// picker follow beneath it, in that order.
+    @ViewBuilder
+    private var untranscribedLinks: some View {
+        let model = transcribeAgainModel
+        if let model, let local = outOfCreditFallback(replacing: model) {
+            VStack(alignment: .leading, spacing: Space.s3) {
+                noticeLink(
+                    FailureCardCopy.historyLocalTitle(local.fallback, modelName: local.model.displayName),
+                    help: "\(local.model.displayName) runs on this Mac — free and private",
+                    modelId: local.model.id
+                )
+                HStack(spacing: Space.s5) {
+                    noticeLink(
+                        FailureCardCopy.historyRetryTitle(cloudModelName: model.sectionedDisplayName),
+                        help: "Try \(model.displayName) again once your balance is topped up",
+                        modelId: model.id
+                    )
+                    otherModelButton
+                }
+            }
+        } else {
+            HStack(spacing: Space.s5) {
+                if let model {
+                    noticeLink(
+                        "Transcribe with \(model.displayName)",
+                        help: "Transcribe this recording with \(model.displayName)",
+                        modelId: model.id
+                    )
+                }
+                otherModelButton
+            }
+        }
+    }
+
+    /// One of the notice's text links, re-transcribing with the model it names.
+    private func noticeLink(_ title: String, help: String, modelId: String) -> some View {
+        Button(title) {
+            Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
+        }
+        .buttonStyle(.plain)
+        .typo(.captionMedium)
+        .foregroundStyle(Palette.accent)
+        .help(help)
+    }
+
+    /// The model on this Mac to lead with when `model`'s provider is flagged
+    /// out of credit — the same choice, for the same spoken languages, as the
+    /// dictation card's. A row's audio is already saved, so a model that
+    /// still has to be downloaded is offered too. Reads only cached state
+    /// (`ModelRegistry.localFallback`), so it is safe in the body.
+    private func outOfCreditFallback(
+        replacing model: ModelDescriptor
+    ) -> (fallback: DictationTakePolicy.LocalFallback, model: ModelDescriptor)? {
+        guard let provider = model.backend.cloudProvider,
+              CloudCreditStatus.shared.isOutOfCredit(provider),
+              let fallback = ModelRegistry.shared.localFallback(replacing: model.id, canDownload: true),
+              let local = ModelCatalog.model(for: fallback.modelID)
+        else { return nil }
+        return (fallback, local)
+    }
+
+    private var otherModelButton: some View {
+        Button("Other model…") { showOtherModelMenu.toggle() }
+            .buttonStyle(.plain)
+            .typo(.captionMedium)
+            .foregroundStyle(Palette.accent)
+            .help("Transcribe with another model. Models on this Mac work offline and cost nothing.")
+            .popover(isPresented: $showOtherModelMenu, arrowEdge: .bottom) {
+                DropdownPopup(
+                    sections: regenerateModelSections,
+                    selected: nil,
+                    width: 280
+                ) { modelId in
+                    showOtherModelMenu = false
+                    Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
+                }
+            }
     }
 
     /// The model the take was meant for while it still exists, otherwise
@@ -513,8 +670,15 @@ struct RecordingRow: View {
         variant.modelName ?? variant.modelId ?? "Transcript"
     }
 
+    /// A row without a transcript leaves its model out: the line would read
+    /// as that model's output, when the model is the one that failed. The
+    /// notice below names it where it can be acted on.
     private var metaLine: String {
         var parts = [entry.durationSeconds.formattedClock]
+        if entry.transcriptIsPlaceholder {
+            parts.insert(isInFlight ? "Transcribing" : "Not transcribed", at: 0)
+            return parts.joined(separator: " · ")
+        }
         if let model = entry.modelName ?? entry.modelId, !model.isEmpty {
             parts.append(model)
         }
@@ -632,12 +796,14 @@ struct RecordingRow: View {
             }
             .buttonStyle(.plain)
             .disabled(regenerator.isRunning)
-            .help(entry.needsTranscript ? "Transcribe with another model" : "Regenerate transcript with another model")
+            .help(entry.transcriptIsPlaceholder ? "Transcribe with another model" : "Regenerate transcript with another model")
             .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
+                // No checkmark on a row without a transcript: its model is the
+                // one that failed, not the one the text came from.
                 DropdownPopup(
                     sections: regenerateModelSections,
-                    selected: entry.modelId,
-                    width: 260
+                    selected: entry.transcriptIsPlaceholder ? nil : entry.modelId,
+                    width: 280
                 ) { modelId in
                     showRegenerateMenu = false
                     Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
@@ -647,29 +813,57 @@ struct RecordingRow: View {
     }
 
     /// Every catalog model except the live ones, grouped "On this Mac" / by
-    /// cloud provider, with the entry's current model checkmarked — the
-    /// "Regenerate with" list restyled to the shared dropdown language. A live
-    /// model would only re-feed the stored audio through its one-shot
-    /// fallback, which isn't built for a whole recording.
+    /// cloud provider — the "Regenerate with" list restyled to the shared
+    /// dropdown language. A live model would only re-feed the stored audio
+    /// through its one-shot fallback, which isn't built for a whole recording.
+    ///
+    /// The models on this Mac come first, the downloaded ones ahead of the
+    /// rest: they work offline and cost nothing, which makes them the way
+    /// out when a provider has refused the take. What picking one will take
+    /// first — a download, an API key — is said on its row rather than
+    /// discovered after.
+    ///
+    /// Downloaded is asked of the disk first: the registry's readiness is
+    /// `.preparing` while a model on disk loads and `.failed` after a load
+    /// that didn't, and either would label a model already here "Download".
+    /// But a download in progress writes into that same folder, so a model
+    /// still being fetched — or a Whisper folder a cancelled download left
+    /// half full — keeps its "Download" label (`ModelStorage.isDownloaded`).
     private var regenerateModelSections: [DropdownSection<String>] {
         var sections: [DropdownSection<String>] = []
         let all = ModelCatalog.all.filter { !$0.isRealtime }
         let local = all.filter { !$0.isCloud }
+        let registry = ModelRegistry.shared
+        let onDisk = Set(local.filter {
+            ModelStorage.isDownloaded($0, readiness: registry.readiness(for: $0.id))
+        }.map(\.id))
+        let installed = local.filter { onDisk.contains($0.id) }
+        let notInstalled = local.filter { !onDisk.contains($0.id) }
         if !local.isEmpty {
             sections.append(DropdownSection(
                 header: "On this Mac",
-                items: local.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
+                items: installed.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
+                    + notInstalled.map {
+                        DropdownItem(value: $0.id, title: $0.sectionedDisplayName, detail: Self.downloadDetail($0))
+                    }
             ))
         }
         for provider in [CloudProvider.openAI, .elevenLabs] {
             let group = all.filter { $0.backend.cloudProvider == provider }
             guard !group.isEmpty else { continue }
+            let detail = provider.hasAPIKey ? nil : "Needs an API key"
             sections.append(DropdownSection(
                 header: provider.displayName,
-                items: group.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
+                items: group.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName, detail: detail) }
             ))
         }
         return sections
+    }
+
+    /// "Download · ~470 MB" for a local model that isn't on disk yet.
+    private static func downloadDetail(_ model: ModelDescriptor) -> String {
+        guard model.approxSizeMB > 0 else { return "Not downloaded" }
+        return "Download · ~\((Int64(model.approxSizeMB) * 1_000_000).formattedDiskSize)"
     }
 
     /// Hover control opening the Generate / Regenerate menu, and — from that

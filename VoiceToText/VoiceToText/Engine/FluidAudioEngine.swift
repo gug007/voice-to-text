@@ -18,17 +18,26 @@ actor FluidAudioEngine: TranscriptionEngine {
         do {
             progress?(0.0, "Starting…")
 
+            // FluidAudio's download fills only 0–0.5 of its range; rescaled
+            // so the card and History count it to 100% (`ParakeetProgress`).
+            // "0/0 files" is FluidAudio finding the model already on disk —
+            // the start of a load, not a download.
             let handler: DownloadUtils.ProgressHandler = { snapshot in
                 let message: String
+                var isLoading = false
                 switch snapshot.phase {
                 case .listing:
                     message = "Listing files…"
+                case .downloading(_, let total) where total == 0:
+                    message = "Loading model…"
+                    isLoading = true
                 case .downloading(let completed, let total):
                     message = "Downloading \(completed)/\(total) files"
                 case .compiling(let name):
                     message = "Compiling \(name)…"
+                    isLoading = true
                 }
-                progress?(snapshot.fractionCompleted, message)
+                progress?(ParakeetProgress.fraction(snapshot.fractionCompleted, isLoading: isLoading), message)
             }
 
             let models = try await AsrModels.downloadAndLoad(progressHandler: handler)

@@ -67,6 +67,27 @@ enum HistorySearch {
     /// alone would miss "Munchen" → "München".
     static let options: String.CompareOptions = [.caseInsensitive, .diacriticInsensitive]
 
+    /// What a recording without a transcript is labelled in its row, and so
+    /// what a search for one should match.
+    static let notTranscribedLabel = "Not transcribed"
+
+    /// The reason shown for a row an older build saved with only a
+    /// placeholder and no `status`: nothing recorded why, so the row can't
+    /// say more than this.
+    static let savedWithoutTranscriptReason = "This recording was saved without a transcript."
+
+    /// What a recording without a transcript says about itself — in its row
+    /// and to search. Its own `status`, or, for an older build's placeholder
+    /// row (see `RecordingHistoryEntry.transcriptIsPlaceholder`), a generic
+    /// one, so that row is offered "Transcribe with…" like any other instead
+    /// of passing its placeholder off as a transcript. Nil for a row with a
+    /// real transcript.
+    static func untranscribedStatus(of entry: RecordingHistoryEntry) -> RecordingHistoryEntry.Status? {
+        if let status = entry.status { return status }
+        guard entry.transcriptIsPlaceholder else { return nil }
+        return .init(kind: .failed, message: savedWithoutTranscriptReason)
+    }
+
     /// A query splits on whitespace into terms, and **all** terms must match —
     /// so "kara budget" finds the recording where Kara talked about the budget,
     /// not every recording mentioning either.
@@ -118,11 +139,19 @@ enum HistorySearch {
     /// its text is often a translation, which is the one place a search in the
     /// reader's own language can match a conversation held in another.
     ///
+    /// A recording still waiting for a transcript is found by what its row
+    /// says instead — why it failed, and the words "Not transcribed" — so
+    /// "failed" or "not transcribed" rounds up every take that needs another
+    /// go. See `statusFields(of:)`.
+    ///
     /// Returned as separate fields rather than one joined string so a match
     /// can't straddle two of them, and so nothing is copied — Swift strings are
     /// COW, so this array is a handful of references.
     static func storedFields(of entry: RecordingHistoryEntry) -> [String] {
         var fields: [String] = [entry.transcript]
+        if let status = untranscribedStatus(of: entry) {
+            fields.append(contentsOf: statusFields(of: status))
+        }
         for alternate in entry.alternates ?? [] {
             fields.append(alternate.text)
         }
@@ -143,6 +172,21 @@ enum HistorySearch {
         fields.append((entry.source ?? .dictation).displayName)
         return fields
     }
+
+    /// What a recording without a transcript can be searched by: its reason,
+    /// the row's "Not transcribed", and the status kind ("failed"). An empty
+    /// balance is worded "out of credit", so the other words people search
+    /// for one by — "quota", "billing" — are added for a reason that names any
+    /// of them.
+    static func statusFields(of status: RecordingHistoryEntry.Status) -> [String] {
+        var fields = [status.message, notTranscribedLabel, status.kind.rawValue]
+        if balanceTerms.contains(where: { status.message.range(of: $0, options: options) != nil }) {
+            fields.append(balanceTerms.joined(separator: " "))
+        }
+        return fields
+    }
+
+    static let balanceTerms = ["quota", "credit", "balance", "billing"]
 
     /// The date, both as the row writes it ("Yesterday at 22:05") and in its
     /// absolute form ("Monday, 3 August 2026") — so "yesterday" and "august"

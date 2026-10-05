@@ -4,13 +4,20 @@ import Foundation
 /// would be refused the same way, so none of these gets an automatic re-send.
 nonisolated enum RealtimeRefusal: Equatable, Sendable {
     case unauthorized
+    /// The account has no credit left. Every model of the same provider bills
+    /// the same balance, so only a top-up or a model on this Mac gets past it.
     case quotaExceeded
-    case rateLimited
+    /// `retryAfter` is when the provider said to try again, if it said.
+    case rateLimited(retryAfter: TimeInterval? = nil)
     case termsNotAccepted
     case sessionLimit
     /// The provider's queue or capacity is full; hammering it again at once
     /// only makes that worse.
     case overloaded
+    /// Refused for a reason this app has no name for — an account problem, or
+    /// an error before the session was set up that no config change could
+    /// answer. The server's own message is all there is to go on.
+    case rejected
 
     var label: String {
         switch self {
@@ -20,6 +27,7 @@ nonisolated enum RealtimeRefusal: Equatable, Sendable {
         case .termsNotAccepted: return "terms not accepted"
         case .sessionLimit: return "session time limit reached"
         case .overloaded: return "service overloaded"
+        case .rejected: return "rejected"
         }
     }
 
@@ -28,7 +36,7 @@ nonisolated enum RealtimeRefusal: Equatable, Sendable {
         switch messageType {
         case "auth_error": return .unauthorized
         case "quota_exceeded": return .quotaExceeded
-        case "rate_limited": return .rateLimited
+        case "rate_limited": return .rateLimited()
         case "unaccepted_terms": return .termsNotAccepted
         case "session_time_limit_exceeded": return .sessionLimit
         case "queue_overflow", "resource_exhausted": return .overloaded
@@ -36,24 +44,91 @@ nonisolated enum RealtimeRefusal: Equatable, Sendable {
         }
     }
 
-    /// OpenAI's `error` event carries a `type` and a machine-readable `code`.
-    static func openAI(type: String?, code: String?) -> RealtimeRefusal? {
+    /// OpenAI's `error` event carries a `type`, a machine-readable `code` and
+    /// a `message`. The codes are trusted first; the message only decides
+    /// between a rate limit and an empty balance, because the realtime socket
+    /// doesn't keep the two apart: an empty account has been seen arriving as
+    /// `rate_limit_exceeded` with "You exceeded your current quota, please
+    /// check your plan and billing details." Calling that a rate limit tells
+    /// the user to wait for something waiting never fixes. Only OpenAI's quota
+    /// sentence counts — an ordinary rate limit on a low tier ends with a link
+    /// to the account's billing page, and that one really is worth waiting out.
+    static func openAI(type: String?, code: String?, message: String? = nil) -> RealtimeRefusal? {
         let code = code ?? ""
         let type = type ?? ""
         if code == "invalid_api_key" || type == "authentication_error" { return .unauthorized }
-        if code == "insufficient_quota" { return .quotaExceeded }
-        if code.contains("rate_limit") || type.contains("rate_limit") { return .rateLimited }
+        if quotaCodes.contains(code) || type == "insufficient_quota" || statesQuota(message) {
+            return .quotaExceeded
+        }
+        if code.contains("rate_limit") || type.contains("rate_limit") { return .rateLimited() }
         if code == "session_expired" || code.contains("session_time_limit") { return .sessionLimit }
         return nil
     }
 
+    /// An OpenAI error that arrives before the server has acknowledged our
+    /// `session.update`. The server answers a config it dislikes with an
+    /// `invalid_request_error`, which the fallback ladder can do something
+    /// about. A named refusal or a complaint about the account isn't about the
+    /// config, and no reduced one gets past it. Anything else stays on the
+    /// ladder, a transient `server_error` included: refusing the take over it
+    /// would throw away a session that, once acknowledged, transcribes
+    /// normally — and leave nothing to re-send.
+    static func openAIBeforeConfig(type: String?, code: String?, message: String?) -> RealtimeRefusal? {
+        if let refusal = openAI(type: type, code: code, message: message) { return refusal }
+        if mentionsAccount(message) { return .rejected }
+        return nil
+    }
+
     /// A WebSocket handshake the server answered with an HTTP error.
-    static func handshake(status: Int) -> RealtimeRefusal? {
+    static func handshake(status: Int, retryAfter: TimeInterval? = nil) -> RealtimeRefusal? {
         switch status {
         case 401, 403: return .unauthorized
-        case 429: return .rateLimited
+        case 402: return .quotaExceeded
+        case 429: return .rateLimited(retryAfter: retryAfter)
         default: return nil
         }
+    }
+
+    /// The same, read off the handshake's response, with its `Retry-After`
+    /// honoured the way the batch engines honour it.
+    static func handshake(response: HTTPURLResponse, now: Date = Date()) -> RealtimeRefusal? {
+        handshake(
+            status: response.statusCode,
+            retryAfter: CloudTranscriptionError.retryAfter(
+                milliseconds: response.value(forHTTPHeaderField: "retry-after-ms"),
+                header: response.value(forHTTPHeaderField: "Retry-After"),
+                now: now
+            )
+        )
+    }
+
+    /// OpenAI's codes for an account that can't pay for the request.
+    static let quotaCodes: Set<String> = ["insufficient_quota", "billing_not_active", "billing_hard_limit_reached"]
+
+    /// OpenAI's own words for an empty balance — specific enough to outrank
+    /// a `rate_limit` code.
+    static func statesQuota(_ message: String?) -> Bool {
+        mentions(message, anyOf: ["exceeded your current quota", "credit balance"])
+    }
+
+    static func mentionsBalance(_ message: String?) -> Bool {
+        mentions(message, anyOf: ["quota", "credit", "billing details"])
+    }
+
+    static func mentionsAccount(_ message: String?) -> Bool {
+        mentionsBalance(message) || mentions(message, anyOf: ["account"])
+    }
+
+    /// Links don't count: OpenAI's rate-limit text ends with one to
+    /// `platform.openai.com/account/billing`, which says nothing about the
+    /// account itself.
+    private static func mentions(_ message: String?, anyOf words: [String]) -> Bool {
+        guard let message else { return false }
+        let prose = message.lowercased()
+            .split(whereSeparator: \.isWhitespace)
+            .filter { !$0.contains("://") && !$0.contains(".com/") }
+            .joined(separator: " ")
+        return words.contains { prose.contains($0) }
     }
 }
 
@@ -72,11 +147,25 @@ nonisolated enum RealtimeDegradation: Equatable, Sendable {
     case finishTimedOut
     /// The provider refused the session (see `RealtimeRefusal`).
     case refused(RealtimeRefusal, String)
+    /// Every utterance the server took in, it failed to transcribe — with
+    /// the message that says the most about why. Nothing came back at all,
+    /// which is how an empty balance can look when the socket itself was let
+    /// through; a re-send of the whole take would only fail the same way,
+    /// and the user needs to hear what might fix it. Only recorded on strong
+    /// evidence (see `OpenAIRealtimeFinishTracker.outcome`).
+    case nothingTranscribed(String)
 
     /// Whether re-sending the take could plausibly do better.
     var allowsResend: Bool {
-        if case .refused = self { return false }
-        return true
+        switch self {
+        case .refused, .nothingTranscribed: return false
+        case .sendFailed, .connectionLost, .serverError, .finishTimedOut: return true
+        }
+    }
+
+    var isRefusal: Bool {
+        if case .refused = self { return true }
+        return false
     }
 
     /// Reads as the tail of "… didn't return the complete transcript (…)".
@@ -86,7 +175,9 @@ nonisolated enum RealtimeDegradation: Equatable, Sendable {
         case .connectionLost: return "the connection dropped"
         case .serverError(let message): return "server error: \(message)"
         case .finishTimedOut: return "the final text didn't arrive in time"
+        case .refused(.rejected, let message): return message
         case .refused(let refusal, let message): return "\(refusal.label): \(message)"
+        case .nothingTranscribed(let message): return message
         }
     }
 }
@@ -111,11 +202,11 @@ nonisolated enum RealtimeFinishPolicy {
     }
 
     /// A degraded live session gets one buffered re-run of the whole take —
-    /// unless the provider refused it (a bad key, an empty quota), which a
-    /// re-send can only repeat. A degraded buffered session fails outright:
-    /// its input already is the whole take, so there is nothing better to fall
-    /// back to — and quietly handing back part of it is exactly what this
-    /// policy exists to stop.
+    /// unless the provider refused it (a bad key, an empty quota) or
+    /// transcribed none of it, which a re-send can only repeat. A degraded
+    /// buffered session fails outright: its input already is the whole take,
+    /// so there is nothing better to fall back to — and quietly handing back
+    /// part of it is exactly what this policy exists to stop.
     static func action(
         for degradation: RealtimeDegradation?,
         session: Session,
@@ -128,10 +219,18 @@ nonisolated enum RealtimeFinishPolicy {
 
     /// Written to follow "Transcription failed: ".
     static func failureReason(provider: String, _ degradation: RealtimeDegradation) -> String {
-        if case .refused = degradation {
+        switch degradation {
+        case .refused:
             return "\(provider) refused the session (\(degradation.summary))."
+        case .nothingTranscribed(let message):
+            // The top-up advice only when the server's words point at the
+            // balance; anything else would send the user after the wrong fix.
+            let reason = "\(provider) transcribed none of this take (\(degradation.summary))."
+            guard RealtimeRefusal.mentionsBalance(message) else { return reason }
+            return reason + " If your \(provider) balance is empty, top up — or use a model on this Mac."
+        case .sendFailed, .connectionLost, .serverError, .finishTimedOut:
+            return "\(provider) didn't return the complete transcript (\(degradation.summary))."
         }
-        return "\(provider) didn't return the complete transcript (\(degradation.summary))."
     }
 
     /// The error a failed session throws. Where the cause maps onto one the
@@ -148,14 +247,14 @@ nonisolated enum RealtimeFinishPolicy {
             switch refusal {
             case .unauthorized:
                 return CloudTranscriptionError(cause: .http(status: 401, retryAfter: nil, apiCode: nil), reason: reason)
-            case .rateLimited:
-                return CloudTranscriptionError(cause: .http(status: 429, retryAfter: nil, apiCode: nil), reason: reason)
+            case .rateLimited(let retryAfter):
+                return CloudTranscriptionError(cause: .http(status: 429, retryAfter: retryAfter, apiCode: nil), reason: reason)
             case .quotaExceeded:
                 return CloudTranscriptionError(
                     cause: .http(status: 429, retryAfter: nil, apiCode: "insufficient_quota"),
                     reason: reason
                 )
-            case .termsNotAccepted, .sessionLimit, .overloaded:
+            case .termsNotAccepted, .sessionLimit, .overloaded, .rejected:
                 return TranscriptionEngineError.transcriptionFailed(reason)
             }
         }
@@ -304,16 +403,64 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
     private(set) var awaitingCommitReply = false
     private(set) var finishing = false
     private(set) var closed = false
-    /// The first reason the transcript can't be trusted; later ones add nothing.
+    /// The first reason the transcript can't be trusted; later ones add
+    /// nothing — except a refusal, which replaces whatever came before it.
     private(set) var degradation: RealtimeDegradation?
     /// The first network error behind a send failure or a close, so the
     /// failure card can tell "offline" from anything else.
     private(set) var transport: URLError.Code?
+    /// Utterances transcribed, and utterances the server failed on, this
+    /// session. Together they tell a take that lost a line from one that got
+    /// nothing back at all.
+    private(set) var completedTranscripts = 0
+    private(set) var failedTranscripts = 0
+    private var firstTranscriptFailure: String?
+    /// The first failed utterance whose message talks about the account or
+    /// its balance without naming a refusal outright.
+    private var accountTranscriptFailure: String?
+    /// Something more than one utterance's failure degraded the session — a
+    /// refusal, a drop, a server error on the socket, an expired wait. No
+    /// amount of waiting mends those; a failed utterance leaves the rest of
+    /// the take still worth waiting for, since they decide between a re-send
+    /// and "nothing transcribed".
+    private(set) var interrupted = false
+    /// Audio or text was lost to the network: a send failed, or the socket
+    /// closed with text still owed. Failed utterances before that are no
+    /// evidence the rest would have failed too.
+    private(set) var connectionFailed = false
+    /// The server's message for the last `session.update` it rejected, while
+    /// the fallback ladder is still waiting on a reduced one. A server that
+    /// rejects the config and then hangs up has said more about the take
+    /// than "the connection dropped".
+    private(set) var configRejection: String?
 
     /// Nothing more is coming, or waiting can no longer help.
     var isSettled: Bool {
-        if closed || degradation != nil { return true }
+        if closed || interrupted { return true }
         return !awaitingCommitReply && pendingTranscripts == 0 && !uncommittedSpeech
+    }
+
+    /// What the finish reports. A take the server transcribed none of is
+    /// reported as that — and so not re-sent — only on strong evidence:
+    /// nothing completed, nothing still owed, no network loss to blame, and
+    /// either several utterances failed or one said why in terms of the
+    /// account. One transient failure, or a failure followed by a drop or a
+    /// timeout, keeps its own reason and gets the single re-send. A refusal
+    /// the provider named always stands.
+    var outcome: RealtimeDegradation? {
+        guard let degradation, !degradation.isRefusal else { return degradation }
+        guard completedTranscripts == 0, pendingTranscripts == 0, !awaitingCommitReply, !uncommittedSpeech,
+              !connectionFailed,
+              failedTranscripts >= 2 || accountTranscriptFailure != nil else { return degradation }
+        return .nothingTranscribed(accountTranscriptFailure ?? firstTranscriptFailure ?? "every utterance failed")
+    }
+
+    /// An utterance failed after another came back: whatever is still owed,
+    /// the finish can only report that failure and re-send the take, so
+    /// waiting for the rest decides nothing. The live wait matters only while
+    /// "nothing transcribed" is still possible.
+    var resendIsCertain: Bool {
+        degradation != nil && completedTranscripts > 0
     }
 
     /// The live path commits only when something is actually in the buffer:
@@ -329,7 +476,7 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
     /// That speech needs its own commit, or the wait runs out and the whole
     /// take is re-sent for one trailing word.
     var needsFollowUpCommit: Bool {
-        finishing && !closed && degradation == nil && uncommittedSpeech && !awaitingCommitReply
+        finishing && !closed && !interrupted && uncommittedSpeech && !awaitingCommitReply
     }
 
     mutating func speechStarted() { uncommittedSpeech = true }
@@ -345,13 +492,32 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
 
     mutating func transcriptCompleted() {
         pendingTranscripts = max(0, pendingTranscripts - 1)
+        completedTranscripts += 1
     }
 
     /// `…input_audio_transcription.failed`: that utterance's text is gone.
-    mutating func transcriptFailed(_ message: String) {
+    /// `refusal` is what its error names, if anything — an empty balance can
+    /// surface here, one utterance at a time, rather than on the socket.
+    mutating func transcriptFailed(_ message: String, refusal: RealtimeRefusal? = nil) {
         pendingTranscripts = max(0, pendingTranscripts - 1)
-        degrade(.serverError(message))
+        failedTranscripts += 1
+        if firstTranscriptFailure == nil { firstTranscriptFailure = message }
+        if let refusal {
+            degrade(.refused(refusal, message))
+            return
+        }
+        if accountTranscriptFailure == nil, RealtimeRefusal.mentionsAccount(message) {
+            accountTranscriptFailure = message
+        }
+        degrade(.serverError(message), interrupts: false)
     }
+
+    /// The fallback ladder is retrying a config the server rejected with
+    /// `message`.
+    mutating func configRejected(_ message: String) { configRejection = message }
+
+    /// `session.updated`: whatever the ladder was answering is settled.
+    mutating func configAccepted() { configRejection = nil }
 
     /// `input_audio_buffer_commit_empty`: the finishing commit found nothing
     /// left to transcribe — an answer, not a failure.
@@ -363,9 +529,12 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
 
     mutating func refused(_ refusal: RealtimeRefusal, _ message: String) { degrade(.refused(refusal, message)) }
 
+    /// While a rejected config is unanswered, the server's message stands in
+    /// for the send failure it led to.
     mutating func sendFailed(_ reason: String, transport code: URLError.Code? = nil) {
         note(code)
-        degrade(.sendFailed(reason))
+        connectionFailed = true
+        degrade(configRejection.map(RealtimeDegradation.serverError) ?? .sendFailed(reason))
     }
 
     mutating func beginFinish() { finishing = true }
@@ -373,13 +542,15 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
     mutating func finishCommitSent() { awaitingCommitReply = true }
 
     /// A close mid-take loses whatever was said after it; during the finish it
-    /// only matters while text is still owed.
+    /// only matters while text is still owed. A close that follows a rejected
+    /// config is reported with the server's message.
     mutating func connectionClosed(transport code: URLError.Code? = nil) {
         let owed = !finishing || !isSettled
         closed = true
         if owed {
             note(code)
-            degrade(.connectionLost)
+            connectionFailed = true
+            degrade(configRejection.map(RealtimeDegradation.serverError) ?? .connectionLost)
         }
     }
 
@@ -390,8 +561,17 @@ nonisolated struct OpenAIRealtimeFinishTracker: Equatable, Sendable {
         if transport == nil { transport = code }
     }
 
-    private mutating func degrade(_ reason: RealtimeDegradation) {
-        if degradation == nil { degradation = reason }
+    /// The first reason sticks, with one exception: a refusal replaces an
+    /// earlier reason that isn't one. A refused handshake often shows up
+    /// first as the send that failed on it, and reporting that send would
+    /// re-send a take the provider has already said it won't take.
+    private mutating func degrade(_ reason: RealtimeDegradation, interrupts: Bool = true) {
+        if interrupts { interrupted = true }
+        guard let degradation else {
+            degradation = reason
+            return
+        }
+        if reason.isRefusal, !degradation.isRefusal { self.degradation = reason }
     }
 }
 
@@ -528,7 +708,13 @@ nonisolated struct ElevenLabsRealtimeFinishTracker: Equatable, Sendable {
         if transport == nil { transport = code }
     }
 
+    /// First reason wins, except that a refusal replaces an earlier one that
+    /// isn't (see `OpenAIRealtimeFinishTracker.degrade`).
     private mutating func degrade(_ reason: RealtimeDegradation) {
-        if degradation == nil { degradation = reason }
+        guard let degradation else {
+            degradation = reason
+            return
+        }
+        if reason.isRefusal, !degradation.isRefusal { self.degradation = reason }
     }
 }

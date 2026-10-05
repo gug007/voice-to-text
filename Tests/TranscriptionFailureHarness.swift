@@ -124,9 +124,10 @@ struct TranscriptionFailureHarness {
     private static func exhaustedQuotaIsNotARateLimit() throws {
         try expect(
             httpFailure(429, headers: ["Retry-After": "20"], code: "insufficient_quota"),
-            .other,
+            .quotaExhausted,
             "an empty balance doesn't refill by waiting"
         )
+        try expect(httpFailure(402), .quotaExhausted, "payment required is an empty balance too")
         try expect(httpFailure(429, code: "rate_limit_exceeded"), .rateLimited(retryAfter: nil), "a real rate limit")
     }
 
@@ -190,6 +191,11 @@ struct TranscriptionFailureHarness {
             TranscriptionFailure.server.message(provider: nil, fallback: fallback),
             "The transcription service is having trouble right now. Retry in a moment.",
             "no provider name to give"
+        )
+        try expect(
+            TranscriptionFailure.quotaExhausted.message(provider: "OpenAI", fallback: fallback),
+            "OpenAI says your account is out of credit. Top up, or transcribe with a model on this Mac.",
+            "an empty balance points at the two ways out"
         )
         try expect(TranscriptionFailure.other.message(provider: "OpenAI", fallback: fallback), fallback, "other keeps the engine's message")
     }

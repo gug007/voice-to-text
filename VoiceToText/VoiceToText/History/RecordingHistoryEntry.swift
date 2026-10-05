@@ -153,6 +153,38 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// True while the recording is waiting for a transcript (see `status`).
     var needsTranscript: Bool { status != nil }
 
+    /// Stands in for the transcript of a recording saved without one — a
+    /// failed dictation, a conversation whose transcription failed or never
+    /// ran. Lives here, not with the store or the controllers that write it,
+    /// because recognizing it is part of reading an entry (see
+    /// `transcriptIsPlaceholder`).
+    nonisolated static let placeholderTranscript = "⚠︎ Audio saved without a transcript."
+
+    /// What launch recovery wrote for a conversation the app quit before
+    /// transcribing, in builds before `status`.
+    nonisolated static let legacyRecoveredTranscript = "⚠︎ Recovered recording — the app quit before transcription finished. Audio saved without a transcript."
+
+    /// Every placeholder any build has written in place of a transcript.
+    /// Conversations archived before `status` existed carry one of these with
+    /// no status at all, and they are just as untranscribed.
+    nonisolated static let knownPlaceholderTranscripts: Set<String> = [
+        placeholderTranscript,
+        legacyRecoveredTranscript,
+    ]
+
+    /// True when `transcript` only stands in for one: the entry is waiting for
+    /// a transcript (`status`), or it is an older build's row whose only text
+    /// is one of the known placeholders. A row with alternates has had a real transcript at
+    /// some point, so its active text is taken as chosen, whatever it says.
+    /// This is what keeps a placeholder out of a summary request and out of a
+    /// regeneration's list of versions.
+    var transcriptIsPlaceholder: Bool {
+        if needsTranscript { return true }
+        guard !hasAlternateTranscripts else { return false }
+        let text = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.knownPlaceholderTranscripts.contains(text)
+    }
+
     /// Every transcript for this recording, newest (active) first. The active one
     /// reuses the entry's own id so the UI can target it for removal; alternates
     /// carry their own ids.
@@ -374,13 +406,15 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// whose status is cleared — the take has been transcribed at last. The
     /// placeholder is not kept as an alternate: it was never a transcript, and
     /// a "version" reading "Audio saved without a transcript" beside the real
-    /// one would only be clutter. Nil when the entry isn't waiting for one.
+    /// one would only be clutter. Nil when the entry isn't waiting for one —
+    /// which includes an older build's untranscribed conversation, saved with
+    /// a placeholder but no status (see `transcriptIsPlaceholder`).
     func resolvingPlaceholder(
         transcript: String,
         modelId: String?,
         modelName: String?
     ) -> RecordingHistoryEntry? {
-        guard status != nil else { return nil }
+        guard transcriptIsPlaceholder else { return nil }
         return replacing(
             transcript: transcript,
             modelId: modelId ?? self.modelId,
@@ -397,9 +431,12 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     }
 
     /// Returns a copy reporting a different failure (a retry that failed
-    /// differently); nil when the entry isn't waiting for a transcript.
+    /// differently); nil when the entry isn't waiting for a transcript. An
+    /// older build's untranscribed conversation — a placeholder and no
+    /// status (see `transcriptIsPlaceholder`) — is waiting for one too, so
+    /// its first failed attempt gets the status it never had.
     func updatingStatus(_ status: Status) -> RecordingHistoryEntry? {
-        guard self.status != nil else { return nil }
+        guard transcriptIsPlaceholder else { return nil }
         return replacing(
             transcript: transcript,
             modelId: modelId,
@@ -532,8 +569,11 @@ nonisolated enum RecordingHistoryPruner {
 
     /// Whether the cap must leave `entry` alone: a favorite (the user's own
     /// "keep this"), a conversation (often an hour of audio nobody can record
-    /// again), or a recording with insights (paid for from the user's OpenAI
-    /// budget) or speaker names (typed in by hand).
+    /// again), a recording with insights (paid for from the user's OpenAI
+    /// budget) or speaker names (typed in by hand), or one still waiting for
+    /// its transcript — a take whose transcription failed or never finished,
+    /// kept so it can be transcribed once the user tops up or picks another
+    /// model, which may be days and hundreds of dictations later.
     ///
     /// Checked afresh on every prune, so a recording that loses its star or its
     /// last insight is an ordinary dictation again — but ranked from the moment
@@ -545,6 +585,7 @@ nonisolated enum RecordingHistoryPruner {
             || entry.source == .meeting
             || entry.hasInsights
             || !(entry.speakerNames ?? [:]).isEmpty
+            || entry.needsTranscript
     }
 
     /// Where an unprotected entry stands in the cap: when it was recorded, or
@@ -598,6 +639,37 @@ nonisolated enum RecordingHistoryPruner {
             }
         }
         return Outcome(kept: newestFirst(kept), removed: newestFirst(removed))
+    }
+
+    /// Clear All: every entry leaves for the undo window (`removed`) except
+    /// those in `busy` — dictation takes still being transcribed (`kept`).
+    /// Their rows read "Transcribing…" and offer no trash of their own:
+    /// parking one would leave the transcript about to land with no row to
+    /// fill, the take would file itself as a second row, and Undo would
+    /// bring the first back beside it, still saying the app closed before
+    /// the take was transcribed.
+    static func clearingAll(
+        _ entries: [RecordingHistoryEntry],
+        sparing busy: Set<UUID>
+    ) -> Outcome {
+        Outcome(
+            kept: entries.filter { busy.contains($0.id) },
+            removed: entries.filter { !busy.contains($0.id) }
+        )
+    }
+
+    /// Takes the entry `id` back out of a deletion still in its undo window
+    /// (`parked`) and into `current`, newest-first, leaving the rest of the
+    /// batch parked. Nil when `parked` doesn't hold it. Together the two
+    /// lists hold exactly what they held before — the set the on-disk index
+    /// lists — so a quit right after loses nothing and restores nothing twice.
+    static func reclaiming(
+        _ id: UUID,
+        from parked: [RecordingHistoryEntry],
+        into current: [RecordingHistoryEntry]
+    ) -> (entries: [RecordingHistoryEntry], parked: [RecordingHistoryEntry])? {
+        guard let entry = parked.first(where: { $0.id == id }) else { return nil }
+        return (restoring([entry], into: current), parked.filter { $0.id != id })
     }
 
     /// Undo of a deletion: puts `restored` back into `current` (the visible

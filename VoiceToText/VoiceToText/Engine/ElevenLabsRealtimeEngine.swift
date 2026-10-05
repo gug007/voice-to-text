@@ -112,6 +112,10 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         guard let apiKey = ElevenLabsAPIKey.read() else {
             throw TranscriptionEngineError.notReady
         }
+        // Before the socket opens; see `OpenAIRealtimeEngine.openSession`.
+        #if DEBUG
+        try CloudQuotaSimulation.throwIfEnabled(for: .elevenLabs)
+        #endif
 
         // Tear down any prior session first so a reused actor never orphans its
         // old socket / receive + sender tasks.
@@ -180,6 +184,9 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
             )
         )
         guard let task else { return }
+        // A buffered session fails on any degradation, so the rest of its
+        // audio would only go to a server that has refused it or lost it.
+        if isBufferedSession, finish.degradation != nil { return }
         let payload: [String: Any] = [
             "message_type": "input_audio_chunk",
             "audio_base_64": Self.pcm16Base64(samples),
@@ -190,7 +197,7 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+            recordSendFailure(error, on: task)
         }
     }
 
@@ -354,13 +361,26 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         }
         // Unblocks a pending finish, and marks the take incomplete if the
         // socket closed while text was still owed. A handshake the server
-        // refused (a bad key, a rate limit) says which by its HTTP status.
+        // refused (a bad key, a rate limit, an empty balance) says which by
+        // its HTTP status.
         guard generation == sessionGeneration else { return }
-        if let status = (task.response as? HTTPURLResponse)?.statusCode,
-           let refusal = RealtimeRefusal.handshake(status: status) {
-            finish.refused(refusal, "HTTP \(status)")
-        }
+        noteHandshakeRefusal(of: task)
         finish.connectionClosed(transport: (failure as? URLError)?.code)
+    }
+
+    /// A send that failed because the server refused the handshake is that
+    /// refusal, not a network problem worth a re-send.
+    private func recordSendFailure(_ error: Error, on task: URLSessionWebSocketTask) {
+        if noteHandshakeRefusal(of: task) { return }
+        finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+    }
+
+    @discardableResult
+    private func noteHandshakeRefusal(of task: URLSessionWebSocketTask) -> Bool {
+        guard let response = task.response as? HTTPURLResponse,
+              let refusal = RealtimeRefusal.handshake(response: response) else { return false }
+        finish.refused(refusal, "HTTP \(response.statusCode)")
+        return true
     }
 
     private func handleMessage(_ text: String) {
@@ -442,7 +462,7 @@ actor ElevenLabsRealtimeEngine: StreamingTranscriptionEngine {
         do {
             try await task.send(.string(json))
         } catch {
-            finish.sendFailed(error.localizedDescription, transport: (error as? URLError)?.code)
+            recordSendFailure(error, on: task)
         }
     }
 

@@ -351,6 +351,16 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             symbol: "macwindow",
             action: #selector(openMainWindow)
         ))
+        // The quiet half of the update offer: only the first check of a
+        // session prompts, so an update found later waits here (and on the
+        // sidebar's Updates row) for as long as the app runs.
+        if let version = AppUpdater.shared.indicatedVersion {
+            menu.addItem(item(
+                title: "Update Available — \(version)…",
+                symbol: "arrow.down.circle",
+                action: #selector(openUpdates)
+            ))
+        }
         menu.addItem(.separator())
 
         // Elapsed time lives here, not in the status-item title.
@@ -546,6 +556,10 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func openMainWindow() {
         WindowOpener.shared.showMain()
+    }
+
+    @objc private func openUpdates() {
+        WindowOpener.shared.showMain(section: .updates)
     }
 
     @objc private func toggleDictation() {

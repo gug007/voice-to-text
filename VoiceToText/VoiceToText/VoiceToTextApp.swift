@@ -13,6 +13,10 @@ struct VoiceToTextApp: App {
         DictationController.shared.installHotkey()
         MeetingController.shared.installHotkey()
         ModelRegistry.shared.bootstrapActiveModelIfNeeded()
+        // Created now so it observes API key changes from launch: a key
+        // replaced in Settings → Actions before anything else asked for it
+        // would otherwise leave the old key's out-of-credit flag standing.
+        _ = CloudCreditStatus.shared
         Task { await AppUpdater.shared.autoCheckLoop() }
     }
 

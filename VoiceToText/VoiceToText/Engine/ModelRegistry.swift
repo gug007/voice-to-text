@@ -2,18 +2,6 @@ import Foundation
 import Observation
 import OSLog
 
-enum CloudProvider: String, Sendable, Hashable {
-    case openAI
-    case elevenLabs
-
-    var displayName: String {
-        switch self {
-        case .openAI: return "OpenAI"
-        case .elevenLabs: return "ElevenLabs"
-        }
-    }
-}
-
 struct ModelDescriptor: Identifiable, Hashable, Sendable {
     enum Backend: String, Sendable, Hashable {
         case whisperKit
@@ -48,6 +36,20 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
     let backendModelId: String
     let approxSizeMB: Int
     let languages: String
+    /// The languages this model transcribes, as lowercase ISO 639-1 codes —
+    /// what `DictationTakePolicy.localFallback` checks the languages the user
+    /// speaks against before offering it in place of a cloud model. `nil`
+    /// means broadly multilingual (Whisper's 99): no list worth checking.
+    /// `languages` is the same fact worded for the Models pane.
+    var languageCodes: Set<String>? = nil
+    /// Whether the app may choose this local model on the user's behalf — as
+    /// the model a failure card offers when the cloud one can't run. False
+    /// for the models whose own notes warn off real use (Whisper Base and
+    /// Tiny): offering one of those as the way out would trade a refused
+    /// request for a transcript full of mistakes. The user can still pick
+    /// them anywhere. Only read for local models; cloud ones are never
+    /// fallback candidates.
+    var autoPickable: Bool = true
     let notes: String
     let speed: Int
     /// Provider list price in USD per hour of audio, as published on the
@@ -99,6 +101,10 @@ enum ModelCatalog {
             backendModelId: "parakeet-tdt-v3",
             approxSizeMB: 470,
             languages: "25 European languages",
+            languageCodes: [
+                "bg", "hr", "cs", "da", "nl", "en", "et", "fi", "fr", "de", "el", "hu", "it",
+                "lv", "lt", "mt", "pl", "pt", "ro", "sk", "sl", "es", "sv", "ru", "uk",
+            ],
             notes: "Fastest on your Mac. Best for English and major European languages.",
             speed: 10,
             pricePerHourUSD: 0,
@@ -173,6 +179,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-base",
             approxSizeMB: 77,
             languages: "99",
+            autoPickable: false,
             notes: "Very small. Quite a few mistakes — only worth it on slow Macs.",
             speed: 9,
             pricePerHourUSD: 0,
@@ -187,6 +194,7 @@ enum ModelCatalog {
             backendModelId: "openai_whisper-tiny",
             approxSizeMB: 39,
             languages: "99",
+            autoPickable: false,
             notes: "Smallest. Lots of mistakes — mainly useful for testing.",
             speed: 10,
             pricePerHourUSD: 0,
@@ -394,6 +402,27 @@ enum ModelReadiness: Equatable {
         if case .installed = self { return true }
         return false
     }
+
+    /// Preparing, in the load/compile tail (CoreML prewarm) rather than
+    /// fetching files. The engines report no separate phase for it, only
+    /// their progress messages ("Loading model into memory…", "Compiling
+    /// AudioEncoder…"), so this reads those. "Downloading 3/12 files"
+    /// contains "load" too, so the download phase is ruled out first —
+    /// otherwise every download read as unmetered, and the stall watchdog
+    /// never evicted one that had stopped.
+    var isLoadingOrCompiling: Bool {
+        guard case .preparing(_, let message) = self else { return false }
+        let lower = message.lowercased()
+        if lower.hasPrefix("download") { return false }
+        return lower.contains("load") || lower.contains("compil")
+    }
+
+    /// Preparing, and not yet past fetching the model's files: the folder on
+    /// disk may hold some of them already, but not a model that loads.
+    var isDownloading: Bool {
+        guard case .preparing = self else { return false }
+        return !isLoadingOrCompiling
+    }
 }
 
 @Observable
@@ -412,6 +441,16 @@ final class ModelRegistry {
     /// `nil` means "follow the dictation model" (`activeModel`).
     private(set) var conversationModelId: String?
     private(set) var readiness: [String: ModelReadiness] = [:]
+
+    /// The local models on disk whole — downloaded and loadable offline
+    /// (`ModelStorage.isDownloaded`) — as of the last change to what is
+    /// installed. `localFallbackCandidates` reads this instead of walking the
+    /// model folders and every model's `readiness`, so a History row that
+    /// asks for a fallback in its body neither walks the disk on each render
+    /// nor re-renders on each download progress tick. Refreshed only where
+    /// the answer can change: a preparation that ends (installed, failed or
+    /// stalled out), a delete, and `refreshInstalledState`.
+    private(set) var downloadedLocalModelIDs: Set<String> = []
 
     @ObservationIgnored
     private var engines: [String: TranscriptionEngine] = [:]
@@ -453,6 +492,14 @@ final class ModelRegistry {
     /// timeout, so a stalled network read parks the caller forever. Treat a
     /// preparation that makes no progress for this long as stuck.
     private static let prepareStallTimeoutMs = 120_000
+    /// The same, once files are coming in ("Downloading x/y files").
+    /// WhisperKit's Hub downloader reports progress only per 10 MB chunk, and
+    /// weighs each file the same whatever its size, so on a slow link a
+    /// healthy download can go two minutes without moving. A dead connection
+    /// doesn't need this to end it — both libraries' own transport timeouts
+    /// (the Hub's 10 s with retries, URLSession's 60 s) get there first — so
+    /// this is only the backstop, and a long one costs little.
+    private static let downloadStallTimeoutMs = 300_000
     private static let prepareStallPollMs = 1_000
 
     private init() {
@@ -496,6 +543,18 @@ final class ModelRegistry {
     func refreshInstalledState() {
         for model in ModelCatalog.all {
             updateReadiness(for: model)
+        }
+        refreshDownloadedLocalModels()
+    }
+
+    /// Recomputes `downloadedLocalModelIDs`, assigning only on a change so
+    /// its readers aren't invalidated for nothing.
+    private func refreshDownloadedLocalModels() {
+        let next = Set(ModelCatalog.all.lazy
+            .filter { !$0.isCloud && ModelStorage.isDownloaded($0, readiness: self.readiness(for: $0.id)) }
+            .map(\.id))
+        if next != downloadedLocalModelIDs {
+            downloadedLocalModelIDs = next
         }
     }
 
@@ -581,10 +640,25 @@ final class ModelRegistry {
         return (resolved, resolution.needsDownload)
     }
 
+    /// The user picked a dictation model. Picking any model — Switch Back
+    /// included — ends a switch "Use for Dictation" made, so the Models
+    /// pane's "Switched from …" banner goes with it.
     func setActive(_ modelId: String) {
         guard ModelCatalog.model(for: modelId) != nil else { return }
         activeModelId = modelId
         UserDefaults.standard.set(modelId, forKey: Keys.activeModelId)
+        CloudCreditStatus.shared.clearSwitchedFrom()
+    }
+
+    /// "Use for Dictation" on an out-of-credit failure card: makes the local
+    /// `modelId` the dictation model, and remembers `cloudModelId` so the
+    /// Models pane can offer to switch back once the balance is topped up.
+    /// The one place the rescue changes the dictation model, and only on that
+    /// explicit click.
+    func useForDictation(_ modelId: String, switchingFrom cloudModelId: String) {
+        guard ModelCatalog.model(for: modelId) != nil else { return }
+        setActive(modelId)
+        CloudCreditStatus.shared.noteSwitchedForDictation(from: cloudModelId)
     }
 
     /// Sets the conversation model. Pass `nil` to follow the dictation model
@@ -600,6 +674,54 @@ final class ModelRegistry {
 
     func readiness(for modelId: String) -> ModelReadiness {
         readiness[modelId] ?? .notInstalled
+    }
+
+    // MARK: - Local fallback
+
+    /// Every model on this Mac as `DictationTakePolicy.localFallback` weighs
+    /// it, in catalog order. Installed means downloaded and loadable offline
+    /// (`ModelStorage.isDownloaded`), as History's model menu asks it — read
+    /// from `downloadedLocalModelIDs`, so it touches neither the disk nor
+    /// `readiness`.
+    func localFallbackCandidates() -> [DictationTakePolicy.LocalCandidate] {
+        ModelCatalog.all.filter { !$0.isCloud }.map { model in
+            DictationTakePolicy.LocalCandidate(
+                id: model.id,
+                isInstalled: downloadedLocalModelIDs.contains(model.id),
+                languageCodes: model.languageCodes,
+                sizeMB: model.approxSizeMB,
+                autoPickable: model.autoPickable
+            )
+        }
+    }
+
+    /// The model on this Mac to offer in place of `failedModelId`, for the
+    /// languages this user dictates in (`SpokenLanguages`, read from their
+    /// recent dictations in History). Pass `canDownload: false` offline,
+    /// where only a model already here helps. Cheap enough for a view's body:
+    /// everything it reads is cached.
+    func localFallback(
+        replacing failedModelId: String,
+        canDownload: Bool
+    ) -> DictationTakePolicy.LocalFallback? {
+        let spoken = SpokenLanguages.current(recentDictations: Self.recentDictations())
+        return DictationTakePolicy.localFallback(
+            candidates: localFallbackCandidates(),
+            failedModelID: failedModelId,
+            spokenLanguages: spoken.languages,
+            primaryLanguage: spoken.primary,
+            canDownload: canDownload
+        )
+    }
+
+    /// The newest dictations in History with a real transcript, newest
+    /// first — what `SpokenLanguages` reads the user's languages from.
+    /// Conversations are left out: half of what they hold is other people.
+    private static func recentDictations() -> [SpokenLanguages.Dictation] {
+        Array(RecordingHistoryStore.shared.entries.lazy
+            .filter { ($0.source ?? .dictation) == .dictation && !$0.transcriptIsPlaceholder }
+            .prefix(SpokenLanguages.recentDictationsRead)
+            .map { SpokenLanguages.Dictation(id: $0.id, text: $0.transcript) })
     }
 
     @discardableResult
@@ -639,11 +761,13 @@ final class ModelRegistry {
                 // is the newest entry and can never be the one dropped.
                 self.touchResidentEngine(descriptor)
                 self.readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
+                self.refreshDownloadedLocalModels()
                 return engine
             } catch {
                 guard self.isCurrentPreparation(id: id, generation: generation),
                       !Task.isCancelled else { return nil }
                 self.readiness[id] = .failed(error.localizedDescription)
+                self.refreshDownloadedLocalModels()
                 return nil
             }
         }
@@ -662,9 +786,17 @@ final class ModelRegistry {
     func prepareBackgroundEngine(id: String) async -> TranscriptionEngine? {
         guard let descriptor = ModelCatalog.model(for: id) else { return nil }
 
+        // A cached cloud engine outlives its API key: handing it back after
+        // the key was removed would fail inside the transcription as "Call
+        // prepare() first" instead of reading as the missing key it is. It
+        // is dropped, and the preparation below says what is missing.
         if let existing = backgroundEngines[id] {
-            touchResidentBackgroundEngine(descriptor)
-            return existing
+            let usable = descriptor.isCloud ? await existing.isReady : true
+            if usable {
+                touchResidentBackgroundEngine(descriptor)
+                return existing
+            }
+            if backgroundEngines[id] === existing { backgroundEngines[id] = nil }
         }
 
         guard await prepareModel(id: id) != nil else { return nil }
@@ -692,7 +824,7 @@ final class ModelRegistry {
     }
 
     /// Awaits an in-flight preparation but gives up if it makes no progress for
-    /// `prepareStallTimeoutMs`. Returns the engine on success, or nil if the
+    /// `stallTimeoutMs(for:)`. Returns the engine on success, or nil if the
     /// wait timed out — the underlying task is cancelled (best-effort) and left
     /// to be fenced by `evictStalledPreparation`. This is what keeps a stalled
     /// model download from parking the dictation state machine in `.preparing`
@@ -710,7 +842,7 @@ final class ModelRegistry {
             Task { @MainActor in
                 var lastFraction = -1.0
                 var stalledMs = 0
-                while stalledMs < Self.prepareStallTimeoutMs {
+                while stalledMs < Self.stallTimeoutMs(for: self.readiness[id]) {
                     try? await Task.sleep(for: .milliseconds(Self.prepareStallPollMs))
                     if gate.isResolved { return }
                     let readiness = self.readiness[id]
@@ -754,6 +886,16 @@ final class ModelRegistry {
         preparationTasks[id] = nil
         readiness[id] = .failed("Preparation stalled. Check your connection and try again.")
         _ = nextPreparationGeneration(for: id)
+        refreshDownloadedLocalModels()
+    }
+
+    /// How long `readiness` may go without progress before it counts as
+    /// stalled: `downloadStallTimeoutMs` for the whole fetch — including the
+    /// "Connecting…" stretch before the first "Downloading" report, which on a
+    /// slow link is where WhisperKit's first 10 MB chunk lands —
+    /// `prepareStallTimeoutMs` otherwise.
+    private static func stallTimeoutMs(for readiness: ModelReadiness?) -> Int {
+        readiness?.isDownloading == true ? downloadStallTimeoutMs : prepareStallTimeoutMs
     }
 
     private static func preparingFraction(of readiness: ModelReadiness?) -> Double {
@@ -768,9 +910,7 @@ final class ModelRegistry {
     /// emits no progress — exempt it from stall detection so a slow cold compile
     /// isn't mistaken for a hang.
     private static func isUnmeteredPrepPhase(_ readiness: ModelReadiness?) -> Bool {
-        guard case .preparing(_, let message) = readiness else { return false }
-        let lower = message.lowercased()
-        return lower.contains("load") || lower.contains("compil")
+        readiness?.isLoadingOrCompiling ?? false
     }
 
     func deleteModel(id: String) {
@@ -793,6 +933,7 @@ final class ModelRegistry {
         } catch {
             readiness[id] = .failed("Delete failed: \(error.localizedDescription)")
         }
+        refreshDownloadedLocalModels()
     }
 
     // MARK: - Resident engine cache

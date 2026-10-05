@@ -56,6 +56,12 @@ struct HUDButton: View {
 
 /// An action chip. Same shape, same states, same radius as `HUDButton` — the
 /// only difference is the caption register and the shimmer while it runs.
+///
+/// The running chip stays clickable and is the action's Stop: it trades its
+/// shortcut hint for a stop glyph, and the click reaches the same `action`,
+/// which the controller reads as "stop" for the action already running. A
+/// long prompt can take minutes, and Esc alone was not a control anyone could
+/// see.
 struct HUDActionChip: View {
     let title: String
     var systemImage: String?
@@ -78,7 +84,11 @@ struct HUDActionChip: View {
                     Text(title)
                         .typo(.captionMedium)
                 }
-                if let hint, !isRunning {
+                if isRunning {
+                    Image(systemName: "stop.fill")
+                        .font(.system(size: 8, weight: .semibold))
+                        .foregroundStyle(Palette.inkMuted)
+                } else if let hint {
                     Text(hint)
                         .font(Typo.micro)
                         .monospaced()
@@ -88,8 +98,10 @@ struct HUDActionChip: View {
             .lineLimit(1)
         }
         .buttonStyle(GlassButtonStyle(role: isRunning ? .primary : .secondary))
-        .disabled(isDisabled || isRunning)
+        .disabled(isDisabled)
         .opacity(isDisabled ? 0.35 : 1)
+        .help(isRunning ? "Stop “\(title)” (esc)" : "")
+        .accessibilityLabel(isRunning ? "Stop \(title)" : title)
     }
 }
 

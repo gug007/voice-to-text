@@ -26,15 +26,46 @@ import SwiftUI
 // transitions. So a downgrade orders the panel out (key returns to the target
 // app, precisely as today), flips the flag, and orders it straight back in
 // within the same runloop turn.
-private final class HUDPanel: NSPanel {
+final class HUDPanel: NSPanel {
     /// Flipped per mode by `LiveHUDPanel.setKeyEligible(_:)`. Never write it
-    /// directly — the panel must be re-ordered after every change.
+    /// directly — the panel must be re-ordered after every change. The
+    /// conversation panel never sets it: nothing on that card takes typing.
     var acceptsKey = false
 
     override var canBecomeKey: Bool { acceptsKey }
     /// Never main: the app must not come forward, the Settings window must stay
     /// wherever the user left it.
     override var canBecomeMain: Bool { false }
+
+    /// A borderless, nonactivating, clear panel on every Space. Both HUD panels
+    /// are built here so they cannot drift apart; the caller adds the content.
+    static func makeFloating() -> HUDPanel {
+        let rect = NSRect(origin: .zero, size: NSSize(width: 468, height: 180))
+        let p = HUDPanel(
+            contentRect: rect,
+            styleMask: [.nonactivatingPanel, .borderless],
+            backing: .buffered,
+            defer: false
+        )
+        p.isReleasedWhenClosed = false
+        p.isFloatingPanel = true
+        p.level = .statusBar
+        p.backgroundColor = .clear
+        p.isOpaque = false
+        // The shadow is drawn in the card's layer so it can travel with the
+        // morph; a second AppKit shadow would lag it by a frame.
+        p.hasShadow = false
+        p.hidesOnDeactivate = false
+        // The card is up while another app is active — that is its whole job —
+        // and AppKit suppresses tooltips for an inactive app's windows by
+        // default. The compact sizes keep their controls' keys in tooltips, so
+        // without this they would never show.
+        p.allowsToolTipsWhenApplicationIsInactive = true
+        p.becomesKeyOnlyIfNeeded = true
+        p.animationBehavior = .utilityWindow
+        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
+        return p
+    }
 }
 
 /// Hosting view that responds to the very first click even when our app isn't
@@ -109,6 +140,38 @@ nonisolated enum HUDFeatureFlags {
     }
 }
 
+// MARK: - Size
+
+/// Settings → Recording HUD. Small is the default; Large is the full stacked
+/// card. Small and Medium draw a fresh take's preparing, recording and
+/// transcribing card as one row (`HUDLayout.compactRow`). Everything after
+/// that — review, failure, the discard notice — is the same card at every size.
+nonisolated enum HUDSize: String, CaseIterable, Identifiable, Sendable {
+    case small, medium, large
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Large"
+        }
+    }
+
+    static let defaultsKey = "hud.size"
+    /// What `current` and the Settings picker fall back to when nothing is
+    /// stored. One value, so the two cannot disagree about a fresh install.
+    static let defaultValue: HUDSize = .small
+
+    /// The stored choice. Read once per session, when a fresh take's card
+    /// first appears (`LiveHUDPanel.showPreparing` / `show`) — never by the
+    /// card itself, so flipping the setting mid-take cannot resize it.
+    static var current: HUDSize {
+        UserDefaults.standard.string(forKey: defaultsKey).flatMap(HUDSize.init(rawValue:)) ?? defaultValue
+    }
+}
+
 // MARK: - State
 
 @Observable
@@ -165,6 +228,12 @@ final class LiveHUDState {
     /// the review width through the resumed take AND its transcribing phase, so
     /// the morph never snaps back to the compact size mid-session.
     var resumedSession: Bool = false
+
+    /// The size setting as it stood when this session's card first appeared.
+    /// Snapshotted rather than read live, like `showsLiveText`: the panel is
+    /// sized from it at the same moment, and a setting flipped while a take
+    /// is on screen must not jump the card under the user's pointer.
+    var hudSize: HUDSize = HUDSize.defaultValue
 
     /// Last error surfaced through the failure HUD. Cleared whenever the HUD
     /// transitions away from `.failed`.
@@ -314,15 +383,19 @@ final class LiveHUDPanel {
     private var panel: HUDPanel?
     private let state = LiveHUDState.shared
 
-    /// Last card size SwiftUI actually laid out. The panel frame is always this
-    /// plus the shadow gutter — there are no `NSSize` constants left.
-    private var measuredCardSize: CGSize = .zero
-    /// When the current morph ends. Late size corrections inside this window
-    /// ride the same spring; after it they snap.
-    private var morphDeadline: Date = .distantPast
+    /// Size, position and drag, anchored by the card's bottom-centre so the
+    /// card grows upward from where the user last put it.
+    let placement = HUDPanelPlacement(
+        edge: .bottom,
+        anchorsDefaultsKey: LiveHUDPanel.anchorsDefaultsKey
+    ) { visible in
+        NSPoint(x: visible.midX, y: visible.minY + HUDMetrics.defaultBottomInset)
+    }
 
-    private var dragStartPanelOrigin: NSPoint?
-    private var dragStartMouse: NSPoint?
+    /// v2 stores the card's bottom-centre. v1 stored the panel's, which tied
+    /// every saved position to `gutter`; those values are dropped on upgrade
+    /// and the HUD falls back to the unchanged default placement.
+    private static let anchorsDefaultsKey = "hud.panelAnchors.v2"
 
     private init() {}
 
@@ -336,6 +409,7 @@ final class LiveHUDPanel {
     /// flashes. Cancel maps to `cancelPendingRecording()`, the same action the
     /// hotkey policy already had for this state.
     func showPreparing(modelName: String, onCancel: @escaping @MainActor () -> Void) {
+        state.hudSize = HUDSize.current
         state.mode = .preparing
         state.isRecording = false
         state.level = 0
@@ -381,6 +455,12 @@ final class LiveHUDPanel {
         onStop: (@MainActor () -> Void)? = nil,
         onCancel: (@MainActor () -> Void)? = nil
     ) {
+        // A preparing card still on screen is this same take, which took its
+        // snapshot when that card appeared. Re-reading here would let a
+        // setting flipped during a long download resize the card at the very
+        // moment it turns into the recording card.
+        let handsOverFromPreparing = state.mode == .preparing && panel?.isVisible == true
+        if !handsOverFromPreparing { state.hudSize = HUDSize.current }
         state.mode = .recording
         state.isRecording = true
         state.elapsedSeconds = 0
@@ -694,7 +774,7 @@ final class LiveHUDPanel {
         state.onSecondaryAction = nil
         panel?.orderOut(nil)
         panel?.acceptsKey = false
-        morphDeadline = .distantPast
+        placement.panelHidden()
     }
 
     /// Whether the given key event was delivered to the HUD while it is showing
@@ -736,7 +816,6 @@ final class LiveHUDPanel {
 
         if !wasVisible {
             state.presentationCount &+= 1
-            measuredCardSize = .zero
             // A card that pops up under a moving pointer is as easy to
             // misclick as one that changed mode under it.
             state.modeChangedAt = ProcessInfo.processInfo.systemUptime
@@ -746,10 +825,8 @@ final class LiveHUDPanel {
         // turn — that is the whole point of driving the frame from here rather
         // than waiting for SwiftUI to report its new size.
         let animate = wasVisible && HUDFeatureFlags.morphEnabled
-        if animate { morphDeadline = Date().addingTimeInterval(HUDMetrics.morphDuration) }
-
         let estimate = layout.estimatedCardSize
-        measuredCardSize = estimate
+        placement.expect(cardSize: estimate, animated: animate)
 
         // ORDERING. `setKeyEligible` re-orders the panel (an upgrade orders it
         // front and makes it key; a downgrade from key orders it OUT and back
@@ -766,9 +843,9 @@ final class LiveHUDPanel {
         // in-flight animation for the ordering to interrupt.
         if wasVisible {
             setKeyEligible(layout.mode.acceptsKey, wasVisible: true)
-            applyFrame(cardSize: estimate, animated: animate)
+            placement.applyFrame(cardSize: estimate, animated: animate)
         } else {
-            applyFrame(cardSize: estimate, animated: animate)
+            placement.applyFrame(cardSize: estimate, animated: animate)
             setKeyEligible(layout.mode.acceptsKey, wasVisible: false)
         }
     }
@@ -776,35 +853,17 @@ final class LiveHUDPanel {
     private func ensurePanel() -> HUDPanel {
         if let panel { return panel }
 
-        let rect = NSRect(origin: .zero, size: NSSize(width: 468, height: 180))
-        let p = HUDPanel(
-            contentRect: rect,
-            styleMask: [.nonactivatingPanel, .borderless],
-            backing: .buffered,
-            defer: false
-        )
-        p.isReleasedWhenClosed = false
-        p.isFloatingPanel = true
-        p.level = .statusBar
-        p.backgroundColor = .clear
-        p.isOpaque = false
-        // The shadow is drawn in the card's layer so it can travel with the
-        // morph; a second AppKit shadow would lag it by a frame.
-        p.hasShadow = false
-        p.hidesOnDeactivate = false
-        p.becomesKeyOnlyIfNeeded = true
-        p.animationBehavior = .utilityWindow
-        p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient, .ignoresCycle]
-
+        let p = HUDPanel.makeFloating()
         let hosting = FirstMouseHostingView(
             rootView: LiveHUDView(state: state) { size in
-                LiveHUDPanel.shared.cardSizeChanged(size)
+                LiveHUDPanel.shared.placement.cardSizeChanged(size)
             }
         )
-        hosting.frame = rect
+        hosting.frame = NSRect(origin: .zero, size: p.frame.size)
         hosting.autoresizingMask = [.width, .height]
         p.contentView = hosting
 
+        placement.attach(p)
         panel = p
         return p
     }
@@ -839,226 +898,4 @@ final class LiveHUDPanel {
         panel.acceptsKey = false
         panel.orderFrontRegardless()
     }
-
-    // MARK: Frame
-
-    /// Called by the card once SwiftUI has laid it out. The estimate in
-    /// `present()` is exact for every fixed-height section, so this only fires
-    /// when content actually grew — a two-line failure banner, a localized
-    /// button that widened the control row.
-    func cardSizeChanged(_ size: CGSize) {
-        let rounded = CGSize(width: size.width.rounded(), height: size.height.rounded())
-        guard rounded.width > 1, rounded.height > 1 else { return }
-        guard abs(rounded.width - measuredCardSize.width) > 0.5
-                || abs(rounded.height - measuredCardSize.height) > 0.5 else { return }
-        measuredCardSize = rounded
-
-        let animated = HUDFeatureFlags.morphEnabled && Date() < morphDeadline
-        // Deferred one turn: this arrives from inside SwiftUI's layout pass and
-        // resizing the window synchronously from there re-enters it.
-        Task { @MainActor [weak self] in
-            guard let self, self.panel?.isVisible == true else { return }
-            self.applyFrame(cardSize: rounded, animated: animated)
-        }
-    }
-
-    private func applyFrame(cardSize: CGSize, animated: Bool) {
-        guard let panel else { return }
-        let frame = panelFrame(cardSize: cardSize)
-        guard frame != panel.frame else { return }
-
-        guard animated else {
-            panel.setFrame(frame, display: true, animate: false)
-            return
-        }
-        NSAnimationContext.runAnimationGroup { context in
-            context.duration = HUDMetrics.morphDuration
-            context.timingFunction = HUDMetrics.morphTiming
-            // Lets the layer-backed content ride the same clock as the frame.
-            context.allowsImplicitAnimation = true
-            panel.animator().setFrame(frame, display: true)
-        }
-    }
-
-    /// Panel frame = card + an 88pt transparent shadow gutter on every side,
-    /// anchored by the *card's* bottom edge and horizontal centre so growth
-    /// happens upward and outward from where the user last put it.
-    ///
-    /// Every coordinate here is card space — the anchor is the card's
-    /// bottom-centre, the clamp keeps the card on screen, and the gutter is
-    /// added back only at the end. Measuring on the panel instead would tie a
-    /// persisted position to `gutter`, so changing the shadow's size would
-    /// silently move every HUD anyone had ever dragged.
-    private func panelFrame(cardSize: CGSize) -> NSRect {
-        let size = NSSize(
-            width: cardSize.width + HUDMetrics.gutter * 2,
-            height: cardSize.height + HUDMetrics.gutter * 2
-        )
-        let screen = activeScreen()
-        let visible = screen.visibleFrame
-        let anchor = anchor(on: screen)
-
-        let cardX = Self.clamp(
-            (anchor.x - cardSize.width / 2).rounded(),
-            visible.minX + HUDMetrics.screenMargin,
-            visible.maxX - cardSize.width - HUDMetrics.screenMargin
-        )
-        let cardY = Self.clamp(
-            anchor.y.rounded(),
-            visible.minY + HUDMetrics.screenMargin,
-            visible.maxY - cardSize.height - HUDMetrics.screenMargin
-        )
-        return NSRect(
-            x: cardX - HUDMetrics.gutter,
-            y: cardY - HUDMetrics.gutter,
-            width: size.width,
-            height: size.height
-        )
-    }
-
-    private static func clamp(_ value: CGFloat, _ low: CGFloat, _ high: CGFloat) -> CGFloat {
-        guard high >= low else { return (low + high) / 2 }
-        return min(max(value, low), high)
-    }
-
-    // MARK: Placement
-
-    /// The screen the HUD belongs on: whatever screen it is already showing on
-    /// (a morph must never teleport the card between displays), otherwise the
-    /// screen holding the focused window of the frontmost app — which is where
-    /// the transcript is about to be typed.
-    private func activeScreen() -> NSScreen {
-        if let panel, panel.isVisible, let screen = panel.screen { return screen }
-        if let screen = Self.focusedWindowScreen() { return screen }
-        if let screen = NSScreen.screens.first(where: {
-            NSMouseInRect(NSEvent.mouseLocation, $0.frame, false)
-        }) { return screen }
-        return NSScreen.main ?? NSScreen.screens[0]
-    }
-
-    /// The screen containing the frontmost window of the frontmost application.
-    ///
-    /// Read from the window server rather than the Accessibility API: bounds and
-    /// owner PID are readable without Screen Recording permission (only window
-    /// *names* are gated), and the list is already in front-to-back order.
-    private static func focusedWindowScreen() -> NSScreen? {
-        guard let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier else {
-            return nil
-        }
-        let options: CGWindowListOption = [.optionOnScreenOnly, .excludeDesktopElements]
-        guard let infos = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [[String: Any]] else {
-            return nil
-        }
-        for info in infos {
-            guard info[kCGWindowOwnerPID as String] as? pid_t == pid,
-                  info[kCGWindowLayer as String] as? Int == 0,
-                  let bounds = info[kCGWindowBounds as String] as? [String: CGFloat],
-                  let x = bounds["X"], let y = bounds["Y"],
-                  let w = bounds["Width"], let h = bounds["Height"],
-                  w > 64, h > 64
-            else { continue }
-            // CGWindow bounds are top-left origin, measured from the top of the
-            // primary display; NSScreen is bottom-left origin.
-            guard let primaryTop = NSScreen.screens.first?.frame.maxY else { return nil }
-            let rect = NSRect(x: x, y: primaryTop - y - h, width: w, height: h)
-            let centre = NSPoint(x: rect.midX, y: rect.midY)
-            if let hit = NSScreen.screens.first(where: { NSMouseInRect(centre, $0.frame, false) }) {
-                return hit
-            }
-            return NSScreen.screens.max { a, b in
-                a.frame.intersection(rect).area < b.frame.intersection(rect).area
-            }
-        }
-        return nil
-    }
-
-    /// The card's bottom-centre in screen coordinates: the user's dragged
-    /// position for this display, or the default.
-    private func anchor(on screen: NSScreen) -> NSPoint {
-        storedAnchor(on: screen) ?? Self.defaultAnchor(on: screen)
-    }
-
-    private static func defaultAnchor(on screen: NSScreen) -> NSPoint {
-        let visible = screen.visibleFrame
-        return NSPoint(x: visible.midX, y: visible.minY + HUDMetrics.defaultBottomInset)
-    }
-
-    /// Per-display identity that survives a reconnect: the display's name plus
-    /// its point size. `CGDirectDisplayID` is recycled across reconnects and
-    /// `NSScreen.frame.origin` moves whenever the arrangement changes, so
-    /// neither is usable as a key on its own.
-    private static func screenKey(_ screen: NSScreen) -> String {
-        let size = screen.frame.size
-        return "\(screen.localizedName)|\(Int(size.width))x\(Int(size.height))"
-    }
-
-    /// v2 stores the card's bottom-centre. v1 stored the panel's, which tied
-    /// every saved position to `gutter`; those values are dropped on upgrade
-    /// and the HUD falls back to the unchanged default placement.
-    private static let anchorsDefaultsKey = "hud.panelAnchors.v2"
-
-    private func storedAnchor(on screen: NSScreen) -> NSPoint? {
-        let store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]]
-        guard let pair = store?[Self.screenKey(screen)], pair.count == 2 else { return nil }
-        // Stored relative to the visible frame's origin so a rearranged desktop
-        // keeps the HUD in the same place on this display rather than off it.
-        let visible = screen.visibleFrame
-        return NSPoint(x: visible.minX + pair[0], y: visible.minY + pair[1])
-    }
-
-    private func storeAnchor(_ point: NSPoint, on screen: NSScreen) {
-        let visible = screen.visibleFrame
-        var store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]] ?? [:]
-        store[Self.screenKey(screen)] = [point.x - visible.minX, point.y - visible.minY]
-        UserDefaults.standard.set(store, forKey: Self.anchorsDefaultsKey)
-    }
-
-    private func clearAnchor(on screen: NSScreen) {
-        var store = UserDefaults.standard.dictionary(forKey: Self.anchorsDefaultsKey) as? [String: [Double]] ?? [:]
-        store.removeValue(forKey: Self.screenKey(screen))
-        UserDefaults.standard.set(store, forKey: Self.anchorsDefaultsKey)
-    }
-
-    // MARK: Dragging
-
-    /// Screen-absolute drag: the window moves under the cursor, so a
-    /// window-relative translation would chase itself and oscillate.
-    func dragBegan() {
-        dragStartPanelOrigin = panel?.frame.origin
-        dragStartMouse = NSEvent.mouseLocation
-    }
-
-    func dragChanged() {
-        guard let panel, let origin = dragStartPanelOrigin, let start = dragStartMouse else { return }
-        let now = NSEvent.mouseLocation
-        panel.setFrameOrigin(
-            NSPoint(x: origin.x + now.x - start.x, y: origin.y + now.y - start.y)
-        )
-    }
-
-    func dragEnded() {
-        defer {
-            dragStartPanelOrigin = nil
-            dragStartMouse = nil
-        }
-        guard let panel, let screen = panel.screen else { return }
-        storeAnchor(
-            NSPoint(x: panel.frame.midX, y: panel.frame.minY + HUDMetrics.gutter),
-            on: screen
-        )
-    }
-
-    /// Double-click on the card: forget this display's stored origin and spring
-    /// back to the default position.
-    func resetPosition() {
-        guard let panel, let screen = panel.screen else { return }
-        clearAnchor(on: screen)
-        let animated = HUDFeatureFlags.morphEnabled
-        if animated { morphDeadline = Date().addingTimeInterval(HUDMetrics.morphDuration) }
-        applyFrame(cardSize: measuredCardSize, animated: animated)
-    }
-}
-
-private extension NSRect {
-    var area: CGFloat { isNull ? 0 : width * height }
 }

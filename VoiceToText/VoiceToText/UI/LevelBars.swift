@@ -22,20 +22,29 @@ struct LevelBars: View {
     var isFrozen: Bool = false
     /// The write head is clipping: the rightmost bars lerp toward `signalLive`.
     var isOverloaded: Bool = false
+    /// 56 at 3pt is the full card's and the Conversations card's strip; the
+    /// single-row HUD sizes draw fewer bars closer together (`HUDMetrics.pill`).
+    var barCount: Int = 56
+    var barSpacing: CGFloat = 3
+    /// Pool only the newest `window` samples instead of the whole buffer. A
+    /// short strip that pooled all of it would average each bar over so many
+    /// samples that the trace stopped looking like speech; showing less of the
+    /// past keeps every bar as sharp as the full strip's.
+    var window: Int?
 
     @Environment(\.motion) private var motion
 
     /// Smoothed level above which the overload cue lights.
     static let overloadThreshold: Double = 0.75
 
-    private static let barCount = 56
-    private static let barSpacing: CGFloat = 3
     private static let minBarHeight: CGFloat = 3
-    /// How many bars at the write head carry the overload cue.
-    private static let overloadBars = 6
+    /// The share of the strip, from the write head, that carries the overload
+    /// cue: 6 of the full 56 bars.
+    private static let overloadShare = 6.0 / 56
 
     var body: some View {
-        let pooled = Self.pooled(samples, into: Self.barCount)
+        let source = window.map { Array(samples.suffix($0)) } ?? samples
+        let pooled = Self.pooled(source, into: barCount)
 
         GeometryReader { geo in
             // THE OVERFLOW FIX. Bar width used to be computed here — geometry
@@ -47,8 +56,8 @@ struct LevelBars: View {
             // container by a frame and the strip hung outside. Flexible bars
             // make the HStack divide the real width every layout pass, so the
             // row is exactly as wide as its box and both edges sit on the inset.
-            HStack(alignment: .center, spacing: Self.barSpacing) {
-                ForEach(0..<Self.barCount, id: \.self) { index in
+            HStack(alignment: .center, spacing: barSpacing) {
+                ForEach(0..<barCount, id: \.self) { index in
                     MeterBar(
                         level: pooled[index],
                         maxHeight: geo.size.height,
@@ -84,15 +93,23 @@ struct LevelBars: View {
     /// Older samples on the left fade out; the rightmost bars sit at the write
     /// head and read as the current input.
     private func opacity(at index: Int) -> Double {
-        let t = Double(index) / Double(Self.barCount - 1)
+        let t = Double(index) / Double(max(1, barCount - 1))
         return 0.20 + 0.65 * t
+    }
+
+    /// How many bars at the write head carry the overload cue: the full strip's
+    /// share of a shorter one, and never fewer than two — a single red bar
+    /// reads as a glitch rather than as clipping.
+    private var overloadBars: Int {
+        min(barCount, max(2, Int((Double(barCount) * Self.overloadShare).rounded())))
     }
 
     /// 0 everywhere but the last `overloadBars`, ramping to 1 at the write head.
     private func overloadAmount(at index: Int) -> Double {
-        let first = Self.barCount - Self.overloadBars
+        let bars = overloadBars
+        let first = barCount - bars
         guard index >= first else { return 0 }
-        return Double(index - first + 1) / Double(Self.overloadBars)
+        return Double(index - first + 1) / Double(bars)
     }
 
     // MARK: Pooling
@@ -159,6 +176,14 @@ private struct MeterBar: View {
         LevelBars(samples: samples).frame(height: 56)
         LevelBars(samples: samples, isOverloaded: true).frame(height: 56)
         LevelBars(samples: samples, isFrozen: true).frame(height: 56)
+        LevelBars(
+            samples: samples,
+            isOverloaded: true,
+            barCount: HUDMetrics.pill.meterBars,
+            barSpacing: HUDMetrics.pill.meterSpacing,
+            window: HUDMetrics.pill.meterWindow
+        )
+        .frame(width: 120, height: HUDMetrics.pill.meterHeight)
     }
     .padding(Space.s7)
     .frame(width: 420)

@@ -130,6 +130,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         LoginItemController.shared.applyDefaultIfNeeded()
         AppPresenceController.shared.syncMenuBarItem()
         AppearanceController.shared.startObservingContrastChanges()
+        // The floating conversation card follows MeetingController from here
+        // on; it shows nothing until a conversation records.
+        ConversationHUDPanel.shared.startObserving()
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(

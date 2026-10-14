@@ -23,7 +23,9 @@ export type GlyphName =
   | "person"
   | "clock"
   | "upload"
-  | "record";
+  | "record"
+  | "xmark"
+  | "checkmark";
 
 const PATHS: Record<GlyphName, ReactNode> = {
   bubble: <path d="M4 4.5h12a1 1 0 011 1v7.5a1 1 0 01-1 1H9.5L6 16.5V14H4a1 1 0 01-1-1V5.5a1 1 0 011-1z" />,
@@ -89,6 +91,8 @@ const PATHS: Record<GlyphName, ReactNode> = {
   ),
   upload: <path d="M10 13V4m0 0L6.8 7.2M10 4l3.2 3.2M4 12.5V15a1.5 1.5 0 001.5 1.5h9A1.5 1.5 0 0016 15v-2.5" />,
   record: <circle cx="10" cy="10" r="4.5" fill="currentColor" stroke="none" />,
+  xmark: <path d="M5 5l10 10M15 5L5 15" />,
+  checkmark: <path d="M4 10.5l4 4 8-9" />,
 };
 
 type GlyphProps = {

@@ -99,7 +99,7 @@ export const softwareApplicationJsonLd = {
     `${MODEL_CATALOG.length} transcription models: ${lower(LOCAL.length)} local and ${lower(CLOUD.length)} optional cloud models`,
     `${countWord(LOCAL.length)} local models: ${DEFAULT_MODEL.name} (the default, ${DEFAULT_MODEL.languagesInApp}) and ${joinList(LOCAL.filter((m) => !m.isDefault).map((m) => m.name))}`,
     `${countWord(CLOUD.length)} optional cloud models with your own API key: ${CLOUD_BY_PROVIDER.join("; ")}`,
-    `Live text while you speak with streaming cloud models: word by word with ${joinList(LIVE_WORDS)}, phrase by phrase with ${joinList(LIVE_PHRASES)}`,
+    `Live text while you speak in the Large recording HUD with streaming cloud models: word by word with ${joinList(LIVE_WORDS)}, phrase by phrase with ${joinList(LIVE_PHRASES)}`,
     "Models pane with a 1–10 quality score based on published word error rates, and the per-hour list price of each cloud model",
     `Optional AI actions in the review panel, off by default: ${BUILT_IN_ACTIONS.join(", ")}, and your own custom actions, run with Command-1 to Command-9 on your own OpenAI key`,
     "Record conversations and meetings from any app: your microphone plus system audio via ScreenCaptureKit, with no bot joining the call; start from the app, the menu bar, or an optional conversation shortcut",

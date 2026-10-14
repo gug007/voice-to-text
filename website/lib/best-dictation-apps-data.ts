@@ -43,7 +43,7 @@ export const products: Product[] = [
     tradeoff:
       "Mac-only and Apple Silicon only, no cross-device sync or team controls, no voice commands, and speaker labels only through an optional cloud model.",
     dictation:
-      "System-wide hotkey (⌥Space by default); review, then paste. Local models transcribe when you stop; three optional streaming cloud models show text as you speak, word by word or phrase by phrase.",
+      "System-wide hotkey (⌥Space by default); review, then paste. Local models transcribe when you stop; three optional streaming cloud models show text as you speak in the Large recording HUD, word by word or phrase by phrase.",
     files:
       "Imports one audio or video file at a time in formats macOS can read (not MKV, WebM or AVI). History keeps the transcript and an extracted audio-only copy, not the original video.",
     meetings:

@@ -517,7 +517,8 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
           Flow polishes every dictation automatically. VoiceToText doesn’t: with a local model you get the
           model’s punctuated transcript, with no filler removal or voice commands, and AI cleanup happens only
           when you run an action on your own OpenAI key. With a local model the text also appears when you
-          stop, not as you speak. Live text needs one of the cloud streaming models.
+          stop, not as you speak. Live text needs one of the cloud streaming models and the Large recording
+          HUD.
         </>,
         <>
           VoiceToText’s speaker labels also come only from a cloud model (GPT-4o Transcribe Diarize), and

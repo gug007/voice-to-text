@@ -4,7 +4,10 @@ import {
   BUILT_IN_ACTIONS,
   CATALOG_SNAPSHOT,
   cloudModels,
+  CONVERSATION_HUD_DEFAULT,
+  CONVERSATION_HUD_SETTINGS,
   defaultModel,
+  DICTATION_HUD_SIZES,
   formatPrice,
   formatQuality,
   joinNames,
@@ -127,7 +130,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 ## Dictation
 
 - Default shortcut Option+Space (⌥Space), press to toggle. "Hold to record" is optional. The shortcut can be any key with a modifier, a lone F1–F20 key, or Right Control alone.
-- While recording, a floating card shows a level meter, elapsed time, and Cancel (Esc) / Finish.
+- While recording, a floating HUD shows a level meter, the elapsed time, and Cancel (Esc) / Finish. Settings → General → Recording HUD sets its size: ${DICTATION_HUD_SIZES.map(({ size, isDefault, looks }) => `${size}${isDefault ? " (default)" : ""}: ${looks}`).join("; ")}. Only Large shows text while you speak. The review panel is the same at every size.
 - "Review before pasting" is on by default: Return pastes, Shift+Return adds a new line, pressing the shortcut again pastes, Esc cancels, ⌘R records another take inserted at the cursor. With review off, text is pasted as soon as you stop.
 - Output is a paste, not typing: the clipboard is saved, the text is pasted with a synthetic ⌘V, and the previous clipboard is restored about 0.25 s later. It works wherever ⌘V pastes text; fields that block pasting won't receive it.
 - If the microphone changes mid-take (for example AirPods switching profile), capture restarts automatically; otherwise the audio captured so far is still transcribed. Failed transcriptions keep the audio for Retry.
@@ -143,6 +146,7 @@ ${list(BUILT_IN_ACTIONS)}
 
 - Records your microphone plus system audio (the other people on Zoom, Meet, Teams, FaceTime, Webex, Discord or any app that plays audio). No bot joins the call.
 - Start from the Conversations pane, the menu bar, or an optional Conversation shortcut (no default key; press to start, press again to stop).
+- While a conversation records, a floating Recording HUD sits at the top centre of the screen with a level meter, the running clock, and one button: Stop & Transcribe. It has no Cancel; Cancel stays in the Conversations pane. It can be dragged, and it stays up through transcription (Medium and Large show progress such as 3/12 on long recordings). Settings → Conversations → Recording HUD: ${CONVERSATION_HUD_SETTINGS.join(", ")} (default ${CONVERSATION_HUD_DEFAULT}); Off hides it, leaving the menu bar's running clock.
 - Transcribed after you stop, not live. Recordings over 12 minutes are split at quiet points into roughly 10-minute segments.
 - Upload File… or drag one audio or video file that macOS can read (MP3, M4A, WAV, AIFF, FLAC, MP4, MOV and similar). Uses the Conversations transcription model, which is on-device by default. History keeps the extracted audio, not the original video.
 - Conversations have their own transcription model setting (default: same as dictation); live models are not available there.
@@ -166,7 +170,7 @@ ${local.map(modelLine).join("\n")}
 Cloud (your own API key; audio goes directly from the Mac to the provider, which bills you at its list price):
 ${cloud.map(modelLine).join("\n")}
 
-- LIVE models are for dictation only. With ${joinNames(liveTextModelNames("word by word"))}, text appears word by word as you speak. With ${joinNames(liveTextModelNames("phrase by phrase"))}, OpenAI transcribes each phrase after a short pause (about half a second), so text appears phrase by phrase. With ${joinNames(liveOnStopModelNames())}, the text appears only when you stop.
+- LIVE models are for dictation only, and their text shows while you speak only in the Large recording HUD; with Small (the default) or Medium it appears when you stop. In the Large HUD, ${joinNames(liveTextModelNames("word by word"))} shows text word by word as you speak. With ${joinNames(liveTextModelNames("phrase by phrase"))}, OpenAI transcribes each phrase after a short pause (about half a second), so text appears phrase by phrase. With ${joinNames(liveOnStopModelNames())}, the text appears only when you stop.
 - Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (once per recording, or per 10-minute part of a longer one, from its first speech; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
 
 ## Privacy and network

@@ -118,6 +118,11 @@ const STEPS: Step[] = [
           </li>
         </ul>
         <p>
+          While it records, a floating <strong>Recording HUD</strong> at the top of the screen shows the
+          running clock, a level meter and a Stop &amp; Transcribe button, and you can drag it out of the
+          way. It’s Small by default; make it Medium or Large, or turn it Off, in Settings → Conversations.
+        </p>
+        <p>
           The first time, macOS asks for Screen Recording; Microphone was already granted when you first
           opened the app. Enable VoiceToText in System Settings → Privacy &amp; Security → Screen Recording,
           then start the recording again. Screen Recording is how an app gets system audio; VoiceToText
@@ -131,9 +136,9 @@ const STEPS: Step[] = [
     title: "Stop & Transcribe",
     body: (
       <p>
-        Carry on with the call while the audio streams to disk. When it ends, press Stop &amp; Transcribe (or
-        your shortcut again). The transcript is made after you stop, so there is no live transcript during
-        the call. Long calls are transcribed in parts, with progress shown.
+        Carry on with the call while the audio streams to disk. When it ends, press Stop &amp; Transcribe on
+        the HUD or in Conversations (or your shortcut again). The transcript is made after you stop, so there
+        is no live transcript during the call. Long calls are transcribed in parts, with progress shown.
       </p>
     ),
   },

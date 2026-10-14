@@ -7,6 +7,7 @@
 //   VoiceToText/Actions/DictationAction.swift   built-in AI actions
 //   VoiceToText/Engine/WhisperKitEngine.swift   Whisper model loading (offline once installed)
 //   VoiceToText/Engine/OpenAIRealtimeEngine.swift, ElevenLabsRealtimeEngine.swift  live text
+//   VoiceToText/UI/HUDLayout.swift, Settings/HUDSizeCard.swift  HUD sizes and where live text shows
 // Two claims live outside this repo's copy and must be re-read with it: the
 // macOS microphone prompt (INFOPLIST_KEY_NSMicrophoneUsageDescription in
 // project.pbxproj) and the GitHub repository description. Neither may promise
@@ -49,7 +50,10 @@ export type ModelFact = {
   isDefault: boolean;
   /** Shows the LIVE badge: a streaming model, dictation only. */
   live: boolean;
-  /** Words appear in the HUD while you speak. False for GPT Realtime Whisper, which commits when you stop. */
+  /**
+   * Words appear while you speak, in the Large HUD only (Small and Medium never
+   * show live text). False for GPT Realtime Whisper, which commits when you stop.
+   */
   showsLiveText: boolean;
   /**
    * How live text arrives, for models with `showsLiveText`. ElevenLabs streams
@@ -242,7 +246,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     qualityApprox: false,
     wer: [{ benchmark: AA, percent: 3.6, estimate: false, note: "AA-WER Streaming, final transcript." }],
     chip: "Fastest",
-    bestFor: "Live dictation in 90+ languages, with text appearing word by word as you speak.",
+    bestFor: "Live dictation in 90+ languages; with the Large HUD, text appears word by word as you speak.",
   },
   {
     id: "openai-gpt-live-transcribe",
@@ -261,7 +265,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     quality: 8.2,
     qualityApprox: false,
     wer: [{ benchmark: AA, percent: 3.9, estimate: false, note: "AA-WER Streaming, final transcript." }],
-    bestFor: "Live dictation with OpenAI's newest streaming model; text appears phrase by phrase, after each short pause.",
+    bestFor: "Live dictation with OpenAI's newest streaming model; with the Large HUD, text appears phrase by phrase, after each short pause.",
   },
   {
     id: "openai-gpt-realtime-whisper",
@@ -312,7 +316,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
         note: "Not on the streaming leaderboard; carried over from GPT-4o Transcribe's batch score.",
       },
     ],
-    bestFor: "Live OpenAI dictation at about a third of GPT Live Transcribe's price; text appears phrase by phrase, after each short pause.",
+    bestFor: "Live OpenAI dictation at about a third of GPT Live Transcribe's price; with the Large HUD, text appears phrase by phrase, after each short pause.",
   },
   {
     id: "openai-gpt-transcribe",
@@ -451,6 +455,45 @@ export type BuiltInAction = (typeof BUILT_IN_ACTIONS)[number];
 
 /** The OpenAI model AI actions and AI insights run on, with the user's own key. */
 export const AI_TEXT_MODEL = "gpt-5.5";
+
+export type HudSize = "Small" | "Medium" | "Large";
+
+/**
+ * The dictation recording HUD's sizes, picked in Settings → General → Recording
+ * HUD (checked against v0.2.2: UI/HUDLayout.swift, UI/HUDCompactRow.swift).
+ * Small and Medium are one capsule row that prints no key hints; only Large
+ * shows live text. The review panel is the same at every size.
+ */
+export const DICTATION_HUD_SIZES: readonly { size: HudSize; isDefault: boolean; looks: string }[] = [
+  {
+    size: "Small",
+    isDefault: true,
+    looks:
+      "a pill with a recording dot, a short level meter, the timer, and round ✕ (Cancel) and ✓ (Finish) buttons whose shortcuts show on hover",
+  },
+  {
+    size: "Medium",
+    isDefault: false,
+    looks: "a slim bar with the dot, the level meter, the timer, and Cancel and Finish buttons whose shortcuts show on hover",
+  },
+  {
+    size: "Large",
+    isDefault: false,
+    looks:
+      "the full card, with a tall level meter over the timer, Cancel and Finish with their keys, and up to three lines of live text from the streaming models",
+  },
+];
+
+/**
+ * The conversation HUD, Settings → Conversations → Recording HUD (UI/ConversationHUD.swift,
+ * UI/ConversationHUDView.swift). It floats at the top centre of the screen while a
+ * conversation records and stays up through transcription. Its one button is
+ * Stop & Transcribe; there is no Cancel on it on purpose (Cancel stays in the
+ * Conversations pane). Don't claim it is hidden from screen shares: the app asks
+ * for that, and macOS doesn't always honour it.
+ */
+export const CONVERSATION_HUD_SETTINGS = ["Off", "Small", "Medium", "Large"] as const;
+export const CONVERSATION_HUD_DEFAULT: (typeof CONVERSATION_HUD_SETTINGS)[number] = "Small";
 
 export const localModels = (): ModelFact[] => MODEL_CATALOG.filter((m) => m.isLocal);
 export const cloudModels = (): ModelFact[] => MODEL_CATALOG.filter((m) => !m.isLocal);

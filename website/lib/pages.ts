@@ -15,20 +15,20 @@ export type PageRecord = {
 // datePublished/dateModified and the visible "Updated" lines all read from here,
 // so they can't drift apart.
 export const PAGES = {
-  "/": { published: "2026-05-21", modified: "2026-09-29", changeFrequency: "monthly", priority: 1.0 },
-  "/how-to-use-voice-to-text-on-mac": { published: "2026-07-11", modified: "2026-10-01", changeFrequency: "monthly", priority: 0.9 },
-  "/meeting-recording": { published: "2026-06-30", modified: "2026-09-29", changeFrequency: "monthly", priority: 0.9 },
-  "/offline-speech-to-text-mac": { published: "2026-07-27", modified: "2026-09-29", changeFrequency: "monthly", priority: 0.85 },
+  "/": { published: "2026-05-21", modified: "2026-10-14", changeFrequency: "monthly", priority: 1.0 },
+  "/how-to-use-voice-to-text-on-mac": { published: "2026-07-11", modified: "2026-10-14", changeFrequency: "monthly", priority: 0.9 },
+  "/meeting-recording": { published: "2026-06-30", modified: "2026-10-14", changeFrequency: "monthly", priority: 0.9 },
+  "/offline-speech-to-text-mac": { published: "2026-07-27", modified: "2026-10-14", changeFrequency: "monthly", priority: 0.85 },
   "/voice-to-text-for-coding": { published: "2026-07-27", modified: "2026-09-29", changeFrequency: "monthly", priority: 0.85 },
-  "/whisper-vs-parakeet-mac": { published: "2026-07-27", modified: "2026-09-29", changeFrequency: "monthly", priority: 0.85 },
+  "/whisper-vs-parakeet-mac": { published: "2026-07-27", modified: "2026-10-14", changeFrequency: "monthly", priority: 0.85 },
   "/apple-dictation-alternative": { published: "2026-07-27", modified: "2026-09-29", sourcesReviewed: "2026-07-27", changeFrequency: "monthly", priority: 0.8 },
   "/superwhisper-alternative": { published: "2026-07-27", modified: "2026-09-29", sourcesReviewed: "2026-09-24", changeFrequency: "monthly", priority: 0.8 },
-  "/wispr-flow-alternative": { published: "2026-07-27", modified: "2026-09-29", sourcesReviewed: "2026-09-23", changeFrequency: "monthly", priority: 0.8 },
+  "/wispr-flow-alternative": { published: "2026-07-27", modified: "2026-10-14", sourcesReviewed: "2026-09-23", changeFrequency: "monthly", priority: 0.8 },
   "/granola-alternative": { published: "2026-09-23", modified: "2026-09-29", sourcesReviewed: "2026-09-23", changeFrequency: "monthly", priority: 0.75 },
   "/macwhisper-alternative": { published: "2026-09-23", modified: "2026-09-29", sourcesReviewed: "2026-09-23", changeFrequency: "monthly", priority: 0.75 },
   "/dragon-for-mac-alternative": { published: "2026-10-01", modified: "2026-10-01", sourcesReviewed: "2026-10-01", changeFrequency: "monthly", priority: 0.75 },
   "/compare": { published: "2026-09-23", modified: "2026-10-01", changeFrequency: "monthly", priority: 0.8 },
-  "/compare/best-dictation-apps-for-mac": { published: "2026-08-12", modified: "2026-09-29", sourcesReviewed: "2026-08-12", changeFrequency: "monthly", priority: 0.9 },
+  "/compare/best-dictation-apps-for-mac": { published: "2026-08-12", modified: "2026-10-14", sourcesReviewed: "2026-08-12", changeFrequency: "monthly", priority: 0.9 },
 } as const satisfies Record<string, PageRecord>;
 
 export type PagePath = keyof typeof PAGES;

@@ -25,8 +25,8 @@ function localLanguages(model: ModelFact): string {
 /** One plain line on what a cloud model does differently, straight from the catalog flags. */
 function cloudNote(model: ModelFact): string {
   if (model.diarize) return "Labels who said what — for conversations and files";
-  if (model.live && model.liveTextCadence === "word by word") return "Text appears word by word as you speak — dictation only";
-  if (model.live && model.liveTextCadence === "phrase by phrase") return "Text appears phrase by phrase, after each short pause — dictation only";
+  if (model.live && model.liveTextCadence === "word by word") return "With the Large HUD, text appears word by word as you speak — dictation only";
+  if (model.live && model.liveTextCadence === "phrase by phrase") return "With the Large HUD, text appears phrase by phrase, after each short pause — dictation only";
   if (model.live) return "Streams while you speak; the text appears only when you stop — dictation only";
   return "Dictation, conversations and files";
 }
@@ -107,8 +107,8 @@ export function Models() {
           <p className="cloud__lede">
             Audio goes straight from your Mac to OpenAI or ElevenLabs, which detect the language on their side (99+
             and 90+ languages). <span className="badge badge--live">Live</span> models stream your audio while you
-            speak. {joinNames(liveTextModelNames("word by word"))} shows the words one by one in the dictation HUD;{" "}
-            {joinNames(liveTextModelNames("phrase by phrase"))} add each phrase after a short pause;{" "}
+            speak. In the Large dictation HUD, {joinNames(liveTextModelNames("word by word"))} shows the words one by one,
+            while {joinNames(liveTextModelNames("phrase by phrase"))} add each phrase after a short pause;{" "}
             {joinNames(liveOnStopModelNames())} shows its text only when you stop.
           </p>
           <ul className="cloud__grid" role="list">

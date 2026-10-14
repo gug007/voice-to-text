@@ -6,43 +6,9 @@ import Link from "next/link";
 
 import { GUIDE_PATH } from "@/lib/constants";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
+import { HudPill } from "@/components/ui/hud-pill";
 
 const TRANSCRIPT = "Ship the release notes, then ping design.";
-
-// The meter mirrors the app's LevelBars: 56 capsules, oldest -> newest, left ->
-// right, each springing to its own level. Older samples on the left fade out and
-// the write head on the right reads as the current input, so the opacity ramp is
-// the app's own `0.20 + 0.65 * t`. Bars are ink, not a tint — the only colour on
-// the real HUD is the recording cue.
-const HUD_BAR_COUNT = 56;
-const HUD_BAR_MIN_HEIGHT = 3; // px floor, so a silent bar is still a baseline
-
-type BarVars = CSSProperties & Record<"--o" | "--h" | "--d" | "--delay", string>;
-
-/** Deterministic, so the server and client render identical bars. */
-function hudBarStyle(i: number): BarVars {
-  const t = i / (HUD_BAR_COUNT - 1);
-  // A plausible speech envelope rather than a uniform block.
-  const level =
-    0.18 +
-    0.62 * Math.abs(Math.sin(i * 0.38 + 0.7)) * (0.62 + 0.38 * Math.abs(Math.cos(i * 0.11)));
-  return {
-    "--o": (0.2 + 0.65 * t).toFixed(3),
-    "--h": `${(HUD_BAR_MIN_HEIGHT + (46 - HUD_BAR_MIN_HEIGHT) * level).toFixed(1)}px`,
-    "--d": `${(0.62 + ((i * 31) % 9) / 10).toFixed(2)}s`,
-    "--delay": `${(-((i * 47) % 15) / 10).toFixed(2)}s`,
-  };
-}
-
-function HudBars() {
-  return (
-    <span className="hud__bars" data-pause-offscreen>
-      {Array.from({ length: HUD_BAR_COUNT }, (_, i) => (
-        <i key={i} style={hudBarStyle(i)} />
-      ))}
-    </span>
-  );
-}
 
 function Tick() {
   return (
@@ -94,17 +60,8 @@ function ShortcutArt() {
 
 function HudArt() {
   return (
-    <div className="mini">
-      <span className="mini__hud">
-        <HudBars />
-        <span className="hud__row">
-          <span className="hud__t">0:04</span>
-          <span className="hud__spacer" />
-          <span className="hud__btn">
-            Cancel <em>esc</em>
-          </span>
-        </span>
-      </span>
+    <div className="mini" data-pause-offscreen>
+      <HudPill clock="0:04" />
     </div>
   );
 }
@@ -180,8 +137,8 @@ const BEATS: Beat[] = [
     step: 3,
     title: "Say what you mean.",
     body:
-      "A small HUD floats over whatever you are doing, with a live level meter and a timer. Speak in full sentences, casual or technical; punctuation is inferred. Esc cancels at any point.",
-    note: "With a local model the audio never leaves your Mac. Text appears while you speak only with the streaming cloud models.",
+      "A small HUD floats over whatever you are doing, with a live level meter and a timer; pick Small, Medium or Large in Settings. Speak in full sentences, casual or technical; punctuation is inferred. Esc cancels at any point.",
+    note: "With a local model the audio never leaves your Mac. Text appears while you speak only with the Large HUD and a streaming cloud model.",
     art: <HudArt />,
   },
   {
@@ -259,20 +216,11 @@ function Stage({ step }: { step: number }) {
         <kbd>Space</kbd>
       </div>
 
-      {/* The compact recording card, laid out like the app's: a full-height
-          level meter over the one control row that every HUD mode shows. */}
+      {/* The recording HUD at the app's default Small size: one capsule of dot,
+          meter and clock, with Cancel and Finish as circles. Their keys live in
+          the app's tooltips, so nothing here prints "esc" or "⌥Space". */}
       <div className="ov ov--hud">
-        <HudBars />
-        <div className="hud__row">
-          <span className="hud__t">0:04</span>
-          <span className="hud__spacer" />
-          <span className="hud__btn">
-            Cancel <em>esc</em>
-          </span>
-          <span className="hud__btn hud__btn--primary">
-            Finish <em>⌥Space</em>
-          </span>
-        </div>
+        <HudPill clock="0:04" />
       </div>
 
       <div className="ov ov--review">

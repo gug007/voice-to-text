@@ -200,7 +200,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         label: "Best fit",
         cells: [
           "Private or offline work, predictable control, and no usage billing.",
-          "Words appearing live as you speak, speaker labels, or a hard recording you choose to send.",
+          "Words appearing live as you speak (in the Large recording HUD), speaker labels, or a hard recording you choose to send.",
         ],
       },
       {

@@ -30,11 +30,13 @@
   /* LOCKED brand tokens — the dictation-wave gradient. Never change. */
   --brand-start: #6194FF;
   --brand-end: #854FF7;
-  /* HUD surface, from the app's Palette (canvas / plate hairline). */
+  /* HUD surface, from the app's Palette (canvas / plate hairline). --hud-live
+     is Palette.signalLive, the recording dot: the HUD's only colour. */
   --hud-canvas: #F2F4F9;
   --hud-edge: rgba(25, 21, 42, .10);
   --hud-control: rgba(25, 21, 42, .05);
   --hud-primary: rgba(255, 255, 255, .62);
+  --hud-live: #D22C33;
 
   /* Surfaces */
   --bg: #FFFFFF;
@@ -191,6 +193,7 @@
     --hud-edge: rgba(216, 224, 255, .15);
     --hud-control: rgba(216, 224, 255, .07);
     --hud-primary: rgba(216, 224, 255, .12);
+    --hud-live: #FF6B63;
     --bg: #0E1014;
     --bg-deep: #08090C;
     --surface: #191C22;
@@ -231,6 +234,7 @@
   --hud-edge: rgba(216, 224, 255, .15);
   --hud-control: rgba(216, 224, 255, .07);
   --hud-primary: rgba(216, 224, 255, .12);
+  --hud-live: #FF6B63;
   --bg: #0E1014;
   --bg-deep: #08090C;
   --surface: #191C22;
@@ -271,6 +275,7 @@
   --hud-edge: rgba(25, 21, 42, .10);
   --hud-control: rgba(25, 21, 42, .05);
   --hud-primary: rgba(255, 255, 255, .62);
+  --hud-live: #D22C33;
   --bg: #FFFFFF;
   --bg-deep: #F6F7F9;
   --surface: #F6F7F9;
@@ -1234,14 +1239,14 @@ span.brand__mark {
 }
 
 /* The stage: a Mail compose window with the app's HUD floating over its lower
-   edge, as the real card floats above the Dock. Every phase fits one fixed
-   frame height, so the loop never moves anything around it. HUD metrics are
-   the app's (HUDLayout.swift) at ~0.85: a 420pt compact card. */
+   edge, as the real HUD floats above the Dock. Every phase fits one fixed
+   frame height, so the loop never moves anything around it. The HUD is the
+   app's default Small pill, at the app's own size (HudPill). */
 .hstage { width: min(100%, 780px); }
-.hstage__frame { position: relative; height: 280px; container-type: inline-size; }
+.hstage__frame { position: relative; height: 280px; }
 .hstage__win {
   position: absolute;
-  inset: 0 0 56px;
+  inset: 0 0 20px;
   overflow: hidden;
   text-align: left;
   background: var(--surface);
@@ -1287,86 +1292,19 @@ span.brand__mark {
   animation: blink 1.15s steps(1) infinite;
 }
 
+/* Places the pill (`.hud`, drawn with the story's HUD rules) on the window's
+   lower edge: centred, half over the window and half below it. */
 .hstage__hud {
   position: absolute;
-  left: 50%;
+  left: 0;
+  right: 0;
   bottom: 0;
-  width: min(360px, 100cqw - 24px);
-  height: 104px;
-  overflow: hidden;
-  text-align: left;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--hud-canvas) 86%, transparent);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-          backdrop-filter: blur(20px) saturate(180%);
-  border: 1px solid var(--hud-edge);
-  box-shadow: var(--shadow-2);
-  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  padding-inline: 12px;
   transition: opacity .3s var(--ease-standard), transform .45s var(--ease-enter);
 }
-.hstage__hud[data-hidden] { opacity: 0; transform: translate(-50%, 12px) scale(.96); }
-.hstage__pane {
-  position: absolute;
-  inset: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.hstage__meter { display: flex; align-items: center; gap: 2.5px; height: 46px; flex: none; }
-.hstage__meter i {
-  display: block;
-  flex: 1 1 0;
-  min-width: 0;
-  height: var(--h);
-  min-height: 3px;
-  border-radius: var(--radius-full);
-  background: var(--text-primary);
-  opacity: var(--o);
-  animation: hudbar var(--d) ease-in-out var(--delay) infinite alternate;
-}
-.hstage[data-phase="transcribing"] .hstage__meter i { animation-play-state: paused; opacity: calc(var(--o) * .4); }
-
-.hstage__controls { display: flex; align-items: center; gap: 7px; height: 24px; flex: none; }
-.hstage__spacer { flex: 1 1 auto; }
-.hstage__clock {
-  font-family: var(--mono);
-  font-size: 11.5px;
-  font-weight: 500;
-  font-variant-numeric: tabular-nums;
-  color: var(--text-muted);
-}
-.hstage__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  flex: none;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 8px;
-  font-size: 11.5px;
-  font-weight: 500;
-  white-space: nowrap;
-  color: var(--text-primary);
-  background: var(--hud-control);
-  box-shadow: inset 0 0 0 .5px var(--hud-edge);
-}
-.hstage__btn em { font-family: var(--mono); font-style: normal; font-size: 10px; color: var(--text-muted); }
-/* GlassButtonStyle: .primary is a lighter glass */
-.hstage__btn--primary { background: var(--hud-primary); }
-.hstage__shimmer {
-  font-size: 12px;
-  font-weight: 600;
-  color: transparent;
-  background: linear-gradient(90deg, var(--text-muted) 35%, var(--text-primary) 50%, var(--text-muted) 65%) 0 0 / 250% 100%;
-  -webkit-background-clip: text;
-          background-clip: text;
-  animation: hstage-shimmer 1.4s linear infinite;
-}
-@keyframes hstage-shimmer {
-  from { background-position: 100% 0; }
-  to   { background-position: 0 0; }
-}
+.hstage__hud[data-hidden] { opacity: 0; transform: translateY(12px) scale(.96); }
 
 .hstage__steps {
   list-style: none;
@@ -1406,17 +1344,16 @@ span.brand__mark {
 
 @media (max-width: 640px) {
   .hstage__frame { height: 300px; }
-  .hstage__hud { width: calc(100cqw - 20px); }
   .hstage__row { padding: 0 14px; }
   .hstage__body { padding: 14px; font-size: 14.5px; }
   .hstage__steps { gap: 8px 14px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .hstage__hud, .hstage__steps li, .hstage__steps b { transition: none; }
-  .hstage__meter i, .hstage__shimmer, .hstage__caret, .hstage__pasted { animation: none; }
+  .hstage__caret, .hstage__pasted { animation: none; }
 }
 @media (forced-colors: active) {
-  .hstage__win, .hstage__hud { border: 1px solid CanvasText; }
+  .hstage__win { border: 1px solid CanvasText; }
 }
 
 /* ---------- macOS traffic lights (TrafficLights, /meeting-recording) ---------- */
@@ -2014,39 +1951,62 @@ span.brand__mark {
   100% { transform: scale(1.22); opacity: 0; }
 }
 
-/* The dictation HUD, matched to the app (UI/LiveHUDView.swift + HUDLayout.swift).
-   Real card: 420x132 compact, radius 22 continuous, 12pt inset, a 56pt level
-   meter over a 28pt control row. Scaled ~0.81 here so it sits correctly over the
-   window mock; every proportion is the app's. */
+/* The dictation HUD at the app's default size, Small (UI/HUDCompactRow.swift,
+   `HUDMetrics.pill` in HUDLayout.swift), drawn 1pt = 1px. Real pill: a 248x40
+   capsule, 12pt leading inset and 6pt everywhere else, so its 28pt circles sit
+   concentric in it. Dot, meter, clock and the two controls, 8pt apart. The
+   hero stage draws the same pill (HudPill). */
 .ov--hud {
-  left: 50%;
-  bottom: 6px;
-  width: 340px;
-  max-width: calc(100% - 28px);
-  transform: translate(-50%, 14px) scale(.96);
-  transform-origin: bottom center;
+  left: 0;
+  right: 0;
+  bottom: 62px;                  /* floats just clear of the composer */
   display: flex;
-  flex-direction: column;
-  gap: 10px;                     /* HUDMetrics.gap 12 */
-  padding: 10px;                 /* HUDMetrics.inset 12 */
-  border-radius: 18px;           /* Radius.hud 22 */
+  justify-content: center;
+  padding-inline: 14px;
+  transform: translateY(14px) scale(.96);
+  transform-origin: bottom center;
+}
+
+.hud {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;                      /* Space.s4 */
+  width: 248px;
+  max-width: 100%;
+  height: 40px;
+  padding: 5px 5px 5px 11px;     /* 6 and 12, less the 1px edge */
+  border-radius: var(--radius-full);
   /* Palette.canvas is the opaque fallback under the glass. */
-  background: color-mix(in srgb, var(--hud-canvas) 82%, transparent);
+  background: color-mix(in srgb, var(--hud-canvas) 86%, transparent);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
           backdrop-filter: blur(20px) saturate(180%);
   border: 1px solid var(--hud-edge);
   /* HUDElevation L3, routed through the token so it has a dark treatment too */
   box-shadow: var(--shadow-2);
+  text-align: left;
 }
-.stage[data-state="3"] .ov--hud { transform: translate(-50%, 0) scale(1); }
 
-/* LevelBars: 56 capsules, 3px spacing, 3px floor, flexible equal width so the
-   row is exactly as wide as its box. Ink, with the app's opacity ramp. */
+/* RecordingPulse: 9pt, signalLive, breathing between .35 and 1 */
+.hud__dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-full);
+  background: var(--hud-live);
+  animation: hud-pulse .9s ease-in-out infinite alternate;
+}
+@keyframes hud-pulse { from { opacity: .35; } to { opacity: 1; } }
+
+/* LevelBars: 20 capsules, 2px spacing, 3px floor, flexible equal width, so the
+   meter takes whatever the row leaves it. Ink, with the app's opacity ramp. */
 .hud__bars {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   align-items: center;
-  gap: 2.5px;                    /* LevelBars.barSpacing 3 */
-  height: 46px;                  /* HUDMetrics.meterHeight 56 */
+  gap: 2px;                      /* Space.s1 */
+  height: 18px;                  /* HUDMetrics.pill meterHeight */
 }
 .hud__bars i {
   display: block;
@@ -2062,21 +2022,51 @@ span.brand__mark {
 }
 @keyframes hudbar { from { transform: scaleY(.34); } to { transform: scaleY(1); } }
 
-/* HUDControlRow, recording: clock, spacer, Cancel [esc], Finish [hotkey]. */
-.hud__row {
-  display: flex;
-  align-items: center;
-  gap: 7px;                      /* Space.s4 8 */
-  height: 23px;                  /* HUDMetrics.controlRowHeight 28 */
-}
-.hud__spacer { flex: 1 1 auto; }
 .hud__t {
+  flex: none;
   font-family: var(--font-mono-tokens);
-  font-size: 11.5px;             /* Typo.clock: SF Mono 13 medium */
+  font-size: 13px;               /* Typo.clock: SF Mono 13 medium */
   font-weight: 500;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);      /* Palette.inkFaint */
 }
+
+/* HUDIconButton: Cancel and Finish as 28pt circles, 4pt apart (Space.s2). */
+.hud__controls { display: flex; flex: none; gap: 4px; }
+.hud__icon {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  color: var(--text-primary);
+  background: var(--hud-control);
+  box-shadow: inset 0 0 0 .5px var(--hud-edge);
+}
+.hud__icon .icon { stroke-width: 2.1; }  /* SF Symbols at .headline weight */
+/* GlassButtonStyle .primary: white @ .62 light / .10 dark, ink text — the one
+   primary per panel. It is NOT an accent-filled button. */
+.hud__icon--primary { background: var(--hud-primary); }
+/* HUDBusySlot: Finish's exact footprint, the circle hidden, a spinner in it */
+.hud__icon--busy { background: none; box-shadow: none; }
+.hud__spin {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+  border: 2px solid color-mix(in srgb, var(--text-primary) 10%, transparent);
+  border-top-color: var(--text-muted);
+  border-right-color: var(--text-muted);
+  border-bottom-color: var(--text-muted);
+  animation: hud-spin .9s linear infinite;
+}
+@keyframes hud-spin { to { transform: rotate(1turn); } }
+/* Transcribing: the dot settles grey and the bars freeze where they stopped,
+   faded in place. */
+.hud[data-busy] .hud__dot { animation: none; opacity: 1; background: color-mix(in srgb, var(--text-faint) 30%, transparent); }
+.hud[data-busy] .hud__bars i { animation-play-state: paused; opacity: calc(var(--o) * .4); }
+
+/* HUDButton, as the review panel draws it: a label and its key hint. */
+.hud__spacer { flex: 1 1 auto; }
 .hud__btn {
   display: inline-flex;
   align-items: center;
@@ -2097,16 +2087,7 @@ span.brand__mark {
   font-size: 10px;
   color: var(--text-muted);      /* Palette.inkFaint */
 }
-/* GlassButtonStyle .primary: white @ .62 light / .10 dark, ink text — the one
-   primary per panel. It is NOT an accent-filled button. */
 .hud__btn--primary { background: var(--hud-primary); }
-
-@media (max-width: 520px) {
-  .ov--hud { width: auto; left: 10px; right: 10px; transform: translateY(14px) scale(.96); }
-  .stage[data-state="3"] .ov--hud { transform: translateY(0) scale(1); }
-  .hud__bars { height: 34px; }
-  .hud__btn--primary { display: none; }
-}
 
 .ov--review {
   left: 50%;
@@ -2211,19 +2192,8 @@ span.brand__mark {
   color: var(--text-secondary);
 }
 .mini__hint { color: var(--text-muted); }
-.mini__hud {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-inline: auto;
-  width: 100%;
-  padding: 9px;
-  border-radius: 15px;
-  border: 1px solid var(--hud-edge);
-  background: var(--hud-canvas);
-  box-shadow: var(--shadow-1);
-}
-.mini__hud .hud__bars { height: 30px; }
+/* Beat 03: the pill on its own, opaque, with the card's lighter shadow */
+.mini .hud { margin-inline: auto; background: var(--hud-canvas); box-shadow: var(--shadow-1); }
 .mini__card { flex: 1; border: 1px solid var(--border-strong); border-radius: 11px; background: var(--surface-elevated); padding: 11px 12px; }
 .mini__ok {
   width: 20px;
@@ -2904,10 +2874,11 @@ span.brand__mark {
   .faq-item[open] .faq-item__chevron { transform: none; }
   .guide-list__item:hover .guide-list__chevron,
   .guide-list__item:focus-visible .guide-list__chevron { transform: none; }
-  .caret, .hud__bars i, .nav__scrim,
+  .caret, .hud__bars i, .hud__dot, .hud__spin, .nav__scrim,
   .ov--key kbd:last-child::after { animation: none; }
   .caret { opacity: 1; }
   .hud__bars i { transform: scaleY(.6); }
+  .hud__dot { opacity: .85; }
   .stage[data-state="5"] .typed { max-width: 42ch; animation: none; }
 }
 
@@ -2923,7 +2894,7 @@ span.brand__mark {
   .guide-list__item:focus-visible { outline-offset: -3px; }
   .win:has(> video:focus-visible) { outline: 2px solid ButtonText; outline-offset: 2px; }
   .how__steps, .features__grid, .faq__list, .guide-list, .guide__steps, .guide__choice,
-  .ai__transcript, .win, .ledger, .card, .app, .get, .ov--review, .ov--hud { border: 1px solid CanvasText; }
+  .ai__transcript, .win, .ledger, .card, .app, .get, .ov--review, .hud { border: 1px solid CanvasText; }
   .nav { border-bottom: 1px solid CanvasText; }
 }
 

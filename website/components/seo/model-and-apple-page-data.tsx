@@ -568,7 +568,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         },
         {
           title: `Words as you speak: ${SCRIBE.name}`,
-          body: `ElevenLabs’ ${SCRIBE.name} shows words one by one in the recording window while you talk, scores ${formatQuality(SCRIBE)}, covers ${SCRIBE.languagesInApp} and costs ${formatPrice(SCRIBE)}. Live models work for dictation only; local models show text when you stop.`,
+          body: `ElevenLabs’ ${SCRIBE.name} shows words one by one in the Large recording HUD while you talk, scores ${formatQuality(SCRIBE)}, covers ${SCRIBE.languagesInApp} and costs ${formatPrice(SCRIBE)}. Live models work for dictation only; local models show text when you stop.`,
         },
         {
           title: `Lowest cost: ${MINI.name}`,

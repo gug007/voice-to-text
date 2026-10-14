@@ -210,7 +210,8 @@ const STEPS: GuideStep[] = [
         A small floating card appears with a live level meter and a timer, without taking focus from your
         app. Press the shortcut again or click Finish when you’re done, or press <Key glyph="Esc" name="Escape" />{" "}
         to throw the take away. If the model is still downloading or loading, the card shows its progress
-        first.
+        first. By default it’s a pill with round ✕ and ✓ buttons for Cancel and Finish; Settings →
+        General → Recording HUD makes it Medium or Large.
       </p>
     ),
   },
@@ -308,7 +309,7 @@ const MODELS: Choice[] = [
   {
     icon: "cloud",
     title: "Cloud models, with your key",
-    body: `${capitalize(spell(CLOUD.length))} optional OpenAI and ElevenLabs models detect the language on their side (90 to 99+ languages). ${capitalize(spell(LIVE_COUNT))} are live models, and with ${spell(LIVE_TEXT_COUNT)} of them text appears while you speak, word by word or phrase by phrase. Audio goes to the provider, billed to your key at ${CHEAPEST_CLOUD} to ${PRICIEST_CLOUD}.`,
+    body: `${capitalize(spell(CLOUD.length))} optional OpenAI and ElevenLabs models detect the language on their side (90 to 99+ languages). ${capitalize(spell(LIVE_COUNT))} are live models, and with ${spell(LIVE_TEXT_COUNT)} of them text appears while you speak in the Large recording HUD, word by word or phrase by phrase. Audio goes to the provider, billed to your key at ${CHEAPEST_CLOUD} to ${PRICIEST_CLOUD}.`,
   },
 ];
 

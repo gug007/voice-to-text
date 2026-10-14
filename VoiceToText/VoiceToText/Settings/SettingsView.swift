@@ -471,6 +471,7 @@ struct GeneralPane: View {
 
             PaneSection("Preferences") {
                 ReviewBeforePasteCard()
+                HUDSizeCard()
                 launchAtLoginCard
                 presenceCard
                 appearanceCard

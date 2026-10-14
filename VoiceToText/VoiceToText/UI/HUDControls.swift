@@ -17,6 +17,9 @@ struct HUDButton: View {
     var systemImage: String?
     var hint: String?
     var role: GlassButtonStyle.Role = .secondary
+    /// Only where the control is not inside the full card's 12pt inset — the
+    /// Medium row's capsules. Nil keeps the style's concentric 10.
+    var radius: CGFloat?
     let action: () -> Void
 
     init(
@@ -24,12 +27,14 @@ struct HUDButton: View {
         systemImage: String? = nil,
         hint: String? = nil,
         role: GlassButtonStyle.Role = .secondary,
+        radius: CGFloat? = nil,
         action: @escaping () -> Void
     ) {
         self.title = title
         self.systemImage = systemImage
         self.hint = hint
         self.role = role
+        self.radius = radius
         self.action = action
     }
 
@@ -49,8 +54,104 @@ struct HUDButton: View {
             }
             .lineLimit(1)
         }
-        .buttonStyle(GlassButtonStyle(role: role))
+        .buttonStyle(style)
         .accessibilityLabel(title)
+    }
+
+    private var style: GlassButtonStyle {
+        var style = GlassButtonStyle(role: role)
+        if let radius { style.radius = radius }
+        return style
+    }
+}
+
+/// A 28pt circular control for the Small HUD, where Cancel and Finish have no
+/// room to say their names. Same `GlassButtonStyle` as every other HUD control,
+/// so hover, press and the focus ring come with it; the title and key hint
+/// the other sizes print move into the tooltip and the accessibility label.
+struct HUDIconButton: View {
+    let title: String
+    let systemImage: String
+    var hint: String?
+    var role: GlassButtonStyle.Role = .secondary
+    /// What VoiceOver says, when the title reads badly aloud ("&"). The title
+    /// otherwise.
+    var accessibilityLabel: String?
+    let action: () -> Void
+
+    /// One control-row height, like every other HUD control.
+    private static let side = HUDMetrics.controlRowHeight
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+        }
+        .buttonStyle(GlassButtonStyle(role: role, radius: Self.side / 2, iconSide: Self.side))
+        .hudHelp(title, hint: hint)
+        .accessibilityLabel(accessibilityLabel ?? title)
+    }
+}
+
+/// A control's exact footprint with a spinner in it, for while there is
+/// nothing to finish — never an empty gap. Wherever something to the left
+/// is flexible, a slot that shrank would slide the next control into the spot
+/// the finish control just left, and the second click of a double-click on
+/// Finish would land on Cancel and throw away the take it had just finished.
+struct HUDBusySlot<Footprint: View>: View {
+    /// The tooltip: what the card is waiting on.
+    let status: String
+    let accessibilityLabel: String
+    /// The control whose slot this holds. Drawn hidden, so it only sizes.
+    @ViewBuilder let footprint: Footprint
+
+    var body: some View {
+        ZStack {
+            footprint
+                .hidden()
+                .disabled(true)
+                .accessibilityHidden(true)
+            HUDSpinner()
+                .help(status)
+                .accessibilityElement()
+                .accessibilityLabel(accessibilityLabel)
+        }
+    }
+}
+
+extension View {
+    /// The tooltip for a HUD control whose key hint has no room on the card:
+    /// "Finish (⌥Space)", or the title alone where no key does it.
+    func hudHelp(_ title: String, hint: String?) -> some View {
+        help(hint.map { "\(title) (\($0))" } ?? title)
+    }
+}
+
+// MARK: - Key hints
+
+/// The keys a live card's controls advertise. One place, so the full cards,
+/// the compact rows and the Settings previews cannot disagree.
+enum HUDKeyHints {
+    /// Cancel promises `esc` only where Esc really cancels. With "Esc cancels
+    /// dictation" off, recording, preparing and transcribing stop taking Esc,
+    /// so they must not advertise it. The review and failure cards keep
+    /// theirs: they are key, and Esc typed into them always works.
+    static var escCancel: String? {
+        HotkeyStore.shared.escapeCancelsDictation ? "esc" : nil
+    }
+
+    /// Toggle mode finishes on the same hotkey, so show it; hold mode finishes
+    /// on release, which has no key to surface, so the button stands alone.
+    static var finish: String? {
+        switch HotkeyStore.shared.mode {
+        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
+        case .hold: return nil
+        }
+    }
+
+    /// The conversation shortcut, when one is set: it stops a recording from
+    /// any app, so Stop & Transcribe names it. Unset by default.
+    static var stopConversation: String? {
+        HotkeyStore.shared.meetingBinding?.displayKeys.joined()
     }
 }
 
@@ -202,6 +303,39 @@ struct RecordingPulse: View {
     private var liveOpacity: Double {
         guard isLive else { return 1 }
         return motion.repeatsAllowed ? (pulsing ? 1 : 0.35) : 0.85
+    }
+}
+
+/// The compact rows' "working" mark, in Finish's slot while there is nothing
+/// to finish. A three-quarter arc turning on a faint track — drawn rather
+/// than `ProgressView`, because the system spinner keeps spinning under Reduce
+/// Motion and this one has to come to rest: a still arc, which next to the
+/// frozen meter still reads as busy.
+struct HUDSpinner: View {
+    @Environment(\.motion) private var motion
+    @State private var turning = false
+
+    private static let diameter: CGFloat = 14
+    private static let lineWidth: CGFloat = 2
+    private static let arc: CGFloat = 0.72
+    private static let period: TimeInterval = 0.9
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Palette.ink.opacity(0.10), lineWidth: Self.lineWidth)
+            Circle()
+                .trim(from: 0, to: Self.arc)
+                .stroke(Palette.inkMuted, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                .rotationEffect(.degrees(turning ? 360 : 0))
+        }
+        .frame(width: Self.diameter, height: Self.diameter)
+        .onAppear {
+            guard motion.repeatsAllowed else { return }
+            withAnimation(.linear(duration: Self.period).repeatForever(autoreverses: false)) {
+                turning = true
+            }
+        }
     }
 }
 

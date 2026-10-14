@@ -65,6 +65,8 @@ struct MeetingsPane: View {
 
             transcriptionModelCard
 
+            ConversationHUDSettingCard()
+
             if controller.state == .idle, let summary = controller.lastSavedSummary {
                 savedBanner(summary)
             }

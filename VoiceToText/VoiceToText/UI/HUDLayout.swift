@@ -55,9 +55,51 @@ nonisolated enum HUDMetrics {
     static let reviewMinHeight: CGFloat = 236
     static let reviewChipsMinHeight: CGFloat = 278
 
+    // Single-row sizes (Settings → Recording HUD). Not to be confused with
+    // `compactWidth` above, which is the Large card's narrow width: Small and
+    // Medium are a different card altogether — dot, meter, clock and the two
+    // controls side by side in a capsule, with no stacked sections at all.
+
+    /// Small, the pill. 40pt is one 28pt control with a 6pt (`Space.s3`) inset
+    /// above and below it, which is what makes the card's 20pt radius and the
+    /// controls' 14 concentric. Cancel and Finish are circles, their names and
+    /// keys in tooltips.
+    ///
+    /// The meter pools only the newest 60 samples, three per bar. All 140 into
+    /// 20 bars would be seven per bar and smear syllables into a slow swell;
+    /// three keeps each bar about as sharp as the full meter's 2.5, so the pill
+    /// moves at the same tempo and simply remembers less.
+    static let pill = HUDCompactMetrics(
+        cardSize: CGSize(width: 248, height: 40),
+        leadingInset: Space.s5,
+        meterHeight: 18,
+        meterBars: 20,
+        meterSpacing: Space.s1,
+        meterWindow: 60,
+        controls: .icons,
+        controlSpacing: Space.s2
+    )
+    /// Medium, the bar: the pill's row with room for Cancel and Finish to say
+    /// their names, still without key hints. 84 samples over 24 bars is 3.5 a
+    /// bar, for the same reason as the pill's 60.
+    static let bar = HUDCompactMetrics(
+        cardSize: CGSize(width: 360, height: 48),
+        leadingInset: Space.s6,
+        meterHeight: 22,
+        meterBars: 24,
+        meterSpacing: Space.s1,
+        meterWindow: 84,
+        controls: .labels,
+        controlSpacing: Space.s3
+    )
+
     /// Default placement: card bottom edge 144pt above the visible frame.
     /// Measured on the card, not the panel, so it is independent of `gutter`.
     static let defaultBottomInset: CGFloat = 144
+    /// The conversation card's default: its top edge this far below the menu
+    /// bar — close enough to read as attached to it, clear of the screen
+    /// margin the clamp enforces.
+    static let conversationTopInset: CGFloat = Space.s5
     /// Never let the card touch a screen edge. The panel's transparent shadow
     /// gutter is allowed to overhang it.
     static let screenMargin: CGFloat = 8
@@ -71,6 +113,50 @@ nonisolated enum HUDMetrics {
     static let morphDuration: TimeInterval = 0.38
     static var morphTiming: CAMediaTimingFunction {
         CAMediaTimingFunction(controlPoints: 0.32, 1.18, 0.52, 1)
+    }
+}
+
+/// One single-row card size. Only the numbers a designer picks are stored;
+/// the radius and every inset derive from them, so the card is still exactly
+/// the sum of its parts and the panel estimate cannot drift from it.
+nonisolated struct HUDCompactMetrics: Equatable, Sendable {
+    nonisolated enum Controls: Equatable, Sendable {
+        /// 28pt circles with SF Symbols — the pill.
+        case icons
+        /// Capsules that name themselves — the bar.
+        case labels
+    }
+
+    /// The whole card, as the panel sizes it.
+    let cardSize: CGSize
+    /// From the card's leading edge to the recording dot. Wider than the
+    /// trailing inset on purpose: the dot is 9pt, not 28, and centring it like
+    /// a control would jam it into the curve.
+    let leadingInset: CGFloat
+    let meterHeight: CGFloat
+    let meterBars: Int
+    let meterSpacing: CGFloat
+    /// How many of the newest level samples the meter pools.
+    let meterWindow: Int
+    let controls: Controls
+    /// Between Cancel and Finish.
+    let controlSpacing: CGFloat
+
+    /// A capsule: half the card's height.
+    var cornerRadius: CGFloat { cardSize.height / 2 }
+
+    /// Top, bottom and trailing inset — whatever centres one 28pt control in
+    /// the card's height. At that inset the concentric law leaves the controls
+    /// exactly half their own height, so they come out as capsules and circles
+    /// without a radius of their own to type.
+    var controlInset: CGFloat { (cardSize.height - HUDMetrics.controlRowHeight) / 2 }
+
+    var controlRadius: CGFloat {
+        Radius.concentric(parent: cornerRadius, inset: controlInset)
+    }
+
+    var contentInsets: EdgeInsets {
+        EdgeInsets(top: controlInset, leading: leadingInset, bottom: controlInset, trailing: controlInset)
     }
 }
 
@@ -92,6 +178,9 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     let hasSalvagedAudio: Bool
     /// How much, for the card to name.
     let salvagedSeconds: Double
+    /// The session's snapshot of the size setting, never the live setting —
+    /// see `LiveHUDState.hudSize`.
+    let size: HUDSize
 
     @MainActor
     init(state: LiveHUDState) {
@@ -106,7 +195,44 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         case .preparing, .recording, .transcribing, .discarded: false
         }
         resumedSession = state.resumedSession
+        size = state.hudSize
     }
+
+    /// A fresh take's recording card at `size` with nothing else on it — the
+    /// Settings previews, which must lay out exactly as the live card does,
+    /// and the conversation card, which is this card in both of its phases.
+    init(recordingAt size: HUDSize) {
+        mode = .recording
+        showsLiveText = false
+        showsChips = false
+        hasBanner = false
+        resumedSession = false
+        hasSalvagedAudio = false
+        salvagedSeconds = 0
+        self.size = size
+    }
+
+    // MARK: Compact row
+
+    /// The single row Small and Medium draw in place of the whole stack, or nil
+    /// for a stacked card. Only a fresh take's preparing, recording and
+    /// transcribing cards are ever a row. Review, failure, a resumed take and
+    /// the discard notice need their full card at every size — there is no
+    /// editing a transcript in a pill.
+    var compactRow: HUDCompactMetrics? {
+        switch mode {
+        case .preparing, .recording: break
+        case .transcribing: if resumedSession { return nil }
+        case .resumeRecording, .reviewing, .failed, .discarded: return nil
+        }
+        switch size {
+        case .small: return HUDMetrics.pill
+        case .medium: return HUDMetrics.bar
+        case .large: return nil
+        }
+    }
+
+    private var isCompactRow: Bool { compactRow != nil }
 
     // MARK: Sections
 
@@ -128,6 +254,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// freeze and desaturate in place instead of being replaced by dots. A
     /// resumed take freezes its inline meter instead, in the same slot.
     var showsMeter: Bool {
+        if isCompactRow { return false }
         switch mode {
         case .recording: return true
         case .transcribing: return !resumedSession
@@ -139,11 +266,13 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// loaded. Absorbs the card's slack (see `preparingHeight`) so the control
     /// row still sits on the bottom edge exactly where recording puts it.
     var showsPreparing: Bool {
-        mode == .preparing
+        mode == .preparing && !isCompactRow
     }
 
+    /// Never on a compact row, streaming engine or not: three lines of text
+    /// are what the Large card is for.
     var showsStreamText: Bool {
-        mode == .recording && showsLiveText
+        mode == .recording && showsLiveText && !isCompactRow
     }
 
     var showsResumeTranscript: Bool {
@@ -187,11 +316,15 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     }
 
     var width: CGFloat {
+        if let compactRow { return compactRow.cardSize.width }
         if mode == .discarded { return HUDMetrics.noticeWidth }
         return isWide ? HUDMetrics.wideWidth : HUDMetrics.compactWidth
     }
 
     var minHeight: CGFloat {
+        // Exact rather than a minimum: the row is one control tall plus its
+        // insets, which is the card height by construction.
+        if let compactRow { return compactRow.cardSize.height }
         switch mode {
         // Same height as the recording card it hands over to, so the morph into
         // recording moves nothing but the content.
@@ -216,6 +349,27 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         showsChips ? HUDMetrics.reviewChipsMinHeight : HUDMetrics.reviewMinHeight
     }
 
+    /// The card's corner radius: half its height for a compact row, which is a
+    /// capsule, and `Radius.hud` for everything else. The clip, the glass, the
+    /// shadow, the drag shape and the concentric `plateRadius` all read this
+    /// one value, so a pill morphing into the review card turns its corners on
+    /// the same spring as its size.
+    var cornerRadius: CGFloat {
+        compactRow?.cornerRadius ?? Radius.hud
+    }
+
+    /// Padding between the card's edge and its sections: the uniform
+    /// `HUDMetrics.inset` on a stacked card, the row's own on a compact one.
+    var contentInsets: EdgeInsets {
+        if let compactRow { return compactRow.contentInsets }
+        let inset = HUDMetrics.inset
+        return EdgeInsets(top: inset, leading: inset, bottom: inset, trailing: inset)
+    }
+
+    private var verticalInsets: CGFloat {
+        contentInsets.top + contentInsets.bottom
+    }
+
     /// The heights of the sections this mode stacks, top to bottom.
     private var sectionHeights: [CGFloat] {
         var rows = fixedSectionHeights
@@ -235,6 +389,8 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         if showsInlineMeter { rows.append(HUDMetrics.inlineMeterHeight) }
         if showsEditor { rows.append(HUDMetrics.editorHeight) }
         if showsChipRow { rows.append(HUDMetrics.chipRowHeight) }
+        // The control row, or the compact row that stands in its slot at the
+        // same height.
         rows.append(HUDMetrics.controlRowHeight)
         return rows
     }
@@ -251,7 +407,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         let fixed = fixedSectionHeights
         let used = fixed.reduce(0, +)
             + HUDMetrics.gap * CGFloat(fixed.count)
-            + HUDMetrics.inset * 2
+            + verticalInsets
         return max(natural, minHeight - used)
     }
 
@@ -284,14 +440,15 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     ///
     /// Exact for every fixed-height section, which is all of them — the panel
     /// can therefore start its frame animation in the same runloop turn as the
-    /// card's spring instead of a frame later. `LiveHUDPanel.cardSizeChanged`
+    /// card's spring instead of a frame later. `HUDPanelPlacement.cardSizeChanged`
     /// corrects the rare case where content grew past the estimate (a failure
-    /// message that wraps to two lines).
+    /// message that wraps to two lines). A compact row is one 28pt row inside
+    /// its control insets, so its estimate is its `cardSize` exactly.
     var estimatedCardSize: CGSize {
         let rows = sectionHeights
         let content = rows.reduce(0, +)
             + HUDMetrics.gap * CGFloat(max(0, rows.count - 1))
-            + HUDMetrics.inset * 2
+            + verticalInsets
         return CGSize(width: width, height: max(minHeight, content))
     }
 }

@@ -30,14 +30,9 @@ private struct HUDCard: View {
     let onCardSize: (CGSize) -> Void
 
     @Environment(\.motion) private var motion
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
 
     /// Identity carried across the morph.
     @Namespace private var hudNamespace
-
-    @State private var entered = false
-    @State private var isHoveringCard = false
-    @State private var isDragging = false
 
     private var layout: HUDLayout { HUDLayout(state: state) }
 
@@ -46,32 +41,17 @@ private struct HUDCard: View {
         let morph: Animation? = HUDFeatureFlags.morphEnabled ? motion.hudMorph : nil
 
         sections(layout)
-            .padding(HUDMetrics.inset)
+            .padding(layout.contentInsets)
             .frame(width: layout.width)
             // The card's height is its content's, never the panel's: the panel
             // is sized FROM this, so it must not be sized BY it.
             .fixedSize(horizontal: false, vertical: true)
             .frame(minHeight: layout.minHeight)
-            .background { dragSurface }
-            .overlay(alignment: .top) { grabber }
-            // The chip row deliberately overhangs its slot by 20pt on each side
-            // so its fade band can start outside the content box (see
-            // `HUDActionChipRow`). Without this clip a scrolled-away chip would
-            // render faintly *outside* the card, floating on the desktop.
-            .clipShape(RoundedRectangle(cornerRadius: Radius.hud, style: .continuous))
-            .glassCard(reduceTransparency: reduceTransparency)
-            // Radius 22 published for the concentric law: every control inside
-            // the 12pt inset derives 22 − 12 = 10 with no literal anywhere.
-            .environment(\.plateRadius, Radius.hud)
+            .modifier(HUDCardChrome(layout: layout, placement: LiveHUDPanel.shared.placement))
             .onGeometryChange(for: CGSize.self, of: { $0.size }, action: onCardSize)
             .animation(morph, value: layout)
             .animation(morph, value: state.reviewBanner)
-            .scaleEffect(entranceScale)
-            .offset(y: entered ? 0 : 8)
-            .opacity(entered ? 1 : 0)
-            .onAppear { playEntrance() }
-            .onChange(of: state.presentationCount) { playEntrance() }
-            .onHover { isHoveringCard = $0 }
+            .modifier(HUDPresentation(presentationCount: state.presentationCount))
     }
 
     // MARK: Sections
@@ -176,8 +156,62 @@ private struct HUDCard: View {
                     .transition(.opacity)
             }
 
-            HUDControlRow(state: state, layout: layout, namespace: hudNamespace)
-                .frame(height: HUDMetrics.controlRowHeight)
+            if let compactRow = layout.compactRow {
+                // Small and Medium: the whole card is this one row, in the
+                // control row's slot and at its height.
+                compactRowView(compactRow)
+                    .frame(height: HUDMetrics.controlRowHeight)
+            } else {
+                HUDControlRow(state: state, layout: layout, namespace: hudNamespace)
+                    .frame(height: HUDMetrics.controlRowHeight)
+            }
+        }
+    }
+
+    // MARK: Compact row
+
+    private func compactRowView(_ metrics: HUDCompactMetrics) -> some View {
+        HUDCompactRow(
+            metrics: metrics,
+            phase: compactPhase,
+            samples: state.levelHistory,
+            isOverloaded: state.level > LevelBars.overloadThreshold,
+            readout: .clock(HUDClock.text(seconds: state.elapsedSeconds)),
+            status: compactStatus,
+            persistentControl: .cancel(hint: HUDKeyHints.escCancel) { state.click(state.onCancel) },
+            finishControl: .finish(hint: HUDKeyHints.finish) { state.click(state.onStop) }
+        )
+    }
+
+    private var compactPhase: HUDCompactRow.Phase {
+        switch state.mode {
+        case .preparing: return .preparing(percent: HUDPreparingBlock.percent(state.preparingFraction))
+        case .transcribing: return .transcribing
+        case .recording, .resumeRecording, .reviewing, .failed, .discarded: return .recording
+        }
+    }
+
+    /// The compact row's tooltip: what the Large card's preparing block would
+    /// say, on one or two lines. A transcribing take that is waiting on its
+    /// model names the model and how far along it is.
+    private var compactStatus: String {
+        switch state.mode {
+        case .preparing:
+            let title = HUDPreparingBlock.title(
+                modelName: state.preparingModelName,
+                message: state.preparingMessage
+            )
+            return state.preparingMessage.isEmpty ? title : "\(title)\n\(state.preparingMessage)"
+        case .transcribing:
+            guard let phase = state.transcribingWaitPhase else { return "Transcribing" }
+            let title = HUDPreparingBlock.title(
+                modelName: state.preparingModelName,
+                message: state.preparingMessage,
+                phase: phase
+            )
+            return FailureCardCopy.percent(state.preparingFraction).map { "\(title) · \($0)" } ?? title
+        case .recording, .resumeRecording, .reviewing, .failed, .discarded:
+            return ""
         }
     }
 
@@ -245,11 +279,72 @@ private struct HUDCard: View {
     private func performBannerRetry() {
         state.click(state.onRetry)
     }
+}
 
-    // MARK: Entrance
+// MARK: - Card chrome
+//
+// What makes content a HUD card, shared by the dictation card and the
+// conversation card so the two panels can never look or move differently.
 
-    private var entranceScale: CGFloat {
+/// The drag surface behind the content, the hover grabber, the clip, the glass
+/// with its elevation, and the concentric radius for whatever sits inside —
+/// all at the layout's corner radius, so a card that changes shape turns its
+/// corners on the same spring as its size.
+struct HUDCardChrome: ViewModifier {
+    let layout: HUDLayout
+    let placement: HUDPanelPlacement
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
+            .background { HUDDragSurface(cornerRadius: layout.cornerRadius, placement: placement) }
+            .overlay(alignment: .top) {
+                // Not on a compact row: 4pt above the bars of a 40pt pill, a
+                // 2pt line reads as part of the meter rather than as a handle,
+                // and the whole capsule is a drag surface anyway.
+                if layout.compactRow == nil { HUDGrabber(isVisible: isHovering) }
+            }
+            // The chip row deliberately overhangs its slot by 20pt on each side
+            // so its fade band can start outside the content box (see
+            // `HUDActionChipRow`). Without this clip a scrolled-away chip would
+            // render faintly *outside* the card, floating on the desktop.
+            .clipShape(RoundedRectangle(cornerRadius: layout.cornerRadius, style: .continuous))
+            .glassCard(cornerRadius: layout.cornerRadius, reduceTransparency: reduceTransparency)
+            // Radius 22 published for the concentric law: every control inside
+            // the 12pt inset derives 22 − 12 = 10 with no literal anywhere. A
+            // compact row publishes its capsule's radius instead.
+            .environment(\.plateRadius, layout.cornerRadius)
+            .onHover { isHovering = $0 }
+    }
+}
+
+/// Entrance — scale 0.92→1, opacity 0→1, y +8→0 — on `hudEnter`, replayed
+/// whenever `presentationCount` changes: `onAppear` fires once per hosting
+/// view, and the hosting view outlives every session. Dismissal — scale
+/// 1→0.96, opacity → 0 — plays on whatever animation the panel sets
+/// `isDismissing` inside, `hudExit`. Under Reduce Motion the scale holds at 1
+/// and only the opacity moves.
+struct HUDPresentation: ViewModifier {
+    let presentationCount: Int
+    var isDismissing: Bool = false
+
+    @Environment(\.motion) private var motion
+    @State private var entered = false
+
+    func body(content: Content) -> some View {
+        content
+            .scaleEffect(scale)
+            .offset(y: entered ? 0 : 8)
+            .opacity(entered && !isDismissing ? 1 : 0)
+            .onAppear { playEntrance() }
+            .onChange(of: presentationCount) { playEntrance() }
+    }
+
+    private var scale: CGFloat {
         if motion.reduceMotion { return 1 }
+        if isDismissing { return 0.96 }
         return entered ? 1 : 0.92
     }
 
@@ -261,78 +356,89 @@ private struct HUDCard: View {
             withAnimation(motion.hudEnter) { entered = true }
         }
     }
+}
 
-    // MARK: Drag
+/// The card is a drag region. This layer sits BEHIND the content, so
+/// buttons, chips and the text view take their clicks first and only the
+/// chrome between them starts a drag. A double-click sends the card home.
+struct HUDDragSurface: View {
+    let cornerRadius: CGFloat
+    let placement: HUDPanelPlacement
 
-    /// The card is a drag region. This layer sits BEHIND the content, so
-    /// buttons, chips and the text view take their clicks first and only the
-    /// chrome between them starts a drag.
-    private var dragSurface: some View {
+    @State private var isDragging = false
+
+    var body: some View {
         Color.clear
-            .contentShape(RoundedRectangle(cornerRadius: Radius.hud, style: .continuous))
-            .onTapGesture(count: 2) { LiveHUDPanel.shared.resetPosition() }
+            .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .onTapGesture(count: 2) { placement.resetPosition() }
             .gesture(
                 DragGesture(minimumDistance: 2)
                     .onChanged { _ in
                         if !isDragging {
                             isDragging = true
-                            LiveHUDPanel.shared.dragBegan()
+                            placement.dragBegan()
                         }
-                        LiveHUDPanel.shared.dragChanged()
+                        placement.dragChanged()
                     }
                     .onEnded { _ in
                         isDragging = false
-                        LiveHUDPanel.shared.dragEnded()
+                        placement.dragEnded()
                     }
             )
     }
+}
 
-    /// 2 × 28pt grabber at the top centre, on hover only.
-    private var grabber: some View {
+/// 2 × 28pt grabber at the top centre, on hover only.
+struct HUDGrabber: View {
+    let isVisible: Bool
+
+    @Environment(\.motion) private var motion
+
+    var body: some View {
         Capsule()
-            .fill(Palette.inkFaint.opacity(isHoveringCard ? 0.25 : 0))
+            .fill(Palette.inkFaint.opacity(isVisible ? 0.25 : 0))
             .frame(width: 28, height: 2)
             .padding(.top, 5)
             .allowsHitTesting(false)
-            .animation(motion.hover, value: isHoveringCard)
+            .animation(motion.hover, value: isVisible)
     }
 }
 
-// MARK: - Card chrome
-
-private extension View {
+extension View {
     /// The HUD's glass, its hairline and its L3 elevation.
     ///
     /// On macOS 26 the card is wrapped in a `GlassEffectContainer` and carries a
     /// `glassEffectID`, so the system morphs the glass shape itself as the card
     /// resizes. Below 26 (and under Reduce Transparency) `glassSurface` falls
     /// back to `.regularMaterial` / an opaque fill, and the shape simply
-    /// animates with the frame.
+    /// animates with the frame — radius included, which is what turns a pill's
+    /// capsule ends into the review card's corners.
     @ViewBuilder
-    func glassCard(reduceTransparency: Bool) -> some View {
+    func glassCard(cornerRadius: CGFloat, reduceTransparency: Bool) -> some View {
         if #available(macOS 26, *) {
-            HUDGlassContainer { self }
-                .hudElevation(reduceTransparency: reduceTransparency)
+            HUDGlassContainer(cornerRadius: cornerRadius) { self }
+                .hudElevation(cornerRadius: cornerRadius, reduceTransparency: reduceTransparency)
         } else {
-            glassSurface(cornerRadius: Radius.hud, opaqueFill: Palette.canvas)
-                .hudElevation(reduceTransparency: reduceTransparency)
+            glassSurface(cornerRadius: cornerRadius, opaqueFill: Palette.canvas)
+                .hudElevation(cornerRadius: cornerRadius, reduceTransparency: reduceTransparency)
         }
     }
 
-    func hudElevation(reduceTransparency: Bool) -> some View {
-        modifier(HUDElevation(reduceTransparency: reduceTransparency))
+    func hudElevation(cornerRadius: CGFloat, reduceTransparency: Bool) -> some View {
+        modifier(HUDElevation(cornerRadius: cornerRadius, reduceTransparency: reduceTransparency))
     }
 }
 
 @available(macOS 26, *)
 private struct HUDGlassContainer<Content: View>: View {
+    let cornerRadius: CGFloat
     @ViewBuilder let content: Content
     @Namespace private var namespace
 
     var body: some View {
         GlassEffectContainer(spacing: 18) {
             content
-                .glassSurface(cornerRadius: Radius.hud, opaqueFill: Palette.canvas)
+                .glassSurface(cornerRadius: cornerRadius, opaqueFill: Palette.canvas)
                 .glassEffectID("hud", in: namespace)
                 .glassEffectTransition(.matchedGeometry)
         }
@@ -343,6 +449,7 @@ private struct HUDGlassContainer<Content: View>: View {
 /// under Reduce Transparency. Drawn as a masked background rather than a
 /// `.shadow` on the card, so it shadows the CARD and not the text on it.
 private struct HUDElevation: ViewModifier {
+    let cornerRadius: CGFloat
     let reduceTransparency: Bool
 
     func body(content: Content) -> some View {
@@ -350,7 +457,7 @@ private struct HUDElevation: ViewModifier {
     }
 
     private var shape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: Radius.hud, style: .continuous)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
     }
 
     private var shadow: some View {
@@ -530,13 +637,7 @@ private struct HUDControlRow: View {
             .matchedGeometryEffect(id: "hud.cancel", in: namespace)
     }
 
-    /// Cancel promises `esc` only where Esc really cancels. With "Esc cancels
-    /// dictation" off, recording, preparing and transcribing stop taking Esc,
-    /// so they must not advertise it. The review and failure cards keep
-    /// theirs: they are key, and Esc typed into them always works.
-    private var escCancelHint: String? {
-        HotkeyStore.shared.escapeCancelsDictation ? "esc" : nil
-    }
+    private var escCancelHint: String? { HUDKeyHints.escCancel }
 
     private func primaryButton(
         title: String,
@@ -558,14 +659,7 @@ private struct HUDControlRow: View {
             .accessibilityHidden(true)
     }
 
-    /// Toggle mode finishes on the same hotkey, so show it; hold mode finishes
-    /// on release, which has no key to surface, so the button stands alone.
-    private var finishHint: String? {
-        switch HotkeyStore.shared.mode {
-        case .toggle: return HotkeyStore.shared.binding.displayKeys.joined()
-        case .hold: return nil
-        }
-    }
+    private var finishHint: String? { HUDKeyHints.finish }
 
     private var transcribingDetail: String {
         guard let progress = state.transcribingProgress else { return transcribingElapsed }
@@ -590,11 +684,8 @@ private struct HUDControlRow: View {
             .contentTransition(.numericText())
     }
 
-    /// Blank until the registry reports its first sample — an honest "we don't
-    /// know yet" beats a 0% that looks like a stalled download.
     private var preparingDetail: String {
-        guard let fraction = state.preparingFraction else { return "" }
-        return "\(Int((fraction * 100).rounded()))%"
+        HUDPreparingBlock.percent(state.preparingFraction)
     }
 }
 
@@ -627,17 +718,28 @@ private struct HUDPreparingBlock: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
+    private var title: String {
+        Self.title(modelName: state.preparingModelName, message: state.preparingMessage, phase: phase)
+    }
+
     /// The phase message is the engine's own text, so the verb is read back off
     /// it rather than tracked separately — a compile that follows a download
-    /// must not keep claiming to be downloading.
-    private var title: String {
-        let name = state.preparingModelName
+    /// must not keep claiming to be downloading. Shared with the compact row's
+    /// tooltip, which says the same thing without the room for this block.
+    static func title(modelName name: String, message: String, phase: String? = nil) -> String {
         guard !name.isEmpty else { return "Preparing model" }
         if let phase { return "\(phase) \(name)" }
-        if state.preparingMessage.localizedCaseInsensitiveContains("download") {
+        if message.localizedCaseInsensitiveContains("download") {
             return "Downloading \(name)"
         }
         return "Loading \(name)"
+    }
+
+    /// Blank until the registry reports its first sample — an honest "we don't
+    /// know yet" beats a 0% that looks like a stalled download.
+    static func percent(_ fraction: Double?) -> String {
+        guard let fraction else { return "" }
+        return "\(Int((fraction * 100).rounded()))%"
     }
 }
 
@@ -690,9 +792,22 @@ private struct HUDProgressBar: View {
     }
 }
 
-/// SF Mono 13/medium, digits rolling rather than popping.
-private struct HUDClock: View {
-    let seconds: Double
+/// SF Mono 13/medium, digits rolling rather than popping. Shared with the
+/// compact rows, the conversation card and the Settings previews, so every
+/// card keeps one clock.
+struct HUDClock: View {
+    let text: String
+
+    /// A dictation take: minutes and seconds, however long it runs.
+    init(seconds: Double) {
+        text = Self.text(seconds: seconds)
+    }
+
+    /// Already formatted — a conversation's `formattedClock`, which grows an
+    /// hours field past the hour.
+    init(text: String) {
+        self.text = text
+    }
 
     var body: some View {
         Text(text)
@@ -701,7 +816,7 @@ private struct HUDClock: View {
             .contentTransition(.numericText())
     }
 
-    private var text: String {
+    static func text(seconds: Double) -> String {
         let total = Int(seconds)
         return String(format: "%d:%02d", total / 60, total % 60)
     }

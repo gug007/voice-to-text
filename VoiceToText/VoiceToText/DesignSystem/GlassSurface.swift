@@ -8,8 +8,10 @@ import SwiftUI
 //
 //   1. The window toolbar — system glass. No call site here, and none wanted:
 //      the toolbar gets its glass from `.toolbar { }` itself.
-//   2. The dictation HUD card — `UI/LiveHUDView.swift` (the card and its
-//      Reduce-Transparency sibling are one surface presented two ways).
+//   2. The HUD cards — `glassCard` in `UI/LiveHUDView.swift`, worn by both the
+//      dictation card and the conversation card through `HUDCardChrome` (one
+//      chrome, so one call site; the card and its Reduce-Transparency sibling
+//      are one surface presented two ways).
 //   3. The undo toast — `Settings/UndoDeletionToast.swift`.
 //   4. Popovers — `Settings/MinimalDropdown.swift` (`DropdownPopup`, which is
 //      both the dropdown's own popup AND the RecordingRow regenerate menu) and
@@ -107,9 +109,13 @@ struct GlassButtonStyle: ButtonStyle {
 
     var role: Role = .secondary
     var radius: CGFloat = 10
+    /// Icon-only: the label is centred in a square this size instead of being
+    /// padded, so `radius` at half the side makes a circle. The Small HUD's
+    /// Cancel and Finish are the users; nil pads like every other control.
+    var iconSide: CGFloat?
 
     func makeBody(configuration: Configuration) -> some View {
-        GlassButtonBody(configuration: configuration, role: role, radius: radius)
+        GlassButtonBody(configuration: configuration, role: role, radius: radius, iconSide: iconSide)
     }
 }
 
@@ -117,6 +123,7 @@ private struct GlassButtonBody: View {
     let configuration: ButtonStyleConfiguration
     let role: GlassButtonStyle.Role
     let radius: CGFloat
+    let iconSide: CGFloat?
 
     @Environment(\.isFocused) private var isFocused
     @Environment(\.isEnabled) private var isEnabled
@@ -131,8 +138,9 @@ private struct GlassButtonBody: View {
         configuration.label
             .typo(.headline)
             .foregroundStyle(role == .accent ? Palette.accent : Palette.ink)
-            .padding(.horizontal, Space.s5)
-            .padding(.vertical, Space.s3)
+            .padding(.horizontal, iconSide == nil ? Space.s5 : 0)
+            .padding(.vertical, iconSide == nil ? Space.s3 : 0)
+            .frame(width: iconSide, height: iconSide)
             .background(fill, in: shape)
             .overlay { shape.strokeBorder(stroke, lineWidth: 0.5) }
             // Visible 2pt accent focus ring at 60%, offset 2pt — keyboard users

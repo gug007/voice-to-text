@@ -198,7 +198,7 @@ struct SettingHeader<Control: View>: View {
 /// metric changed there changes here too. Only the microphone is swapped for a
 /// fixed phrase.
 ///
-/// Like `ReviewHUDPreview` it never goes near the HUD panels: each live card
+/// It never goes near the HUD panels: each live card
 /// is one panel bound to its own state, and its shadow gutter, drag surface and
 /// click guard have no business in a settings pane. Nor is the card glass —
 /// glass is legal on four surfaces (`GlassSurface.swift`) — so it is an opaque

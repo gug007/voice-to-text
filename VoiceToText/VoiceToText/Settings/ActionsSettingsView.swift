@@ -277,7 +277,7 @@ private struct ActionEditorSheet: View {
                     ))
                     dismiss()
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(FilledButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(trimmedName.isEmpty || trimmedPrompt.isEmpty)
             }

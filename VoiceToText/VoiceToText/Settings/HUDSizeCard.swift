@@ -14,7 +14,7 @@ struct HUDSizeCard: View {
     var body: some View {
         Plate {
             VStack(alignment: .leading, spacing: Space.s6) {
-                HUDSettingHeader(title: "Recording HUD", subtitle: subtitle) {
+                SettingHeader(title: "Recording HUD", subtitle: subtitle) {
                     Picker("Recording HUD", selection: $size) {
                         ForEach(HUDSize.allCases) { size in
                             Text(size.title).tag(size)
@@ -93,52 +93,73 @@ private struct DictationRecordingPreview: View {
 
 // MARK: - Conversations
 
-/// Off / Small / Medium / Large for the conversation card, in the
-/// Conversations pane. Backed by the `conversation.hud` UserDefault, which
-/// `ConversationHUDPanel` watches: unlike dictation's, a change here lands at
-/// once — on a recording already running too, which morphs or goes away.
-struct ConversationHUDSettingCard: View {
+/// Off / Small / Medium / Large for the conversation card. A section, not a
+/// card: it sits under the model row in the Conversations pane's Recording
+/// options plate, which owns the surface and the disclosure. Backed by the
+/// `conversation.hud` UserDefault, which `ConversationHUDPanel` watches: unlike
+/// dictation's, a change here lands at once — on a recording already running
+/// too, which morphs or goes away.
+struct ConversationHUDSettingSection: View {
     @AppStorage(ConversationHUDSetting.defaultsKey)
     private var setting: ConversationHUDSetting = ConversationHUDSetting.defaultValue
     @Environment(\.motion) private var motion
+    @Environment(\.increaseContrast) private var increaseContrast
 
     var body: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s6) {
-                HUDSettingHeader(
-                    title: "Recording HUD",
-                    subtitle: "Floats over every app while a conversation records. Off keeps it to the menu bar."
-                ) {
-                    Picker("Recording HUD", selection: $setting) {
-                        ForEach(ConversationHUDSetting.allCases) { setting in
-                            Text(setting.title).tag(setting)
-                        }
+        VStack(alignment: .leading, spacing: Space.s5) {
+            SettingHeader(
+                title: "Recording HUD",
+                subtitle: "Floats over every app while a conversation records."
+            ) {
+                Picker("Recording HUD", selection: $setting) {
+                    ForEach(ConversationHUDSetting.allCases) { setting in
+                        Text(setting.title).tag(setting)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    // Four segments: room for "Medium" in each, and still a
-                    // column for the subtitle at the narrowest window.
-                    .frame(width: 280)
                 }
-
-                if let size = setting.size {
-                    HUDPreviewWell(
-                        layout: HUDLayout(recordingAt: size),
-                        accessibilityLabel: "Preview of the \(size.title.lowercased()) conversation HUD"
-                    ) { layout in
-                        ConversationHUDContent(
-                            layout: layout,
-                            isTranscribing: false,
-                            samples: HUDPreviewSample.levels,
-                            clock: Self.elapsed.formattedClock,
-                            stopHint: HUDKeyHints.stopConversation
-                        )
-                    }
-                    .transition(.opacity)
-                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                // Four segments: room for "Medium" in each, and still a
+                // column for the subtitle at the narrowest window.
+                .frame(width: 280)
             }
+
+            if let size = setting.size {
+                HUDPreviewWell(
+                    layout: HUDLayout(recordingAt: size),
+                    accessibilityLabel: "Preview of the \(size.title.lowercased()) conversation HUD"
+                ) { layout in
+                    ConversationHUDContent(
+                        layout: layout,
+                        isTranscribing: false,
+                        samples: HUDPreviewSample.levels,
+                        clock: Self.elapsed.formattedClock,
+                        stopHint: HUDKeyHints.stopConversation
+                    )
+                }
+                .transition(.opacity)
+            }
+
+            // Says what the chosen size holds — and, for Off, stands in for
+            // the preview, so the section never ends on an empty well.
+            Text(caption)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                .fixedSize(horizontal: false, vertical: true)
         }
         .animation(motion.layout, value: setting)
+    }
+
+    private var caption: String {
+        switch setting {
+        case .off:
+            return "No floating card. A recording shows in the menu bar instead."
+        case .small:
+            return "A pill with the meter, clock and Stop. Hover Stop to see its shortcut."
+        case .medium:
+            return "One slim row with Stop & Transcribe spelled out."
+        case .large:
+            return "The full card: the wide meter over the clock and Stop & Transcribe."
+        }
     }
 
     /// "24:18" — conversations run long, and the preview should look like one.
@@ -147,9 +168,10 @@ struct ConversationHUDSettingCard: View {
 
 // MARK: - Shared
 
-/// Title and subtitle on the left, the picker on the right — the composition
-/// of the General pane's Appearance card.
-private struct HUDSettingHeader<Control: View>: View {
+/// Title and subtitle on the left, the control on the right — the composition
+/// of the General pane's Appearance card. Shared with the Conversations pane's
+/// Recording options rows, so the model row and the HUD row read as one set.
+struct SettingHeader<Control: View>: View {
     let title: String
     let subtitle: String
     @ViewBuilder let control: Control

@@ -33,8 +33,7 @@ struct PermissionGateView: View {
                         .frame(minWidth: 200)
                         .padding(.vertical, 2)
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
+                .buttonStyle(FilledButtonStyle())
 
                 Button("Already allowed? Relaunch", action: relaunch)
                     .buttonStyle(.plain)

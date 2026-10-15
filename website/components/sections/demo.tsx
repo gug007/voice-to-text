@@ -26,8 +26,6 @@ export function Demo() {
             <span className="dot dot--r" />
             <span className="dot dot--y" />
             <span className="dot dot--g" />
-            <span className="win__title">Screen recording, no audio</span>
-            <span className="win__pad" />
           </div>
           <video
             style={VIDEO}

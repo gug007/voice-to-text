@@ -883,14 +883,15 @@ private struct ResumeTranscript: View {
         .frame(maxWidth: .infinity, alignment: .topLeading)
     }
 
-    /// Prior transcript in `ink`; the in-progress dictation streams in `accent`
-    /// at the caret so it's clear where the new words will land. Buffered
-    /// engines emit no partial, so the prior text simply stays put.
+    /// Prior transcript in `ink`; the in-progress dictation streams in
+    /// `inkMuted` at the caret so it's clear where the new words will land and
+    /// that they are not final yet. Buffered engines emit no partial, so the
+    /// prior text simply stays put.
     private var composed: Text {
         var result = Text(state.recordingPrefix).foregroundColor(Palette.ink)
         if !state.partialTranscript.isEmpty {
             if needsLeadingSpace { result = result + Text(" ") }
-            result = result + Text(state.partialTranscript).foregroundColor(Palette.accent)
+            result = result + Text(state.partialTranscript).foregroundColor(Palette.inkMuted)
         }
         result = result + Text(state.recordingSuffix).foregroundColor(Palette.ink)
         return result

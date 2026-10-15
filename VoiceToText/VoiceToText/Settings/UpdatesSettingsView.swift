@@ -200,18 +200,14 @@ struct UpdatesPane: View {
             Button("Install Update") {
                 Task { await updater.installUpdate() }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .tint(Palette.accent)
+            .buttonStyle(FilledButtonStyle())
             .disabled(conversationBusy)
 
         case .installed:
             Button("Quit VoiceToText") {
                 NSApp.terminate(nil)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .tint(Palette.accent)
+            .buttonStyle(FilledButtonStyle())
 
         default:
             Button("Check Now") {

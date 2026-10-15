@@ -20,6 +20,12 @@ struct MeetingsPane: View {
     /// True while a drag from Finder is hovering over the pane. Only turns into a
     /// visible drop affordance when the controller is idle (see `isDropActive`).
     @State private var isDropTargeted = false
+    /// Whether the Recording options plate is open. Remembered: both settings
+    /// are set once and left, so the plate stays folded for whoever folded it.
+    @AppStorage("conversation.optionsExpanded") private var optionsExpanded = false
+    /// Read only for the folded plate's summary; the HUD section owns the edit.
+    @AppStorage(ConversationHUDSetting.defaultsKey)
+    private var hudSetting: ConversationHUDSetting = ConversationHUDSetting.defaultValue
     @Environment(\.motion) private var motion
 
     /// Types the drop is registered for. A Finder drag arrives as a plain
@@ -63,9 +69,7 @@ struct MeetingsPane: View {
 
             stateCard
 
-            transcriptionModelCard
-
-            ConversationHUDSettingCard()
+            recordingOptionsCard
 
             if controller.state == .idle, let summary = controller.lastSavedSummary {
                 savedBanner(summary)
@@ -199,33 +203,104 @@ struct MeetingsPane: View {
         }
     }
 
-    // MARK: - Transcription model selector
+    // MARK: - Recording options
+
+    /// The transcription model and the Recording HUD in one plate that folds
+    /// to a single summary row. Both are set once and left alone, so folded
+    /// they cost one line and the recordings list sits right under the
+    /// recorder; the summary still says what a recording will use.
+    private var recordingOptionsCard: some View {
+        Plate {
+            VStack(alignment: .leading, spacing: 0) {
+                recordingOptionsHeader
+
+                if optionsExpanded {
+                    VStack(alignment: .leading, spacing: Space.s6) {
+                        PlateDivider(leadingInset: 0)
+                        if !controller.isBusy {
+                            transcriptionModelRow
+                            PlateDivider(leadingInset: 0)
+                        }
+                        ConversationHUDSettingSection()
+                    }
+                    .padding(.top, Space.s5)
+                    .transition(.opacity)
+                }
+            }
+        }
+        .animation(motion.layout, value: optionsExpanded)
+        .animation(motion.layout, value: controller.isBusy)
+    }
+
+    /// The whole row is the disclosure button, like a Finder sidebar header —
+    /// a 24pt chevron alone is too small a target for the only way in.
+    private var recordingOptionsHeader: some View {
+        Button {
+            optionsExpanded.toggle()
+        } label: {
+            HStack(spacing: Space.s4) {
+                Image(systemName: "slider.horizontal.3")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(Palette.inkMuted)
+                    .accessibilityHidden(true)
+                Text("Recording options")
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
+                    .fixedSize()
+                Spacer(minLength: Space.s5)
+                Text(recordingOptionsSummary)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Palette.inkFaint)
+                    .rotationEffect(.degrees(optionsExpanded ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: Space.s7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(optionsExpanded ? "Hide recording options" : "Show recording options")
+        .accessibilityLabel("Recording options")
+        .accessibilityValue(recordingOptionsSummary)
+        .accessibilityHint(optionsExpanded ? "Hides the options" : "Shows the options")
+    }
+
+    /// "GPT Transcribe · Small HUD" — what the next recording will use.
+    private var recordingOptionsSummary: String {
+        let model = registry.conversationModel?.sectionedDisplayName ?? "No model"
+        let hud = hudSetting == .off ? "HUD off" : "\(hudSetting.title) HUD"
+        return "\(model) · \(hud)"
+    }
 
     /// Lets the user pick a transcription model for conversations independently
     /// of the dictation model. Only shown while idle — it has no bearing on an
     /// in-flight recording/transcription. Streaming models are excluded: they're
     /// built for live mic input, not archived-file transcription.
-    @ViewBuilder
-    private var transcriptionModelCard: some View {
-        if !controller.isBusy {
-            VStack(alignment: .leading, spacing: 0) {
-                PlateDivider(leadingInset: 0)
-                HStack(spacing: Space.s5) {
-                    Text("Transcription model")
-                        .typo(.body)
-                        .foregroundStyle(Palette.ink)
-                    Spacer(minLength: Space.s5)
-                    MinimalDropdown(
-                        selection: conversationModelBinding,
-                        sections: conversationModelSections,
-                        popupWidth: 300
-                    )
-                }
-                .padding(.horizontal, Space.s3)
-                .padding(.vertical, Space.s5)
-                PlateDivider(leadingInset: 0)
-            }
+    private var transcriptionModelRow: some View {
+        SettingHeader(title: "Transcription model", subtitle: conversationModelLocation) {
+            MinimalDropdown(
+                selection: conversationModelBinding,
+                sections: conversationModelSections,
+                popupWidth: 300
+            )
         }
+    }
+
+    /// Where the audio goes, for the model a conversation will actually use —
+    /// a cloud model uploads an hour of someone's meeting, which the model's
+    /// name alone doesn't say.
+    private var conversationModelLocation: String {
+        guard let model = registry.conversationModel else {
+            return "Used for recordings and uploaded files."
+        }
+        if let provider = model.backend.cloudProvider {
+            return "Cloud · \(provider.displayName). The audio is uploaded to transcribe it."
+        }
+        return "On this Mac. Recordings are transcribed locally."
     }
 
     /// The catalog minus streaming/realtime engines, which don't apply to

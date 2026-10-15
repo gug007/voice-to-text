@@ -1227,10 +1227,10 @@ struct PlayTile: View {
         Button(action: action) {
             ZStack {
                 Circle()
-                    .fill(isPlaying ? Palette.accent : Palette.ink.opacity(0.06))
+                    .fill(isPlaying ? Palette.action : Palette.ink.opacity(0.06))
                 Image(systemName: isPlaying ? "stop.fill" : "play.fill")
                     .font(Typo.micro)
-                    .foregroundStyle(isPlaying ? Color.white : Palette.inkMuted)
+                    .foregroundStyle(isPlaying ? Palette.onAction : Palette.inkMuted)
             }
             .frame(width: 28, height: 28)
             .contentShape(Circle())

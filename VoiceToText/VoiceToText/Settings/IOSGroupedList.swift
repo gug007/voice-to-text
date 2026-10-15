@@ -183,7 +183,11 @@ struct CapsuleActionButton: View {
                 }
                 Text(title)
                     .typo(.headline)
+                    .lineLimit(1)
             }
+            // A capsule never wraps: at the window's minimum width the
+            // Conversations row used to fold "Start Recording" onto two lines.
+            .fixedSize()
             .padding(.horizontal, Space.s6)
             .padding(.vertical, Space.s4)
             .foregroundStyle(style == .primary ? AnyShapeStyle(Palette.onAction) : AnyShapeStyle(tint))

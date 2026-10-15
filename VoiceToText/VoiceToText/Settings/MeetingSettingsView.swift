@@ -551,6 +551,7 @@ struct MeetingsPane: View {
             }
             .buttonStyle(.plain)
             .typo(.caption)
+            .multilineTextAlignment(.trailing)
             .foregroundStyle(Palette.accent)
         }
     }

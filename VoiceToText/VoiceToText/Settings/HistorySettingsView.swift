@@ -155,7 +155,7 @@ struct HistoryPane: View {
                     .typo(.headline)
                     .foregroundStyle(Palette.ink)
                 Spacer()
-                Toggle("", isOn: $store.isEnabled)
+                Toggle("Save recordings", isOn: $store.isEnabled)
                     .labelsHidden()
                     .toggleStyle(.switch)
             }

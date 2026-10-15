@@ -220,7 +220,7 @@ nonisolated enum DictationTakePolicy {
     /// the set is a guess from the Mac's settings, sure only of that one
     /// language: then a model here that knows it is offered before a
     /// download — the take is most likely in it, and the rest of the set
-    /// may be a keyboard kept for the odd message, not worth a 632 MB wait.
+    /// may be a keyboard kept for the odd message, not worth a 1.6 GB wait.
     /// `canDownload` is false offline, where offering a download would only
     /// fail again.
     static func localFallback(

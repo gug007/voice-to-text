@@ -58,7 +58,7 @@ struct SettingsToggleRow: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: Space.s6)
-            Toggle("", isOn: $isOn)
+            Toggle(title, isOn: $isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .disabled(isLocked)

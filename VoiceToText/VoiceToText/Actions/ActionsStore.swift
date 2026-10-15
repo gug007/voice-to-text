@@ -92,6 +92,15 @@ final class ActionsStore {
         persist()
     }
 
+    /// Puts a just-removed action back at its old position — the Actions
+    /// pane's Undo. Deletion is otherwise final: a removed template is never
+    /// reseeded, and a custom prompt exists nowhere else.
+    func restore(_ action: DictationAction, at index: Int) {
+        guard !actions.contains(where: { $0.id == action.id }) else { return }
+        actions.insert(action, at: min(index, actions.count))
+        persist()
+    }
+
     private func persist() {
         guard let data = try? JSONEncoder().encode(actions) else { return }
         UserDefaults.standard.set(data, forKey: Keys.list)

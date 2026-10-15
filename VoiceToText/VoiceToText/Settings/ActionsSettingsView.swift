@@ -10,7 +10,14 @@ struct ActionsPane: View {
 
     @State private var editorDraft: ActionEditorDraft?
     @State private var isShowingKeyEntry = false
+    @State private var recentlyDeleted: DeletedAction?
     @Environment(\.motion) private var motion
+
+    /// The last action deleted, held for the Undo toast's grace window.
+    private struct DeletedAction {
+        let action: DictationAction
+        let index: Int
+    }
 
     var body: some View {
         PaneScaffold {
@@ -32,6 +39,13 @@ struct ActionsPane: View {
                 .foregroundStyle(Palette.inkFaint)
         }
         .animation(motion.layout, value: keyStore.hasKey)
+        .overlay { undoBar }
+        .task(id: recentlyDeleted?.action.id) {
+            guard recentlyDeleted != nil else { return }
+            try? await Task.sleep(for: .seconds(RecordingHistoryStore.undoGraceSeconds))
+            guard !Task.isCancelled else { return }
+            recentlyDeleted = nil
+        }
         .sheet(item: $editorDraft) { draft in
             ActionEditorSheet(draft: draft) { saved in
                 if store.actions.contains(where: { $0.id == saved.id }) {
@@ -41,6 +55,37 @@ struct ActionsPane: View {
                 }
             }
         }
+    }
+
+    // MARK: - Undo
+
+    /// The same toast History shows after a delete, so a slip on the trash
+    /// icon doesn't silently cost a custom prompt.
+    private var undoBar: some View {
+        ZStack {
+            if let deleted = recentlyDeleted {
+                UndoDeletionToast(title: "Action deleted") {
+                    store.restore(deleted.action, at: deleted.index)
+                    recentlyDeleted = nil
+                }
+                .padding(.horizontal, Space.s7)
+                .padding(.bottom, Space.s7)
+                .transition(
+                    motion.reduceMotion
+                    ? .opacity
+                    : .move(edge: .bottom).combined(with: .opacity)
+                )
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .allowsHitTesting(recentlyDeleted != nil)
+        .animation(motion.hudEnter, value: recentlyDeleted?.action.id)
+    }
+
+    private func delete(_ action: DictationAction) {
+        guard let index = store.actions.firstIndex(where: { $0.id == action.id }) else { return }
+        store.remove(id: action.id)
+        recentlyDeleted = DeletedAction(action: action, index: index)
     }
 
     // MARK: - Missing key banner
@@ -140,19 +185,25 @@ struct ActionsPane: View {
                     Image(systemName: "pencil")
                         .font(Typo.body)
                         .foregroundStyle(Palette.inkMuted)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Edit action")
+                .accessibilityLabel("Edit \(action.name)")
                 Button {
-                    store.remove(id: action.id)
+                    delete(action)
                 } label: {
                     Image(systemName: "trash")
                         .font(Typo.captionMedium)
                         .foregroundStyle(Palette.inkMuted)
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help("Delete action")
-                Toggle("", isOn: enabledBinding(for: action))
+                .accessibilityLabel("Delete \(action.name)")
+                Toggle(action.name, isOn: enabledBinding(for: action))
                     .labelsHidden()
                     .toggleStyle(.switch)
                     .controlSize(.small)

@@ -870,6 +870,8 @@ private struct ResumeTranscript: View {
                     composed
                         .typo(.transcript)
                         .multilineTextAlignment(.leading)
+                        .padding(.horizontal, ReviewTextEditor.lineFragmentPadding)
+                        .padding(.vertical, ReviewTextEditor.verticalTextInset)
                         .frame(maxWidth: .infinity, alignment: .topLeading)
                     Color.clear.frame(height: 1).id(Self.bottomAnchor)
                 }
@@ -953,8 +955,14 @@ private struct ReviewTextEditor: NSViewRepresentable {
     @Binding var text: String
     let state: LiveHUDState
 
+    /// Where the editor's text sits inside its frame. `ResumeTranscript` pads
+    /// by the same amounts, so the text doesn't jump when the card switches
+    /// between review and a resumed take.
+    static let verticalTextInset: CGFloat = 12
+    static let lineFragmentPadding: CGFloat = 5
+
     func makeNSView(context: Context) -> NSScrollView {
-        let scrollView = NSTextView.scrollableTextView()
+        let scrollView = FocusOnAttachTextView.scrollableTextView()
         Self.configureScrollView(scrollView)
         guard let textView = scrollView.documentView as? NSTextView else {
             return scrollView
@@ -963,7 +971,6 @@ private struct ReviewTextEditor: NSViewRepresentable {
         textView.string = text
         textView.setSelectedRange(clampedRange(state.selectedRange, in: text))
         context.coordinator.lastSyncedText = text
-        focusOnNextRunLoop(textView)
         return scrollView
     }
 
@@ -998,9 +1005,15 @@ private struct ReviewTextEditor: NSViewRepresentable {
         return NSRange(location: location, length: extent)
     }
 
-    private func focusOnNextRunLoop(_ textView: NSTextView) {
-        DispatchQueue.main.async {
-            textView.window?.makeFirstResponder(textView)
+    /// Takes first responder the moment it lands in the panel. SwiftUI calls
+    /// `makeNSView` before inserting the view, and the insertion can trail the
+    /// next main-queue turn, so focusing "on the next run loop" found no window
+    /// and left the panel itself as first responder: Return, typing and
+    /// Shift+Return went nowhere until the user clicked into the text.
+    private final class FocusOnAttachTextView: NSTextView {
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            window?.makeFirstResponder(self)
         }
     }
 
@@ -1010,7 +1023,8 @@ private struct ReviewTextEditor: NSViewRepresentable {
         // white-on-black. This is the largest body text in the app.
         textView.font = .systemFont(ofSize: 15)
         // Keeps the first and last lines out of the scroll-edge gradient.
-        textView.textContainerInset = NSSize(width: 0, height: 12)
+        textView.textContainerInset = NSSize(width: 0, height: verticalTextInset)
+        textView.textContainer?.lineFragmentPadding = lineFragmentPadding
         textView.textColor = Palette.inkNS
         textView.insertionPointColor = Palette.accentNS
         textView.selectedTextAttributes = [

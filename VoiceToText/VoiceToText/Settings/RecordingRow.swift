@@ -797,6 +797,7 @@ struct RecordingRow: View {
             .buttonStyle(.plain)
             .disabled(regenerator.isRunning)
             .help(entry.transcriptIsPlaceholder ? "Transcribe with another model" : "Regenerate transcript with another model")
+            .accessibilityLabel(entry.transcriptIsPlaceholder ? "Transcribe with another model" : "Regenerate transcript with another model")
             .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
                 // No checkmark on a row without a transcript: its model is the
                 // one that failed, not the one the text came from.
@@ -884,6 +885,7 @@ struct RecordingRow: View {
         }
         .buttonStyle(.plain)
         .help("Summarize, list action items, or format with your own instruction. \(Self.sendsTranscript)")
+        .accessibilityLabel("AI insights")
         .popover(isPresented: $showInsightMenu, arrowEdge: .bottom) {
             DropdownPopup(
                 sections: insightMenuSections,
@@ -991,6 +993,7 @@ struct RecordingRow: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -1194,6 +1197,7 @@ struct TranscriptBlockView: View {
         }
         .buttonStyle(.plain)
         .help(help)
+        .accessibilityLabel(help)
     }
 }
 

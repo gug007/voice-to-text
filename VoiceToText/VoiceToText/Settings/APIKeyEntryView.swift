@@ -212,9 +212,7 @@ struct APIKeyEntryView: View {
                     Text("Connect")
                 }
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.regular)
-            .tint(Palette.accent)
+            .buttonStyle(FilledButtonStyle())
             .disabled(trimmedDraft.isEmpty || isBusy)
 
             if showsManagementControls && config.hasKey() {

@@ -562,8 +562,8 @@ struct GeneralPane: View {
     }
 
     /// The hero block: the one thing this pane is for. A 40pt tinted glyph, the
-    /// live state as a title, and the record affordance — the only control in
-    /// the window allowed to be `.borderedProminent`.
+    /// live state as a title, and the record affordance — the only filled
+    /// control in the pane.
     @ViewBuilder
     private var dictationCard: some View {
         Plate {
@@ -593,11 +593,9 @@ struct GeneralPane: View {
                     )
                     .contentTransition(.symbolEffect(.replace.downUp))
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                // Flat tints only. The brand gradient never sits behind a label:
+                // Flat fills only. The brand gradient never sits behind a label:
                 // white on #6194FF is 2.92:1, below even the large-text floor.
-                .tint(heroTint)
+                .buttonStyle(FilledButtonStyle(fill: heroTint))
             }
         }
     }

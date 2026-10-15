@@ -182,68 +182,72 @@ nonisolated enum Palette {
     // MARK: Surfaces
 
     /// Detail-pane background, permission gate, HUD opaque fallback base.
-    static let canvas = Palette.dynamic("canvas", light: 0xF4F4F7, dark: 0x1E1E20)
+    static let canvas = Palette.dynamic("canvas", light: 0xF6F6F7, dark: 0x18181A)
     /// The sidebar column — deliberately darker than `canvas` in both modes.
-    static let sidebar = Palette.dynamic("sidebar", light: 0xE4E4E9, dark: 0x121214)
+    static let sidebar = Palette.dynamic("sidebar", light: 0xEDEDEF, dark: 0x111113)
     /// The one content-surface fill. Opaque: content is never glass.
-    static let plate = Palette.dynamic("plate", light: 0xFFFFFF, dark: 0x2A2A2D)
+    static let plate = Palette.dynamic("plate", light: 0xFFFFFF, dark: 0x232326)
     /// `plate` lifted for hover on an interactive plate.
-    static let plateHover = Palette.dynamic("plateHover", light: 0xFBFBFD, dark: 0x313135)
+    static let plateHover = Palette.dynamic("plateHover", light: 0xF8F8F9, dark: 0x2B2B2F)
     /// `plateHover` with the delta doubled, for Increase Contrast.
-    static let plateHoverContrast = Palette.dynamic("plateHoverContrast", light: 0xF7F7FB, dark: 0x383840)
+    static let plateHoverContrast = Palette.dynamic("plateHoverContrast", light: 0xF1F1F3, dark: 0x333338)
     /// Fill for a `.well` nested inside a plate.
     static let wellFill = Palette.dynamic(
         "wellFill",
-        light: 0x0D0D10, lightAlpha: 0.045,
+        light: 0x111113, lightAlpha: 0.045,
         dark: 0xFFFFFF, darkAlpha: 0.055
     )
 
     // MARK: Ink
 
-    /// Primary text, active model name, record label. 19.9:1 on plate light.
+    /// Primary text, active model name, record label. 18.9:1 on plate light.
     static let ink = Color(nsColor: inkNS)
     /// The AppKit sibling of ``ink``, for the views that are `NSView`s rather
     /// than SwiftUI — today that is only the HUD's review `NSTextView`.
     /// Derived from the same pair, so the two can never drift.
-    static let inkNS = Palette.nsDynamic("ink", light: 0x0D0D10, dark: 0xF2F2F5)
-    /// Secondary text — subtitles, body copy. 7.4:1 light / 5.9:1 dark.
-    static let inkMuted = Palette.dynamic("inkMuted", light: 0x55555E, dark: 0xA6A6B0)
+    static let inkNS = Palette.nsDynamic("ink", light: 0x111113, dark: 0xF5F5F7)
+    /// Secondary text — subtitles, body copy. 7.3:1 light / 6.7:1 dark.
+    static let inkMuted = Palette.dynamic("inkMuted", light: 0x56565E, dark: 0xA9A9B1)
     /// Tertiary metadata — meta lines, gauge values, timestamps, key hints.
-    /// 5.2:1 light / 4.8:1 dark, so 10–11pt decision-critical text still clears AA.
+    /// 5.2:1 light / 4.9:1 dark, so 10–11pt decision-critical text still clears AA.
     /// Under Increase Contrast this collapses into `inkMuted`; use
     /// ``inkFaint(increaseContrast:)`` wherever the environment is available.
-    static let inkFaint = Palette.dynamic("inkFaint", light: 0x6C6C77, dark: 0x94949F)
+    static let inkFaint = Palette.dynamic("inkFaint", light: 0x6C6C74, dark: 0x8F8F98)
 
     // MARK: Signals
 
-    /// The one tint that carries meaning. Never decorative.
+    /// Selection, links and active states. Ink itself: the interface is
+    /// monochrome and carries state with weight and fill, so the only colour
+    /// in the window is the app mark and the status signals below. Anything
+    /// drawn *on* an accent fill takes ``onAction``.
     static let accent = Color(nsColor: accentNS)
     /// The AppKit sibling of ``accent`` — the review editor's insertion point
     /// and selection tint.
-    static let accentNS = Palette.nsDynamic("accent", light: 0x4B5BEF, dark: 0x8493FF)
+    static let accentNS = Palette.nsDynamic("accent", light: 0x111113, dark: 0xF5F5F7)
     /// Recording only — pulsing dot, Stop tint, menu-bar tint, meter clip cue.
-    /// Never used for destructive actions.
+    /// Never used for destructive actions. 5.2:1 on plate in both modes.
     static let signalLive = Color(nsColor: signalLiveNS)
     /// The AppKit sibling of ``signalLive`` — the menu-bar glyph tint and the
     /// elapsed row in the status-item menu. Same pair, so the two can't drift.
-    static let signalLiveNS = Palette.nsDynamic("signalLive", light: 0xD22C33, dark: 0xFF6B63)
+    static let signalLiveNS = Palette.nsDynamic("signalLive", light: 0xD02B32, dark: 0xFF5F57)
     /// Granted / Installed / Connected / Up to date / copy-confirmed.
-    static let signalReady = Palette.dynamic("signalReady", light: 0x12794B, dark: 0x45D08A)
+    static let signalReady = Palette.dynamic("signalReady", light: 0x13774A, dark: 0x4CD38F)
     /// Needs attention — missing permission or key, update error, failed run.
     static let signalWarn = Color(nsColor: signalWarnNS)
     /// The AppKit sibling of ``signalWarn`` — the menu-bar error glyph.
-    static let signalWarnNS = Palette.nsDynamic("signalWarn", light: 0x9A5A00, dark: 0xFFB44A)
+    static let signalWarnNS = Palette.nsDynamic("signalWarn", light: 0x995800, dark: 0xFFB547)
 
     // MARK: Action
 
-    /// The primary capsule on the Conversations card — Start Recording and
-    /// Stop & Transcribe. Ink rather than `accent`: the record button is the
-    /// one solid object on its card, and colour stays with the app mark and the
-    /// status signals. 12.8:1 against the dark plate, 19.4:1 against the light.
-    static let action = Palette.dynamic("action", light: 0x0D0D10, dark: 0xF2F2F5)
-    /// The label that sits on ``action``: white on the light fill, ink on the
-    /// dark one. 19.4:1 light / 17.4:1 dark.
-    static let onAction = Palette.dynamic("onAction", light: 0xFFFFFF, dark: 0x0D0D10)
+    /// The primary fill — the Conversations record capsule, prominent buttons
+    /// and the playing tile. Ink, so the one solid object on a card reads
+    /// before any colour does. 14.4:1 against the dark plate, 18.9:1 against
+    /// the light.
+    static let action = Palette.dynamic("action", light: 0x111113, dark: 0xF5F5F7)
+    /// The label that sits on ``action`` — and on ``accent`` or ``signalLive``
+    /// fills: white in light mode, ink in dark. 18.9:1 / 17.3:1 on `action`,
+    /// 5.2:1 / 6.3:1 on `signalLive`.
+    static let onAction = Palette.dynamic("onAction", light: 0xFFFFFF, dark: 0x111113)
 
     // MARK: Editorial
 
@@ -261,25 +265,25 @@ nonisolated enum Palette {
     /// The plate hairline at rest: ink @ 0.09 light / 0.14 dark.
     static let hairline = Palette.dynamic(
         "hairline",
-        light: 0x0D0D10, lightAlpha: 0.09,
-        dark: 0xF2F2F5, darkAlpha: 0.14
+        light: 0x111113, lightAlpha: 0.09,
+        dark: 0xF5F5F7, darkAlpha: 0.14
     )
     /// The plate hairline on hover: ink @ 0.12 / 0.18.
     static let hairlineHover = Palette.dynamic(
         "hairlineHover",
-        light: 0x0D0D10, lightAlpha: 0.12,
-        dark: 0xF2F2F5, darkAlpha: 0.18
+        light: 0x111113, lightAlpha: 0.12,
+        dark: 0xF5F5F7, darkAlpha: 0.18
     )
     /// Every hairline under Increase Contrast: ink @ 0.22.
     static let hairlineContrast = Palette.dynamic(
         "hairlineContrast",
-        light: 0x0D0D10, lightAlpha: 0.22,
-        dark: 0xF2F2F5, darkAlpha: 0.22
+        light: 0x111113, lightAlpha: 0.22,
+        dark: 0xF5F5F7, darkAlpha: 0.22
     )
     /// Separator between rows of a flush plate: 0.08 light / 0.09 dark.
     static let divider = Palette.dynamic(
         "divider",
-        light: 0x0D0D10, lightAlpha: 0.08,
+        light: 0x111113, lightAlpha: 0.08,
         dark: 0xFFFFFF, darkAlpha: 0.09
     )
     /// The 0.5pt edge on a material fallback surface (macOS 15 glass shim):
@@ -320,7 +324,8 @@ nonisolated enum Palette {
     /// LEGAL IN EXACTLY TWO PLACES: the 88pt permission-gate hero tile and the
     /// 26pt sidebar app mark. NO TEXT MAY SIT ON IT — white on `#6194FF` is
     /// 2.92:1 and on `#7FA8FF` is 2.35:1, below even the 3:1 large-text floor.
-    /// Tinted controls use flat ``accent``; the record capsule uses ``action``.
+    /// Under the monochrome palette it is also the only brand colour in the
+    /// window. Filled controls use ``action`` with ``onAction``.
     static var brandGradient: LinearGradient {
         LinearGradient(
             colors: [brandGradientStart, brandGradientEnd],

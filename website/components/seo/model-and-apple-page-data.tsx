@@ -60,7 +60,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
     caption: `Apple Dictation as documented by Apple (checked ${APPLE_SOURCES_CHECKED}); VoiceToText as of ${CATALOG_SNAPSHOT}.`,
     columns: ["VoiceToText", "Apple Dictation"],
     rows: [
-      { label: "Install", cells: ["Free download (macOS 15+, Apple Silicon)", "Built into macOS"] },
+      { label: "Install", cells: ["Free download (macOS 15+, Apple Silicon or Intel)", "Built into macOS"] },
       { label: "Text flow", cells: ["Review, then paste; or instant paste", "Types live at the cursor"] },
       { label: "Spoken commands", cells: ["None; optional AI cleanup actions", "Spoken punctuation, emoji and formatting"] },
       { label: "Models", cells: ["6 local + 9 optional cloud", "Apple’s system engine"] },
@@ -150,7 +150,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
         <>
           VoiceToText is a separate download. It checks GitHub for new versions and installs one with a
           click when you confirm, but that is still an app to keep up to date. Current builds require macOS 15
-          or later and an Apple Silicon Mac. Apple Dictation follows the Mac’s operating-system support
+          or later on an Apple Silicon or Intel Mac. Apple Dictation follows the Mac’s operating-system support
           instead of adding another requirement.
         </>,
         <>
@@ -263,7 +263,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
       },
       {
         label: "Requirements",
-        cells: ["macOS 15 or later on Apple Silicon.", "Depends on the macOS version and the selected language."],
+        cells: ["macOS 15 or later, Apple Silicon or Intel.", "Depends on the macOS version and the selected language."],
       },
       {
         label: "Price",

@@ -10,7 +10,7 @@ const TRUST = [
   "Works offline by default",
   "No account, no app telemetry",
   "Signed & notarized",
-  "macOS 15+ · Apple Silicon",
+  "macOS 15+ · Apple Silicon or Intel",
 ];
 
 /** "2026-09-22" → "Sep 22, 2026": short enough to keep the release line on one row on a phone. */

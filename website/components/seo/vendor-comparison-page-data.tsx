@@ -53,7 +53,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     caption: `Superwhisper as documented on its official site (checked ${SUPERWHISPER_CHECKED}).`,
     columns: ["VoiceToText", "Superwhisper"],
     rows: [
-      { label: "Platforms", cells: ["Mac (Apple Silicon, macOS 15+)", "macOS, Windows, iOS and Android"] },
+      { label: "Platforms", cells: ["Mac (macOS 15+, Apple Silicon or Intel)", "macOS, Windows, iOS and Android"] },
       { label: "Local transcription", cells: ["Yes: Parakeet and 5 Whisper sizes", "Yes: on-device models"] },
       { label: "AI formatting", cells: ["Opt-in actions in review, on your OpenAI key", "Super Mode and modes, built in"] },
       { label: "Meetings", cells: ["Mic + system audio, no bot; AI summaries on your key", "Records meetings from the device without a bot, with speaker labels"] },
@@ -100,7 +100,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Local by default",
           body:
-            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on Apple Silicon after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
+            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on your Mac after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
         },
         {
           title: "Review as the core workflow",
@@ -135,7 +135,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "VoiceToText is not a drop-in copy of the broader product.",
       paragraphs: [
         <>
-          VoiceToText targets macOS 15 or later on Apple Silicon. It has no Windows, iOS or Android app and
+          VoiceToText targets macOS 15 or later on Apple Silicon or Intel Macs. It has no Windows, iOS or Android app and
           no cross-device sync. If you dictate on your phone and your desktop, platform reach may decide the
           comparison immediately.
         </>,
@@ -240,7 +240,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       {
         label: "Current Mac requirement",
         cells: [
-          "macOS 15+ on Apple Silicon.",
+          "macOS 15+, Apple Silicon or Intel.",
           "Vendor changelog dated July 6, 2026 says macOS 14+; official Mac page also describes Intel support.",
         ],
       },
@@ -259,7 +259,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     {
       question: "Is there a free alternative to Superwhisper for Mac?",
       answer:
-        "VoiceToText is free with no paid tier or account. It runs Parakeet and Whisper models on Apple Silicon Macs, pastes reviewed text into any app, and records meetings. Superwhisper covers more platforms and formatting features.",
+        "VoiceToText is free with no paid tier or account. It runs Parakeet and Whisper models on your Mac, pastes reviewed text into any app, and records meetings. Superwhisper covers more platforms and formatting features.",
     },
     {
       question: "Do both apps work offline?",
@@ -392,7 +392,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       },
       {
         label: "Platforms",
-        cells: ["Mac: Apple Silicon, macOS 15+", "Mac (macOS 12+, Intel or Apple Silicon), Windows, iPhone, Android"],
+        cells: ["Mac: macOS 15+, Apple Silicon or Intel", "Mac (macOS 12+, Intel or Apple Silicon), Windows, iPhone, Android"],
       },
       {
         label: "AI editing",
@@ -430,8 +430,8 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         <>
           For teams, Wispr documents SAML single sign-on on its Growth and Enterprise plans, SCIM provisioning
           and audit logs on Enterprise, admin-locked settings, HIPAA with a signed BAA, and SOC 2 Type II and
-          ISO 27001 materials in its Trust Center. Flow also supports Intel Macs and macOS 12 or later, which
-          VoiceToText doesn’t. Platform and deployment fit can matter more than where the speech model runs.
+          ISO 27001 materials in its Trust Center. Flow also supports macOS 12 or later, which VoiceToText
+          doesn’t. Platform and deployment fit can matter more than where the speech model runs.
         </>,
       ],
     },
@@ -470,7 +470,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         {
           title: "On-device transcription",
           body:
-            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on Apple Silicon after the model download. VoiceToText runs no server, so there is nowhere for it to send your recording.",
+            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on your Mac after the model download. VoiceToText runs no server, so there is nowhere for it to send your recording.",
         },
         {
           title: "No account",
@@ -510,7 +510,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       title: "Privacy architecture is only one dimension of product fit.",
       paragraphs: [
         <>
-          VoiceToText runs on one platform: macOS 15 or later on Apple Silicon. It has no Windows, iPhone or
+          VoiceToText runs on one platform: macOS 15 or later on Apple Silicon or Intel Macs. It has no Windows, iPhone or
           Android app, no team dashboard, no single sign-on, and no cross-device sync.
         </>,
         <>
@@ -584,7 +584,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       {
         label: "Platforms",
         cells: [
-          "macOS 15+ on Apple Silicon.",
+          "macOS 15+, Apple Silicon or Intel.",
           "Mac (macOS 12+, Apple Silicon or Intel), Windows 10/11, iPhone (iOS 18.3+), Android 13–16.",
         ],
       },
@@ -638,7 +638,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
     {
       question: "Is there a free Wispr Flow alternative for Mac?",
       answer:
-        "Yes. VoiceToText is free with no paid tier and no account. It transcribes on your Mac with local models and pastes the text into any app. It runs only on Apple Silicon Macs with macOS 15 or later.",
+        "Yes. VoiceToText is free with no paid tier and no account. It transcribes on your Mac with local models and pastes the text into any app. It runs on Apple Silicon and Intel Macs with macOS 15 or later.",
     },
     {
       question: "Does Wispr Flow work offline?",
@@ -658,7 +658,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
     {
       question: "Can I use VoiceToText on Windows or iPhone?",
       answer:
-        "No. VoiceToText is Mac-only and needs Apple Silicon. Wispr Flow has apps for Mac, Windows, iPhone and Android.",
+        "No. VoiceToText is Mac-only. Wispr Flow has apps for Mac, Windows, iPhone and Android.",
     },
   ],
   sources: [

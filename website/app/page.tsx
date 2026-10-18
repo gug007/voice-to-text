@@ -62,7 +62,7 @@ const TOPIC_GUIDES: readonly ReadNextLink[] = [
   {
     href: "/offline-speech-to-text-mac",
     title: "Offline speech to text on Mac",
-    body: "How the local Parakeet and Whisper models keep transcription on your Apple Silicon Mac after a one-time download, and where cloud features begin.",
+    body: "How the local Parakeet and Whisper models keep transcription on your Mac after a one-time download, and where cloud features begin.",
   },
   {
     href: "/voice-to-text-for-coding",

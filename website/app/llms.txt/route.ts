@@ -121,7 +121,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 
 - Price: free. No paid tier, no subscription, no VoiceToText account.
 - Source: available on GitHub at ${REPO_URL}. The repository has no license file, so describe it as "source available", not "open source".
-- Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor}. Builds are Apple Silicon only.
+- Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor}. Local models run much faster on Apple Silicon than on Intel.
 - Download: ${DMG_URL} (DMG containing a signed, notarized app). All releases: ${RELEASES_URL}
 - Website: ${SITE_URL}
 - App shape: a regular Mac window (panes: General, Conversations, History, Shortcut, Models, Actions, Cloud, Updates) with a Dock icon, plus a menu bar item. Menu-bar-only is optional (turn off "Show in Dock"). Launch at login is on after first run. Appearance: System, Light or Dark.
@@ -187,7 +187,7 @@ ${cloud.map(modelLine).join("\n")}
 
 ## Not supported
 
-- Intel Macs, or macOS versions before ${APP_REQUIREMENTS.minMacOS}.
+- macOS versions before ${APP_REQUIREMENTS.minMacOS}.
 - iPhone, iPad, Windows, Linux or a web app.
 - Voice commands or spoken punctuation ("new line", "comma" are written as words), built-in filler-word removal, custom vocabulary, or a language picker.
 - Live transcript during Conversations, pausing a conversation, automatic meeting detection, calendar integration, or meeting-app plugins.

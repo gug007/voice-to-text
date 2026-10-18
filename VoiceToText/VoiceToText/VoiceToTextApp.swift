@@ -135,11 +135,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         ConversationHUDPanel.shared.startObserving()
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()
+        ExternalAPIController.shared.apply()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
             appleEvent: NSAppleEventManager.shared().currentAppleEvent,
             launchUserInfo: notification.userInfo
         )
-        guard Self.wasLaunchedAtLogin else { return }
+        // An app that launches us to use the API (`--background`) wants the
+        // microphone, not the settings window.
+        guard Self.wasLaunchedAtLogin || LaunchContext.isBackgroundLaunch() else { return }
         hideMainWindows()
     }
 
@@ -158,6 +161,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // just before quitting (or before the updater relaunches us) reaches disk.
     func applicationWillTerminate(_ notification: Notification) {
         RecordingHistoryStore.shared.flush()
+        ExternalAPIController.shared.stopServing()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

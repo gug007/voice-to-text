@@ -10,7 +10,7 @@ export default function OpengraphImage() {
     title: "Speech to text that",
     titleMuted: "stays on your Mac.",
     subtitle:
-      "Local Parakeet and Whisper models run on Apple Silicon after a one-time download. No account, no audio upload.",
+      "Local Parakeet and Whisper models run on your Mac after a one-time download. No account, no audio upload.",
     chips: ["Local models", "No account", "Free"],
   });
 }

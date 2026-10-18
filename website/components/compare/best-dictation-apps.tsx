@@ -248,7 +248,7 @@ export function BestDictationAppsPage() {
                   <p>
                     VoiceToText is our pick only for the narrower combination it actually wins: free local
                     dictation with review-before-paste, plus bot-free meeting recording, file import and a
-                    searchable history on Apple silicon, with AI summaries if you bring your own OpenAI key.
+                    searchable history on your Mac, with AI summaries if you bring your own OpenAI key.
                   </p>
                   <p>
                     Want one matchup in depth? Read{" "}

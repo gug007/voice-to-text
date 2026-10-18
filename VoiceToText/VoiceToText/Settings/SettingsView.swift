@@ -475,6 +475,7 @@ struct GeneralPane: View {
                 launchAtLoginCard
                 presenceCard
                 appearanceCard
+                AppAPICard()
             }
 
             PaneSection("Permissions") {

@@ -6,7 +6,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
   path: "/offline-speech-to-text-mac",
   title: "Offline Speech to Text on Mac: Free Local Transcription",
   description:
-    "Free offline speech to text and local transcription on an Apple Silicon Mac: what stays on the Mac, setup, which model to pick, and where cloud begins.",
+    "Free offline speech to text and local transcription on a Mac: what stays on the Mac, setup, which model to pick, and where cloud begins.",
   breadcrumb: "Offline speech to text for Mac",
   eyebrow: "Privacy guide",
   readingTime: "6 min",
@@ -17,7 +17,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     "Local model by default",
     "No app account",
     "Source on GitHub",
-    "macOS 15+ · Apple Silicon",
+    "macOS 15+ · Apple Silicon or Intel",
   ],
   summaryTitle: "The short answer",
   summary: (
@@ -77,7 +77,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         {
           title: "Install the signed app",
           body:
-            "Download the DMG from GitHub Releases, move VoiceToText to Applications, and open it. Current builds require macOS 15 or later and an Apple Silicon Mac.",
+            "Download the DMG from GitHub Releases, move VoiceToText to Applications, and open it. Current builds require macOS 15 or later on an Apple Silicon or Intel Mac.",
         },
         {
           title: "Let the default model download",

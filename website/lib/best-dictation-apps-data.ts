@@ -41,7 +41,7 @@ export const products: Product[] = [
     wins:
       "Free, no account, source on GitHub, a first-class review-before-paste workflow, and bot-free meeting recording with optional AI summaries and action items on your own key.",
     tradeoff:
-      "Mac-only and Apple Silicon only, no cross-device sync or team controls, no voice commands, and speaker labels only through an optional cloud model.",
+      "Mac-only and much slower on Intel Macs, no cross-device sync or team controls, no voice commands, and speaker labels only through an optional cloud model.",
     dictation:
       "System-wide hotkey (⌥Space by default); review, then paste. Local models transcribe when you stop; three optional streaming cloud models show text as you speak in the Large recording HUD, word by word or phrase by phrase.",
     files:

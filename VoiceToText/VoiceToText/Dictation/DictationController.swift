@@ -680,6 +680,10 @@ final class DictationController {
     ) {
         switch action {
         case .startRecording:
+            guard !ExternalDictationSession.shared.isActive else {
+                AppLog.dictation.notice("Start ignored: another app is recording through the app API")
+                return
+            }
             guard AccessibilityPermission.isGranted else {
                 AccessibilityPermission.promptForPermission()
                 AppLog.dictation.warning("Missing Accessibility permission, could not start global hotkey recording")

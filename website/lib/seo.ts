@@ -185,7 +185,7 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "How do I use voice to text on my Mac?",
     answer:
-      "Install from the DMG and allow Microphone and Accessibility. Then press Option+Space in any app, speak, and press it again. The transcript opens in a small review panel: press Return, or the shortcut again, to paste it at your cursor, or Esc to discard it. You can turn review off to paste right away, or switch the shortcut to hold-to-record. It works the same on any Apple Silicon MacBook Air, MacBook Pro, iMac, Mac mini, or Mac Studio.",
+      "Install from the DMG and allow Microphone and Accessibility. Then press Option+Space in any app, speak, and press it again. The transcript opens in a small review panel: press Return, or the shortcut again, to paste it at your cursor, or Esc to discard it. You can turn review off to paste right away, or switch the shortcut to hold-to-record. It works the same on any MacBook Air, MacBook Pro, iMac, Mac mini, or Mac Studio running macOS 15 or later.",
   },
   {
     question: "What apps does VoiceToText work in?",
@@ -200,7 +200,7 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "What are the system requirements?",
     answer:
-      "macOS 15.0 or later on an Apple Silicon Mac (M1 or newer). Current builds are Apple Silicon only, so Intel Macs are not supported. The default local model is a one-time download of about 470 MB; cloud models need an internet connection and your own API key.",
+      "macOS 15.0 or later on an Apple Silicon or Intel Mac. Local models run much faster on Apple Silicon; on an Intel Mac, transcription takes noticeably longer. The default local model is a one-time download of about 470 MB; cloud models need an internet connection and your own API key.",
   },
   {
     question: "How accurate is it? Which models does it use?",

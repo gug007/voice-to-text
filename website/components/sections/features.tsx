@@ -12,7 +12,7 @@ const CARDS: PrivacyCard[] = [
   {
     icon: "bolt",
     title: "Transcription runs on your Mac",
-    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on Apple Silicon, so your audio never leaves the Mac. Parakeet, the default, and the Whisper models work with the network off after their one-time download.",
+    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on your Mac, so your audio never leaves it. Parakeet, the default, and the Whisper models work with the network off after their one-time download.",
   },
   {
     icon: "cloud",

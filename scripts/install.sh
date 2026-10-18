@@ -21,6 +21,7 @@ xcodebuild \
     -scheme VoiceToText \
     -configuration Release \
     -derivedDataPath build \
+    -destination 'generic/platform=macOS' \
     clean build \
     CODE_SIGN_IDENTITY="$SIGN_ID" \
     CODE_SIGNING_REQUIRED=YES \

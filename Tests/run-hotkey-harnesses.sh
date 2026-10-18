@@ -314,3 +314,9 @@ swiftc -parse-as-library \
   Tests/UpdateCheckPolicyHarness.swift \
   -o "$TMPDIR/update-check-policy-harness"
 "$TMPDIR/update-check-policy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/API/ExternalAPIProtocol.swift \
+  Tests/ExternalAPIProtocolHarness.swift \
+  -o "$TMPDIR/external-api-protocol-harness"
+"$TMPDIR/external-api-protocol-harness"

@@ -94,7 +94,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
       },
       {
         label: "Platforms",
-        cells: ["macOS 15 or later on Apple Silicon.", "macOS 14 or later, Windows, iOS and Android."],
+        cells: ["macOS 15 or later, Apple Silicon or Intel.", "macOS 14 or later, Windows, iOS and Android."],
       },
     ],
   },
@@ -243,7 +243,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "One Mac, nothing else",
           body:
-            "It runs on macOS 15 or later on Apple Silicon. There is no Windows or phone app, so in-person meetings need your Mac in the room.",
+            "It runs on macOS 15 or later, on Apple Silicon or Intel Macs. There is no Windows or phone app, so in-person meetings need your Mac in the room.",
         },
       ],
     },
@@ -428,7 +428,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
       {
         label: "Mac requirements",
         cells: [
-          "macOS 15 or later, Apple Silicon only.",
+          "macOS 15 or later. Runs on Intel too, but local models are much faster on Apple Silicon.",
           "macOS 14 or later. Recommends M-series Macs; also runs on Intel. iPhone and iPad apps exist.",
         ],
       },
@@ -585,9 +585,9 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
             "Only GPT-4o Transcribe Diarize separates speakers, using your OpenAI key and sending the audio to OpenAI. Local models return one unlabeled block.",
         },
         {
-          title: "Apple Silicon Macs only",
+          title: "Mac only",
           body:
-            "It needs macOS 15 or later on an Apple Silicon Mac. There is no iPhone or iPad app, and AI features use OpenAI only, with no local language model.",
+            "It needs macOS 15 or later, and local models run much slower on Intel Macs than on Apple Silicon. There is no iPhone or iPad app, and AI features use OpenAI only, with no local language model.",
         },
       ],
     },

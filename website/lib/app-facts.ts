@@ -19,10 +19,10 @@ export const CATALOG_SNAPSHOT = "September 2026 · VoiceToText v0.0.57";
 export const APP_REQUIREMENTS = {
   minMacOS: "15.0",
   os: "macOS 15.0 or later",
-  processor: "Apple Silicon (M1 or newer)",
-  /** The shipped binary is arm64 only. Say "Apple Silicon only", not a reason. */
-  architecture: "arm64",
-  short: "macOS 15.0+ · Apple Silicon",
+  processor: "Apple Silicon or Intel",
+  /** Universal binary. Local models run much slower on Intel than on Apple Silicon. */
+  architecture: "arm64, x86_64",
+  short: "macOS 15.0+ · Apple Silicon or Intel",
 } as const;
 
 export type ModelProvider = "On this Mac" | "OpenAI" | "ElevenLabs";

@@ -22,7 +22,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Searchable History** — every conversation and your latest 200 dictations stay on your Mac with their audio; search, favorite, replay, copy, and re-transcribe with another model
 - **15 speech models** — 6 local and 9 cloud (OpenAI and ElevenLabs), including four live models
 - **Built for AI agents** — speak prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools
-- **Scriptable** — a `voicetotext://` URL scheme for Raycast, Shortcuts, Stream Deck, and scripts
+- **Scriptable** — a `voicetotext://` URL scheme for Raycast, Shortcuts, Stream Deck, and scripts, and a local app API so other apps can show their own recorder
 - **Native** — a SwiftUI/AppKit Mac app, not Electron
 
 ## Download
@@ -44,7 +44,7 @@ If you'd rather skip the review step, turn off **Review before pasting** in Sett
 ## Requirements
 
 - macOS 15.0 or later
-- Apple Silicon (M1 or newer); Intel Macs are not supported by current builds
+- An Apple Silicon or Intel Mac; local models run much faster on Apple Silicon
 - An internet connection for the first model download, update checks, and any cloud models or AI features you choose to use
 
 ## How it works
@@ -151,6 +151,7 @@ For a language outside Parakeet's 25, choose a Whisper model or a cloud model.
 - **Runs in the background.** Closing the window keeps the app running. Launch at login is turned on at first run.
 - **Appearance:** System, Light, or Dark.
 - **URL scheme.** `voicetotext://toggle`, `start`, `stop`, and `cancel` control dictation from other apps and scripts, for example `open -g voicetotext://toggle`. See [INTEGRATION.md](INTEGRATION.md).
+- **App API.** Other apps on your Mac can record and transcribe through VoiceToText while drawing their own recorder — lpm's composer does. A local socket only apps running as you can reach; turn it off with **Allow other apps to dictate** in Settings → General. See [INTEGRATION.md](INTEGRATION.md#app-api).
 - **Updates.** The app checks GitHub Releases at launch and once a day. Nothing installs without you: choose Install Update, Later, or Skip This Version. The Updates pane has Check Now and release notes.
 
 ## Permissions

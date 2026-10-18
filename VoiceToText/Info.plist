@@ -10,7 +10,13 @@
 	CFBundleURLTypes registers the custom "voicetotext://" URL scheme with
 	LaunchServices so other apps can trigger dictation, e.g. `open voicetotext://toggle`.
 	See DictationController.ExternalCommand for the supported commands.
+
+	VoiceToTextAPIVersion advertises the local app API (see INTEGRATION.md and
+	ExternalAPI.version), so a client can tell an installed copy speaks it
+	without launching it.
 	-->
+	<key>VoiceToTextAPIVersion</key>
+	<integer>1</integer>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

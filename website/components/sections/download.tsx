@@ -54,7 +54,7 @@ export function Download({ release }: { release: LatestRelease }) {
                   Release notes
                 </ExternalLink>{" "}
                 <br />
-                macOS 15.0 or later &middot; Apple Silicon (M1 or newer) &middot; no account &middot; updates
+                macOS 15.0 or later &middot; Apple Silicon or Intel &middot; no account &middot; updates
                 install when you confirm them.
               </p>
             </div>

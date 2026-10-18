@@ -3,6 +3,15 @@ import Carbon.HIToolbox
 import Foundation
 
 enum LaunchContext {
+    /// Passed by an app that launches VoiceToText only to use the local API
+    /// (`open -g -a VoiceToText --args --background`): the launch stays
+    /// headless, like a login-item launch.
+    static let backgroundArgument = "--background"
+
+    static func isBackgroundLaunch(arguments: [String] = ProcessInfo.processInfo.arguments) -> Bool {
+        arguments.dropFirst().contains(backgroundArgument)
+    }
+
     static func shouldHideMainWindowOnLaunch(
         appleEvent: NSAppleEventDescriptor?,
         launchUserInfo: [AnyHashable: Any]? = nil

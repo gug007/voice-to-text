@@ -3,7 +3,8 @@ import AVFoundation
 import Combine
 import SwiftUI
 
-@main
+/// Started by `AppEntry`, which runs first so the Intel slice's transcription
+/// worker never starts the app.
 struct VoiceToTextApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var registry = ModelRegistry.shared

@@ -61,16 +61,16 @@ jobs:
 
           rm -f "$CERT_PATH"
 
-      # The Intel slice links whisper.cpp; the arm64 slice doesn't use it.
-      - name: Build whisper.cpp (x86_64)
+      # The Intel slice links transcribe.cpp; the arm64 slice doesn't use it.
+      - name: Build transcribe.cpp (x86_64)
         shell: bash
         run: |
           if ! command -v cmake >/dev/null 2>&1; then
-            echo "::error::cmake is not on this runner; scripts/build-whisper-cpp.sh needs it"
+            echo "::error::cmake is not on this runner; scripts/build-transcribe-cpp.sh needs it"
             exit 1
           fi
           cmake --version | head -1
-          ./scripts/build-whisper-cpp.sh
+          ./scripts/build-transcribe-cpp.sh
 
       - name: Build Release
         working-directory: VoiceToText

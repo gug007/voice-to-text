@@ -1,0 +1,104 @@
+name: Intel smoke
+
+# Local transcription on a real Intel Mac: transcribe.cpp in its worker
+# process, GPU when the runner has one that works, the CPU otherwise, and the
+# fallback between them. Gates releases, and runs on every PR that touches the
+# Intel engine. The steps live in scripts/ci/intel-smoke.sh.
+
+on:
+  pull_request:
+    paths:
+      - 'VoiceToText/VoiceToText/Engine/Intel/**'
+      - 'VoiceToText/VoiceToText/AppEntry.swift'
+      - 'VoiceToText/VoiceToText/Engine/ModelRegistry.swift'
+      - 'VoiceToText/VoiceToText/Engine/ModelStorage.swift'
+      - 'VoiceToText/VoiceToText.xcodeproj/project.pbxproj'
+      - 'scripts/build-transcribe-cpp.sh'
+      - 'scripts/ci/intel-smoke.sh'
+      - 'scripts/ci/intel-smoke-reference.txt'
+      - '.github/workflows/intel-smoke.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intel-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: macos-15-intel
+    timeout-minutes: 60
+    env:
+      SMOKE: scripts/ci/intel-smoke.sh
+      SMOKE_DIR: ${{ github.workspace }}/build/intel-smoke
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Hardware
+        continue-on-error: true
+        run: '"$SMOKE" hardware'
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      # As release.yml runs it, so this also proves that step on CI.
+      - name: Build transcribe.cpp (x86_64)
+        shell: bash
+        run: |
+          if ! command -v cmake >/dev/null 2>&1; then
+            echo "::error::cmake is not on this runner; scripts/build-transcribe-cpp.sh needs it"
+            exit 1
+          fi
+          cmake --version | head -1
+          ./scripts/build-transcribe-cpp.sh
+
+      - name: Build Release (universal, unsigned)
+        run: '"$SMOKE" build-release'
+
+      - name: Symbol gate
+        run: '"$SMOKE" symbol-gate'
+
+      - name: Build Debug (x86_64)
+        run: '"$SMOKE" build-debug'
+
+      - name: Speak the reference text
+        run: '"$SMOKE" audio'
+
+      # Keyed on the file that pins each model's revision, size and SHA-256;
+      # the fetch re-hashes a cached copy against those pins.
+      - name: Cache models
+        uses: actions/cache@v4
+        with:
+          path: build/intel-smoke/models
+          key: intel-smoke-models-${{ hashFiles('VoiceToText/VoiceToText/Engine/Intel/TranscribeCppModel.swift') }}
+
+      - name: Fetch models
+        run: '"$SMOKE" models'
+
+      - name: Smoke test
+        run: '"$SMOKE" smoke'
+
+      - name: Summary
+        if: always()
+        run: |
+          if [ -f "$SMOKE_DIR/summary.md" ]; then
+            cat "$SMOKE_DIR/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No smoke results: an earlier step failed." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intel-smoke-logs
+          path: |
+            build/intel-smoke/logs
+            build/intel-smoke/results.tsv
+            build/intel-smoke/summary.md
+          if-no-files-found: warn

@@ -2,13 +2,13 @@
 import CryptoKit
 import Foundation
 
-/// Fetches a `WhisperCppModel` file into its folder.
+/// Fetches a `TranscribeCppModel` file into its folder.
 ///
 /// The file downloads outside the model folder, is checked against its size
 /// and SHA-256, and only then moves in, with a rename on the same volume. So a
 /// download that is cancelled, drops or fails its check never leaves part of a
 /// file where `ModelStorage` would count the model as installed.
-nonisolated enum WhisperCppDownload {
+nonisolated enum TranscribeCppDownload {
     enum Failure: LocalizedError {
         case httpStatus(Int)
         case wrongSize(fileName: String, expected: Int64, actual: Int64)
@@ -34,15 +34,15 @@ nonisolated enum WhisperCppDownload {
     /// Downloads `model`, reporting 0–1 by bytes with "Downloading…" messages
     /// (the phase `ModelReadiness.isDownloading` reads). Cancelling the
     /// calling task cancels the transfer, and the call throws.
-    static func fetch(_ model: WhisperCppModel, progress: PrepareProgress?) async throws {
+    static func fetch(_ model: TranscribeCppModel, progress: PrepareProgress?) async throws {
         let fileManager = FileManager.default
-        try fileManager.createDirectory(at: WhisperCppModel.baseURL, withIntermediateDirectories: true)
+        try fileManager.createDirectory(at: TranscribeCppModel.baseURL, withIntermediateDirectories: true)
         // A temporary folder on the model folder's volume, so the last move is
         // a rename.
         let staging = try fileManager.url(
             for: .itemReplacementDirectory,
             in: .userDomainMask,
-            appropriateFor: WhisperCppModel.baseURL,
+            appropriateFor: TranscribeCppModel.baseURL,
             create: true
         )
         defer { try? fileManager.removeItem(at: staging) }

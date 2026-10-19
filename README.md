@@ -44,7 +44,7 @@ If you'd rather skip the review step, turn off **Review before pasting** in Sett
 ## Requirements
 
 - macOS 15.0 or later
-- An Apple Silicon or Intel Mac. Local models run much faster on Apple Silicon; on Intel the local Whisper models run on the CPU, which makes them slower than on an Apple Silicon Mac
+- An Apple Silicon or Intel Mac. Local models run much faster on Apple Silicon. On an Intel Mac, Parakeet and the Whisper models run through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp): on the graphics card when it works, and on the CPU when it doesn't (you can also turn the graphics card off in Settings → Models)
 - An internet connection for the first model download, update checks, and any cloud models or AI features you choose to use
 
 ## How it works
@@ -143,7 +143,7 @@ There's no language picker; each model decides.
 - **Local Whisper models:** 99 languages, detected automatically.
 - **Cloud models:** OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
 
-For a language outside Parakeet's 25, choose a Whisper model or a cloud model. On an Intel Mac the Whisper models are slower, since they run on the CPU.
+For a language outside Parakeet's 25, choose a Whisper model or a cloud model. On an Intel Mac the local models are slower, especially when they run on the CPU.
 
 ## Mac integration
 

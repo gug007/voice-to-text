@@ -2,12 +2,16 @@
 import Foundation
 
 extension ModelDescriptor {
-    /// This catalog entry as the Intel slice offers it: a WhisperKit model
-    /// takes its whisper.cpp build's download size, and its Intel note where
+    /// This catalog entry as the Intel slice offers it: a local model takes
+    /// its transcribe.cpp build's download size, and its Intel note where
     /// there is one. Everything else — id, name, order, languages, benchmarks —
-    /// stays as it is.
+    /// stays as it is, so a model picked on an earlier version stays picked.
     nonisolated var adaptedForIntel: ModelDescriptor {
-        guard backend == .whisperKit, let model = WhisperCppModel.model(forCatalogID: id) else { return self }
+        switch backend {
+        case .whisperKit, .fluidAudio: break
+        case .openAI, .openAIRealtime, .elevenLabs: return self
+        }
+        guard let model = TranscribeCppModel.model(forCatalogID: id) else { return self }
         return ModelDescriptor(
             id: id,
             displayName: displayName,

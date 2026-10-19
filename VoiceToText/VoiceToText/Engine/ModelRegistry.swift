@@ -20,18 +20,6 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
         var isCloud: Bool { cloudProvider != nil }
 
-        /// False for WhisperKit in the Intel (x86_64) slice: WhisperKit fills
-        /// its float16 model buffers through `FloatType`, which is `Float`
-        /// there, so the first decode writes past the KV cache and crashes.
-        /// `ModelCatalog.all` leaves out every model this is false for.
-        var runsInThisBuild: Bool {
-            #if arch(x86_64)
-            return self != .whisperKit
-            #else
-            return true
-            #endif
-        }
-
         /// True for engines that transcribe a live audio stream — partials
         /// appear as the user speaks — rather than a buffered recording.
         var isStreaming: Bool {
@@ -105,9 +93,14 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 }
 
 enum ModelCatalog {
-    /// The models this build can run, in curated order — every model, less
-    /// those whose backend doesn't run here (`Backend.runsInThisBuild`).
-    static let all: [ModelDescriptor] = everyModel.filter(\.backend.runsInThisBuild)
+    /// Every model, in curated order. In the Intel slice the local Whisper
+    /// models run on whisper.cpp (`WhisperCppEngine`) and take the sizes of its
+    /// downloads (`ModelDescriptor.adaptedForIntel`).
+    #if arch(x86_64)
+    static let all: [ModelDescriptor] = everyModel.map(\.adaptedForIntel)
+    #else
+    static let all: [ModelDescriptor] = everyModel
+    #endif
 
     private static let everyModel: [ModelDescriptor] = [
         ModelDescriptor(
@@ -519,10 +512,9 @@ final class ModelRegistry {
     private static let prepareStallPollMs = 1_000
 
     private init() {
-        // A stored id the catalog no longer holds — a Whisper model picked on
-        // an Intel Mac before this build left them out — falls back to the
-        // default, as a stale `conversationModelId` does. Left in place
-        // rather than overwritten, like that one.
+        // A stored id the catalog no longer holds falls back to the default,
+        // as a stale `conversationModelId` does. Left in place rather than
+        // overwritten, like that one.
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
             .flatMap { ModelCatalog.model(for: $0)?.id }
             ?? ModelCatalog.defaultModelID
@@ -991,7 +983,13 @@ final class ModelRegistry {
     private func makeEngine(for descriptor: ModelDescriptor) -> TranscriptionEngine {
         switch descriptor.backend {
         case .whisperKit:
+            #if arch(x86_64)
+            // WhisperKit crashes in the Intel slice; its models run on
+            // whisper.cpp there, keyed by catalog id (`WhisperCppModel`).
+            return WhisperCppEngine(modelId: descriptor.id)
+            #else
             return WhisperKitEngine(modelId: descriptor.backendModelId)
+            #endif
         case .fluidAudio:
             return FluidAudioEngine(modelId: descriptor.backendModelId)
         case .openAI:

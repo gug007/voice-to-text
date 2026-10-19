@@ -16,7 +16,12 @@ enum ModelStorage {
         case .fluidAudio:
             return fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
         case .whisperKit:
+            #if arch(x86_64)
+            // The Intel slice runs Whisper on whisper.cpp, from its own files.
+            return WhisperCppModel.model(forCatalogID: descriptor.id)?.folder
+            #else
             return whisperKitModelFolder(variant: descriptor.backendModelId)
+            #endif
         case .openAI, .openAIRealtime, .elevenLabs:
             return nil
         }
@@ -56,7 +61,11 @@ enum ModelStorage {
         guard !readiness.isDownloading, isInstalled(descriptor) else { return false }
         switch descriptor.backend {
         case .whisperKit:
+            #if arch(x86_64)
+            return WhisperCppModel.model(forCatalogID: descriptor.id)?.isDownloaded() ?? false
+            #else
             return WhisperKitModelFiles.hasRequiredModels(in: whisperKitModelFolder(variant: descriptor.backendModelId))
+            #endif
         case .fluidAudio:
             return location(for: descriptor).map { ParakeetModelFiles.hasRequiredModels(in: $0) } ?? false
         case .openAI, .openAIRealtime, .elevenLabs:
@@ -95,6 +104,16 @@ enum ModelStorage {
     }
 
     static func delete(_ descriptor: ModelDescriptor) throws {
+        #if arch(x86_64)
+        // Up to v0.2.6 an Intel Mac could download WhisperKit's CoreML build
+        // of a model, which never runs there. Deleting the model frees that too.
+        if descriptor.backend == .whisperKit {
+            let stale = whisperKitModelFolder(variant: descriptor.backendModelId)
+            if FileManager.default.fileExists(atPath: stale.path) {
+                try FileManager.default.removeItem(at: stale)
+            }
+        }
+        #endif
         guard let url = location(for: descriptor) else { return }
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)

@@ -63,6 +63,9 @@ Carthage/Checkouts/
 timeline.xctimeline
 playground.xcworkspace
 
+# whisper.cpp for the Intel slice — built by scripts/build-whisper-cpp.sh
+VoiceToText/Vendor/whisper.cpp/
+
 # Secrets / local config
 *.env
 .env.*

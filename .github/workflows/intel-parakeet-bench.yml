@@ -1,0 +1,114 @@
+name: Intel Parakeet bench
+
+# Parakeet TDT 0.6B v3 on a real Intel CPU: FluidAudio CoreML (what the app ships) vs
+# transcribe.cpp (ggml). Everything lives in bench/intel-parakeet; see scripts/bench.sh.
+
+on:
+  push:
+    branches: [bench/intel-parakeet]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: intel-parakeet-bench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bench:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    env:
+      BENCH_ARCH: x86_64
+      BENCH: bench/intel-parakeet/scripts/bench.sh
+      WORK: ${{ github.workspace }}/bench/intel-parakeet/.work
+
+    steps:
+      - name: Hardware
+        continue-on-error: true
+        run: |
+          sysctl -n machdep.cpu.brand_string hw.physicalcpu hw.logicalcpu hw.memsize
+          sysctl machdep.cpu.leaf7_features machdep.cpu.features
+          sw_vers
+          xcodebuild -version
+          uname -m
+
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode
+        continue-on-error: true
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - name: Toolchain
+        continue-on-error: true
+        run: |
+          swift --version
+          cmake --version | head -1
+          python3 --version
+
+      - name: Resolve CoreML model revision
+        id: coreml
+        run: |
+          sha="$("$BENCH" coreml-rev || echo unknown)"
+          echo "CoreML models on Hugging Face main: $sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Cache GGUF models
+        uses: actions/cache@v4
+        with:
+          path: bench/intel-parakeet/.work/models-gguf
+          key: parakeet-tdt-0.6b-v3-gguf-85ac09ea12fc4b1112fa76810059364bc6adc9de
+
+      - name: Cache CoreML models
+        if: steps.coreml.outputs.sha != 'unknown'
+        uses: actions/cache@v4
+        with:
+          path: bench/intel-parakeet/.work/models-coreml
+          key: parakeet-tdt-0.6b-v3-coreml-${{ steps.coreml.outputs.sha }}-fluidaudio-4ef33f0b
+
+      - name: Record hardware
+        continue-on-error: true
+        run: '"$BENCH" hwinfo'
+
+      - name: Build transcribe.cpp v0.4.0
+        continue-on-error: true
+        run: '"$BENCH" build-tcpp'
+
+      - name: Fetch GGUF models
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: '"$BENCH" fetch-gguf'
+
+      - name: Build CoreML harness
+        continue-on-error: true
+        run: '"$BENCH" build-pbench'
+
+      - name: Fetch CoreML models
+        continue-on-error: true
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+        run: '"$BENCH" fetch-coreml'
+
+      # Sequential matrix. A failing config is recorded in runs/errors.md and the rest still run.
+      - name: Benchmark
+        continue-on-error: true
+        timeout-minutes: 60
+        run: '"$BENCH" run'
+
+      - name: Report
+        if: always()
+        run: |
+          "$BENCH" report
+          cat "$WORK/runs/summary.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload runs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: intel-parakeet-runs
+          path: bench/intel-parakeet/.work/runs
+          if-no-files-found: warn

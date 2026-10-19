@@ -8,6 +8,9 @@ APP_NAME="VoiceToText.app"
 BUILD_PRODUCT="$PROJECT_DIR/build/Build/Products/Release/$APP_NAME"
 INSTALL_PATH="/Applications/$APP_NAME"
 
+echo "→ building whisper.cpp for the Intel slice"
+"$SCRIPT_DIR/build-whisper-cpp.sh"
+
 cd "$PROJECT_DIR"
 
 echo "→ killing any running instance"

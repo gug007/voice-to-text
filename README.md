@@ -1,6 +1,6 @@
 # VoiceToText — Free Offline Dictation App for macOS
 
-**Free speech-to-text for Mac, with source available on GitHub.** Press a global shortcut, speak, and paste the transcript into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, and more. Local transcription is the default: the Parakeet model runs on your Mac and works offline once it has been downloaded. OpenAI and ElevenLabs models are optional: they're used only when you select one and add your own API key.
+**Free speech-to-text for Mac, with source available on GitHub.** Press a global shortcut, speak, and paste the transcript into any app — Claude Code, Codex, Cursor, Slack, Notes, VS Code, Chrome, and more. Local transcription is the default: the Parakeet model runs on your Mac and works offline once it has been downloaded. OpenAI, ElevenLabs, and Groq models are optional: they're used only when you select one and add your own API key.
 
 A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 
@@ -20,7 +20,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Speaker labels** — optional, through OpenAI's GPT-4o Transcribe Diarize; rename "Speaker 1" to real names
 - **AI insights** — Summary, Action Items, and your own prompts on any recording, with your OpenAI key
 - **Searchable History** — every conversation and your latest 200 dictations stay on your Mac with their audio; search, favorite, replay, copy, and re-transcribe with another model
-- **15 speech models** — 6 local and 9 cloud (OpenAI and ElevenLabs), including four live models
+- **17 speech models** — 6 local and 11 cloud (OpenAI, ElevenLabs, and Groq), including four live models
 - **Built for AI agents** — speak prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools
 - **Scriptable** — a `voicetotext://` URL scheme for Raycast, Shortcuts, Stream Deck, and scripts, and a local app API so other apps can show their own recorder
 - **Native** — a SwiftUI/AppKit Mac app, not Electron
@@ -86,7 +86,7 @@ Conversations is VoiceToText's meeting recorder.
 - Dictations are saved by default. Turn off **Save recordings** in History to stop saving them; takes you cancel in review are removed once the few-second Undo passes. Conversations and uploads are always saved.
 - **Search transcripts** finds text across transcripts, earlier versions, summaries, action items, custom results, speaker names, model, and date.
 - Favorite, play, copy, or delete with a 5-second Undo (`⌘Z`). **Clear All** is undoable too.
-- **Regenerate** any recording with any of the 15 models and keep each version side by side.
+- **Regenerate** any recording with any of the 17 models and keep each version side by side.
 - History keeps your newest 200 dictations, removing older ones with their audio. Favorites, conversations, uploads, and recordings with AI insights or speaker names are never removed automatically.
 - There's no export, sharing, sync, or transcript editing — copy to the clipboard to take text elsewhere.
 
@@ -102,7 +102,7 @@ Insights use your OpenAI key and `gpt-5.5`, and send the transcript text (with s
 
 ## Models
 
-15 models: 6 that run on your Mac and 9 in the cloud. Pick one in Settings → Models, which shows a 1–10 quality score (derived from published third-party word error rates; not VoiceToText's own tests) and the provider's price per hour.
+17 models: 6 that run on your Mac and 11 in the cloud. Pick one in Settings → Models, which shows a 1–10 quality score (derived from published third-party word error rates; not VoiceToText's own tests) and the provider's price per hour.
 
 **On your Mac** — free, downloaded once from Hugging Face. Audio never leaves the Mac.
 
@@ -130,10 +130,12 @@ Models take from under 100 MB to about 1.6 GB on disk, depending on which one yo
 | GPT Transcribe | OpenAI | $0.27/hr | Highest quality score in the catalog. |
 | GPT-4o Transcribe | OpenAI | $0.36/hr | |
 | GPT-4o Transcribe Diarize | OpenAI | $0.36/hr | Labels speakers (Conversations and uploads). |
-| GPT-4o Mini Transcribe | OpenAI | $0.18/hr | Lowest price. |
+| GPT-4o Mini Transcribe | OpenAI | $0.18/hr | Lowest OpenAI price. |
 | Whisper-1 | OpenAI | $0.36/hr | |
+| Whisper Large v3 Turbo | Groq | $0.04/hr | Lowest price. Very fast. |
+| Whisper Large v3 | Groq | $0.111/hr | |
 
-LIVE models are for dictation only. Prices are the providers' list prices as of September 2026.
+LIVE models are for dictation only. Prices are the providers' list prices as of September 2026 (Groq: October 2026). Groq bills each request as at least 10 seconds of audio.
 
 ### Languages
 
@@ -141,9 +143,9 @@ There's no language picker; each model decides.
 
 - **Parakeet TDT v3** (default): 25 European languages, detected automatically.
 - **Local Whisper models:** 99 languages, detected automatically.
-- **Cloud models:** OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
+- **Cloud models:** OpenAI models cover 99+ languages, Groq's Whisper models 99, and ElevenLabs Scribe 90+, detected automatically.
 
-For a language outside Parakeet's 25, choose a Whisper model or a cloud model. On an Intel Mac the local models are slower, especially when they run on the CPU.
+For a language outside Parakeet's 25, choose a Whisper model or a cloud model. On an Intel Mac the local models are slower, especially when they run on the CPU; Groq's Whisper models are a fast cloud alternative.
 
 ## Mac integration
 
@@ -166,7 +168,7 @@ For a language outside Parakeet's 25, choose a Whisper model or a cloud model. O
 ## Privacy and network
 
 - **With local models and no API keys,** the app connects to the internet only to reach Hugging Face (model downloads) and to check GitHub Releases for updates. Your audio and transcripts stay on the Mac.
-- **Cloud transcription models** send your audio directly to OpenAI or ElevenLabs under your API key. Provider charges apply.
+- **Cloud transcription models** send your audio directly to OpenAI, ElevenLabs, or Groq under your API key. Provider charges apply.
 - **AI actions and AI insights** send transcript text to OpenAI under your key when you run them.
 - **Adding an API key** sends one request to that provider to check the key. Keys are stored in the macOS login Keychain on this Mac (older versions kept them in the app's preferences and move them to the Keychain on first launch).
 - **No VoiceToText servers,** no account, and no analytics or telemetry in the app. (The website, voicetotext.cc, uses Google Analytics.)

@@ -1,4 +1,3 @@
-import CoreML
 import Foundation
 import FluidAudio
 
@@ -41,30 +40,17 @@ actor FluidAudioEngine: TranscriptionEngine {
                 progress?(ParakeetProgress.fraction(snapshot.fractionCompleted, isLoading: isLoading), message)
             }
 
-            let models = try await AsrModels.downloadAndLoad(
-                configuration: Self.modelConfiguration,
-                progressHandler: handler
-            )
+            // FluidAudio's default compute units on every Mac. An Intel Mac has
+            // no Neural Engine, so this runs on the CPU there — slow, but
+            // `.cpuAndGPU` on real Intel/AMD GPUs hung the CoreML compile and
+            // crashed on the first transcription (issue #23).
+            let models = try await AsrModels.downloadAndLoad(progressHandler: handler)
             manager = AsrManager(models: models)
 
             progress?(1.0, "Ready")
         } catch {
             throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription)
         }
-    }
-
-    /// FluidAudio's default places Parakeet on the Neural Engine, which an
-    /// Intel Mac doesn't have, so there CoreML ran the whole model on the CPU
-    /// alone — many times slower than the GPU it leaves idle. `nil` keeps
-    /// FluidAudio's default on Apple Silicon.
-    private static var modelConfiguration: MLModelConfiguration? {
-        #if arch(x86_64)
-        let configuration = AsrModels.defaultConfiguration()
-        configuration.computeUnits = .cpuAndGPU
-        return configuration
-        #else
-        return nil
-        #endif
     }
 
     /// Parakeet has no prompt input; `contextPrompt` is ignored.

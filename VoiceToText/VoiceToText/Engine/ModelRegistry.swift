@@ -9,12 +9,16 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         case openAI
         case openAIRealtime
         case elevenLabs
+        /// Groq's Whisper models, on `OpenAITranscriptionEngine` — Groq speaks
+        /// OpenAI's transcription API.
+        case groq
 
         var cloudProvider: CloudProvider? {
             switch self {
             case .whisperKit, .fluidAudio: return nil
             case .openAI, .openAIRealtime: return .openAI
             case .elevenLabs: return .elevenLabs
+            case .groq: return .groq
             }
         }
 
@@ -25,7 +29,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
         var isStreaming: Bool {
             switch self {
             case .elevenLabs, .openAIRealtime: return true
-            case .whisperKit, .fluidAudio, .openAI: return false
+            case .whisperKit, .fluidAudio, .openAI, .groq: return false
             }
         }
     }
@@ -370,7 +374,7 @@ enum ModelCatalog {
             backendModelId: "whisper-1",
             approxSizeMB: 0,
             languages: "99",
-            notes: "OpenAI's older online model. Cheapest, but less accurate than GPT-4o.",
+            notes: "OpenAI's older online model. Less accurate than GPT-4o.",
             speed: 6,
             pricePerHourUSD: 0.36, // $0.006/min
             benchmarks: [
@@ -379,6 +383,48 @@ enum ModelCatalog {
                     percent: 4.1,
                     isEstimate: false,
                     note: "Listed by Artificial Analysis as Whisper Large v2 (OpenAI)."
+                ),
+            ]
+        ),
+        ModelDescriptor(
+            id: "groq-whisper-large-v3-turbo",
+            displayName: "Whisper Large v3 Turbo (Groq)",
+            backend: .groq,
+            backendModelId: "whisper-large-v3-turbo",
+            approxSizeMB: 0,
+            languages: "99",
+            notes: "Whisper Large v3 Turbo on Groq — very fast and the cheapest cloud option. Audio goes to Groq.",
+            speed: 10,
+            // List price; Groq bills each request for at least 10 s of audio,
+            // so a short dictation costs a little more than this suggests.
+            pricePerHourUSD: 0.04,
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 7.75, isEstimate: false, note: nil),
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.6,
+                    isEstimate: false,
+                    note: "Measured on Groq — Artificial Analysis's best host for this model."
+                ),
+            ]
+        ),
+        ModelDescriptor(
+            id: "groq-whisper-large-v3",
+            displayName: "Whisper Large v3 (Groq)",
+            backend: .groq,
+            backendModelId: "whisper-large-v3",
+            approxSizeMB: 0,
+            languages: "99",
+            notes: "Full Whisper Large v3 on Groq — a little more accurate than Turbo. Audio goes to Groq.",
+            speed: 9,
+            pricePerHourUSD: 0.111, // list price; at least 10 s billed per request
+            benchmarks: [
+                WERMeasurement(benchmark: .openASRLeaderboard, percent: 7.44, isEstimate: false, note: nil),
+                WERMeasurement(
+                    benchmark: .artificialAnalysis,
+                    percent: 4.1,
+                    isEstimate: true,
+                    note: "Artificial Analysis's best-host figure for these weights (fal.ai); Groq serves the same model."
                 ),
             ]
         ),
@@ -396,6 +442,9 @@ enum ModelCatalog {
     /// a realtime model with no batch twin (see `ConversationModelResolver`).
     /// OpenAI's own recommendation for recorded speech. ElevenLabs has no batch
     /// model in the catalog, so its live model falls back to the local default.
+    /// Groq has no live model, so it needs no entry: its models only stand in
+    /// for another provider's, and then the first ready one in catalog order
+    /// (Turbo) is used.
     static let preferredConversationBatchModelIDs: [CloudProvider: String] = [
         .openAI: "openai-gpt-transcribe",
     ]
@@ -537,6 +586,13 @@ final class ModelRegistry {
         ) { [weak self] _ in
             MainActor.assumeIsolated { self?.refreshCloudReadiness() }
         }
+        NotificationCenter.default.addObserver(
+            forName: GroqAPIKeyStore.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshCloudReadiness() }
+        }
     }
 
     /// Kick off a background download of the active model if it isn't already
@@ -589,6 +645,8 @@ final class ModelRegistry {
             next = OpenAIAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
         case .elevenLabs:
             next = ElevenLabsAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
+        case .groq:
+            next = GroqAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
         case nil:
             let state = ModelStorage.installedState(model)
             next = state.installed ? .installed(sizeBytes: state.sizeBytes) : .notInstalled
@@ -1006,6 +1064,8 @@ final class ModelRegistry {
             return OpenAIRealtimeEngine(modelId: descriptor.backendModelId)
         case .elevenLabs:
             return ElevenLabsRealtimeEngine(modelId: descriptor.backendModelId)
+        case .groq:
+            return OpenAITranscriptionEngine(modelId: descriptor.backendModelId, service: .groq)
         }
     }
 

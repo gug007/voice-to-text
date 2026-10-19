@@ -425,7 +425,7 @@ final class MeetingController {
         }
         return .noModel(
             named: model.displayName,
-            missingKeyFor: provider.flatMap { $0.hasAPIKey ? nil : $0.displayName },
+            missingKeyFor: provider.flatMap { $0.hasAPIKey ? nil : $0 },
             loadFailure: loadFailure
         )
     }

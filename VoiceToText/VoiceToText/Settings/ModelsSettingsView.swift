@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - The Models pane
 //
 // A hero card answering "what am I dictating with, and does it work", then one
-// flush plate per provider group: "On this Mac", "OpenAI", "ElevenLabs".
+// flush plate per provider group: "On this Mac", "OpenAI", "ElevenLabs", "Groq".
 //
 // The grouping is what makes the rows short. Where the audio goes, who bills
 // it, whether the key is connected and how much disk the group occupies are all
@@ -52,9 +52,9 @@ struct ModelsPane: View {
         /// ElevenLabs plate rather than an empty one.
         var groups: [ModelGroup] {
             switch self {
-            case .all: return [.local, .openAI, .elevenLabs]
+            case .all: return [.local, .openAI, .elevenLabs, .groq]
             case .local: return [.local]
-            case .cloud: return [.openAI, .elevenLabs]
+            case .cloud: return [.openAI, .elevenLabs, .groq]
             }
         }
     }
@@ -210,11 +210,11 @@ struct ModelsPane: View {
 
 // MARK: - Groups
 
-/// The three provider groups. One value owns the title, the privacy sentence and
+/// The provider groups. One value owns the title, the privacy sentence and
 /// the tile, so the hero card and the group header can never disagree about what
 /// an OpenAI model looks like.
 enum ModelGroup: String, Identifiable {
-    case local, openAI, elevenLabs
+    case local, openAI, elevenLabs, groq
 
     var id: String { rawValue }
 
@@ -223,6 +223,7 @@ enum ModelGroup: String, Identifiable {
         case .local: return nil
         case .openAI: return .openAI
         case .elevenLabs: return .elevenLabs
+        case .groq: return .groq
         }
     }
 
@@ -231,6 +232,7 @@ enum ModelGroup: String, Identifiable {
         case .local: return "On this Mac"
         case .openAI: return "OpenAI"
         case .elevenLabs: return "ElevenLabs"
+        case .groq: return "Groq"
         }
     }
 
@@ -245,6 +247,8 @@ enum ModelGroup: String, Identifiable {
             return "Audio is sent to OpenAI. Usage is billed to your API key."
         case .elevenLabs:
             return "Audio is sent to ElevenLabs. Usage is billed to your API key."
+        case .groq:
+            return "Audio is sent to Groq. Usage is billed to your API key."
         }
     }
 
@@ -253,6 +257,7 @@ enum ModelGroup: String, Identifiable {
         case .local: return "laptopcomputer"
         case .openAI: return "cloud.fill"
         case .elevenLabs: return "waveform"
+        case .groq: return "bolt.fill"
         }
     }
 
@@ -263,6 +268,7 @@ enum ModelGroup: String, Identifiable {
         case .local: return Palette.signalReady
         case .openAI: return Palette.accent
         case .elevenLabs: return Palette.badgeIndigo
+        case .groq: return Palette.providerGroq
         }
     }
 
@@ -277,12 +283,13 @@ enum ModelGroup: String, Identifiable {
         switch provider {
         case .openAI: return .openAI
         case .elevenLabs: return .elevenLabs
+        case .groq: return .groq
         }
     }
 }
 
 /// One group: a header row, then its models, all inside a single flush plate.
-/// A plain `VStack` rather than a `LazyVStack` — there are at most 15 rows in
+/// A plain `VStack` rather than a `LazyVStack` — there are at most 17 rows in
 /// the whole pane, and lazy rows drop out of the animation when a sort reorders
 /// them.
 private struct ModelGroupPlate: View {

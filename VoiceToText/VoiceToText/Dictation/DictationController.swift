@@ -1559,7 +1559,7 @@ final class DictationController {
             AppLog.dictation.error("startRecording: \(descriptor.id) has no API key")
             recordingStartGate.finish(startID)
             enterFailureHUD(
-                message: "\(descriptor.displayName) needs an \(provider.displayName) API key.",
+                message: "\(descriptor.displayName) needs \(provider.apiKeyPhrase).",
                 action: .addAPIKey { WindowOpener.shared.showMain(section: .cloud) }
             )
             return

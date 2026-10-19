@@ -11,6 +11,7 @@ extension CloudProvider {
         switch self {
         case .openAI: return OpenAIAPIKeyStore.shared.hasKey
         case .elevenLabs: return ElevenLabsAPIKeyStore.shared.hasKey
+        case .groq: return GroqAPIKeyStore.shared.hasKey
         }
     }
 
@@ -19,6 +20,7 @@ extension CloudProvider {
         switch self {
         case .openAI: return OpenAIAPIKeyStore.shared.keySuffix
         case .elevenLabs: return ElevenLabsAPIKeyStore.shared.keySuffix
+        case .groq: return GroqAPIKeyStore.shared.keySuffix
         }
     }
 }

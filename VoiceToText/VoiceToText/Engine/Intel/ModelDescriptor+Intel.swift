@@ -9,7 +9,7 @@ extension ModelDescriptor {
     nonisolated var adaptedForIntel: ModelDescriptor {
         switch backend {
         case .whisperKit, .fluidAudio: break
-        case .openAI, .openAIRealtime, .elevenLabs: return self
+        case .openAI, .openAIRealtime, .elevenLabs, .groq: return self
         }
         guard let model = TranscribeCppModel.model(forCatalogID: id) else { return self }
         return ModelDescriptor(

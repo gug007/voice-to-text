@@ -334,7 +334,7 @@ struct MeetingsPane: View {
                 }
             ))
         }
-        for provider in [CloudProvider.openAI, .elevenLabs] {
+        for provider in CloudProvider.allCases {
             let group = models.filter { $0.backend.cloudProvider == provider }
             guard !group.isEmpty else { continue }
             sections.append(DropdownSection(

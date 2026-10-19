@@ -34,6 +34,14 @@ nonisolated enum CloudQuotaSimulation {
                 ),
                 transport: nil
             )
+        case .groq:
+            // Synthetic: Groq documents no empty-balance error of its own, so
+            // this is a bare 402, which `TranscriptionFailure` reads as an
+            // empty balance whoever sends it.
+            throw CloudTranscriptionError(
+                cause: .http(status: 402, retryAfter: nil, apiCode: nil),
+                reason: "Groq: Payment required."
+            )
         }
     }
 }

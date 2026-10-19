@@ -7,11 +7,23 @@ import Foundation
 nonisolated enum CloudProvider: String, Sendable, Hashable, CaseIterable {
     case openAI
     case elevenLabs
+    case groq
 
     var displayName: String {
         switch self {
         case .openAI: return "OpenAI"
         case .elevenLabs: return "ElevenLabs"
+        case .groq: return "Groq"
+        }
+    }
+
+    /// "an OpenAI API key", "a Groq API key" — for the sentences that say a
+    /// model needs one. The article follows how the name is said, which no
+    /// rule on its spelling gets right ("an ElevenLabs").
+    var apiKeyPhrase: String {
+        switch self {
+        case .openAI, .elevenLabs: return "an \(displayName) API key"
+        case .groq: return "a \(displayName) API key"
         }
     }
 
@@ -24,6 +36,7 @@ nonisolated enum CloudProvider: String, Sendable, Hashable, CaseIterable {
         switch self {
         case .openAI: return Notification.Name("OpenAIAPIKeyStore.didChange")
         case .elevenLabs: return Notification.Name("ElevenLabsAPIKeyStore.didChange")
+        case .groq: return Notification.Name("GroqAPIKeyStore.didChange")
         }
     }
 }

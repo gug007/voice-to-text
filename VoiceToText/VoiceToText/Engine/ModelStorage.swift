@@ -27,7 +27,7 @@ enum ModelStorage {
             #else
             return whisperKitModelFolder(variant: descriptor.backendModelId)
             #endif
-        case .openAI, .openAIRealtime, .elevenLabs:
+        case .openAI, .openAIRealtime, .elevenLabs, .groq:
             return nil
         }
     }
@@ -79,7 +79,7 @@ enum ModelStorage {
             return WhisperKitModelFiles.hasRequiredModels(in: whisperKitModelFolder(variant: descriptor.backendModelId))
         case .fluidAudio:
             return location(for: descriptor).map { ParakeetModelFiles.hasRequiredModels(in: $0) } ?? false
-        case .openAI, .openAIRealtime, .elevenLabs:
+        case .openAI, .openAIRealtime, .elevenLabs, .groq:
             return true
         }
     }
@@ -123,7 +123,7 @@ enum ModelStorage {
         switch descriptor.backend {
         case .whisperKit: stale = whisperKitModelFolder(variant: descriptor.backendModelId)
         case .fluidAudio: stale = fluidAudioParakeetFolder
-        case .openAI, .openAIRealtime, .elevenLabs: stale = nil
+        case .openAI, .openAIRealtime, .elevenLabs, .groq: stale = nil
         }
         if let stale, FileManager.default.fileExists(atPath: stale.path) {
             try FileManager.default.removeItem(at: stale)

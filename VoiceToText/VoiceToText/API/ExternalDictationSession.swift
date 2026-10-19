@@ -81,7 +81,7 @@ final class ExternalDictationSession {
             return
         }
         if let provider = descriptor.backend.cloudProvider, !provider.hasAPIKey {
-            failStart(generation, .apiKeyMissing, "\(descriptor.displayName) needs an \(provider.displayName) API key. Add one in VoiceToText → Cloud.")
+            failStart(generation, .apiKeyMissing, "\(descriptor.displayName) needs \(provider.apiKeyPhrase). Add one in VoiceToText → Cloud.")
             return
         }
         model = descriptor

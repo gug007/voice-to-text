@@ -157,6 +157,7 @@ swiftc -parse-as-library \
 "$TMPDIR/streaming-wav-writer-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/CloudProvider.swift \
   VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Meetings/MeetingInterruption.swift \
   Tests/MeetingInterruptionHarness.swift \
@@ -185,6 +186,15 @@ swiftc -parse-as-library \
   Tests/OpenAIRequestBuilderHarness.swift \
   -o "$TMPDIR/openai-request-builder-harness"
 "$TMPDIR/openai-request-builder-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/OpenAIModelCapabilities.swift \
+  VoiceToText/VoiceToText/Engine/OpenAIRequestBuilder.swift \
+  VoiceToText/VoiceToText/Audio/AudioChunker.swift \
+  VoiceToText/VoiceToText/Audio/WAVEncoder.swift \
+  Tests/GroqRequestHarness.swift \
+  -o "$TMPDIR/groq-request-harness"
+"$TMPDIR/groq-request-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Engine/TranscriptionEngine.swift \

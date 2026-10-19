@@ -494,9 +494,14 @@ nonisolated final class TranscribeWorkerProcess: @unchecked Sendable {
         if cpuOnly { arguments.append(TranscribeWorkerProtocol.cpuOnlyFlag) }
         let argv: [UnsafeMutablePointer<CChar>?] = arguments.map { strdup($0) } + [nil]
         defer { argv.forEach { free($0) } }
+        // This process's environment, built from ProcessInfo: `_NSGetEnviron`
+        // isn't visible to Swift in every SDK this builds with.
+        let envp: [UnsafeMutablePointer<CChar>?] = ProcessInfo.processInfo.environment
+            .map { strdup("\($0.key)=\($0.value)") } + [nil]
+        defer { envp.forEach { free($0) } }
 
         var pid: pid_t = 0
-        let status = posix_spawn(&pid, executable, &actions, &attributes, argv, _NSGetEnviron().pointee)
+        let status = posix_spawn(&pid, executable, &actions, &attributes, argv, envp)
         childEnds.forEach { close($0) }
         guard status == 0 else {
             parentEnds.forEach { close($0) }

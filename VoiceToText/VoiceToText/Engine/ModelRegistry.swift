@@ -93,8 +93,8 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 }
 
 enum ModelCatalog {
-    /// Every model, in curated order. In the Intel slice the local Whisper
-    /// models run on whisper.cpp (`WhisperCppEngine`) and take the sizes of its
+    /// Every model, in curated order. In the Intel slice the local models run
+    /// on transcribe.cpp (`TranscribeCppEngine`) and take the sizes of its
     /// downloads (`ModelDescriptor.adaptedForIntel`).
     #if arch(x86_64)
     static let all: [ModelDescriptor] = everyModel.map(\.adaptedForIntel)
@@ -519,6 +519,9 @@ final class ModelRegistry {
             .flatMap { ModelCatalog.model(for: $0)?.id }
             ?? ModelCatalog.defaultModelID
         self.conversationModelId = UserDefaults.standard.string(forKey: Keys.conversationModelId)
+        #if arch(x86_64)
+        TranscribeCppModel.removeLegacyWhisperCppModels()
+        #endif
         refreshInstalledState()
         NotificationCenter.default.addObserver(
             forName: OpenAIAPIKeyStore.didChangeNotification,
@@ -984,14 +987,19 @@ final class ModelRegistry {
         switch descriptor.backend {
         case .whisperKit:
             #if arch(x86_64)
-            // WhisperKit crashes in the Intel slice; its models run on
-            // whisper.cpp there, keyed by catalog id (`WhisperCppModel`).
-            return WhisperCppEngine(modelId: descriptor.id)
+            // Neither CoreML engine holds up in the Intel slice; its local
+            // models run on transcribe.cpp, keyed by catalog id
+            // (`TranscribeCppModel`).
+            return TranscribeCppEngine(modelId: descriptor.id)
             #else
             return WhisperKitEngine(modelId: descriptor.backendModelId)
             #endif
         case .fluidAudio:
+            #if arch(x86_64)
+            return TranscribeCppEngine(modelId: descriptor.id)
+            #else
             return FluidAudioEngine(modelId: descriptor.backendModelId)
+            #endif
         case .openAI:
             return OpenAITranscriptionEngine(modelId: descriptor.backendModelId)
         case .openAIRealtime:

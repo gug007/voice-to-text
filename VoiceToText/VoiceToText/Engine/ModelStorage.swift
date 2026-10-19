@@ -14,17 +14,27 @@ enum ModelStorage {
     nonisolated static func location(for descriptor: ModelDescriptor) -> URL? {
         switch descriptor.backend {
         case .fluidAudio:
-            return fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
+            #if arch(x86_64)
+            // The Intel slice runs the local models on transcribe.cpp, from
+            // its own files.
+            return TranscribeCppModel.model(forCatalogID: descriptor.id)?.folder
+            #else
+            return fluidAudioParakeetFolder
+            #endif
         case .whisperKit:
             #if arch(x86_64)
-            // The Intel slice runs Whisper on whisper.cpp, from its own files.
-            return WhisperCppModel.model(forCatalogID: descriptor.id)?.folder
+            return TranscribeCppModel.model(forCatalogID: descriptor.id)?.folder
             #else
             return whisperKitModelFolder(variant: descriptor.backendModelId)
             #endif
         case .openAI, .openAIRealtime, .elevenLabs:
             return nil
         }
+    }
+
+    /// Where FluidAudio keeps Parakeet's CoreML bundles.
+    nonisolated static var fluidAudioParakeetFolder: URL {
+        fluidAudioBaseURL.appendingPathComponent("parakeet-tdt-0.6b-v3", isDirectory: true)
     }
 
     /// Where `WhisperKit.download` puts a variant under `whisperKitBaseURL`:
@@ -59,13 +69,14 @@ enum ModelStorage {
     /// leaves the files it finished behind.
     static func isDownloaded(_ descriptor: ModelDescriptor, readiness: ModelReadiness) -> Bool {
         guard !readiness.isDownloading, isInstalled(descriptor) else { return false }
+        #if arch(x86_64)
+        if !descriptor.isCloud {
+            return TranscribeCppModel.model(forCatalogID: descriptor.id)?.isDownloaded() ?? false
+        }
+        #endif
         switch descriptor.backend {
         case .whisperKit:
-            #if arch(x86_64)
-            return WhisperCppModel.model(forCatalogID: descriptor.id)?.isDownloaded() ?? false
-            #else
             return WhisperKitModelFiles.hasRequiredModels(in: whisperKitModelFolder(variant: descriptor.backendModelId))
-            #endif
         case .fluidAudio:
             return location(for: descriptor).map { ParakeetModelFiles.hasRequiredModels(in: $0) } ?? false
         case .openAI, .openAIRealtime, .elevenLabs:
@@ -106,12 +117,16 @@ enum ModelStorage {
     static func delete(_ descriptor: ModelDescriptor) throws {
         #if arch(x86_64)
         // Up to v0.2.6 an Intel Mac could download WhisperKit's CoreML build
-        // of a model, which never runs there. Deleting the model frees that too.
-        if descriptor.backend == .whisperKit {
-            let stale = whisperKitModelFolder(variant: descriptor.backendModelId)
-            if FileManager.default.fileExists(atPath: stale.path) {
-                try FileManager.default.removeItem(at: stale)
-            }
+        // of a model, and up to v0.2.8 it ran Parakeet's CoreML build; neither
+        // runs there now. Deleting the model frees that too.
+        let stale: URL?
+        switch descriptor.backend {
+        case .whisperKit: stale = whisperKitModelFolder(variant: descriptor.backendModelId)
+        case .fluidAudio: stale = fluidAudioParakeetFolder
+        case .openAI, .openAIRealtime, .elevenLabs: stale = nil
+        }
+        if let stale, FileManager.default.fileExists(atPath: stale.path) {
+            try FileManager.default.removeItem(at: stale)
         }
         #endif
         guard let url = location(for: descriptor) else { return }

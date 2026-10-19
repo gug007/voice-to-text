@@ -136,6 +136,12 @@ struct ModelsPane: View {
                     registry: registry,
                     onShowCloudSettings: onShowCloudSettings
                 )
+                #if arch(x86_64)
+                // Where the local models run, under the plate that lists them.
+                if group == .local {
+                    IntelGPUCard()
+                }
+                #endif
             }
         }
         // Selection changes animate across the whole pane rather than per-row,

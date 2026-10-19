@@ -63,7 +63,9 @@ Carthage/Checkouts/
 timeline.xctimeline
 playground.xcworkspace
 
-# whisper.cpp for the Intel slice — built by scripts/build-whisper-cpp.sh
+# transcribe.cpp for the Intel slice — built by scripts/build-transcribe-cpp.sh
+VoiceToText/Vendor/transcribe.cpp/
+# whisper.cpp, which it replaced; a checkout that built it before keeps it
 VoiceToText/Vendor/whisper.cpp/
 
 # Secrets / local config

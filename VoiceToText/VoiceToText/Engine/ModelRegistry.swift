@@ -20,6 +20,18 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
         var isCloud: Bool { cloudProvider != nil }
 
+        /// False for WhisperKit in the Intel (x86_64) slice: WhisperKit fills
+        /// its float16 model buffers through `FloatType`, which is `Float`
+        /// there, so the first decode writes past the KV cache and crashes.
+        /// `ModelCatalog.all` leaves out every model this is false for.
+        var runsInThisBuild: Bool {
+            #if arch(x86_64)
+            return self != .whisperKit
+            #else
+            return true
+            #endif
+        }
+
         /// True for engines that transcribe a live audio stream — partials
         /// appear as the user speaks — rather than a buffered recording.
         var isStreaming: Bool {
@@ -93,7 +105,11 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 }
 
 enum ModelCatalog {
-    static let all: [ModelDescriptor] = [
+    /// The models this build can run, in curated order — every model, less
+    /// those whose backend doesn't run here (`Backend.runsInThisBuild`).
+    static let all: [ModelDescriptor] = everyModel.filter(\.backend.runsInThisBuild)
+
+    private static let everyModel: [ModelDescriptor] = [
         ModelDescriptor(
             id: "parakeet-tdt-v3",
             displayName: "Parakeet TDT v3",
@@ -503,7 +519,12 @@ final class ModelRegistry {
     private static let prepareStallPollMs = 1_000
 
     private init() {
+        // A stored id the catalog no longer holds — a Whisper model picked on
+        // an Intel Mac before this build left them out — falls back to the
+        // default, as a stale `conversationModelId` does. Left in place
+        // rather than overwritten, like that one.
         self.activeModelId = UserDefaults.standard.string(forKey: Keys.activeModelId)
+            .flatMap { ModelCatalog.model(for: $0)?.id }
             ?? ModelCatalog.defaultModelID
         self.conversationModelId = UserDefaults.standard.string(forKey: Keys.conversationModelId)
         refreshInstalledState()

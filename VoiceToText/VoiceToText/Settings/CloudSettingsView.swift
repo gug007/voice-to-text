@@ -3,14 +3,16 @@ import SwiftUI
 struct CloudPane: View {
     @Bindable private var keyStore = OpenAIAPIKeyStore.shared
     @Bindable private var elevenKeyStore = ElevenLabsAPIKeyStore.shared
+    @Bindable private var groqKeyStore = GroqAPIKeyStore.shared
     @Bindable private var credit = CloudCreditStatus.shared
 
-    /// The two provider tints, as light/dark pairs — raw `.blue` / `.purple`
+    /// The provider tints, as light/dark pairs — raw `.blue` / `.purple`
     /// are not tokens and read differently in each appearance.
     private static let openAITint = Palette.accent
     private static let elevenLabsTint = Palette.dynamic(
         "providerElevenLabs", light: 0x5856D6, dark: 0x7D7AFF
     )
+    private static let groqTint = Palette.providerGroq
 
     var body: some View {
         PaneScaffold {
@@ -43,14 +45,26 @@ struct CloudPane: View {
                 autoFocusesField: false
             )
 
+            providerSection(
+                config: .groq,
+                symbol: "bolt.fill",
+                tint: Self.groqTint,
+                title: "Groq",
+                subtitle: "Whisper Large v3 and v3 Turbo — fast, low-cost transcription",
+                hasKey: groqKeyStore.hasKey,
+                keySuffix: groqKeyStore.keySuffix,
+                isOutOfCredit: credit.isOutOfCredit(.groq),
+                autoFocusesField: false
+            )
+
             privacyFooter
         }
     }
 
     // MARK: - Provider section
 
-    /// Header row plus the shared paste-to-connect field. The two providers
-    /// differ only in the tile, the copy and which store they read.
+    /// Header row plus the shared paste-to-connect field. The providers differ
+    /// only in the tile, the copy and which store they read.
     private func providerSection(
         config: APIKeyProviderConfig,
         symbol: String,

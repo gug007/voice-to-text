@@ -161,19 +161,19 @@ nonisolated enum MeetingTranscriptionIssue: Equatable {
 
     /// The model a conversation was meant for couldn't be loaded. Says which,
     /// and the most specific why there is: no model at all, a cloud model
-    /// without its key (`missingKeyFor` names the provider), the error the
+    /// without its key (`missingKeyFor` is its provider), the error the
     /// last load left behind, or — a stalled download, say — only that it
     /// isn't ready.
     static func noModel(
         named modelName: String?,
-        missingKeyFor provider: String?,
+        missingKeyFor provider: CloudProvider?,
         loadFailure: String?
     ) -> MeetingTranscriptionIssue {
         guard let modelName else {
             return .noModel(reason: "No transcription model is selected.")
         }
         if let provider {
-            return .noModel(reason: "\(modelName) needs an \(provider) API key.")
+            return .noModel(reason: "\(modelName) needs \(provider.apiKeyPhrase).")
         }
         if let loadFailure, !loadFailure.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return .noModel(reason: "Couldn't load \(modelName): \(sentence(loadFailure))")

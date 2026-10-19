@@ -7,6 +7,69 @@ nonisolated enum OpenAIEndpoint {
     static let apiKeysDocs = URL(string: "https://platform.openai.com/api-keys")!
 }
 
+/// Groq's OpenAI-compatible API: the same paths under `/openai/v1`.
+nonisolated enum GroqEndpoint {
+    static let transcriptions = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
+    static let models = URL(string: "https://api.groq.com/openai/v1/models")!
+    static let apiKeysDocs = URL(string: "https://console.groq.com/keys")!
+}
+
+/// A service that speaks OpenAI's `/audio/transcriptions` contract — the
+/// multipart request, the `{"text"}` answer and the `{"error"}` envelope — and
+/// so runs on `OpenAITranscriptionEngine`. Only those: ElevenLabs has an API of
+/// its own and can't be named here.
+nonisolated enum OpenAICompatibleService: Sendable {
+    case openAI
+    case groq
+
+    var provider: CloudProvider {
+        switch self {
+        case .openAI: return .openAI
+        case .groq: return .groq
+        }
+    }
+
+    var displayName: String { provider.displayName }
+
+    var transcriptionsURL: URL {
+        switch self {
+        case .openAI: return OpenAIEndpoint.transcriptions
+        case .groq: return GroqEndpoint.transcriptions
+        }
+    }
+
+    var modelsURL: URL {
+        switch self {
+        case .openAI: return OpenAIEndpoint.models
+        case .groq: return GroqEndpoint.models
+        }
+    }
+
+    /// Read on every request, so a key changed in Settings applies without
+    /// rebuilding the engine.
+    func readAPIKey() -> String? {
+        switch self {
+        case .openAI: return OpenAIAPIKey.read()
+        case .groq: return GroqAPIKey.read()
+        }
+    }
+
+    /// What a 404 or `model_not_found` means on this service, worded as the fix.
+    var modelUnavailableMessage: String {
+        switch self {
+        case .openAI:
+            // Both new July 2026 models ship as unversioned aliases with no
+            // published tier requirement, so "your key can't see this model
+            // yet" is a plausible first-run failure.
+            return "This model isn't available on your OpenAI account yet. Pick another model in Settings → Models."
+        case .groq:
+            // Groq retires models on its own schedule; a retired id is the
+            // likely way to land here.
+            return "Groq no longer offers this model, or your account can't use it. Pick another model in Settings → Models."
+        }
+    }
+}
+
 enum OpenAIConnectionTest {
     /// Reachability probe used by the settings UI. Returns nil on success;
     /// a short user-facing failure message otherwise.
@@ -15,12 +78,13 @@ enum OpenAIConnectionTest {
     case failed(String)
 }
 
-/// Engine that uploads the captured audio buffer to OpenAI's
-/// `/v1/audio/transcriptions` endpoint. The API key is read from
-/// `OpenAIAPIKey` on every request so changes propagate without rebuilding
-/// the engine.
+/// Engine that uploads the captured audio buffer to an
+/// `/audio/transcriptions` endpoint on OpenAI's API shape — OpenAI's own, or
+/// Groq's (`service`). The API key is read from the service's key store on
+/// every request so changes propagate without rebuilding the engine.
 actor OpenAITranscriptionEngine: TranscriptionEngine {
     let modelId: String
+    private let service: OpenAICompatibleService
 
     /// Which fields this model accepts (and which it rejects outright).
     private let capabilities: OpenAIModelCapabilities
@@ -45,8 +109,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     /// proper-noun spelling across boundaries.
     private nonisolated static let contextPromptTailLength = 200
 
-    init(modelId: String, sampleRate: Int = 16_000) {
+    init(modelId: String, service: OpenAICompatibleService = .openAI, sampleRate: Int = 16_000) {
         self.modelId = modelId
+        self.service = service
         self.capabilities = .forModel(modelId)
         self.sampleRate = sampleRate
         self.session = Self.makeSession()
@@ -63,18 +128,18 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     }
 
     nonisolated var isReady: Bool {
-        get async { OpenAIAPIKey.read() != nil }
+        get async { service.readAPIKey() != nil }
     }
 
-    /// All OpenAI models here split over-long input via `AudioChunker` and
+    /// All models here split over-long input via `AudioChunker` and
     /// carry their own cross-request context, so callers must not pre-chunk.
     nonisolated var chunksInternally: Bool { true }
 
     func prepare(progress: PrepareProgress?) async throws {
         progress?(0.5, "Checking API key…")
-        guard OpenAIAPIKey.read() != nil else {
+        guard service.readAPIKey() != nil else {
             throw TranscriptionEngineError.modelLoadFailed(
-                "OpenAI API key not configured. Add one in Settings → Cloud."
+                "\(service.displayName) API key not configured. Add one in Settings → Cloud."
             )
         }
         progress?(1.0, "Ready")
@@ -85,11 +150,11 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         contextPrompt: String?,
         progress: TranscribeProgress?
     ) async throws -> String {
-        guard let apiKey = OpenAIAPIKey.read() else {
+        guard let apiKey = service.readAPIKey() else {
             throw TranscriptionEngineError.notReady
         }
         #if DEBUG
-        try CloudQuotaSimulation.throwIfEnabled(for: .openAI)
+        try CloudQuotaSimulation.throwIfEnabled(for: service.provider)
         #endif
 
         // The diarizing model has its own request shape and its own cross-request
@@ -130,7 +195,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let wav = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        var request = Self.authorizedRequest(url: OpenAIEndpoint.transcriptions, apiKey: apiKey)
+        var request = Self.authorizedRequest(url: service.transcriptionsURL, apiKey: apiKey)
         request.httpMethod = "POST"
         request.timeoutInterval = Self.requestTimeout(
             forAudioSeconds: Double(samples.count) / Double(sampleRate)
@@ -142,39 +207,23 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         // Models on the plural-`languages` form reject the singular `language`
         // alongside it, and reject a malformed code outright — so their language
         // goes through validation and the singular field is suppressed entirely.
-        // Every older model keeps its previous behavior: raw `language`, no
-        // `keywords`. Neither `chunking_strategy` nor `known_speaker_*[]` is
-        // reachable from this path — both are scoped to the diarizing model.
-        let languages = capabilities.usesPluralLanguages
-            ? [OpenAIModelCapabilities.validatedLanguageCode(opts.language)].compactMap { $0 }
-            : []
-        // The prompt clamp is scoped the same way: an over-long `prompt` is
-        // documented as rejecting the whole request only on the models that take
-        // `languages`. The older models have always sent the full concatenation,
-        // so clamping them would silently truncate a long user glossary that used
-        // to reach the API.
-        let promptLimit: Int? = capabilities.usesPluralLanguages
-            ? OpenAIModelCapabilities.promptCharacterLimit
-            : nil
-        let prompt = capabilities.supportsPrompt
-            ? OpenAIModelCapabilities.combinedPrompt(
-                initial: opts.initialPrompt,
-                context: contextPrompt,
-                limit: promptLimit
-            )
-            : nil
+        // Every older OpenAI model keeps its previous behavior: raw `language`,
+        // no `keywords`; Groq's get the singular field, validated. Neither
+        // `chunking_strategy` nor `known_speaker_*[]` is reachable from this
+        // path — both are scoped to the diarizing model. The prompt clamp is
+        // scoped per model too; see `batchPrompt`.
         request.httpBody = OpenAIRequestBuilder.makeMultipartBody(
             boundary: boundary,
             modelId: modelId,
             wav: wav,
-            language: capabilities.usesPluralLanguages ? nil : opts.language,
-            prompt: prompt,
+            language: capabilities.batchLanguage(opts.language),
+            prompt: capabilities.batchPrompt(initial: opts.initialPrompt, context: contextPrompt),
             // The docs' own `gpt-transcribe` examples omit `response_format`, and
             // the reference states per-model restrictions for every model *except*
             // this one — so sending the endpoint-wide `json` default explicitly is
             // an assumption. Revisit if a 400 ever names `response_format`.
             responseFormat: capabilities.batchResponseFormat,
-            languages: languages,
+            languages: capabilities.batchLanguages(opts.language),
             keywords: capabilities.supportsKeywords
                 ? OpenAIModelCapabilities.sanitizedKeywords(from: opts.keywords)
                 : []
@@ -189,10 +238,10 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
+            throw TranscriptionEngineError.transcriptionFailed("Invalid \(service.displayName) response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.httpError(http, body: data)
+            throw Self.httpError(http, body: data, service: service)
         }
 
         struct Body: Decodable { let text: String }
@@ -200,7 +249,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
             let body = try JSONDecoder().decode(Body.self, from: data)
             return body.text.trimmingCharacters(in: .whitespacesAndNewlines)
         } catch {
-            throw TranscriptionEngineError.transcriptionFailed("Could not parse OpenAI response")
+            throw TranscriptionEngineError.transcriptionFailed("Could not parse \(service.displayName) response")
         }
     }
 
@@ -265,7 +314,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let wav = WAVEncoder.encode(samples: samples, sampleRate: sampleRate)
 
         let boundary = "Boundary-\(UUID().uuidString)"
-        var request = Self.authorizedRequest(url: OpenAIEndpoint.transcriptions, apiKey: apiKey)
+        var request = Self.authorizedRequest(url: service.transcriptionsURL, apiKey: apiKey)
         request.httpMethod = "POST"
         request.timeoutInterval = Self.requestTimeout(
             forAudioSeconds: Double(samples.count) / Double(sampleRate)
@@ -295,10 +344,10 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         }
 
         guard let http = response as? HTTPURLResponse else {
-            throw TranscriptionEngineError.transcriptionFailed("Invalid OpenAI response")
+            throw TranscriptionEngineError.transcriptionFailed("Invalid \(service.displayName) response")
         }
         guard (200..<300).contains(http.statusCode) else {
-            throw Self.httpError(http, body: data)
+            throw Self.httpError(http, body: data, service: service)
         }
 
         return try DiarizedTranscript.parse(data)
@@ -334,9 +383,14 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
 
     /// A non-2xx answer, typed so the failure card can tell a refused key or
     /// a rate limit from the rest; the message is the one it always was.
-    private nonisolated static func httpError(_ http: HTTPURLResponse, body: Data) -> Error {
-        let summary = errorMessage(from: body, status: http.statusCode) ?? "HTTP \(http.statusCode)"
-        return CloudTranscriptionError.http(http, body: body, reason: "OpenAI: \(summary)")
+    private nonisolated static func httpError(
+        _ http: HTTPURLResponse,
+        body: Data,
+        service: OpenAICompatibleService
+    ) -> Error {
+        let summary = errorMessage(from: body, status: http.statusCode, service: service)
+            ?? "HTTP \(http.statusCode)"
+        return CloudTranscriptionError.http(http, body: body, reason: "\(service.displayName): \(summary)")
     }
 
     /// One transparent retry for transport errors that typically mean the
@@ -351,7 +405,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         if let last = lastRequestFinishedAt,
            Date().timeIntervalSince(last) > Self.staleSessionIdleThreshold {
             AppLog.engine.debug(
-                "OpenAI session idle for \(Date().timeIntervalSince(last), format: .fixed(precision: 1))s; refreshing connection before request"
+                "\(self.service.displayName, privacy: .public) session idle for \(Date().timeIntervalSince(last), format: .fixed(precision: 1))s; refreshing connection before request"
             )
             session.invalidateAndCancel()
             session = Self.makeSession()
@@ -362,7 +416,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         } catch let error as URLError
             where error.code == .networkConnectionLost || error.code == .timedOut {
             AppLog.engine.warning(
-                "OpenAI transcription request failed (URLError \(error.code.rawValue)); retrying on a fresh connection"
+                "\(self.service.displayName, privacy: .public) transcription request failed (URLError \(error.code.rawValue)); retrying on a fresh connection"
             )
             session.invalidateAndCancel()
             session = Self.makeSession()
@@ -384,18 +438,22 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
     }
 
     /// Lightweight reachability check used by the Cloud settings pane. Hits
-    /// `/v1/models` with the saved API key and reports whether the key works.
-    static func testConnection() async -> OpenAIConnectionTest {
-        guard let apiKey = OpenAIAPIKey.read() else {
+    /// the service's `/v1/models` with the saved API key and reports whether
+    /// the key works.
+    static func testConnection(service: OpenAICompatibleService = .openAI) async -> OpenAIConnectionTest {
+        guard let apiKey = service.readAPIKey() else {
             return .failed("No key configured.")
         }
-        return await testConnection(apiKey: apiKey)
+        return await testConnection(apiKey: apiKey, service: service)
     }
 
     /// The same probe against a key that has not been saved yet — what the
     /// paste-to-connect field verifies before committing anything to storage.
-    static func testConnection(apiKey: String) async -> OpenAIConnectionTest {
-        var request = authorizedRequest(url: OpenAIEndpoint.models, apiKey: apiKey)
+    static func testConnection(
+        apiKey: String,
+        service: OpenAICompatibleService = .openAI
+    ) async -> OpenAIConnectionTest {
+        var request = authorizedRequest(url: service.modelsURL, apiKey: apiKey)
         request.timeoutInterval = 15
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
@@ -418,7 +476,11 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         return request
     }
 
-    private nonisolated static func errorMessage(from data: Data, status: Int) -> String? {
+    private nonisolated static func errorMessage(
+        from data: Data,
+        status: Int,
+        service: OpenAICompatibleService
+    ) -> String? {
         struct Envelope: Decodable {
             struct ErrorBody: Decodable {
                 let message: String?
@@ -429,7 +491,7 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         let envelope = try? JSONDecoder().decode(Envelope.self, from: data)
         let message = envelope?.error.message
         if isModelUnavailable(status: status, code: envelope?.error.code, message: message) {
-            return modelUnavailableMessage
+            return service.modelUnavailableMessage
         }
         if let message, !message.isEmpty {
             return message
@@ -437,13 +499,9 @@ actor OpenAITranscriptionEngine: TranscriptionEngine {
         return String(data: data, encoding: .utf8)
     }
 
-    /// Both new July 2026 models ship as unversioned aliases with no published
-    /// tier requirement, so "your key can't see this model yet" is a plausible
-    /// first-run failure. The raw API string for it ("The model `…` does not
-    /// exist…") reads like an app bug, so name the fix instead.
-    nonisolated static let modelUnavailableMessage =
-        "This model isn't available on your OpenAI account yet. Pick another model in Settings → Models."
-
+    /// "Your key can't see this model" — the raw API string for it ("The model
+    /// `…` does not exist…") reads like an app bug, so the message names the
+    /// fix instead (`OpenAICompatibleService.modelUnavailableMessage`).
     private nonisolated static func isModelUnavailable(
         status: Int,
         code: String?,

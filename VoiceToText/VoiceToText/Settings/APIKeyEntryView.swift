@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Provider-agnostic verification outcome. Both engines keep their own
+/// Provider-agnostic verification outcome. The engines keep their own
 /// connection-test enums; the config factories below map onto this one so the
 /// field never has to know which provider it is talking to.
 nonisolated enum APIKeyVerification: Sendable {
@@ -9,7 +9,7 @@ nonisolated enum APIKeyVerification: Sendable {
     case failed(String)
 }
 
-/// Everything `APIKeyEntryView` needs to serve one provider. Built by the two
+/// Everything `APIKeyEntryView` needs to serve one provider. Built by the
 /// factories below; no call site assembles one by hand.
 struct APIKeyProviderConfig {
     let providerName: String
@@ -56,10 +56,26 @@ extension APIKeyProviderConfig {
         )
     }
 
+    static var groq: APIKeyProviderConfig {
+        APIKeyProviderConfig(
+            providerName: "Groq",
+            pastePrompt: "Paste your Groq key (starts with gsk_)",
+            getKeyURL: GroqEndpoint.apiKeysDocs,
+            looksLikeKey: GroqAPIKey.looksLikeKey,
+            verify: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(apiKey: $0, service: .groq)) },
+            verifyStored: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(service: .groq)) },
+            save: { GroqAPIKeyStore.shared.setKey($0) },
+            clear: { GroqAPIKeyStore.shared.clearKey() },
+            hasKey: { GroqAPIKeyStore.shared.hasKey },
+            keySuffix: { GroqAPIKeyStore.shared.keySuffix }
+        )
+    }
+
     static func forProvider(_ provider: CloudProvider) -> APIKeyProviderConfig {
         switch provider {
         case .openAI: return .openAI
         case .elevenLabs: return .elevenLabs
+        case .groq: return .groq
         }
     }
 }

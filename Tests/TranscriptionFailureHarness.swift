@@ -50,6 +50,7 @@ struct TranscriptionFailureHarness {
         try rateLimitsCarryRetryAfter()
         try absurdRetryAftersAreBounded()
         try exhaustedQuotaIsNotARateLimit()
+        try groqFailuresClassifyByStatus()
         try serverErrorsAreServer()
         try otherStatusesKeepTheEngineMessage()
         try onlyNoNetworkCodesAreOffline()
@@ -129,6 +130,52 @@ struct TranscriptionFailureHarness {
         )
         try expect(httpFailure(402), .quotaExhausted, "payment required is an empty balance too")
         try expect(httpFailure(429, code: "rate_limit_exceeded"), .rateLimited(retryAfter: nil), "a real rate limit")
+    }
+
+    /// Groq answers in OpenAI's envelope, with a lowercase `retry-after` in
+    /// seconds — its audio-seconds-per-hour limits can mean minutes — and no
+    /// empty-balance code of its own, so its status alone decides.
+    private static func groqFailuresClassifyByStatus() throws {
+        let groq = URL(string: "https://api.groq.com/openai/v1/audio/transcriptions")!
+        let fallback = "Transcription failed: Groq: nope"
+        func failure(_ status: Int, headers: [String: String] = [:], body: String) -> CloudTranscriptionError {
+            CloudTranscriptionError.http(
+                HTTPURLResponse(url: groq, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!,
+                body: Data(body.utf8),
+                reason: "Groq: nope",
+                now: now
+            )
+        }
+
+        let limited = failure(
+            429,
+            headers: ["retry-after": "37"],
+            body: #"{"error":{"message":"Rate limit reached for model `whisper-large-v3-turbo` in organization `org_x` on seconds of audio per hour (ASPH): Limit 7200, Used 7190, Requested 30. Please try again in 37s.","type":"seconds","code":"rate_limit_exceeded"}}"#
+        )
+        try expect(limited.cause, .http(status: 429, retryAfter: 37, apiCode: "rate_limit_exceeded"), "Groq's lowercase retry-after and code are read")
+        let limitedFailure = TranscriptionFailure.classify(limited)
+        try expect(limitedFailure, .rateLimited(retryAfter: 37), "a Groq 429 is a rate limit, not an empty balance")
+        try expect(
+            limitedFailure.message(provider: "Groq", fallback: fallback),
+            "Groq is rate-limiting requests. Retry in 37s.",
+            "the card names Groq and the wait"
+        )
+
+        let refused = failure(
+            401,
+            body: #"{"error":{"message":"Invalid API Key","type":"invalid_request_error","code":"invalid_api_key"}}"#
+        )
+        try expect(TranscriptionFailure.classify(refused), .unauthorized, "a Groq 401 is a refused key")
+        try expect(
+            TranscriptionFailure.classify(refused).message(provider: "Groq", fallback: fallback),
+            "Groq didn't accept your API key.",
+            "the card names Groq"
+        )
+
+        try expect(TranscriptionFailure.classify(failure(503, body: "")), .server, "a Groq 5xx is the provider's trouble")
+        try expect(TranscriptionFailure.classify(failure(413, body: "")), .other, "too large keeps the engine's message")
+        try expect(TranscriptionFailure.classify(failure(498, body: "")), .other, "flex capacity keeps the engine's message")
+        try expect(TranscriptionFailure.classify(failure(402, body: "")), .quotaExhausted, "the simulated empty balance")
     }
 
     private static func serverErrorsAreServer() throws {

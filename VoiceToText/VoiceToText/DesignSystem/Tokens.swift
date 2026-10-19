@@ -256,6 +256,11 @@ nonisolated enum Palette {
     /// tinting it `accent` would collide with the active-model tint two badges
     /// away. #5856D6 / #7D7AFF.
     static let badgeIndigo = Palette.dynamic("badgeIndigo", light: 0x5856D6, dark: 0x7D7AFF)
+    /// Groq's provider tile, in the Cloud pane and the Models pane alike.
+    /// Groq's own orange (#F55036) is 3.4:1 on a light plate and barely 3:1 on
+    /// the tile's tinted wash, so light mode takes a deeper cut of it.
+    /// #D9381E (4.6:1) / #FF6A4D (5.5:1 on the dark plate).
+    static let providerGroq = Palette.dynamic("providerGroq", light: 0xD9381E, dark: 0xFF6A4D)
     /// The favorited-recording star. Raw `.yellow` is 1.4:1 on a light plate,
     /// which is why the star reads as a smudge today. #C99A00 / #FFD426.
     static let favorite = Palette.dynamic("favorite", light: 0xC99A00, dark: 0xFFD426)

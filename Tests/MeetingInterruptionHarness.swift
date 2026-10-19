@@ -270,9 +270,14 @@ struct MeetingInterruptionHarness {
             "no model at all"
         )
         try expect(
-            MeetingTranscriptionIssue.noModel(named: "GPT-4o Transcribe", missingKeyFor: "OpenAI", loadFailure: "x").historyReason
+            MeetingTranscriptionIssue.noModel(named: "GPT-4o Transcribe", missingKeyFor: .openAI, loadFailure: "x").historyReason
                 == "GPT-4o Transcribe needs an OpenAI API key.",
             "a missing key outranks the load error it caused"
+        )
+        try expect(
+            MeetingTranscriptionIssue.noModel(named: "Whisper Large v3 (Groq)", missingKeyFor: .groq, loadFailure: nil).historyReason
+                == "Whisper Large v3 (Groq) needs a Groq API key.",
+            "the article follows the provider's name"
         )
         try expect(
             MeetingTranscriptionIssue.noModel(named: "Parakeet", missingKeyFor: nil, loadFailure: "The download was interrupted").historyReason

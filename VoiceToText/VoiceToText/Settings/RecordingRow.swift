@@ -591,9 +591,14 @@ struct RecordingRow: View {
                     help: "\(local.model.displayName) runs on this Mac — free and private",
                     modelId: local.model.id
                 )
+                // Groq's Whisper shares its name with the local one it falls
+                // back to, so the retry keeps "(Groq)" when the two would read alike.
+                let retryName = model.sectionedDisplayName == local.model.displayName
+                    ? model.displayName
+                    : model.sectionedDisplayName
                 HStack(spacing: Space.s5) {
                     noticeLink(
-                        FailureCardCopy.historyRetryTitle(cloudModelName: model.sectionedDisplayName),
+                        FailureCardCopy.historyRetryTitle(cloudModelName: retryName),
                         help: "Try \(model.displayName) again once your balance is topped up",
                         modelId: model.id
                     )
@@ -849,7 +854,7 @@ struct RecordingRow: View {
                     }
             ))
         }
-        for provider in [CloudProvider.openAI, .elevenLabs] {
+        for provider in CloudProvider.allCases {
             let group = all.filter { $0.backend.cloudProvider == provider }
             guard !group.isEmpty else { continue }
             let detail = provider.hasAPIKey ? nil : "Needs an API key"

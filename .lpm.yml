@@ -1,0 +1,9 @@
+actions:
+  github-issues:
+    label: 'Issues · $(gh api -X GET search/issues -f q="repo:gug007/voice-to-text is:issue is:open -commenter:gug007 -author:gug007" --jq .total_count)'
+    emoji: 💬
+    cmd: open "https://github.com/gug007/voice-to-text/issues?q=is%3Aissue+is%3Aopen+-commenter%3Agug007+-author%3Agug007"
+    type: background
+    labelRefresh: 10m
+    display: footer
+    position: 0

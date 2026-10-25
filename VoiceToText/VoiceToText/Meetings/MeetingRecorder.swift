@@ -63,6 +63,8 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     /// Begins capture, writing the mixed audio to `outputURL`. Throws if Screen
     /// Recording permission is missing or no display is available.
     func start(outputURL: URL) async throws {
+        // Started first so the HAL lookup overlaps the shareable-content one.
+        async let microphoneUID = Self.pinnedMicrophoneUID()
         let content = try await SCShareableContent.current
         guard let display = content.displays.first else {
             throw MeetingRecorderError.noDisplayAvailable
@@ -83,6 +85,8 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
         config.minimumFrameInterval = CMTime(value: 1, timescale: 1)
         if #available(macOS 15.0, *) {
             config.captureMicrophone = true
+            // `nil` is ScreenCaptureKit's own default: the system default input.
+            config.microphoneCaptureDeviceID = await microphoneUID
         }
 
         let writer = try StreamingWAVWriter(url: outputURL, sampleRate: sampleRate)
@@ -135,6 +139,24 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
                   StreamingWAVWriter.repairHeaderInPlace(at: writer.url) else { return nil }
             return (writer.url, duration)
         }
+    }
+
+    /// The microphone picked in Settings, as the UID ScreenCaptureKit takes —
+    /// the same CoreAudio device UID the dictation recorder binds — when it is
+    /// connected; `nil` to follow the system default, including when the
+    /// pinned mic is unplugged, so a conversation never fails to start over it.
+    ///
+    /// Detached: the lookup is a HAL read, which can block for seconds, and
+    /// this async method otherwise runs on its caller's executor — the main
+    /// actor.
+    private static func pinnedMicrophoneUID() async -> String? {
+        await Task.detached(priority: .userInitiated) {
+            let uid = InputDeviceCatalog.resolvePinnedInput(logMissingFor: "the conversation").pinned?.uid
+            if let uid {
+                AppLog.audio.notice("Conversation microphone: pinned uid=\(uid, privacy: .public)")
+            }
+            return uid
+        }.value
     }
 
     /// Atomically reads and clears the active stream on the serial queue, so

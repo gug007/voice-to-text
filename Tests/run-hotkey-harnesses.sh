@@ -330,3 +330,15 @@ swiftc -parse-as-library \
   Tests/ExternalAPIProtocolHarness.swift \
   -o "$TMPDIR/external-api-protocol-harness"
 "$TMPDIR/external-api-protocol-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/MicrophoneSelection.swift \
+  Tests/MicrophoneSelectionHarness.swift \
+  -o "$TMPDIR/microphone-selection-harness"
+"$TMPDIR/microphone-selection-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/CaptureRingCursor.swift \
+  Tests/CaptureRingCursorHarness.swift \
+  -o "$TMPDIR/capture-ring-cursor-harness"
+"$TMPDIR/capture-ring-cursor-harness"

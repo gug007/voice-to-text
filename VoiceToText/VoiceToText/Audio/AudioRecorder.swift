@@ -1,5 +1,6 @@
 import AppKit
 import AVFoundation
+import CoreAudio
 import Foundation
 import OSLog
 
@@ -69,7 +70,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// Guards every field below. Only ever held across trivial field access —
     /// never across a CoreAudio call — so it can't inherit CoreAudio's stalls.
     private let stateLock = NSLock()
-    /// Serial queue owning all AVAudioEngine work. Replaced wholesale when an
+    /// Serial queue owning all capture work. Replaced wholesale when an
     /// operation times out: the wedged block never returns, so its queue can
     /// never drain and everything behind it would inherit the stall.
     private var engineQueue = DispatchQueue(label: "AudioRecorder.engine.0")
@@ -77,7 +78,9 @@ final class AudioRecorder: @unchecked Sendable {
     /// generation it started under and refuses to publish anything once stale,
     /// so a late-returning wedged call can't scribble over the live engine.
     private var engineGeneration: UInt64 = 0
-    private var engine: AVAudioEngine?
+    /// AVAudioEngine on the system default input, or the bare input unit
+    /// bound to a pinned microphone — see `CaptureGraph`.
+    private var engine: CaptureGraph?
     private var configChangeObserver: NSObjectProtocol?
     /// The engine caches its input node's format at construction; after
     /// sleep/wake or a device switch that cache goes stale and `start()` throws
@@ -229,6 +232,18 @@ final class AudioRecorder: @unchecked Sendable {
         ) { [weak self] _ in
             self?.invalidateEngine()
         }
+        // A new microphone in Settings leaves the cached engine bound to the
+        // old one. `start()` would rebuild it anyway; re-warming now keeps
+        // that rebuild off the next press. A recorder that has never built an
+        // engine has nothing to correct, and must not get one from a setting.
+        NotificationCenter.default.addObserver(
+            forName: MicrophonePreference.didChangeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self, self.stateLock.withLock({ self.engine != nil }) else { return }
+            self.prewarm()
+        }
     }
 
     // MARK: - Lifecycle
@@ -303,14 +318,28 @@ final class AudioRecorder: @unchecked Sendable {
             guard let last = lastPrewarmStartedAt else { return false }
             return Date().timeIntervalSince(last) < Self.prewarmMinInterval
         }
-        guard !withinFloor else {
-            // Leaving the engine stale is always safe: `start()` rebuilds it.
-            AppLog.audio.info("Skipping audio engine prewarm; rebuilt too recently")
-            return
+        // Already bound to the stored pin: there is nothing a lookup could
+        // change, so neither the engine queue nor the HAL is touched.
+        let storedPin = MicrophonePreference.stored(in: .standard).uid
+        let (queue, generation, alreadyPinned) = stateLock.withLock {
+            (engineQueue, engineGeneration, storedPin != nil && engine?.binding?.uid == storedPin)
         }
+        guard !alreadyPinned else { return }
 
-        let (queue, generation) = stateLock.withLock { (engineQueue, engineGeneration) }
         queue.async {
+            let input = Self.resolveInput(logging: false)
+            self.releaseGraph(notBoundTo: input, generation: generation)
+            // Pinned and connected: nothing is built ahead of the take. The
+            // pinned unit costs a handful of property sets and no device
+            // enumeration, so there is nothing worth paying early — and an
+            // idle unit would hold listeners and an initialised device for
+            // nothing.
+            guard input == nil else { return }
+            guard !withinFloor else {
+                // Leaving the engine stale is always safe: `start()` rebuilds it.
+                AppLog.audio.info("Skipping audio engine prewarm; rebuilt too recently")
+                return
+            }
             let shouldWarm = self.stateLock.withLock {
                 self.engineGeneration == generation
                     && !self.isRecording
@@ -321,14 +350,47 @@ final class AudioRecorder: @unchecked Sendable {
             // prewarms can't consume the floor and starve a real one.
             self.prewarmLock.withLock { self.lastPrewarmStartedAt = Date() }
             do {
-                // Touching `inputNode` is what triggers the expensive HAL
-                // enumeration — the whole point of prewarming.
-                _ = try self.makeEngine(generation: generation).inputNode
+                try self.makeEngine(generation: generation, input: input).warm()
                 AppLog.audio.info("Audio engine prewarmed")
             } catch {
-                AppLog.audio.warning("Audio engine prewarm failed: \(error.localizedDescription)")
+                AppLog.audio.warning("Audio engine prewarm failed: \(error.localizedDescription, privacy: .public)")
             }
         }
+    }
+
+    /// Retires a cached graph bound to anything but `input`, building nothing
+    /// in its place: an engine left over from the system default sits on the
+    /// default devices' aggregate, which is exactly what pinning is for
+    /// keeping away from. Engine queue only.
+    private func releaseGraph(notBoundTo input: PinnedInput?, generation: UInt64) {
+        let (observer, graph) = stateLock.withLock { () -> (NSObjectProtocol?, CaptureGraph?) in
+            guard engineGeneration == generation, !isRecording, let engine, engine.binding != input else {
+                return (nil, nil)
+            }
+            needsFreshEngine = true
+            return detachGraphLocked()
+        }
+        guard graph != nil else { return }
+        AppLog.audio.notice("Released the cached capture engine: it was built for a different microphone")
+        discardOnEngineQueue(graph, observer: observer)
+    }
+
+    /// Takes the current graph and its observer out of the recorder. Caller
+    /// holds `stateLock`; nothing here is a CoreAudio call.
+    private func detachGraphLocked() -> (observer: NSObjectProtocol?, graph: CaptureGraph?) {
+        let detached = (configChangeObserver, engine)
+        configChangeObserver = nil
+        engine = nil
+        return detached
+    }
+
+    /// The one place a detached graph is let go of off the main thread: stop
+    /// listening to it, let it stop anything that must not outlive this
+    /// moment, then hand it to `retire`. Engine queue only.
+    private func discardOnEngineQueue(_ graph: CaptureGraph?, observer: NSObjectProtocol?) {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+        graph?.willRetire()
+        Self.retire(graph)
     }
 
     /// Marks the cached engine stale and rebuilds it in the background.
@@ -396,18 +458,16 @@ final class AudioRecorder: @unchecked Sendable {
     /// built once it notices its generation is stale.
     private func abandonEngine(staleGeneration: UInt64) {
         // The retired engine leaves the lock alive and dies in `retire`: this
-        // runs on main, where its dealloc is exactly what must not happen.
-        let (observer, retired) = stateLock.withLock { () -> (NSObjectProtocol?, AVAudioEngine?) in
+        // runs on main, where its dealloc is exactly what must not happen —
+        // and so is `willRetire`, a CoreAudio call, which is skipped here. The
+        // wedged queue it belongs to could not run it anyway.
+        let (observer, retired) = stateLock.withLock { () -> (NSObjectProtocol?, CaptureGraph?) in
             guard engineGeneration == staleGeneration else { return (nil, nil) }
             engineGeneration &+= 1
             engineQueue = DispatchQueue(label: "AudioRecorder.engine.\(engineGeneration)")
-            let observer = configChangeObserver
-            let previous = engine
-            configChangeObserver = nil
-            engine = nil
             needsFreshEngine = true
             isRecording = false
-            return (observer, previous)
+            return detachGraphLocked()
         }
         if let observer { NotificationCenter.default.removeObserver(observer) }
         Self.retire(retired)
@@ -428,11 +488,15 @@ final class AudioRecorder: @unchecked Sendable {
     /// `engineQueue`, where a dealloc blocked in CoreAudio would stall the next
     /// start. The grace keeps our own reference alive past the burst, so a
     /// notification still in flight is never left holding the last one.
-    private static func retire(_ engine: AVAudioEngine?) {
-        guard let engine else { return }
-        // `unsafe` only because `Unmanaged` carries a non-Sendable instance. The
-        // +1 is what stops the caller from ever owning the final release.
-        nonisolated(unsafe) let handoff = Unmanaged.passRetained(engine)
+    ///
+    /// A pinned unit is released the same way, for the same reasons: its
+    /// teardown stops I/O, removes its HAL listeners and disposes the unit,
+    /// all of which are CoreAudio calls that must not run on main or under
+    /// the lock.
+    private static func retire(_ graph: CaptureGraph?) {
+        guard let graph else { return }
+        // The +1 is what stops the caller from ever owning the final release.
+        let handoff = Unmanaged.passRetained(graph as AnyObject)
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.retireGrace) {
             handoff.release()
         }
@@ -461,8 +525,12 @@ final class AudioRecorder: @unchecked Sendable {
             healthBaselineTapCount = tapCountAtStart
         }
 
+        // Resolved per take, not cached: a change in Settings applies to the
+        // very next press, and a pinned mic that was unplugged at prewarm time
+        // is picked up the moment it is back.
+        let input = Self.resolveInput(logging: true)
         do {
-            try attachAndStart(generation: generation, forceFresh: false)
+            try attachAndStart(generation: generation, forceFresh: false, input: input)
         } catch {
             // Don't retry under a retired generation — our queue was abandoned
             // and nothing we build can be published anyway.
@@ -470,20 +538,23 @@ final class AudioRecorder: @unchecked Sendable {
             // Most likely the cached engine's input format went stale without us
             // seeing the invalidation signal ("formats don't match"). One rebuild
             // and retry is what makes reusing an engine safe at all.
-            AppLog.audio.warning("Engine start failed (\(error.localizedDescription)); retrying with a fresh engine")
-            try attachAndStart(generation: generation, forceFresh: true)
+            AppLog.audio.warning("Engine start failed (\(error.localizedDescription, privacy: .public)); retrying with a fresh engine")
+            try attachAndStart(generation: generation, forceFresh: true, input: input)
         }
 
-        let published = stateLock.withLock { () -> Bool in
-            guard engineGeneration == generation else { return false }
+        let started = stateLock.withLock { () -> (take: UInt64, watched: Bool)? in
+            guard engineGeneration == generation else { return nil }
             isRecording = true
             takeID &+= 1
             takesStarted &+= 1
             captureStartedAt = Self.monotonicNow()
-            return true
+            return (takeID, engine?.needsContinuousLivenessCheck ?? false)
         }
-        guard published else { throw AudioRecorderError.superseded }
+        guard let started else { throw AudioRecorderError.superseded }
         logInputDevice()
+        if started.watched {
+            armCaptureWatchdog(takeID: started.take, baseline: tapCountAtStart, afterRestart: false)
+        }
     }
 
     /// Delay past the Bluetooth profile switch our own `start()` provokes, so
@@ -506,9 +577,16 @@ final class AudioRecorder: @unchecked Sendable {
     /// It deliberately survives its own take ending: a sub-second take that
     /// died to a device change is exactly the one whose microphone we want
     /// named, and by then nothing is contending for the HAL anyway.
+    ///
+    /// Names the device the engine is actually bound to, read when the line
+    /// is written, so a restart that rebuilt onto the system default after the
+    /// pinned mic vanished says so. Why it fell back was logged when the pin
+    /// was looked up.
     private func logInputDevice() {
-        let item = DispatchWorkItem {
-            AppLog.audio.notice("Capture input device: \(AudioDeviceProbe.defaultInputSummary(), privacy: .public)")
+        let item = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            let bound = self.stateLock.withLock { self.engine?.binding?.device }
+            AppLog.audio.notice("Capture input device: \(AudioDeviceProbe.captureInputSummary(boundDevice: bound), privacy: .public)")
         }
         stateLock.withLock { deviceLogWork = item }
         DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + Self.deviceLogDelay, execute: item)
@@ -529,10 +607,11 @@ final class AudioRecorder: @unchecked Sendable {
     private func attachAndStart(
         generation: UInt64,
         forceFresh: Bool,
+        input: PinnedInput?,
         awaitingSettle: Bool = false,
         resuming: Bool = false
-    ) throws -> AVAudioEngine {
-        let engine = try makeEngine(generation: generation, forceFresh: forceFresh)
+    ) throws -> CaptureGraph {
+        let engine = try makeEngine(generation: generation, forceFresh: forceFresh, input: input)
         try installTapAndStart(on: engine, awaitingSettle: awaitingSettle, resuming: resuming)
         return engine
     }
@@ -542,14 +621,13 @@ final class AudioRecorder: @unchecked Sendable {
     /// exactly this against an engine it already has, without paying for
     /// another device enumeration.
     private func installTapAndStart(
-        on engine: AVAudioEngine,
+        on engine: CaptureGraph,
         awaitingSettle: Bool = false,
         resuming: Bool = false
     ) throws {
-        let input = engine.inputNode
-        try probeInputAvailability(on: input, awaitingSettle: awaitingSettle)
+        let format = try probeInputAvailability(on: engine, awaitingSettle: awaitingSettle)
         // A reused engine may still carry the previous session's tap.
-        input.removeTap(onBus: 0)
+        engine.removeTap()
         // The resume flag is armed in the same lock hold that stamps the new
         // tap, and not a moment earlier. Armed at the top of the restart it
         // spent `removeTap`, `stop()` and up to 300 ms of probing matching the
@@ -562,15 +640,15 @@ final class AudioRecorder: @unchecked Sendable {
             if resuming { captureResuming = true }
             return tapEpoch
         }
-        input.installTap(onBus: 0, bufferSize: tapBufferSize, format: nil) { [weak self] pcmBuffer, _ in
+        engine.installTap(bufferSize: tapBufferSize) { [weak self] pcmBuffer in
             self?.handle(inputBuffer: pcmBuffer, tapEpoch: epoch)
         }
 
-        engine.prepare()
         do {
+            try engine.prepare(for: format)
             try engine.start()
         } catch {
-            input.removeTap(onBus: 0)
+            engine.removeTap()
             throw error
         }
     }
@@ -590,8 +668,11 @@ final class AudioRecorder: @unchecked Sendable {
     /// renegotiation, so a single read there would end a take over a device
     /// that was already coming back. An unusable answer is never treated as
     /// device loss on its own — it throws, and the restart budget decides.
-    private func probeInputAvailability(on input: AVAudioInputNode, awaitingSettle: Bool) throws {
-        var format = input.inputFormat(forBus: 0)
+    ///
+    /// Returns the settled format, which the graph is then prepared for
+    /// without reading it again.
+    private func probeInputAvailability(on engine: CaptureGraph, awaitingSettle: Bool) throws -> CaptureFormat {
+        var format = engine.hardwareInputFormat()
         var reads = 1
         // Only a restart waits. A cold start has no take to protect and no
         // renegotiation in flight, so a Mac with no working input would
@@ -600,7 +681,7 @@ final class AudioRecorder: @unchecked Sendable {
         for delay in (awaitingSettle ? Self.inputProbeRetryDelays : []) {
             if format.sampleRate > 0 && format.channelCount > 0 { break }
             Thread.sleep(forTimeInterval: delay)
-            format = input.inputFormat(forBus: 0)
+            format = engine.hardwareInputFormat()
             reads += 1
         }
         guard format.sampleRate > 0, format.channelCount > 0 else {
@@ -610,13 +691,26 @@ final class AudioRecorder: @unchecked Sendable {
         // the log archive, which is why the first investigation into this bug
         // could not tell "never captured anything" from "the logs aged out".
         AppLog.audio.notice("Input hardware format: \(Int(format.sampleRate)) Hz, \(format.channelCount) ch (\(reads) read(s) to settle)")
+        return format
     }
 
     /// Returns the cached engine when it's still trustworthy, otherwise builds
     /// and publishes a fresh one. Callers must be on the engine queue.
-    private func makeEngine(generation: UInt64, forceFresh: Bool = false) throws -> AVAudioEngine {
-        let cached: AVAudioEngine? = stateLock.withLock {
-            guard engineGeneration == generation, !needsFreshEngine, !forceFresh else { return nil }
+    ///
+    /// The backend is chosen here, from `input`: AVAudioEngine for the system
+    /// default, a `PinnedInputUnit` for a pinned microphone. Every path that
+    /// captures (cold start, its fresh-engine retry, prewarm, a restart's
+    /// rebuild) arrives through here with the input it wants, and a cached
+    /// engine bound to anything else is not reused — so a pinned take never
+    /// constructs an AVAudioEngine at all.
+    private func makeEngine(
+        generation: UInt64,
+        forceFresh: Bool = false,
+        input: PinnedInput?
+    ) throws -> CaptureGraph {
+        let cached: CaptureGraph? = stateLock.withLock {
+            guard engineGeneration == generation, !needsFreshEngine, !forceFresh,
+                  let engine, engine.binding == input else { return nil }
             return engine
         }
         if let cached { return cached }
@@ -628,24 +722,19 @@ final class AudioRecorder: @unchecked Sendable {
         // `.superseded` — leaving an in-progress recording with no
         // device-change detection at all. Every restart path routes through
         // here, so this is newly reachable.
-        let (staleObserver, staleEngine) = try stateLock.withLock { () throws -> (NSObjectProtocol?, AVAudioEngine?) in
+        let stale = try stateLock.withLock { () throws -> (observer: NSObjectProtocol?, graph: CaptureGraph?) in
             guard engineGeneration == generation else { throw AudioRecorderError.superseded }
-            let observer = configChangeObserver
-            let retired = engine
-            configChangeObserver = nil
-            engine = nil
-            return (observer, retired)
+            return detachGraphLocked()
         }
-        if let staleObserver { NotificationCenter.default.removeObserver(staleObserver) }
-        Self.retire(staleEngine)
+        discardOnEngineQueue(stale.graph, observer: stale.observer)
 
-        let fresh = AVAudioEngine()
+        let fresh = Self.buildGraph(for: input)
         let observer = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: fresh,
+            forName: fresh.configurationChangeName,
+            object: fresh.configurationChangeObject,
             queue: .main
         ) { [weak self] notification in
-            self?.handleConfigurationChange(from: notification.object as? AVAudioEngine)
+            self?.handleConfigurationChange(from: notification.object as AnyObject?)
         }
 
         let published = stateLock.withLock { () -> Bool in
@@ -656,10 +745,37 @@ final class AudioRecorder: @unchecked Sendable {
             return true
         }
         guard published else {
-            NotificationCenter.default.removeObserver(observer)
+            discardOnEngineQueue(fresh, observer: observer)
             throw AudioRecorderError.superseded
         }
         return fresh
+    }
+
+    /// A pinned unit when `input` names a device and it can be opened;
+    /// otherwise AVAudioEngine on the system default, whose `binding` then
+    /// differs from the pin, so the next start tries the pinned device again.
+    /// A device that cannot be opened is as good as unplugged: the take
+    /// records from the default rather than failing.
+    private static func buildGraph(for input: PinnedInput?) -> CaptureGraph {
+        guard let input else { return EngineCaptureGraph() }
+        do {
+            let unit = try PinnedInputUnit(input)
+            AppLog.audio.notice("Capture bound to pinned device \(input.device) through its own input unit")
+            return unit
+        } catch {
+            AppLog.audio.error("Could not open the pinned microphone (uid=\(input.uid, privacy: .public)): \(error.localizedDescription, privacy: .public); using the system default")
+            return EngineCaptureGraph()
+        }
+    }
+
+    /// The Settings choice against what is plugged in: the pinned device, or
+    /// `nil` for the system default — a pin that is not connected included,
+    /// which the lookup logs when `logging` (prewarm resolves quietly).
+    /// Engine queue only: a pinned UID costs one HAL lookup, which can stall
+    /// exactly when a Bluetooth device is renegotiating.
+    private static func resolveInput(logging: Bool) -> PinnedInput? {
+        InputDeviceCatalog.resolvePinnedInput(logMissingFor: logging ? "dictation" : nil)
+            .pinned.map { PinnedInput(uid: $0.uid, device: $0.device) }
     }
 
     /// `takeID` fences the teardown to one take: the salvage path decides to
@@ -667,7 +783,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// before it lands, which is long enough for the user's own Stop to finish
     /// and a new take to begin.
     private func stopEngine(generation: UInt64, takeID fencedTake: UInt64?) -> [Float] {
-        let engine: AVAudioEngine? = stateLock.withLock {
+        let engine: CaptureGraph? = stateLock.withLock {
             guard engineGeneration == generation, isRecording else { return nil }
             if let fencedTake, takeID != fencedTake { return nil }
             isRecording = false
@@ -676,7 +792,7 @@ final class AudioRecorder: @unchecked Sendable {
         }
         guard let engine else { return [] }
         cancelPendingRestartWork()
-        engine.inputNode.removeTap(onBus: 0)
+        engine.removeTap()
         engine.stop()
         // A restart whose audio never came back leaves the measurement open,
         // and that is the case where the loss was largest — the take would
@@ -769,7 +885,7 @@ final class AudioRecorder: @unchecked Sendable {
     /// Runs on the main thread (the observer is registered with `queue: .main`)
     /// and must stay that way: lock-guarded field swaps and a dispatch, never a
     /// CoreAudio call. Everything the answer costs happens on `engineQueue`.
-    private func handleConfigurationChange(from posting: AVAudioEngine?) {
+    private func handleConfigurationChange(from posting: AnyObject?) {
         let now = Self.monotonicNow()
         // Read before taking `stateLock`, never inside it: the two locks are
         // only ever held one at a time.
@@ -780,7 +896,7 @@ final class AudioRecorder: @unchecked Sendable {
             // The notification names its poster, so that one is free to drop —
             // it used to be discarded, which made a spurious call
             // indistinguishable from a real device change.
-            guard posting == nil || posting === engine else { return .stale }
+            guard posting == nil || posting === engine?.configurationChangeObject else { return .stale }
             needsFreshEngine = true
             guard isRecording else { return .idle }
             configChangeOrdinal += 1
@@ -911,7 +1027,7 @@ final class AudioRecorder: @unchecked Sendable {
                 return
             }
             AppLog.audio.warning("Capture restarted in \(Int((now - started) * 1000)) ms after an audio configuration change")
-            armStarvationWatchdog(capturedAtRestart: capturedAtRestart, takeID: takeID)
+            armCaptureWatchdog(takeID: takeID, baseline: capturedAtRestart, afterRestart: true)
             // The device may not be the one the take started on, and the log
             // still names that one.
             logInputDevice()
@@ -930,11 +1046,11 @@ final class AudioRecorder: @unchecked Sendable {
                 // already forced `isRecording = false` without telling anyone.
                 // Returning quietly here is what leaves the controller in
                 // `.recording` over a dead engine with the clock still running.
-                AppLog.audio.error("Capture restart failed after \(elapsed) ms: \(error.localizedDescription)")
+                AppLog.audio.error("Capture restart failed after \(elapsed) ms: \(error.localizedDescription, privacy: .public)")
                 guard claimTeardown(for: takeID) else { return }
                 await salvageAndTeardown(for: takeID)
             case .stillRecording:
-                AppLog.audio.error("Capture restart failed after \(elapsed) ms: \(error.localizedDescription)")
+                AppLog.audio.error("Capture restart failed after \(elapsed) ms: \(error.localizedDescription, privacy: .public)")
                 guard let decision = withTake(takeID, { policy.restartFailed(now: Self.monotonicNow()) }) else { return }
                 applyRestartDecision(decision, for: takeID)
             }
@@ -981,39 +1097,42 @@ final class AudioRecorder: @unchecked Sendable {
         guard isCurrentTake(takeID) else { throw AudioRecorderError.takeEnded }
         // Both branches below pass `resuming: true`, so whichever installs the
         // next tap arms the filter reset and the gap measurement with it.
-        let (existing, mustRebuild) = stateLock.withLock { () -> (AVAudioEngine?, Bool) in
+        let (existing, mustRebuild) = stateLock.withLock { () -> (CaptureGraph?, Bool) in
             let forced = restartMustRebuild
             restartMustRebuild = false
             return (engine, forced)
         }
 
-        let running: AVAudioEngine
+        // The in-place re-wire stays on the device the engine was built for;
+        // only a rebuild looks the pinned mic up again. A mic that vanished
+        // mid-take fails the re-wire's input probe, lands here, and the fresh
+        // engine goes to the system default instead of spinning on a device
+        // that is gone. Looking it up on every restart would read the HAL in
+        // the middle of the profile switch that causes most of them.
+        var rewired: CaptureGraph?
         if let existing, !mustRebuild {
             do {
                 try rewireInPlace(existing, generation: generation)
-                running = existing
+                rewired = existing
             } catch {
                 // Escalation, not the first resort: a fresh engine means
                 // another `GetSubDevices` enumeration and another private
                 // aggregate device — the most expensive possible recovery, and
                 // itself another thing touching the input.
-                AppLog.audio.warning("In-place capture re-wire failed (\(error.localizedDescription)); rebuilding the engine")
-                running = try attachAndStart(
-                    generation: generation, forceFresh: true, awaitingSettle: true, resuming: true
-                )
+                AppLog.audio.warning("In-place capture re-wire failed (\(error.localizedDescription, privacy: .public)); rebuilding the engine")
             }
-        } else {
-            running = try attachAndStart(
-                generation: generation, forceFresh: true, awaitingSettle: true, resuming: true
-            )
         }
+        let running = try rewired ?? attachAndStart(
+            generation: generation, forceFresh: true, input: Self.resolveInput(logging: true),
+            awaitingSettle: true, resuming: true
+        )
 
         guard isCurrent(generation) else { throw AudioRecorderError.superseded }
         guard isCurrentTake(takeID) else {
             // A Stop landed while we were re-wiring. It already tore down the
             // engine it knew about, and we have just started one again — so
             // undo it here rather than hand the user a microphone nothing owns.
-            running.inputNode.removeTap(onBus: 0)
+            running.removeTap()
             running.stop()
             throw AudioRecorderError.takeEnded
         }
@@ -1029,8 +1148,8 @@ final class AudioRecorder: @unchecked Sendable {
     /// connections and start the engine — on the engine object we already
     /// have. The per-engine observer is bound to that same object, so nothing
     /// needs re-registering and no notification can be missed across the seam.
-    private func rewireInPlace(_ engine: AVAudioEngine, generation: UInt64) throws {
-        engine.inputNode.removeTap(onBus: 0)
+    private func rewireInPlace(_ engine: CaptureGraph, generation: UInt64) throws {
+        engine.removeTap()
         // Idempotent: AVFoundation stops and uninitializes the engine itself
         // before posting the change. Cheap insurance for the cases where it
         // didn't — a change posted for the output side, or a duplicate.
@@ -1050,24 +1169,54 @@ final class AudioRecorder: @unchecked Sendable {
     /// rate the device no longer runs at and then deliver nothing at all, with
     /// no error anywhere. Nothing downstream would notice until the VAD gate
     /// rejected a full-length silent take, so a restart has to prove capture
-    /// actually resumed.
-    private func armStarvationWatchdog(capturedAtRestart: Int, takeID: UInt64) {
+    /// actually resumed (`afterRestart`).
+    ///
+    /// A graph that needs a continuous liveness check — the pinned unit, whose
+    /// device can vanish without anything being posted (measured on the engine
+    /// path: the bound device died and the take went on recording silence) —
+    /// is watched for the whole take instead: the check re-arms for as long as
+    /// capture keeps moving, and a whole grace with no new samples is answered
+    /// like a starved restart, on a fresh build that looks the pinned mic up
+    /// again and lands on the system default if it is gone. On the engine path
+    /// this stays one check after each restart.
+    private func armCaptureWatchdog(takeID: UInt64, baseline: Int, afterRestart: Bool) {
         let grace = stateLock.withLock { policy.captureStarvation }
         let item = DispatchWorkItem { [weak self] in
             guard let self else { return }
             guard self.isCurrentTake(takeID) else { return }
-            guard self.tapControlLock.withLock({ self.tapSampleCount }) == capturedAtRestart else { return }
-            AppLog.audio.error("Capture delivered nothing in the \(Int(grace * 1000)) ms after a restart; treating the tap as dead")
+            let count = self.tapControlLock.withLock { self.tapSampleCount }
+            guard count == baseline else {
+                // Still moving. Mid-rebuild there is no graph to ask, so the
+                // chain keeps ticking until there is one.
+                let continuous = self.stateLock.withLock { self.engine?.needsContinuousLivenessCheck ?? true }
+                if continuous {
+                    self.armCaptureWatchdog(takeID: takeID, baseline: count, afterRestart: false)
+                }
+                return
+            }
+            if afterRestart {
+                AppLog.audio.error("Capture delivered nothing in the \(Int(grace * 1000)) ms after a restart; treating the tap as dead")
+            }
             // Re-installing the same tap on the same engine is the one thing
             // this take has already proved does not work, so the escalation
             // goes straight to a fresh engine — which is what the fallback
             // exists for, and which a starved tap never reaches on its own
-            // because nothing threw.
+            // because nothing threw. Outside a restart, only an attempt the
+            // policy actually schedules is sent there; one already in flight
+            // answers for it.
             guard let decision = self.withTake(takeID, { () -> AudioConfigChangePolicy.Decision in
-                self.restartMustRebuild = true
-                self.needsFreshEngine = true
-                return self.policy.captureStarved(now: Self.monotonicNow())
+                let decision = self.policy.captureStarved(now: Self.monotonicNow())
+                var scheduled = false
+                if case .scheduleRestart = decision { scheduled = true }
+                if afterRestart || scheduled {
+                    self.restartMustRebuild = true
+                    self.needsFreshEngine = true
+                }
+                return decision
             }) else { return }
+            if !afterRestart, decision != .ignoreCoalesced {
+                AppLog.audio.error("Capture delivered nothing for \(Int(grace * 1000)) ms: \(decision.description, privacy: .public)")
+            }
             self.applyRestartDecision(decision, for: takeID)
         }
         // Superseded rather than merely replaced: an earlier restart's timer

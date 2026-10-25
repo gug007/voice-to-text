@@ -470,6 +470,7 @@ struct GeneralPane: View {
             dictationCard
 
             PaneSection("Preferences") {
+                MicrophoneCard()
                 ReviewBeforePasteCard()
                 HUDSizeCard()
                 launchAtLoginCard

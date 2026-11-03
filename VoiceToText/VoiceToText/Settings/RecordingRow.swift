@@ -280,7 +280,14 @@ struct RecordingRow: View {
         )
     }
 
-    /// The one-tap way in for a conversation with nothing generated yet.
+    /// One-tap chips for the insights a conversation does not have yet.
+    ///
+    /// Each chip retires on its own: Summary once a summary exists or is being
+    /// generated (its tab and spinner take over), likewise Action items, and
+    /// Custom once every custom slot is spoken for. The strip used to vanish as
+    /// soon as anything had been generated, which left the other two reachable
+    /// only through the hover-only sparkles menu — and read as the buttons
+    /// having broken.
     ///
     /// Conversations only. A five-second dictation has nothing to summarize and
     /// commits nobody to anything, so on a History full of dictations this strip
@@ -294,36 +301,42 @@ struct RecordingRow: View {
 
     @ViewBuilder
     private var generateStrip: some View {
-        if entry.source == .meeting,
-           !entry.transcriptIsPlaceholder,
-           !entry.hasInsights,
-           entry.customInsightList.isEmpty,
-           !hasRunningInsight {
-            HStack(spacing: Space.s4) {
-                insightChip(title: "Summary", symbolName: "sparkles",
-                            help: "Generate \(InsightKind.summary.commandNoun) from this conversation. \(Self.sendsTranscript)") {
-                    generate(.summary)
-                }
-                insightChip(title: "Action items", symbolName: "checklist",
-                            help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation. \(Self.sendsTranscript)") {
-                    generate(.actionItems)
-                }
-                // The third way in: the user's own instruction, opening the same
-                // popover the sparkles menu opens. The glyph is spelled out like
-                // its two neighbours, and is the one `InsightKind.custom` wears.
-                insightChip(title: "Custom", symbolName: "wand.and.sparkles",
-                            help: "Format this transcript with your own instruction. \(Self.sendsTranscript)") {
-                    showCustomPrompt = true
+        if entry.source == .meeting, !entry.transcriptIsPlaceholder {
+            let offersSummary = offersChip(for: .summary)
+            let offersActionItems = offersChip(for: .actionItems)
+            let offersCustom = insights.usedCustomSlots(for: entry) < RecordingHistoryEntry.maxCustomInsights
+            if offersSummary || offersActionItems || offersCustom {
+                HStack(spacing: Space.s4) {
+                    if offersSummary {
+                        insightChip(title: "Summary", symbolName: "sparkles",
+                                    help: "Generate \(InsightKind.summary.commandNoun) from this conversation. \(Self.sendsTranscript)") {
+                            generate(.summary)
+                        }
+                    }
+                    if offersActionItems {
+                        insightChip(title: "Action items", symbolName: "checklist",
+                                    help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation. \(Self.sendsTranscript)") {
+                            generate(.actionItems)
+                        }
+                    }
+                    // The third way in: the user's own instruction, opening the same
+                    // popover the sparkles menu opens. The glyph is spelled out like
+                    // its two neighbours, and is the one `InsightKind.custom` wears.
+                    if offersCustom {
+                        insightChip(title: "Custom", symbolName: "wand.and.sparkles",
+                                    help: "Format this transcript with your own instruction. \(Self.sendsTranscript)") {
+                            showCustomPrompt = true
+                        }
+                    }
                 }
             }
         }
     }
 
-    /// True while any job for this recording is in flight — the built-ins, or a
-    /// custom result the user asked for.
-    private var hasRunningInsight: Bool {
-        InsightKind.builtIns.contains { insights.isRunning(entryID: entry.id, kind: $0) }
-            || !InsightTab.runningCustomIDs(entryID: entry.id, generator: insights).isEmpty
+    /// A built-in insight is offered inline until it exists or is being made;
+    /// after that its tab is the way to it, and the sparkles menu regenerates it.
+    private func offersChip(for kind: InsightKind) -> Bool {
+        !entry.hasInsight(kind) && !insights.isRunning(entryID: entry.id, kind: kind)
     }
 
     private func insightChip(

@@ -57,6 +57,8 @@ started the recording.
 | --- | --- | --- |
 | `status` | Current state, model, and microphone permission. | `{"api", "app", "version", "state", "busy", "owner", "microphone", "model", "elapsed"?}` |
 | `start` | Prepares the model (downloading it on first use) and starts recording. | Sent once recording has started, with the `model`, or an error. |
+| `startStream` | `start` without the microphone: see [Sending your own audio](#sending-your-own-audio). | The same as `start`. |
+| `audio` | One piece of a `startStream` take. | None. |
 | `stop` | Stops recording and transcribes. | Sent at once; the text arrives as a `transcript` event. |
 | `cancel` | Drops the recording or transcription in progress. Safe to send any time. | `{}` |
 
@@ -66,6 +68,31 @@ started the recording.
   `undetermined` (the first `start` asks).
 - One recording at a time, owned by the connection that started it. Closing that
   connection cancels it. While it runs, VoiceToText's own shortcut does nothing.
+
+## Sending your own audio
+
+`startStream` is for audio that doesn't come from this Mac's microphone, such as
+a phone. It runs the same take as `start`, with the same events, model, History
+and errors, and needs no microphone access. A copy that supports it has
+`VoiceToTextAudioInput` in its `Info.plist`; an older copy answers
+`unknown_method` and records nothing. Don't send `start` with a parameter instead:
+an older copy ignores parameters it doesn't know and opens the microphone.
+
+Once the `startStream` response arrives, send the take as `audio` messages, then
+`stop`. Audio sent before that response is dropped.
+
+```json
+{"id": 1, "method": "startStream", "params": {"client": "my-app"}}
+{"method": "audio", "params": {"pcm": "<base64>"}}
+{"id": 2, "method": "stop"}
+```
+
+- `pcm` is base64 of 16-bit little-endian mono samples at 16 kHz.
+- `audio` carries no `id` and gets no response, and a piece that can't be read is
+  dropped. Messages are taken in the order they're sent, and audio from any
+  connection but the one that started the take is ignored.
+- A line can't pass 64 KB, so send about a tenth of a second at a time.
+- There are no `level` events: the level is yours to measure.
 
 ## Events
 

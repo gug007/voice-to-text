@@ -17,6 +17,10 @@ nonisolated enum ExternalAPI {
     enum Method: String, Sendable {
         case status
         case start
+        /// `start` without the microphone: the client sends the take's audio.
+        case startStream
+        /// One piece of a `startStream` take. No `id`, and no response.
+        case audio
         case stop
         case cancel
     }
@@ -70,6 +74,9 @@ nonisolated enum ExternalAPI {
         let method: Method
         /// Who is asking, for the log — `params.client`, free text.
         let client: String?
+        /// `params.pcm` of an `audio` request: base64 of 16-bit little-endian
+        /// 16 kHz mono samples.
+        var pcm: String? = nil
     }
 
     /// Why a line isn't a request, with whatever `id` could be read from it so
@@ -92,7 +99,24 @@ nonisolated enum ExternalAPI {
             return .failure(ParseFailure(id: id, code: .unknownMethod, message: "Unknown method \"\(name)\"."))
         }
         let params = object["params"] as? [String: Any]
-        return .success(Request(id: id, method: method, client: params?["client"] as? String))
+        return .success(Request(
+            id: id,
+            method: method,
+            client: params?["client"] as? String,
+            pcm: params?["pcm"] as? String
+        ))
+    }
+
+    /// The samples an `audio` request carries, or nil if it isn't whole 16-bit
+    /// samples in base64.
+    static func samples(fromPCM base64: String) -> [Float]? {
+        guard let bytes = Data(base64Encoded: base64), bytes.count % 2 == 0 else { return nil }
+        return bytes.withUnsafeBytes { raw in
+            stride(from: 0, to: raw.count, by: 2).map { offset in
+                let sample = Int16(littleEndian: raw.loadUnaligned(fromByteOffset: offset, as: Int16.self))
+                return Float(sample) / 32_768
+            }
+        }
     }
 
     static func response(id: RequestID?, result: [String: Any] = [:]) -> Data {

@@ -50,6 +50,10 @@ final class ExternalAPIController {
         do {
             try server.start(
                 onRequest: { request, connection in
+                    if request.method == .audio {
+                        ExternalDictationSession.audioFeed.append(request.pcm, from: connection)
+                        return
+                    }
                     Task { @MainActor in
                         await ExternalAPIController.shared.handle(request, from: connection)
                     }
@@ -79,6 +83,10 @@ final class ExternalAPIController {
             connection.send(ExternalAPI.response(id: request.id, result: result))
         case .start:
             await session.start(id: request.id, from: connection, client: request.client)
+        case .startStream:
+            await session.start(id: request.id, from: connection, client: request.client, source: .client)
+        case .audio:
+            break
         case .stop:
             await session.stop(id: request.id, from: connection)
         case .cancel:

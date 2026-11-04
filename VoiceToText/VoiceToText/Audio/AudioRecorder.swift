@@ -214,13 +214,6 @@ final class AudioRecorder: @unchecked Sendable {
     /// samples are still accumulated into the buffer for VAD and retry.
     var onAudioChunk: (@Sendable ([Float]) -> Void)?
 
-    private var preprocessingEnabled: Bool {
-        if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
-            return val
-        }
-        return DictationConfig.enableAudioPreprocessing
-    }
-
     init() {
         // Waking invalidates the engine's cached hardware format. Rebuilding
         // here (off-main, ahead of the next hotkey press) keeps that cost off
@@ -1388,7 +1381,7 @@ final class AudioRecorder: @unchecked Sendable {
             levelToEmit = nil
         }
 
-        if preprocessingEnabled {
+        if AudioPreprocessor.isEnabled {
             preprocessor.process(&samples)
         }
 

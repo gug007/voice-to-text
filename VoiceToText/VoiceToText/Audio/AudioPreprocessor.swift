@@ -12,6 +12,13 @@ private let kAGCMax: Float = 8.0
 private let kAGCEpsilon: Float = 1e-5
 
 struct AudioPreprocessor {
+    static var isEnabled: Bool {
+        if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
+            return val
+        }
+        return DictationConfig.enableAudioPreprocessing
+    }
+
     // DC removal state
     private var dcMean: Float = 0
     // High-pass filter state (stores previous input and output)

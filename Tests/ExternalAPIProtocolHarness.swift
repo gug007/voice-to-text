@@ -27,7 +27,37 @@ struct ExternalAPIProtocolHarness {
         try encodesResponsesFailuresAndEvents()
         try splitsLinesAcrossChunks()
         try overlongLineClosesTheBuffer()
+        try parsesAudioRequests()
+        try decodesPCMSamples()
         print("External API protocol harness passed")
+    }
+
+    private static func parsesAudioRequests() throws {
+        guard case .success(let start) = ExternalAPI.parseRequest(Data(#"{"id":1,"method":"startStream","params":{"client":"lpm"}}"#.utf8)) else {
+            throw ExternalAPIProtocolHarnessFailure(description: "startStream parses")
+        }
+        try expect(start == ExternalAPI.Request(id: .number(1), method: .startStream, client: "lpm"), "startStream keeps id and client")
+
+        guard case .success(let audio) = ExternalAPI.parseRequest(Data(#"{"method":"audio","params":{"pcm":"AAA="}}"#.utf8)) else {
+            throw ExternalAPIProtocolHarnessFailure(description: "audio parses")
+        }
+        try expect(audio.id == nil, "audio carries no id")
+        try expect(audio.pcm == "AAA=", "audio keeps its samples")
+    }
+
+    private static func decodesPCMSamples() throws {
+        let pcm = Data([0x00, 0x00, 0x00, 0x40, 0x00, 0x80, 0xFF, 0x7F]).base64EncodedString()
+        guard let samples = ExternalAPI.samples(fromPCM: pcm) else {
+            throw ExternalAPIProtocolHarnessFailure(description: "whole samples decode")
+        }
+        try expect(samples.count == 4, "two bytes make a sample")
+        try expect(samples[0] == 0, "zero stays zero")
+        try expect(samples[1] == 0.5, "samples are little-endian")
+        try expect(samples[2] == -1, "the most negative sample is -1")
+        try expect(samples[3] > 0.999 && samples[3] < 1, "the largest sample stays below 1")
+
+        try expect(ExternalAPI.samples(fromPCM: "not base64!") == nil, "bad base64 is refused")
+        try expect(ExternalAPI.samples(fromPCM: Data([0x00]).base64EncodedString()) == nil, "half a sample is refused")
     }
 
     private static func parsesRequestsWithNumberAndStringIDs() throws {

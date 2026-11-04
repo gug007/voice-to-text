@@ -11,6 +11,10 @@ import OSLog
 /// connection closing cancels it. It never runs beside the hotkey dictation or
 /// a conversation — `start` refuses while either holds the microphone, and
 /// the hotkey refuses while this one does (`isActive`).
+///
+/// `startStream` is the same take with the client's audio in place of the
+/// microphone's: lpm sends what a paired phone hears, and the model on this Mac
+/// transcribes it.
 final class ExternalDictationSession {
     static let shared = ExternalDictationSession()
 
@@ -18,10 +22,17 @@ final class ExternalDictationSession {
         case idle, preparing, recording, transcribing
     }
 
+    enum Source {
+        case microphone, client
+    }
+
+    nonisolated static let audioFeed = ExternalAudioFeed()
+
     private(set) var phase: Phase = .idle
     var isActive: Bool { phase != .idle }
 
     private let recorder = AudioRecorder()
+    private var source = Source.microphone
     private var owner: ExternalAPIConnection?
     private var startRequestID: ExternalAPI.RequestID?
     /// Fences every await: a cancel, a disconnect or a newer start moves it,
@@ -55,7 +66,12 @@ final class ExternalDictationSession {
 
     // MARK: - Start
 
-    func start(id: ExternalAPI.RequestID?, from connection: ExternalAPIConnection, client: String?) async {
+    func start(
+        id: ExternalAPI.RequestID?,
+        from connection: ExternalAPIConnection,
+        client: String?,
+        source: Source = .microphone
+    ) async {
         guard phase == .idle else {
             connection.send(ExternalAPI.failure(id: id, code: .busy, message: "Another app is already recording with VoiceToText."))
             return
@@ -69,13 +85,16 @@ final class ExternalDictationSession {
         let generation = self.generation
         owner = connection
         startRequestID = id
+        self.source = source
         phase = .preparing
 
-        guard await MicPermission.request() else {
-            failStart(generation, .microphoneDenied, "VoiceToText doesn't have microphone access. Allow it in System Settings → Privacy & Security → Microphone.")
-            return
+        if source == .microphone {
+            guard await MicPermission.request() else {
+                failStart(generation, .microphoneDenied, "VoiceToText doesn't have microphone access. Allow it in System Settings → Privacy & Security → Microphone.")
+                return
+            }
+            guard generation == self.generation else { return }
         }
-        guard generation == self.generation else { return }
         guard let descriptor = ModelRegistry.shared.activeModel else {
             failStart(generation, .noModel, "No transcription model is selected in VoiceToText.")
             return
@@ -97,12 +116,14 @@ final class ExternalDictationSession {
         }
         engine = prepared
 
-        recorder.onLevel = { [weak self] level in
-            guard let self, self.phase == .recording else { return }
-            self.owner?.send(ExternalAPI.event("level", ["level": (level * 1000).rounded() / 1000]))
-        }
-        recorder.onConfigurationChange = { [weak self] samples in
-            self?.recorderStopped(generation: generation, samples: samples)
+        if source == .microphone {
+            recorder.onLevel = { [weak self] level in
+                guard let self, self.phase == .recording else { return }
+                self.owner?.send(ExternalAPI.event("level", ["level": (level * 1000).rounded() / 1000]))
+            }
+            recorder.onConfigurationChange = { [weak self] samples in
+                self?.recorderStopped(generation: generation, samples: samples)
+            }
         }
         recorder.onAudioChunk = nil
         stream = nil
@@ -119,23 +140,31 @@ final class ExternalDictationSession {
                     return
                 }
                 stream = streaming
-                recorder.onAudioChunk = { samples in streaming.feedAudio(samples) }
+                if source == .microphone {
+                    recorder.onAudioChunk = { samples in streaming.feedAudio(samples) }
+                }
             } catch {
                 AppLog.dictation.error("API live stream failed to open: \(error.localizedDescription); using buffered transcription")
             }
         }
 
-        do {
-            try await recorder.start()
-        } catch {
-            guard generation == self.generation else { return }
-            await tearDownStream()
-            failStart(generation, .recorderFailed, "Could not start recording: \(error.localizedDescription)")
-            return
-        }
-        guard generation == self.generation else {
-            _ = await recorder.stop()
-            return
+        switch source {
+        case .microphone:
+            do {
+                try await recorder.start()
+            } catch {
+                guard generation == self.generation else { return }
+                await tearDownStream()
+                failStart(generation, .recorderFailed, "Could not start recording: \(error.localizedDescription)")
+                return
+            }
+            guard generation == self.generation else {
+                _ = await recorder.stop()
+                return
+            }
+        case .client:
+            let live = stream
+            Self.audioFeed.open(for: connection, onChunk: live.map { live in { live.feedAudio($0) } })
         }
         phase = .recording
         recordStart = Date()
@@ -195,7 +224,7 @@ final class ExternalDictationSession {
         connection.send(ExternalAPI.response(id: id))
         let generation = self.generation
         enterTranscribing()
-        let samples = await recorder.flushAndStop()
+        let samples = source == .client ? Self.audioFeed.close() : await recorder.flushAndStop()
         guard generation == self.generation else { return }
         await transcribe(samples, generation: generation)
     }
@@ -306,7 +335,7 @@ final class ExternalDictationSession {
 
     private func cancelSession(notify: Bool) async {
         guard phase != .idle else { return }
-        let wasRecording = phase == .recording
+        let wasRecording = phase == .recording && source == .microphone
         generation &+= 1
         progressTask?.cancel()
         if let startRequestID, notify {
@@ -353,6 +382,8 @@ final class ExternalDictationSession {
         recordStart = nil
         recorder.onLevel = nil
         recorder.onAudioChunk = nil
+        if source == .client { _ = Self.audioFeed.close() }
+        source = .microphone
     }
 
     private func tearDownStream() async {

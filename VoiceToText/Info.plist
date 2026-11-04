@@ -13,10 +13,13 @@
 
 	VoiceToTextAPIVersion advertises the local app API (see INTEGRATION.md and
 	ExternalAPI.version), so a client can tell an installed copy speaks it
-	without launching it.
+	without launching it. VoiceToTextAudioInput says the same of `startStream`,
+	the take whose audio comes from the client.
 	-->
 	<key>VoiceToTextAPIVersion</key>
 	<integer>1</integer>
+	<key>VoiceToTextAudioInput</key>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

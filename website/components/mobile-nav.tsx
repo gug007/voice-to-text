@@ -8,6 +8,7 @@ import { createPortal } from "react-dom";
 import { REPO_URL } from "@/lib/constants";
 import { DownloadButton } from "@/components/ui/download-button";
 import { ExternalLink } from "@/components/ui/external-link";
+import { Glyph } from "@/components/ui/glyph";
 
 type MobileNavLink = {
   href: string;
@@ -171,8 +172,10 @@ export function MobileNav({ current, links, routes, linkPrefix }: MobileNavProps
                 onClick={close}
                 data-analytics-event="github_outbound"
                 data-analytics-placement="mobile_nav"
+                className="nav__menu-star"
               >
-                Source
+                <Glyph name="star" className="star-btn__icon" />
+                Star on GitHub
               </ExternalLink>
             </li>
           </ul>

@@ -1,9 +1,9 @@
 import Image from "next/image";
 import Link from "next/link";
 
-import { DMG_URL, GUIDE_PATH, REPO_URL } from "@/lib/constants";
+import { DMG_URL, GUIDE_PATH } from "@/lib/constants";
 import { DownloadButton } from "@/components/ui/download-button";
-import { ExternalLink } from "@/components/ui/external-link";
+import { GitHubStarButton } from "@/components/github-star-button";
 import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
@@ -61,13 +61,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
               {label}
             </Link>
           ))}
-          <ExternalLink
-            href={REPO_URL}
-            data-analytics-event="github_outbound"
-            data-analytics-placement="desktop_nav"
-          >
-            Source
-          </ExternalLink>
+          <GitHubStarButton placement="desktop_nav" />
         </nav>
         <div className="nav__right">
           {/* No-JS chrome only: the noscript block in app/layout.tsx swaps this in

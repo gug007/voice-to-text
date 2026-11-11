@@ -1384,6 +1384,7 @@ final class AudioRecorder: @unchecked Sendable {
         if AudioPreprocessor.isEnabled {
             preprocessor.process(&samples)
         }
+        AudioPreprocessor.clampToFullScale(&samples)
 
         queue.sync { buffer.append(contentsOf: samples) }
         // Monotonic capture counter, so a restart's starvation watchdog can ask

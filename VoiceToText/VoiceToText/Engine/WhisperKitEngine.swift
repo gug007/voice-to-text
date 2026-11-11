@@ -116,6 +116,7 @@ actor WhisperKitEngine: TranscriptionEngine {
     /// silence in each window's second half — and decode the chunks in
     /// parallel, but through `transcribeWithOptions` so each chunk's outcome
     /// can be checked (see `WhisperChunkCheck`) instead of silently dropped.
+    /// A chunk with no speech in it is not decoded at all.
     private func transcribeLongForm(
         pipe: WhisperKit,
         samples: [Float],
@@ -128,9 +129,19 @@ actor WhisperKitEngine: TranscriptionEngine {
             maxChunkLength: windowSamples,
             decodeOptions: options
         ).map { $0.seekOffsetIndex..<($0.seekOffsetIndex + $0.audioSamples.count) }
-        let chunks = WhisperChunkCheck
-            .coveringRemainder(cuts, sampleCount: samples.count, maxLength: windowSamples)
-            .map { AudioChunk(seekOffsetIndex: $0.lowerBound, audioSamples: Array(samples[$0])) }
+        let speechThreshold = VadTuning.current.sileroSpeechThreshold
+        var chunks: [AudioChunk] = []
+        for range in WhisperChunkCheck.coveringRemainder(cuts, sampleCount: samples.count, maxLength: windowSamples) {
+            let audio = Array(samples[range])
+            let probabilities = await VoiceActivityGate.shared.speechProbabilities(audio)
+            guard WhisperChunkCheck.shouldDecode(speechProbabilities: probabilities, threshold: speechThreshold) else {
+                let rate = Double(WhisperKit.sampleRate)
+                AppLog.engine.notice("Whisper part \(Double(range.lowerBound) / rate, format: .fixed(precision: 1))-\(Double(range.upperBound) / rate, format: .fixed(precision: 1))s has no speech; not decoding it")
+                continue
+            }
+            chunks.append(AudioChunk(seekOffsetIndex: range.lowerBound, audioSamples: audio))
+        }
+        guard !chunks.isEmpty else { return [] }
         let outcomes = await pipe.transcribeWithOptions(
             audioArrays: chunks.map(\.audioSamples),
             decodeOptionsArray: Array(repeating: options, count: chunks.count),

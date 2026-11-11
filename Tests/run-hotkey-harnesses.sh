@@ -38,6 +38,13 @@ swiftc -parse-as-library \
 "$TMPDIR/speech-gate-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Support/AppConstants.swift \
+  VoiceToText/VoiceToText/Audio/AudioPreprocessor.swift \
+  Tests/AudioPreprocessorHarness.swift \
+  -o "$TMPDIR/audio-preprocessor-harness"
+"$TMPDIR/audio-preprocessor-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   Tests/TranscriptionFailureHarness.swift \
   -o "$TMPDIR/transcription-failure-harness"

@@ -69,6 +69,18 @@ nonisolated enum WhisperChunkCheck {
         }
     }
 
+    /// Whether a chunk of a long buffer is worth decoding. Whisper writes
+    /// something for any audio it is handed, and a chunk that is only the
+    /// pause before Stop came back as "Продолжение следует..." So a chunk is
+    /// skipped only when Silero gave none of it even `threshold` — one 256 ms
+    /// hit keeps it, so a lone short word still gets decoded. Energy can't
+    /// judge this: the AGC lifts a pause's room noise to about -30 dBFS, well
+    /// above `EnergyVAD`'s -45. Without Silero, every chunk is decoded.
+    static func shouldDecode(speechProbabilities: [Float]?, threshold: Float) -> Bool {
+        guard let speechProbabilities else { return true }
+        return speechProbabilities.contains { $0 >= threshold }
+    }
+
     /// Chunk ranges that cover all `sampleCount` samples. `VADAudioChunker`
     /// stops once less than a second is left after its last cut (padding it
     /// keeps against end-of-clip hallucinations), so a word said in that last

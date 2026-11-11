@@ -53,6 +53,13 @@ actor VoiceActivityGate {
         return fallback.passesSpeechGate(samples[...], sampleRate: Int(AudioConfig.targetSampleRate))
     }
 
+    /// Silero's speech probability for each `VadManager.chunkSize` samples of
+    /// `samples`; nil while the model isn't available.
+    func speechProbabilities(_ samples: [Float]) async -> [Float]? {
+        guard let manager = await ensureManager() else { return nil }
+        return try? await manager.process(samples).map(\.probability)
+    }
+
     /// The loaded model, or nil while only the energy fallback is available.
     ///
     /// The first load is awaited, as it always was: at launch it is what

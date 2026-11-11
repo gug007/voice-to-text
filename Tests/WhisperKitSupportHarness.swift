@@ -21,6 +21,7 @@ struct WhisperKitSupportHarness {
         try chunkCheckRetriesFailures()
         try chunkCheckRetriesEmptyPromptedSpeechWithoutPrompt()
         try chunkCheckAcceptsHonestSilence()
+        try silentChunkIsNotDecoded()
         try remainderUnderASecondIsKept()
         try remainderThatOverflowsSplitsEvenly()
         try coveredChunksAreUntouched()
@@ -175,5 +176,22 @@ struct WhisperKitSupportHarness {
         }
         try expect(text == .accept("Hello there."), "text is accepted, trimmed")
         try expect(!asked, "and never pays for the energy check")
+    }
+
+    private static func silentChunkIsNotDecoded() throws {
+        // Silero's scores for a real take's 2.9 s tail before Stop, which
+        // Whisper turned into "Продолжение следует...".
+        let tail: [Float] = [0.22, 0.17, 0.20, 0.11, 0.19, 0.34, 0.15, 0.06, 0.02, 0.03, 0.02, 0.03]
+        try expect(!WhisperChunkCheck.shouldDecode(speechProbabilities: tail, threshold: 0.5),
+                   "a chunk Silero never scored as speech is skipped")
+
+        var word = tail
+        word[6] = 0.5
+        try expect(WhisperChunkCheck.shouldDecode(speechProbabilities: word, threshold: 0.5),
+                   "one 256 ms unit at the threshold, a lone short word, keeps the chunk")
+        try expect(WhisperChunkCheck.shouldDecode(speechProbabilities: nil, threshold: 0.5),
+                   "without Silero every chunk is decoded, as before")
+        try expect(!WhisperChunkCheck.shouldDecode(speechProbabilities: [], threshold: 0.5),
+                   "no scores at all is no speech")
     }
 }

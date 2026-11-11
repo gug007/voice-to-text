@@ -3,15 +3,15 @@ import Foundation
 // 1st-order high-pass IIR biquad coefficients for 80 Hz at 16 kHz.
 // H(z) = (1 - z^-1) / (1 - R*z^-1), R = exp(-2π·f/fs)
 // Exact: R = exp(-2π·80/16000) ≈ 0.96908
-private let kHPAlpha: Float = 0.96908   // pole
-private let kDCAlpha: Float = 0.999     // EMA alpha for DC tracking
-private let kAGCAlpha: Float = 0.9995   // EMA alpha for peak tracking
-private let kAGCTarget: Float = 0.70    // ~-3 dBFS
-private let kAGCMin: Float = 0.5
-private let kAGCMax: Float = 8.0
-private let kAGCEpsilon: Float = 1e-5
+nonisolated private let kHPAlpha: Float = 0.96908   // pole
+nonisolated private let kDCAlpha: Float = 0.999     // EMA alpha for DC tracking
+nonisolated private let kAGCRelease: Float = 0.99995 // peak decay per sample, ~1.25 s at 16 kHz
+nonisolated private let kAGCTarget: Float = 0.70    // ~-3 dBFS
+nonisolated private let kAGCMin: Float = 0.5
+nonisolated private let kAGCMax: Float = 8.0
+nonisolated private let kAGCEpsilon: Float = 1e-5
 
-struct AudioPreprocessor {
+nonisolated struct AudioPreprocessor {
     static var isEnabled: Bool {
         if let val = UserDefaults.standard.object(forKey: "audio.preprocess.enabled") as? Bool {
             return val
@@ -41,6 +41,15 @@ struct AudioPreprocessor {
         applyAGC(&buffer)
     }
 
+    /// Holds samples to [-1, 1]. The History WAV and cloud uploads clamp on
+    /// their way to Int16, but local engines take these floats as they are,
+    /// so an overshoot upstream reached the model and nothing else.
+    static func clampToFullScale(_ buffer: inout [Float]) {
+        for i in buffer.indices {
+            buffer[i] = min(max(buffer[i], -1), 1)
+        }
+    }
+
     // MARK: - DSP stages
 
     private mutating func removeDC(_ buffer: inout [Float]) {
@@ -61,11 +70,17 @@ struct AudioPreprocessor {
         }
     }
 
+    // Gain follows a peak envelope that jumps to each louder sample at once,
+    // so a sample within full scale never leaves above the target. An
+    // average of |x| lagged: through a pause the gain climbed to its cap, and
+    // the next onset came through at 8×, far past full scale, which Whisper
+    // heard as junk in the wrong language. The slow release keeps the gain
+    // steady across a word.
     private mutating func applyAGC(_ buffer: inout [Float]) {
         for i in buffer.indices {
             let s = buffer[i]
             let absSample = s < 0 ? -s : s
-            agcPeak = kAGCAlpha * agcPeak + (1 - kAGCAlpha) * absSample
+            agcPeak = max(absSample, kAGCRelease * agcPeak)
             let rawGain = kAGCTarget / max(agcPeak, kAGCEpsilon)
             let gain = min(max(rawGain, kAGCMin), kAGCMax)
             buffer[i] = s * gain

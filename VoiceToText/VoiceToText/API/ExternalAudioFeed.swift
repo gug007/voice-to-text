@@ -30,6 +30,7 @@ nonisolated final class ExternalAudioFeed: @unchecked Sendable {
             // What the recorder does to the microphone's samples, so a model
             // hears the same thing from either.
             if AudioPreprocessor.isEnabled { preprocessor.process(&piece) }
+            AudioPreprocessor.clampToFullScale(&piece)
             samples.append(contentsOf: piece)
             onChunk?(piece)
         }

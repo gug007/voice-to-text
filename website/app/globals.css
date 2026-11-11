@@ -856,6 +856,51 @@ span.brand__mark {
   text-underline-offset: 6px;
 }
 
+/* GitHub star chip: the repo link as a bordered pill. The star warms to amber on
+   hover; the count segment only renders once it is worth showing. */
+.nav__links .star-btn {
+  margin-left: 8px;
+  padding: 0;
+  min-height: 32px;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  transition: color var(--duration-fast) var(--ease-standard),
+              border-color var(--duration-fast) var(--ease-standard),
+              background var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  .nav__links .star-btn:hover { color: var(--text-primary); border-color: var(--border-strong); background: var(--surface-sunken); }
+}
+.star-btn__label { display: inline-flex; align-items: center; gap: 6px; padding: 0 11px 0 9px; }
+.star-btn__count {
+  align-self: stretch;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border-left: 1px solid var(--border);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.star-btn__icon {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  transition: color var(--duration-fast) var(--ease-standard),
+              fill var(--duration-fast) var(--ease-standard);
+}
+@media (hover: hover) and (pointer: fine) {
+  .star-btn:hover .star-btn__icon,
+  .nav__menu-star:hover .star-btn__icon { color: #E39B0B; fill: #F5B82E; }
+}
+.nav__menu li .nav__menu-star { gap: 10px; }
+/* The count segment widens the chip ~40px, which runs the right-hand cluster
+   33px past the grid above 1320px; the tighter ≤1320px spacing makes it fit. */
+.nav__in:has(.star-btn__count) { gap: var(--space-3); }
+.nav__in:has(.star-btn__count) .nav__links a:not(.star-btn) { padding: 10px 9px; }
+
 .nav__mobile { display: none; position: static; }
 .nav__fallback { display: none; align-items: center; gap: var(--space-2); margin-left: auto; }
 .nav__fallback > a:not(.btn) {

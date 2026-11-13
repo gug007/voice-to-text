@@ -27,6 +27,7 @@ struct ActionRunnerHarness {
         try testCatalog()
         try testActionCodableRoundTrip()
         try testCatalogSync()
+        try testOrdering()
         print("ActionRunnerHarness: all checks passed")
     }
 
@@ -452,5 +453,68 @@ struct ActionRunnerHarness {
             templates: newTemplates
         )
         try expect(again.changed, false, "sync is idempotent once reconciled")
+    }
+
+    private static func testOrdering() throws {
+        let a = DictationAction(name: "A", prompt: "a", isEnabled: true)
+        let b = DictationAction(name: "B", prompt: "b", isEnabled: false)
+        let c = DictationAction(name: "C", prompt: "c", isEnabled: true)
+        let d = DictationAction(name: "D", prompt: "d", isEnabled: true)
+        let list = [a, b, c, d]
+        func names(_ actions: [DictationAction]) -> [String] { actions.map(\.name) }
+
+        try expect(names(ActionOrdering.moving(a.id, toOffset: 4, in: list)), ["B", "C", "D", "A"], "move to the end")
+        try expect(names(ActionOrdering.moving(d.id, toOffset: 0, in: list)), ["D", "A", "B", "C"], "move to the front")
+        try expect(names(ActionOrdering.moving(a.id, toOffset: 2, in: list)), ["B", "A", "C", "D"], "moving down lands before the offset row")
+        try expect(names(ActionOrdering.moving(b.id, toOffset: 1, in: list)), names(list), "dropping onto its own slot is a no-op")
+        try expect(names(ActionOrdering.moving(b.id, toOffset: 2, in: list)), names(list), "dropping just below itself is a no-op")
+        try expect(names(ActionOrdering.moving(UUID(), toOffset: 0, in: list)), names(list), "unknown id changes nothing")
+
+        try expect(names(ActionOrdering.moving(a.id, besides: c.id, after: true, in: list)), ["B", "C", "A", "D"], "drop after a row")
+        try expect(names(ActionOrdering.moving(d.id, besides: b.id, after: false, in: list)), ["A", "D", "B", "C"], "drop before a row")
+        try expect(names(ActionOrdering.moving(c.id, besides: c.id, after: true, in: list)), names(list), "drop on itself is a no-op")
+
+        try expect(names(ActionOrdering.movingUp(c.id, in: list)), ["A", "C", "B", "D"], "move up")
+        try expect(names(ActionOrdering.movingDown(b.id, in: list)), ["A", "C", "B", "D"], "move down")
+        try expect(names(ActionOrdering.movingUp(a.id, in: list)), names(list), "first can't move up")
+        try expect(names(ActionOrdering.movingDown(d.id, in: list)), names(list), "last can't move down")
+        for dragged in list + [DictationAction(name: "X", prompt: "x", isEnabled: true)] {
+            for target in list {
+                for after in [false, true] {
+                    try expect(
+                        ActionOrdering.reorders(dragged.id, besides: target.id, after: after, in: list),
+                        names(ActionOrdering.moving(dragged.id, besides: target.id, after: after, in: list)) != names(list),
+                        "reorders(\(dragged.name), \(after ? "after" : "before") \(target.name)) matches the move"
+                    )
+                }
+            }
+        }
+
+        let numbers = ActionOrdering.shortcutNumbers(in: list)
+        try expect(numbers[a.id], 1, "first enabled is ⌘1")
+        try expect(numbers[b.id], nil, "a disabled action has no number")
+        try expect(numbers[c.id], 2, "numbers skip the disabled action")
+        try expect(numbers[d.id], 3, "and keep counting after it")
+        let reordered = ActionOrdering.shortcutNumbers(in: ActionOrdering.moving(d.id, toOffset: 0, in: list))
+        try expect(reordered[d.id], 1, "numbers follow a move")
+        try expect(reordered[a.id], 2, "the rest shift down")
+        let many = (0..<11).map { DictationAction(name: "\($0)", prompt: "p", isEnabled: true) }
+        let manyNumbers = ActionOrdering.shortcutNumbers(in: many)
+        try expect(manyNumbers[many[8].id], 9, "ninth is ⌘9")
+        try expect(manyNumbers[many[9].id], nil, "tenth has no shortcut")
+
+        let withoutC = list.filter { $0.id != c.id }
+        try expect(names(ActionOrdering.restoring(c, at: 2, in: withoutC)), names(list), "undo puts a deleted action back in place")
+        let shrunk = [a]
+        try expect(names(ActionOrdering.restoring(d, at: 3, in: shrunk)), ["A", "D"], "undo past the end appends")
+        try expect(names(ActionOrdering.restoring(a, at: 0, in: list)), names(list), "undo of an action still present is a no-op")
+        let movedThenDeleted = ActionOrdering.moving(d.id, toOffset: 0, in: list)
+        let index = movedThenDeleted.firstIndex { $0.id == a.id }!
+        let afterDelete = movedThenDeleted.filter { $0.id != a.id }
+        try expect(
+            names(ActionOrdering.restoring(a, at: index, in: afterDelete)),
+            names(movedThenDeleted),
+            "undo after a reorder restores the reordered position"
+        )
     }
 }

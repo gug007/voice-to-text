@@ -201,8 +201,51 @@ final class LiveHUDState {
     var level: Double = 0
     /// Rolling buffer of recent levels for the ECG trace (oldest → newest).
     var levelHistory: [Double] = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
+    /// The input has been clipping for about a second, so the card says so
+    /// until it has been clean for a couple (`ClippingDetector`).
+    var isTooLoud: Bool = false
+    @ObservationIgnored fileprivate var clipping = ClippingDetector()
+    static let tooLoudMessage = "Too loud. Move back a little."
     /// Editable transcript bound to the review TextEditor.
-    var reviewText: String = ""
+    var reviewText: String = "" {
+        didSet {
+            guard reviewText != oldValue, !reviewTextMeasurePending else { return }
+            // Typing writes this on every keystroke: measured once a turn.
+            reviewTextMeasurePending = true
+            Task { @MainActor [weak self] in self?.measureReviewText() }
+        }
+    }
+    /// How tall the review editor would have to be to show `reviewText`
+    /// without scrolling. The card grows toward it (`HUDLayout.editorGrowth`).
+    private(set) var reviewTextHeight: CGFloat = 0
+    /// The words in `reviewText`, for the review card's count.
+    private(set) var reviewWordCount = 0
+    @ObservationIgnored private var reviewTextMeasurePending = false
+    @ObservationIgnored private let reviewSizing = ReviewEditorSizing()
+
+    /// Measures `reviewText` now if an edit is waiting on it: once a turn
+    /// after edits, and before a card is sized for it (`present()`).
+    func measureReviewText() {
+        guard reviewTextMeasurePending else { return }
+        reviewTextMeasurePending = false
+        let height = reviewSizing.naturalHeight(of: reviewText)
+        if height != reviewTextHeight { reviewTextHeight = height }
+        let words = Self.wordCount(of: reviewText)
+        if words != reviewWordCount { reviewWordCount = words }
+    }
+
+    /// Counted the way the system counts words, so a language written
+    /// without spaces still counts.
+    private static func wordCount(of text: String) -> Int {
+        var count = 0
+        text.enumerateSubstrings(in: text.startIndex..., options: [.byWords, .substringNotRequired]) { _, _, _, _ in
+            count += 1
+        }
+        return count
+    }
+    /// The tallest the review card may grow on the screen it is on, set as
+    /// review is shown. Zero lets nothing grow.
+    var reviewCardCeiling: CGFloat = 0
     /// One-line notice shown above the review editor when a Resume attempt
     /// silently produced nothing (so failures after API charges stay visible).
     var reviewBanner: String?
@@ -276,11 +319,18 @@ final class LiveHUDState {
     var secondaryActionTitle: String?
     var secondaryActionIcon: String?
 
+    /// Whether the card offers Copy: always on review, and on a failure
+    /// card only while the controller holds text that isn't on the clipboard.
+    var offersCopy: Bool = false
+
     /// The discard notice's one line ("Dictation discarded").
     var noticeMessage: String = ""
     /// Whether the notice offers Undo. A notice that only says where a
     /// cancelled take went ("saved to History") has nothing to undo.
     var noticeOffersUndo: Bool = false
+    /// The Undo window's clock, which the button's ring drains on and
+    /// hovering the notice pauses. The controller owns what it finalises.
+    var noticeCountdown: UndoCountdown?
 
     /// Display name of the model being downloaded or loaded, on the preparing
     /// card. The card names the model because "which model is this waiting on"
@@ -337,6 +387,10 @@ final class LiveHUDState {
     @ObservationIgnored var onRunAction: (@MainActor (DictationAction) -> Void)?
     /// The discard notice's Undo.
     @ObservationIgnored var onUndo: (@MainActor () -> Void)?
+    /// Copy on the review or failure card (`offersCopy`).
+    @ObservationIgnored var onCopy: (@MainActor () -> Void)? {
+        didSet { offersCopy = onCopy != nil }
+    }
     @ObservationIgnored var onSecondaryAction: (@MainActor () -> Void)?
     /// Called when Undo steps back an action.
     @ObservationIgnored var onActionUndone: (@MainActor () -> Void)?
@@ -438,6 +492,7 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onCopy = nil
 
         present()
         AppLog.hud.info("HUD preparing shown for \(modelName)")
@@ -466,6 +521,7 @@ final class LiveHUDPanel {
         state.elapsedSeconds = 0
         state.level = 0
         state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
+        resetClipping()
         state.reviewText = ""
         state.reviewBanner = nil
         state.transcribingElapsedSeconds = 0
@@ -490,6 +546,7 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onCopy = nil
 
         present()
         AppLog.hud.info("HUD shown at \(String(describing: self.panel?.frame))")
@@ -510,6 +567,7 @@ final class LiveHUDPanel {
         state.elapsedSeconds = 0
         state.level = 0
         state.levelHistory = Array(repeating: 0, count: LiveHUDState.levelHistoryCount)
+        resetClipping()
         state.showsLiveText = showsLiveText
         state.partialTranscript = ""
         state.recordingPrefix = prefix
@@ -521,6 +579,7 @@ final class LiveHUDPanel {
         // leftover review-session callbacks (Paste/Resume) would still be bound.
         state.onStop = onStop
         state.onCancel = onCancel
+        state.onCopy = nil
 
         present()
         AppLog.hud.info("HUD resume-recording shown at \(String(describing: self.panel?.frame))")
@@ -537,6 +596,7 @@ final class LiveHUDPanel {
         state.mode = .transcribing
         state.isRecording = false
         state.level = 0
+        resetClipping()
         state.transcribingElapsedSeconds = 0
         state.transcribingProgress = nil
         state.transcribingWaitPhase = nil
@@ -553,6 +613,7 @@ final class LiveHUDPanel {
         onPaste: @escaping @MainActor () -> Void,
         onCancel: @escaping @MainActor () -> Void,
         onResume: @escaping @MainActor () -> Void,
+        onCopy: @escaping @MainActor () -> Void,
         onRetry: (@MainActor () -> Void)? = nil,
         secondaryActionTitle: String? = nil,
         secondaryActionIcon: String? = nil,
@@ -565,6 +626,7 @@ final class LiveHUDPanel {
         state.mode = .reviewing
         state.isRecording = false
         state.level = 0
+        state.reviewCardCeiling = placement.visibleHeight * HUDLayout.reviewCeilingShare
         state.reviewText = text
         state.reviewBanner = banner
         state.failureMessage = ""
@@ -582,6 +644,7 @@ final class LiveHUDPanel {
         state.onPaste = onPaste
         state.onCancel = onCancel
         state.onResume = onResume
+        state.onCopy = onCopy
         // Retry on the failure banner: re-runs a failed Resume take's audio.
         state.onRetry = onRetry
         state.secondaryActionTitle = secondaryActionTitle
@@ -610,6 +673,7 @@ final class LiveHUDPanel {
         secondaryActionIcon: String? = nil,
         onRetry: @escaping @MainActor () -> Void,
         onSecondaryAction: (@MainActor () -> Void)? = nil,
+        onCopy: (@MainActor () -> Void)? = nil,
         onCancel: @escaping @MainActor () -> Void
     ) {
         state.mode = .failed
@@ -642,6 +706,7 @@ final class LiveHUDPanel {
         state.onPaste = nil
         state.onResume = nil
         state.onRunAction = nil
+        state.onCopy = onCopy
 
         present()
         AppLog.hud.info("HUD failure shown: \(message)")
@@ -651,12 +716,17 @@ final class LiveHUDPanel {
     /// card shrinks to one line — with Undo when `onUndo` is given — and stops
     /// taking key, which hands the keyboard straight back to the app the user
     /// is in. `DictationController` owns how long it stays.
-    func showDiscarded(message: String, onUndo: (@MainActor () -> Void)?) {
+    func showDiscarded(
+        message: String,
+        countdown: UndoCountdown? = nil,
+        onUndo: (@MainActor () -> Void)?
+    ) {
         state.mode = .discarded
         state.isRecording = false
         state.level = 0
         state.noticeMessage = message
         state.noticeOffersUndo = onUndo != nil
+        state.noticeCountdown = onUndo != nil ? countdown : nil
         state.failureMessage = ""
         state.failureActionTitle = nil
         state.salvagedSampleCount = 0
@@ -678,10 +748,19 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onCopy = nil
         state.onUndo = onUndo
 
         present()
         AppLog.hud.info("HUD discard notice shown")
+    }
+
+    /// The failure card's Copy put its text on the clipboard: the button goes
+    /// and the card's line says where the text is.
+    func failureTextCopied() {
+        guard state.mode == .failed else { return }
+        state.onCopy = nil
+        state.failureDetail = "Copied to clipboard — click where it goes, then press ⌘V."
     }
 
     /// Takes the discard notice down if it is still what the card shows —
@@ -735,11 +814,23 @@ final class LiveHUDPanel {
         history.removeFirst()
         history.append(smoothed)
         state.levelHistory = history
+
+        let tooLoud = state.clipping.update(
+            isClipping: smoothed > LevelBars.overloadThreshold,
+            at: ProcessInfo.processInfo.systemUptime
+        )
+        if tooLoud != state.isTooLoud { state.isTooLoud = tooLoud }
+    }
+
+    private func resetClipping() {
+        state.clipping.reset()
+        state.isTooLoud = false
     }
 
     func hide() {
         state.isRecording = false
         state.level = 0
+        resetClipping()
         state.reviewBanner = nil
         state.showsLiveText = false
         state.partialTranscript = ""
@@ -766,9 +857,11 @@ final class LiveHUDPanel {
         state.onResume = nil
         state.onRetry = nil
         state.onRunAction = nil
+        state.onCopy = nil
         state.onUndo = nil
         state.noticeMessage = ""
         state.noticeOffersUndo = false
+        state.noticeCountdown = nil
         state.secondaryActionTitle = nil
         state.secondaryActionIcon = nil
         state.onSecondaryAction = nil
@@ -804,6 +897,19 @@ final class LiveHUDPanel {
     /// to decide where to splice the next transcription).
     var currentCursorLocation: Int { state.selectedRange.location }
 
+    /// The review card's height followed its text. The frame waits a turn:
+    /// this arrives inside a SwiftUI update, and resizing from there re-enters it.
+    func contentHeightChanged() {
+        guard panel?.isVisible == true else { return }
+        let animate = HUDFeatureFlags.morphEnabled
+        let estimate = HUDLayout(state: state).estimatedCardSize
+        placement.expect(cardSize: estimate, animated: animate)
+        Task { @MainActor [weak self] in
+            guard let self, self.panel?.isVisible == true else { return }
+            self.placement.applyFrame(cardSize: estimate, animated: animate)
+        }
+    }
+
     // MARK: Panel lifecycle
 
     /// Orders the panel in for the mode already written into `state`, sizing it
@@ -812,6 +918,7 @@ final class LiveHUDPanel {
     private func present() {
         let panel = ensurePanel()
         let wasVisible = panel.isVisible
+        state.measureReviewText()
         let layout = HUDLayout(state: state)
 
         if !wasVisible {

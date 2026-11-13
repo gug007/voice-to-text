@@ -44,12 +44,17 @@ actor FluidAudioEngine: TranscriptionEngine {
             // no Neural Engine, so this runs on the CPU there — slow, but
             // `.cpuAndGPU` on real Intel/AMD GPUs hung the CoreML compile and
             // crashed on the first transcription (issue #23).
-            let models = try await AsrModels.downloadAndLoad(progressHandler: handler)
+            // `downloadAndLoad` is these two calls. Apart, a cancel that comes
+            // during the download's own compile pass skips the second one.
+            let folder = try await AsrModels.download(progressHandler: handler)
+            try Task.checkCancellation()
+            let models = try await AsrModels.load(from: folder, progressHandler: handler)
+            try Task.checkCancellation()
             manager = AsrManager(models: models)
 
             progress?(1.0, "Ready")
         } catch {
-            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription)
+            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription, underlying: error)
         }
     }
 

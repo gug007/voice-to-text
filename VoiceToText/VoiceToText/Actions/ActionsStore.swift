@@ -96,8 +96,26 @@ final class ActionsStore {
     /// pane's Undo. Deletion is otherwise final: a removed template is never
     /// reseeded, and a custom prompt exists nowhere else.
     func restore(_ action: DictationAction, at index: Int) {
-        guard !actions.contains(where: { $0.id == action.id }) else { return }
-        actions.insert(action, at: min(index, actions.count))
+        apply(ActionOrdering.restoring(action, at: index, in: actions))
+    }
+
+    /// Reorders the list; the review card's ⌘ numbers follow it from the next
+    /// review on, as they follow `enabledActions`.
+    func move(id: UUID, besides targetID: UUID, after: Bool) {
+        apply(ActionOrdering.moving(id, besides: targetID, after: after, in: actions))
+    }
+
+    func moveUp(id: UUID) {
+        apply(ActionOrdering.movingUp(id, in: actions))
+    }
+
+    func moveDown(id: UUID) {
+        apply(ActionOrdering.movingDown(id, in: actions))
+    }
+
+    private func apply(_ reordered: [DictationAction]) {
+        guard reordered != actions else { return }
+        actions = reordered
         persist()
     }
 

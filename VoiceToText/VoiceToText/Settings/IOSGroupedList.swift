@@ -66,6 +66,8 @@ struct RecordingsList: View {
     /// History's live search query, forwarded so each row can mark its matched
     /// substrings. Empty in Conversations, which has no search field.
     var highlight: String = ""
+    /// History's selection hooks per row; nil in Conversations.
+    var selection: ((RecordingHistoryEntry) -> RecordingRowSelection)? = nil
     let isPlaying: (RecordingHistoryEntry) -> Bool
     let onPlay: (RecordingHistoryEntry) -> Void
     let onDelete: (RecordingHistoryEntry) -> Void
@@ -94,6 +96,7 @@ struct RecordingsList: View {
                 isPlaying: isPlaying(entry),
                 showsTypeBadge: showsTypeBadge,
                 highlight: highlight,
+                selection: selection?(entry),
                 selectedTab: tabBinding(for: entry),
                 onPlay: { onPlay(entry) },
                 onDelete: { onDelete(entry) },
@@ -112,6 +115,36 @@ struct RecordingsList: View {
             get: { insightTabs[entry.id] ?? .transcript },
             set: { insightTabs[entry.id] = $0 }
         )
+    }
+}
+
+// MARK: - Empty library
+
+/// The plain, centred "nothing here yet" state of a library pane: History
+/// before the first recording, Conversations before the first conversation.
+struct LibraryEmptyState: View {
+    let systemImage: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: Space.s5) {
+            Image(systemName: systemImage)
+                .font(.system(size: 32, weight: .regular))
+                .foregroundStyle(Palette.inkFaint)
+                .accessibilityHidden(true)
+            Text(title)
+                .typo(.title)
+                .foregroundStyle(Palette.ink)
+            Text(message)
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 72)
+        .accessibilityElement(children: .combine)
     }
 }
 

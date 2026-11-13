@@ -58,7 +58,10 @@ final class RecordingHistoryStore {
     /// timer commits it. At most one is ever active — starting a new deletion
     /// flushes the previous one, matching the one-toast-at-a-time Undo affordance.
     struct PendingDeletion: Sendable {
-        let entries: [RecordingHistoryEntry]
+        var entries: [RecordingHistoryEntry]
+        /// Clear All's batch, which the toast names as such; any other batch
+        /// is counted.
+        var isClearAll = false
     }
 
     /// The recording(s) currently inside the undo window, or nil. Observed by the
@@ -68,7 +71,7 @@ final class RecordingHistoryStore {
     /// Fires after `undoGraceSeconds` to commit the pending deletion. Kept out of
     /// observation (and off `PendingDeletion`) so the toast re-renders on the
     /// shown value, not when the timer handle is stored.
-    @ObservationIgnored private var pendingDeletionTask: Task<Void, Never>?
+    @ObservationIgnored private(set) var pendingDeletionCountdown: UndoCountdown?
 
     private enum Keys {
         static let enabled = "history.saveEnabled"
@@ -294,6 +297,17 @@ final class RecordingHistoryStore {
         beginPendingDeletion([removed])
     }
 
+    /// Removes several recordings as one deferred deletion: one undo window and
+    /// one toast, and Undo brings the whole batch back with its audio. A row
+    /// still being transcribed is spared, as in `clearAll`.
+    func delete(ids: Set<UUID>) {
+        let removed = entries.filter { ids.contains($0.id) && !inFlightIDs.contains($0.id) }
+        guard !removed.isEmpty else { return }
+        let removedIDs = Set(removed.map(\.id))
+        entries.removeAll { removedIDs.contains($0.id) }
+        beginPendingDeletion(removed)
+    }
+
     /// Removes one recording at once, with no undo window — used to retract an
     /// uncommitted dictation review take on Cancel, which is its own explicit
     /// discard and shouldn't raise a confusing "undo the cancel" toast, and a
@@ -317,20 +331,18 @@ final class RecordingHistoryStore {
     /// only one undo toast is ever live — deleting B finalizes A. The new pending
     /// is established *before* the superseded one's index write, so the index
     /// never momentarily drops B (which would lose it on a crash mid-window).
-    private func beginPendingDeletion(_ removed: [RecordingHistoryEntry]) {
+    private func beginPendingDeletion(_ removed: [RecordingHistoryEntry], isClearAll: Bool = false) {
         guard !removed.isEmpty else { return }
         let superseded = pendingDeletion?.entries ?? []
-        pendingDeletionTask?.cancel()
-        pendingDeletion = PendingDeletion(entries: removed)
+        pendingDeletionCountdown?.cancel()
+        pendingDeletion = PendingDeletion(entries: removed, isClearAll: isClearAll)
         // Commit the superseded deletion now that the new pending is in place (a
         // no-op when nothing was superseded — the on-disk index already lists
         // these entries, since persistIndex writes the union of visible + pending,
         // so a quit inside the window just restores them on the next launch).
         commitRemoval(superseded)
         let ids = removed.map(\.id)
-        pendingDeletionTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(Self.undoGraceSeconds))
-            guard !Task.isCancelled else { return }
+        pendingDeletionCountdown = UndoCountdown(duration: Self.undoGraceSeconds) { [weak self] in
             self?.finalizePendingDeletion(expecting: ids)
         }
     }
@@ -344,7 +356,7 @@ final class RecordingHistoryStore {
         guard let pending = pendingDeletion,
               Set(pending.entries.map(\.id)).isSubset(of: ids) else { return }
         pendingDeletion = nil
-        pendingDeletionTask = nil
+        pendingDeletionCountdown = nil
         commitRemoval(pending.entries)
     }
 
@@ -357,8 +369,8 @@ final class RecordingHistoryStore {
     /// `RecordingHistoryPruner.restoring` for why.
     func undoPendingDeletion() {
         guard let pending = pendingDeletion else { return }
-        pendingDeletionTask?.cancel()
-        pendingDeletionTask = nil
+        pendingDeletionCountdown?.cancel()
+        pendingDeletionCountdown = nil
         pendingDeletion = nil
         entries = RecordingHistoryPruner.restoring(pending.entries, into: entries)
         persistIndex()
@@ -382,11 +394,11 @@ final class RecordingHistoryStore {
         else { return false }
         entries = reclaimed.entries
         if reclaimed.parked.isEmpty {
-            pendingDeletionTask?.cancel()
-            pendingDeletionTask = nil
+            pendingDeletionCountdown?.cancel()
+            pendingDeletionCountdown = nil
             pendingDeletion = nil
         } else {
-            pendingDeletion = PendingDeletion(entries: reclaimed.parked)
+            pendingDeletion?.entries = reclaimed.parked
         }
         return true
     }
@@ -422,6 +434,26 @@ final class RecordingHistoryStore {
     /// persists the index. No audio is touched. Survives relaunch via index.json.
     func toggleFavorite(id: UUID) {
         mutateEntry(id) { $0.updatingFavorite(!$0.isFavorited) }
+    }
+
+    /// Stars or unstars several visible entries with one index write — the
+    /// History selection bar's Favorite. Stamped like `mutateEntry` does, so an
+    /// unstarred plain dictation ages out of the cap from now, not from when it
+    /// was made.
+    func setFavorite(_ favorited: Bool, ids: Set<UUID>) {
+        let now = Date()
+        var changed = false
+        for index in entries.indices
+        where ids.contains(entries[index].id) && entries[index].isFavorited != favorited {
+            let original = entries[index]
+            entries[index] = RecordingHistoryPruner.stampingLostProtection(
+                from: original,
+                to: original.updatingFavorite(favorited),
+                at: now
+            )
+            changed = true
+        }
+        if changed { persistIndex() }
     }
 
     /// Assigns display names to an entry's canonical speaker labels (persisted, no
@@ -549,9 +581,7 @@ final class RecordingHistoryStore {
         } else if let pending = pendingDeletion,
                   let index = pending.entries.firstIndex(where: { $0.id == entryID }) {
             guard let updated = settled(pending.entries[index]) else { return }
-            var kept = pending.entries
-            kept[index] = updated
-            pendingDeletion = PendingDeletion(entries: kept)
+            pendingDeletion?.entries[index] = updated
         } else {
             return
         }
@@ -667,7 +697,7 @@ final class RecordingHistoryStore {
         let outcome = RecordingHistoryPruner.clearingAll(entries, sparing: inFlightIDs)
         guard !outcome.removed.isEmpty else { return }
         entries = outcome.kept
-        beginPendingDeletion(outcome.removed)
+        beginPendingDeletion(outcome.removed, isClearAll: true)
     }
 
     /// Saves an already-recorded audio file (e.g. a meeting captured to disk by

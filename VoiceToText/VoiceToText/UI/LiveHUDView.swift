@@ -48,9 +48,17 @@ private struct HUDCard: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(minHeight: layout.minHeight)
             .modifier(HUDCardChrome(layout: layout, placement: LiveHUDPanel.shared.placement))
+            // The pointer on the discard notice holds its Undo open.
+            .onHover { hovering in
+                state.noticeCountdown?.setPaused(hovering && state.mode == .discarded)
+            }
             .onGeometryChange(for: CGSize.self, of: { $0.size }, action: onCardSize)
             .animation(morph, value: layout)
             .animation(morph, value: state.reviewBanner)
+            .onChange(of: layout) { old, new in
+                guard old.mode == new.mode, old.editorGrowth != new.editorGrowth else { return }
+                LiveHUDPanel.shared.contentHeightChanged()
+            }
             .modifier(HUDPresentation(presentationCount: state.presentationCount))
     }
 
@@ -133,7 +141,7 @@ private struct HUDCard: View {
 
             if layout.showsEditor {
                 ReviewTextEditor(text: $state.reviewText, state: state)
-                    .frame(height: HUDMetrics.editorHeight)
+                    .frame(height: layout.editorHeight)
                     .frame(maxWidth: .infinity)
                     // A long transcript must not collide with the banner above
                     // or the chip row below.
@@ -176,11 +184,44 @@ private struct HUDCard: View {
             phase: compactPhase,
             samples: state.levelHistory,
             isOverloaded: state.level > LevelBars.overloadThreshold,
-            readout: .clock(HUDClock.text(seconds: state.elapsedSeconds)),
+            readout: compactReadout,
             status: compactStatus,
+            transcribingTitle: state.transcribingWaitPhase ?? "Transcribing",
+            transcribingFraction: compactTranscribingFraction,
+            busyAccessibilityLabel: compactBusyLabel,
+            warning: state.isTooLoud ? LiveHUDState.tooLoudMessage : nil,
             persistentControl: .cancel(hint: HUDKeyHints.escCancel) { state.click(state.onCancel) },
             finishControl: .finish(hint: HUDKeyHints.finish) { state.click(state.onStop) }
         )
+    }
+
+    /// The clock while recording. Transcribing, the clock has nothing left to
+    /// count: a take of several parts says how many are done, a take of one
+    /// how long it has been transcribing — the Large card's two readouts. A
+    /// take waiting on its model says how far along the model is instead.
+    private var compactReadout: HUDCompactRow.Readout {
+        guard state.mode == .transcribing else {
+            return .clock(HUDClock.text(seconds: state.elapsedSeconds))
+        }
+        if state.transcribingWaitPhase != nil {
+            return .counter(FailureCardCopy.percent(state.preparingFraction) ?? "")
+        }
+        if let progress = state.transcribingProgress, progress.total > 1 {
+            return .counter(progress.label)
+        }
+        return .counter(state.transcribingElapsedLabel)
+    }
+
+    private var compactTranscribingFraction: Double? {
+        guard state.mode == .transcribing, state.transcribingWaitPhase == nil,
+              let progress = state.transcribingProgress, progress.total > 0 else { return nil }
+        return Double(progress.current) / Double(progress.total)
+    }
+
+    private var compactBusyLabel: String? {
+        guard state.mode == .transcribing, state.transcribingWaitPhase == nil,
+              let progress = state.transcribingProgress, progress.total > 1 else { return nil }
+        return "Transcribing, part \(progress.current) of \(progress.total)"
     }
 
     private var compactPhase: HUDCompactRow.Phase {
@@ -463,11 +504,7 @@ private struct HUDElevation: ViewModifier {
     private var shadow: some View {
         shape
             .fill(Color.black)
-            .shadow(
-                color: .black.opacity(reduceTransparency ? 0.24 : 0.30),
-                radius: reduceTransparency ? 9 : 24,
-                y: reduceTransparency ? 6 : 16
-            )
+            .floatingShadow(reduceTransparency: reduceTransparency)
             .shadow(color: .black.opacity(0.14), radius: 3, y: 2)
             .compositingGroup()
             // Keep the shadow, punch out the card's own footprint — the black
@@ -536,7 +573,19 @@ private struct HUDControlRow: View {
                 if !layout.showsInlineMeter {
                     HUDClock(seconds: state.elapsedSeconds)
                 }
-                Spacer(minLength: Space.s4)
+                // In the spacer's place, so it is the first thing to go when
+                // the row runs short — Cancel and Finish never truncate for it.
+                ViewThatFits(in: .horizontal) {
+                    if state.isTooLoud {
+                        HStack(spacing: Space.s4) {
+                            TooLoudCaption()
+                            Spacer(minLength: Space.s4)
+                        }
+                        .transition(.opacity)
+                    }
+                    Spacer(minLength: Space.s4)
+                }
+                .animation(motion.hover, value: state.isTooLoud)
                 cancelButton(title: "Cancel", hint: escCancelHint)
                 primaryButton(title: "Finish", hint: finishHint) { state.click(state.onStop) }
 
@@ -558,7 +607,7 @@ private struct HUDControlRow: View {
                     // hotkey hint, chunk progress drops out before anything wraps.
                     ViewThatFits(in: .horizontal) {
                         transcribingDetailText(transcribingDetail)
-                        transcribingDetailText(transcribingElapsed)
+                        transcribingDetailText(state.transcribingElapsedLabel)
                     }
                 }
                 Spacer(minLength: Space.s4)
@@ -573,7 +622,19 @@ private struct HUDControlRow: View {
 
             case .reviewing:
                 cancelButton(title: "Cancel", hint: "esc")
-                Spacer(minLength: Space.s4)
+                // The count is the first thing to go when a long hotkey or
+                // Undo leaves the row no room for it.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: Space.s4) {
+                        Text(Self.wordCount(state.reviewWordCount))
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkFaint)
+                            .lineLimit(1)
+                            .contentTransition(.numericText())
+                        Spacer(minLength: Space.s4)
+                    }
+                    Spacer(minLength: Space.s4)
+                }
                 if !state.actionRevertStack.isEmpty, state.runningActionId == nil {
                     HUDButton(
                         title: "Undo",
@@ -582,6 +643,10 @@ private struct HUDControlRow: View {
                     ) { state.click { state.undoLastAction() } }
                         .help("Undo last action")
                         .transition(.opacity)
+                }
+                if state.offersCopy {
+                    HUDButton(title: "Copy", hint: "⇧⌘C", role: .secondary) { state.click(state.onCopy) }
+                        .help("Copy the text and close")
                 }
                 HUDButton(
                     title: "Resume",
@@ -596,6 +661,12 @@ private struct HUDControlRow: View {
 
             case .failed:
                 Spacer(minLength: Space.s4)
+                if state.offersCopy {
+                    HUDButton(title: "Copy", systemImage: "doc.on.doc", role: .secondary) {
+                        state.click(state.onCopy)
+                    }
+                    .help("Copy the text to the clipboard")
+                }
                 if let secondaryTitle = state.secondaryActionTitle {
                     HUDButton(
                         title: secondaryTitle,
@@ -623,8 +694,24 @@ private struct HUDControlRow: View {
                 // Same identity as the primary action it replaces, so the
                 // button slides out of the review card instead of popping.
                 if state.noticeOffersUndo {
-                    primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
-                        state.click(state.onUndo)
+                    if let countdown = state.noticeCountdown {
+                        Button { state.click(state.onUndo) } label: {
+                            HStack(spacing: Space.s4) {
+                                UndoCountdownRing(countdown: countdown)
+                                Text("Undo")
+                            }
+                            .lineLimit(1)
+                        }
+                        .buttonStyle(GlassButtonStyle(role: .primary))
+                        .accessibilityLabel("Undo")
+                        .matchedGeometryEffect(id: "hud.primary", in: namespace)
+                        // Taken away under the pointer, the notice never sees
+                        // it leave; the controller still holds the countdown.
+                        .onDisappear { countdown.setPaused(false) }
+                    } else {
+                        primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
+                            state.click(state.onUndo)
+                        }
                     }
                 }
             }
@@ -638,6 +725,11 @@ private struct HUDControlRow: View {
     }
 
     private var escCancelHint: String? { HUDKeyHints.escCancel }
+
+    /// "82 words", "1 word" (`LiveHUDState.reviewWordCount`).
+    static func wordCount(_ count: Int) -> String {
+        count == 1 ? "1 word" : "\(count) words"
+    }
 
     private func primaryButton(
         title: String,
@@ -662,12 +754,8 @@ private struct HUDControlRow: View {
     private var finishHint: String? { HUDKeyHints.finish }
 
     private var transcribingDetail: String {
-        guard let progress = state.transcribingProgress else { return transcribingElapsed }
-        return "\(progress.current) / \(progress.total) · \(transcribingElapsed)"
-    }
-
-    private var transcribingElapsed: String {
-        String(format: "%0.1fs", state.transcribingElapsedSeconds)
+        guard let progress = state.transcribingProgress else { return state.transcribingElapsedLabel }
+        return "\(progress.label) · \(state.transcribingElapsedLabel)"
     }
 
     /// "Parakeet TDT v3 · 42%", or the name alone while there is no fraction
@@ -686,6 +774,31 @@ private struct HUDControlRow: View {
 
     private var preparingDetail: String {
         HUDPreparingBlock.percent(state.preparingFraction)
+    }
+}
+
+private extension TranscribingProgress {
+    var label: String { "\(current) / \(total)" }
+}
+
+private extension LiveHUDState {
+    var transcribingElapsedLabel: String { String(format: "%0.1fs", transcribingElapsedSeconds) }
+}
+
+/// The input has been clipping for about a second: a warning glyph and what
+/// to do about it, in the warning colour, beside the recording clock.
+private struct TooLoudCaption: View {
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 10, weight: .semibold))
+            Text(LiveHUDState.tooLoudMessage)
+                .typo(.captionMedium)
+                .lineLimit(1)
+        }
+        .foregroundStyle(Palette.signalWarn)
+        .fixedSize()
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -947,6 +1060,40 @@ private struct HUDActionChipRow: View {
 
 // MARK: - Review editor
 
+/// How tall the review editor has to be to show a transcript without
+/// scrolling: laid out the way the editor lays it out — its font, its width
+/// inside the wide card, its line-fragment padding and text inset.
+@MainActor
+final class ReviewEditorSizing {
+    private let storage = NSTextStorage()
+    private let container = NSTextContainer()
+    private let manager = NSLayoutManager()
+
+    init() {
+        container.lineFragmentPadding = ReviewTextEditor.lineFragmentPadding
+        manager.addTextContainer(container)
+        storage.addLayoutManager(manager)
+    }
+
+    func naturalHeight(of text: String) -> CGFloat {
+        container.size = NSSize(width: Self.textWidth, height: .greatestFiniteMagnitude)
+        storage.setAttributedString(NSAttributedString(string: text, attributes: [.font: ReviewTextEditor.font]))
+        manager.ensureLayout(for: container)
+        let lines = max(manager.usedRect(for: container).height, manager.defaultLineHeight(for: ReviewTextEditor.font))
+        // A point or two of slack: a measurement that came up short would
+        // leave the last line a hair under the fade, with a scroller for it.
+        return (lines + ReviewTextEditor.verticalTextInset * 2 + 2).rounded(.up)
+    }
+
+    /// The editor's width inside the wide card, less a legacy scroller's,
+    /// which takes its width out of the text rather than floating over it.
+    private static var textWidth: CGFloat {
+        let width = HUDMetrics.wideWidth - HUDMetrics.inset * 2
+        guard NSScroller.preferredScrollerStyle == .legacy else { return width }
+        return width - NSScroller.scrollerWidth(for: .regular, scrollerStyle: .legacy)
+    }
+}
+
 /// NSTextView-backed editor: we need the caret position when Resume is
 /// pressed so the next transcription can be spliced in at the cursor.
 /// SwiftUI's TextEditor doesn't expose a selection binding on macOS in a way
@@ -960,6 +1107,7 @@ private struct ReviewTextEditor: NSViewRepresentable {
     /// between review and a resumed take.
     static let verticalTextInset: CGFloat = 12
     static let lineFragmentPadding: CGFloat = 5
+    static let font = NSFont.systemFont(ofSize: 15)
 
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = FocusOnAttachTextView.scrollableTextView()
@@ -1021,7 +1169,7 @@ private struct ReviewTextEditor: NSViewRepresentable {
         textView.delegate = delegate
         // The Transcript register: SF Pro 15 / line-height 21, in `ink` — not
         // white-on-black. This is the largest body text in the app.
-        textView.font = .systemFont(ofSize: 15)
+        textView.font = font
         // Keeps the first and last lines out of the scroll-edge gradient.
         textView.textContainerInset = NSSize(width: 0, height: verticalTextInset)
         textView.textContainer?.lineFragmentPadding = lineFragmentPadding

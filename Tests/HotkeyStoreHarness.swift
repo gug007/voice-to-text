@@ -23,6 +23,10 @@ struct HotkeyStoreHarness {
         let previousMode = defaults.string(forKey: modeKey)
         let previousMeetingBinding = defaults.data(forKey: meetingBindingKey)
         let previousEscape = defaults.object(forKey: escapeKey) as? Bool
+        let secondBindingKey = "hotkey.secondBinding.v1"
+        let secondModelKey = "hotkey.secondModelId.v1"
+        let previousSecondBinding = defaults.data(forKey: secondBindingKey)
+        let previousSecondModel = defaults.string(forKey: secondModelKey)
 
         defer {
             if let previousBinding {
@@ -49,10 +53,24 @@ struct HotkeyStoreHarness {
             } else {
                 defaults.removeObject(forKey: escapeKey)
             }
+
+            if let previousSecondBinding {
+                defaults.set(previousSecondBinding, forKey: secondBindingKey)
+            } else {
+                defaults.removeObject(forKey: secondBindingKey)
+            }
+
+            if let previousSecondModel {
+                defaults.set(previousSecondModel, forKey: secondModelKey)
+            } else {
+                defaults.removeObject(forKey: secondModelKey)
+            }
         }
 
         defaults.removeObject(forKey: modeKey)
         defaults.removeObject(forKey: meetingBindingKey)
+        defaults.removeObject(forKey: secondBindingKey)
+        defaults.removeObject(forKey: secondModelKey)
 
         try await MainActor.run {
             let store = HotkeyStore.shared
@@ -92,6 +110,47 @@ struct HotkeyStoreHarness {
                 defaults.data(forKey: meetingBindingKey) == nil,
                 "clearing the conversation shortcut removes the key rather than storing a null"
             )
+
+            try expect(
+                store.secondBinding == nil && store.secondModelId == nil,
+                "the second shortcut is unset by default"
+            )
+
+            var secondChanges = 0
+            store.onSecondChange = { secondChanges += 1 }
+            let second = HotkeyBinding(
+                keyCode: UInt32(kVK_ANSI_D),
+                modifiers: UInt32(optionKey | shiftKey),
+                keyLabel: "D"
+            )
+            store.updateSecondModel(to: "openai-gpt-transcribe")
+            store.updateSecondBinding(to: second)
+            try expect(store.secondBinding == second, "second shortcut updates in memory")
+            try expect(store.secondModelId == "openai-gpt-transcribe", "second shortcut's model updates in memory")
+            try expect(secondChanges == 1, "setting the second shortcut tells its registrar once")
+            let savedSecond = defaults.data(forKey: secondBindingKey)
+            let decodedSecond = try JSONDecoder().decode(HotkeyBinding.self, from: savedSecond ?? Data())
+            try expect(decodedSecond == second, "second shortcut persists and decodes back")
+            try expect(
+                defaults.string(forKey: secondModelKey) == "openai-gpt-transcribe",
+                "second shortcut's model persists next to it"
+            )
+            try expect(store.binding == rightControl, "setting the second shortcut leaves the dictation shortcut alone")
+
+            store.updateSecondBinding(to: second)
+            try expect(secondChanges == 1, "re-setting the same second shortcut is a no-op")
+
+            store.clearSecondShortcut()
+            try expect(
+                store.secondBinding == nil && store.secondModelId == nil,
+                "removing the second shortcut forgets its model too"
+            )
+            try expect(
+                defaults.data(forKey: secondBindingKey) == nil && defaults.string(forKey: secondModelKey) == nil,
+                "removing the second shortcut removes both keys rather than storing nulls"
+            )
+            try expect(secondChanges == 2, "removing the second shortcut unregisters it")
+            store.onSecondChange = nil
 
             try expect(
                 store.escapeCancelsDictation,

@@ -48,6 +48,12 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// fire during menu tracking — but a recording started earlier keeps
     /// running, and its transcription can finish, while the menu is up.
     private var conversationMenuItem: NSMenuItem?
+    /// Transcribe File…, enabled only while Upload File… would be: the import
+    /// shares the conversation recorder, which can start or finish underneath.
+    private var transcribeFileMenuItem: NSMenuItem?
+    /// The Model row, retained so a dictation starting while the menu is up
+    /// disables it.
+    private var modelMenuRow: NSMenuItem?
     /// Whether the menu is currently tracking. `menuNeedsUpdate` and
     /// `menuWillOpen` have both already run by then and will not run again
     /// until the next open, so a state change arriving mid-tracking is the only
@@ -97,6 +103,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         dictationMenuItem = nil
         conversationElapsedItem = nil
         conversationMenuItem = nil
+        transcribeFileMenuItem = nil
+        modelMenuRow = nil
         guard let statusItem else { return }
         NSStatusBar.system.removeStatusItem(statusItem)
         self.statusItem = nil
@@ -327,6 +335,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         refreshElapsedItems()
         if isMenuOpen {
             refreshDictationItem()
+            refreshModelItem()
             refreshConversationItem()
             // `menuWillOpen` already ran and won't run again, so a recording
             // that begins while the menu is up has to start its own ticker —
@@ -345,12 +354,24 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         dictationMenuItem = nil
         conversationElapsedItem = nil
         conversationMenuItem = nil
+        transcribeFileMenuItem = nil
+        modelMenuRow = nil
 
         menu.addItem(item(
             title: "Open VoiceToText",
             symbol: "macwindow",
             action: #selector(openMainWindow)
         ))
+        let history = item(
+            title: "History…",
+            symbol: SettingsView.Section.history.icon,
+            action: #selector(openHistory)
+        )
+        history.keyEquivalent = "y"
+        menu.addItem(history)
+        let settings = item(title: "Settings…", symbol: "gearshape", action: #selector(openSettings))
+        settings.keyEquivalent = ","
+        menu.addItem(settings)
         // The quiet half of the update offer: only the first check of a
         // session prompts, so an update found later waits here (and on the
         // sidebar's Updates row) for as long as the app runs.
@@ -380,6 +401,11 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(dictation)
         dictationMenuItem = dictation
 
+        let model = modelMenuItem()
+        model.isEnabled = canChangeModel
+        menu.addItem(model)
+        modelMenuRow = model
+
         let conversationElapsed = NSMenuItem(title: "", action: nil, keyEquivalent: "")
         conversationElapsed.image = Self.menuIcon("record.circle")
         conversationElapsed.isEnabled = false
@@ -399,7 +425,18 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         menu.addItem(conversation)
         conversationMenuItem = conversation
 
+        let transcribeFile = item(
+            title: "Transcribe File…",
+            symbol: "waveform.badge.plus",
+            action: #selector(transcribeFile)
+        )
+        transcribeFile.isEnabled = MediaFileImport.isAvailable
+        transcribeFile.toolTip = "Transcribe an audio or video file already on this Mac."
+        menu.addItem(transcribeFile)
+        transcribeFileMenuItem = transcribeFile
+
         refreshElapsedItems()
+        alignModelName(in: model, menu: menu)
 
         menu.addItem(.separator())
         let quit = item(title: "Quit VoiceToText", symbol: "power", action: #selector(quit))
@@ -436,6 +473,87 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
             )
         image?.isTemplate = true
         return image
+    }
+
+    // MARK: - Model
+
+    /// The Model row and its submenu of ready models. Disabled during a dictation
+    /// (`canChangeModel`): the take reads the model when it stops, so a pick would land on it.
+    private func modelMenuItem() -> NSMenuItem {
+        let registry = ModelRegistry.shared
+        let menuItem = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        menuItem.image = Self.menuIcon(SettingsView.Section.models.icon)
+
+        let submenu = NSMenu(title: "Model")
+        submenu.autoenablesItems = false
+        let ready = ModelCatalog.all.filter { registry.readiness(for: $0.id).isInstalled }
+        for section in ModelGroup.sections(of: ready) {
+            submenu.addItem(.sectionHeader(title: section.group.title))
+            section.models.forEach { submenu.addItem(modelChoice($0, activeID: registry.activeModelId)) }
+        }
+        if ready.isEmpty {
+            let none = NSMenuItem(title: "No models ready yet", action: nil, keyEquivalent: "")
+            none.isEnabled = false
+            submenu.addItem(none)
+        }
+        submenu.addItem(.separator())
+        submenu.addItem(NSMenuItem(title: "All Models…", action: #selector(openModels), keyEquivalent: ""))
+        submenu.items.last?.target = self
+        menuItem.submenu = submenu
+        return menuItem
+    }
+
+    private func modelChoice(_ model: ModelDescriptor, activeID: String) -> NSMenuItem {
+        let choice = NSMenuItem(title: model.sectionedDisplayName, action: #selector(chooseModel(_:)), keyEquivalent: "")
+        choice.target = self
+        choice.representedObject = model.id
+        choice.state = model.id == activeID ? .on : .off
+        return choice
+    }
+
+    /// Sets the Model row's title to "Model" with the active model's name
+    /// right-aligned in secondary ink, ending where the menu's widest title
+    /// does so the row doesn't widen the menu. Run once the other rows exist.
+    private func alignModelName(in menuItem: NSMenuItem, menu: NSMenu) {
+        guard let name = ModelRegistry.shared.activeModel?.sectionedDisplayName else { return }
+        let font = NSFont.menuFont(ofSize: 0)
+        let width: (String) -> CGFloat = { ($0 as NSString).size(withAttributes: [.font: font]).width }
+        let widestTitle = menu.items
+            .filter { $0 !== menuItem && !$0.isSeparatorItem }
+            .map { width($0.title) }
+            .max() ?? 0
+        let tabLocation = max(widestTitle, width(menuItem.title) + Space.s7 + width(name))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.tabStops = [NSTextTab(textAlignment: .right, location: tabLocation)]
+        // An attributed title keeps its own colours, so a disabled row is
+        // dimmed here; a disabled row never highlights.
+        var labelAttributes: [NSAttributedString.Key: Any] = [.font: font, .paragraphStyle: paragraph]
+        if !menuItem.isEnabled { labelAttributes[.foregroundColor] = NSColor.disabledControlTextColor }
+        let title = NSMutableAttributedString(string: menuItem.title, attributes: labelAttributes)
+        title.append(NSAttributedString(
+            string: "\t\(name)",
+            attributes: [
+                .font: font,
+                .paragraphStyle: paragraph,
+                .foregroundColor: menuItem.isEnabled ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor
+            ]
+        ))
+        menuItem.attributedTitle = title
+        menuItem.toolTip = "Dictation uses \(name)."
+    }
+
+    /// Whether the Model row may switch the dictation model: only while no
+    /// dictation is under way.
+    private var canChangeModel: Bool {
+        if case .idle = DictationController.shared.state { return true }
+        return false
+    }
+
+    private func refreshModelItem() {
+        guard let modelMenuRow, let menu = modelMenuRow.menu,
+              modelMenuRow.isEnabled != canChangeModel else { return }
+        modelMenuRow.isEnabled = canChangeModel
+        alignModelName(in: modelMenuRow, menu: menu)
     }
 
     /// Label and enablement for the dictation row, derived together with its
@@ -481,6 +599,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         conversationMenuItem.title = spec.title
         conversationMenuItem.image = Self.menuIcon(spec.symbol)
         conversationMenuItem.isEnabled = spec.isEnabled
+        transcribeFileMenuItem?.isEnabled = MediaFileImport.isAvailable
     }
 
     // MARK: - Elapsed clocks
@@ -558,8 +677,26 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         WindowOpener.shared.showMain()
     }
 
+    @objc private func openHistory() {
+        WindowOpener.shared.showMain(section: .history)
+    }
+
+    @objc private func openSettings() {
+        WindowOpener.shared.showMain(section: .general)
+    }
+
     @objc private func openUpdates() {
         WindowOpener.shared.showMain(section: .updates)
+    }
+
+    @objc private func openModels() {
+        WindowOpener.shared.showMain(section: .models)
+    }
+
+    /// The same call a row in the Models pane makes.
+    @objc private func chooseModel(_ sender: NSMenuItem) {
+        guard canChangeModel, let id = sender.representedObject as? String else { return }
+        ModelRegistry.shared.setActive(id)
     }
 
     @objc private func toggleDictation() {
@@ -568,6 +705,12 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func toggleConversation() {
         MeetingController.shared.handleHotkeyPress()
+    }
+
+    @objc private func transcribeFile() {
+        // Off the menu's own dispatch, so the modal panel doesn't run inside
+        // the tail of menu tracking.
+        Task { @MainActor in MediaFileImport.chooseAndImport(revealsFailure: true) }
     }
 
     @objc private func quit() {

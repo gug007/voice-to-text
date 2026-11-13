@@ -56,14 +56,19 @@ actor WhisperKitEngine: TranscriptionEngine {
                     progress?(fraction, message)
                 }
             )
+            // The Hub's snapshot returns normally when its task is cancelled,
+            // with the files it had so far.
+            try Task.checkCancellation()
 
             progress?(0.95, "Loading model into memory…")
 
-            pipe = try await WhisperKit(loadConfig(modelFolder: modelFolder))
+            let loaded = try await WhisperKit(loadConfig(modelFolder: modelFolder))
+            try Task.checkCancellation()
+            pipe = loaded
 
             progress?(1.0, "Ready")
         } catch {
-            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription)
+            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription, underlying: error)
         }
     }
 

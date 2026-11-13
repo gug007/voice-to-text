@@ -19,8 +19,37 @@ nonisolated enum ReviewResumeShortcut {
         charactersIgnoringModifiers: String?,
         commandLayerCharacters: String?
     ) -> Bool {
-        guard isCommandOnly else { return false }
-        return charactersIgnoringModifiers?.lowercased() == "r"
-            || commandLayerCharacters?.lowercased() == "r"
+        isCommandOnly && matchesKeyEquivalent(
+            "r",
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
+            commandLayerCharacters: commandLayerCharacters
+        )
+    }
+
+    /// `letter` on either the unmodified layer or the ⌘ layer.
+    fileprivate static func matchesKeyEquivalent(
+        _ letter: String,
+        charactersIgnoringModifiers: String?,
+        commandLayerCharacters: String?
+    ) -> Bool {
+        charactersIgnoringModifiers?.lowercased() == letter
+            || commandLayerCharacters?.lowercased() == letter
+    }
+}
+
+/// ⇧⌘C on the review card: Copy, matched as `ReviewResumeShortcut` matches
+/// ⌘R. Shift is required, so a plain ⌘C still copies the editor's selection.
+nonisolated enum ReviewCopyShortcut {
+    /// `isCommandShiftOnly`: ⌘ and ⇧ are the only device-independent modifiers down.
+    static func matches(
+        isCommandShiftOnly: Bool,
+        charactersIgnoringModifiers: String?,
+        commandLayerCharacters: String?
+    ) -> Bool {
+        isCommandShiftOnly && ReviewResumeShortcut.matchesKeyEquivalent(
+            "c",
+            charactersIgnoringModifiers: charactersIgnoringModifiers,
+            commandLayerCharacters: commandLayerCharacters
+        )
     }
 }

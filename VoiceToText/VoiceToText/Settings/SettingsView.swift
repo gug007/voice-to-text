@@ -132,12 +132,23 @@ struct HotkeyPane: View {
     @State private var monitor: Any?
     @State private var errorMessage: String?
     @State private var captureSession = HotkeyCaptureSession()
+    @State private var pendingUndo: PendingUndo?
+    private var registry: ModelRegistry { .shared }
 
-    /// Which of the two shortcuts a live capture belongs to. Only one can be
-    /// capturing at a time — there is a single local event monitor.
+    /// Which shortcut a live capture belongs to. Only one can be capturing at
+    /// a time — there is a single local event monitor.
     private enum CaptureTarget {
         case dictation
+        case second
         case meeting
+
+        var slot: ShortcutSlot {
+            switch self {
+            case .dictation: return .dictation
+            case .second: return .secondDictation
+            case .meeting: return .conversation
+            }
+        }
     }
 
     var body: some View {
@@ -148,31 +159,37 @@ struct HotkeyPane: View {
             )
 
             Plate {
-                HStack(alignment: .center, spacing: Space.s6) {
-                    VStack(alignment: .leading, spacing: Space.s2) {
-                        Text("Dictation shortcut")
-                            .typo(.headline)
-                            .foregroundStyle(Palette.ink)
-                        Text(dictationSubtitle)
-                            .typo(.caption)
-                            .foregroundStyle(Palette.inkMuted)
-                    }
-                    Spacer()
-                    if capturing == .dictation {
-                        capturePrompt
-                    } else {
-                        KeyCap(keys: store.binding.displayKeys)
-                    }
-                    Button(capturing == .dictation ? "Cancel" : "Change") {
-                        if capturing == .dictation {
-                            stopCapture(cancelled: true)
-                        } else {
-                            startCapture(.dictation)
+                VStack(alignment: .leading, spacing: Space.s5) {
+                    HStack(alignment: .center, spacing: Space.s6) {
+                        VStack(alignment: .leading, spacing: Space.s2) {
+                            Text("Dictation shortcut")
+                                .typo(.headline)
+                                .foregroundStyle(Palette.ink)
+                            Text(dictationSubtitle)
+                                .typo(.caption)
+                                .foregroundStyle(Palette.inkMuted)
                         }
+                        Spacer()
+                        if capturing == .dictation {
+                            capturePrompt
+                        } else {
+                            KeyCap(keys: store.binding.displayKeys)
+                        }
+                        Button(capturing == .dictation ? "Cancel" : "Change") {
+                            if capturing == .dictation {
+                                stopCapture(cancelled: true)
+                            } else {
+                                startCapture(.dictation)
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .keyboardShortcut(dictationButtonShortcut)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .keyboardShortcut(dictationButtonShortcut)
+
+                    PlateDivider(leadingInset: 0)
+
+                    secondShortcutRow
                 }
             }
 
@@ -229,7 +246,7 @@ struct HotkeyPane: View {
                     .controlSize(.small)
                     .keyboardShortcut(capturing == .meeting ? .cancelAction : nil)
                     if store.meetingBinding != nil && capturing != .meeting {
-                        Button("Remove") { store.clearMeetingBinding() }
+                        Button("Remove") { removeMeetingBinding() }
                             .buttonStyle(.bordered)
                             .controlSize(.small)
                     }
@@ -252,7 +269,7 @@ struct HotkeyPane: View {
 
             HStack(spacing: Space.s5) {
                 if store.binding != .defaultBinding {
-                    Button("Reset to ⌥Space") { store.resetToDefault() }
+                    Button("Reset to ⌥Space") { resetDictationShortcut() }
                         .buttonStyle(.bordered)
                         .controlSize(.small)
                 }
@@ -262,6 +279,156 @@ struct HotkeyPane: View {
             }
         }
         .onDisappear { stopCapture(cancelled: true) }
+        .overlay { UndoRemovalBar(pending: $pendingUndo) }
+    }
+
+    // MARK: - Second shortcut
+
+    /// Directly under the dictation shortcut, in its plate: a second key that
+    /// dictates with another model, leaving the dictation model alone.
+    private var secondShortcutRow: some View {
+        HStack(alignment: .center, spacing: Space.s6) {
+            VStack(alignment: .leading, spacing: Space.s2) {
+                Text("Second shortcut")
+                    .typo(.headline)
+                    .foregroundStyle(Palette.ink)
+                if store.secondBinding != nil {
+                    MinimalDropdown(
+                        selection: secondModelBinding,
+                        sections: secondModelSections,
+                        placeholder: "Choose a model",
+                        popupWidth: 300
+                    )
+                    .accessibilityLabel("Model for the second shortcut")
+                    .help("The model this shortcut dictates with")
+                }
+                if store.secondBinding == nil || capturing == .second {
+                    Text(secondSubtitle)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                }
+            }
+            Spacer()
+            if capturing == .second {
+                capturePrompt
+            } else if let secondBinding = store.secondBinding {
+                KeyCap(keys: secondBinding.displayKeys)
+            } else {
+                Text("Not set")
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
+            }
+            Button(secondButtonTitle) {
+                if capturing == .second {
+                    stopCapture(cancelled: true)
+                } else {
+                    startCapture(.second)
+                }
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .keyboardShortcut(capturing == .second ? .cancelAction : nil)
+            .accessibilityLabel(capturing == .second ? "Cancel" : "\(secondButtonTitle) second shortcut")
+            if store.secondBinding != nil && capturing != .second {
+                Button("Remove") { removeSecondShortcut() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .accessibilityLabel("Remove second shortcut")
+            }
+        }
+    }
+
+    private var secondSubtitle: String {
+        if capturing == .second { return "Press a key combination, or Esc to cancel." }
+        return "Dictate with a different model without switching."
+    }
+
+    private var secondButtonTitle: String {
+        if capturing == .second { return "Cancel" }
+        return store.secondBinding == nil ? "Set" : "Change"
+    }
+
+    private var secondModelBinding: Binding<String> {
+        Binding(
+            get: { store.secondModelId ?? "" },
+            set: { store.updateSecondModel(to: $0) }
+        )
+    }
+
+    /// Every model, grouped as the conversation model picker groups them: "On
+    /// this Mac", then each cloud provider. One that can't run yet says why on
+    /// the right; a press then downloads it or asks for the key, as it would
+    /// for the dictation model.
+    private var secondModelSections: [DropdownSection<String>] {
+        ModelGroup.sections(of: ModelCatalog.all).map {
+            DropdownSection(header: $0.group.title, items: $0.models.map(secondModelItem))
+        }
+    }
+
+    private func secondModelItem(_ model: ModelDescriptor) -> DropdownItem<String> {
+        let caption: String?
+        switch registry.readiness(for: model.id) {
+        case .installed: caption = nil
+        case .preparing: caption = "Downloading"
+        case .notInstalled, .failed: caption = model.isCloud ? "No API key" : "Not downloaded"
+        }
+        return DropdownItem(value: model.id, title: model.sectionedDisplayName, caption: caption)
+    }
+
+    /// What a newly set second shortcut dictates with.
+    private var defaultSecondModelId: String? {
+        SecondShortcutModel.defaultModelID(
+            candidates: ModelCatalog.all.map {
+                SecondShortcutModel.Candidate(id: $0.id, isReady: registry.readiness(for: $0.id).isInstalled)
+            },
+            activeModelID: registry.activeModelId
+        )
+    }
+
+    private func removeSecondShortcut() {
+        guard let removed = store.secondBinding else { return }
+        let removedModelId = store.secondModelId
+        store.clearSecondShortcut()
+        pendingUndo = PendingUndo(title: "Shortcut removed") {
+            guard store.secondBinding == nil, isFree(removed, for: .second) else { return }
+            store.updateSecondModel(to: removedModelId)
+            store.updateSecondBinding(to: removed)
+        }
+    }
+
+    private func removeMeetingBinding() {
+        guard let removed = store.meetingBinding else { return }
+        store.clearMeetingBinding()
+        pendingUndo = PendingUndo(title: "Shortcut removed") {
+            // Not over a shortcut set since, nor onto a key another took.
+            guard store.meetingBinding == nil, isFree(removed, for: .meeting) else { return }
+            store.updateMeetingBinding(to: removed)
+        }
+    }
+
+    private func resetDictationShortcut() {
+        if let owner = conflictingSlot(for: .defaultBinding, target: .dictation) {
+            errorMessage = owner.inUseMessage
+            return
+        }
+        errorMessage = nil
+        store.resetToDefault()
+    }
+
+    /// What each shortcut is bound to now, for collisions.
+    private var currentKeys: [ShortcutSlot: ShortcutKey] {
+        var keys: [ShortcutSlot: ShortcutKey] = [.dictation: store.binding.shortcutKey]
+        keys[.secondDictation] = store.secondBinding?.shortcutKey
+        keys[.conversation] = store.meetingBinding?.shortcutKey
+        return keys
+    }
+
+    private func conflictingSlot(for binding: HotkeyBinding, target: CaptureTarget) -> ShortcutSlot? {
+        ShortcutConflicts.owner(of: binding.shortcutKey, assigningTo: target.slot, bindings: currentKeys)
+    }
+
+    private func isFree(_ binding: HotkeyBinding, for target: CaptureTarget) -> Bool {
+        conflictingSlot(for: binding, target: target) == nil
     }
 
     /// The outline shown in place of the key caps while a capture is live.
@@ -279,6 +446,9 @@ struct HotkeyPane: View {
 
     private var dictationSubtitle: String {
         if capturing == .dictation { return "Press a key combination, or Esc to cancel." }
+        if store.secondBinding != nil, let active = registry.activeModel {
+            return "Uses the active model, \(active.sectionedDisplayName)."
+        }
         return "Used for hold-to-record or press-to-toggle dictation."
     }
 
@@ -329,33 +499,11 @@ struct HotkeyPane: View {
         }
     }
 
-    /// Each capture refuses what the other owns: the conversation shortcut can't
-    /// take standalone Right Control (dictation's event tap owns it), and
-    /// neither can take the key already bound to the other.
+    /// Only the dictation shortcut can take standalone Right Control
+    /// (dictation's event tap owns it). Keys another shortcut already holds
+    /// are refused as they're captured (`ShortcutConflicts`).
     private func makeCaptureSession(for target: CaptureTarget) -> HotkeyCaptureSession {
-        switch target {
-        case .dictation:
-            let reserved = store.meetingBinding.map {
-                [HotkeyCaptureSession.ReservedBinding(
-                    binding: $0,
-                    message: "That shortcut is already used for conversation recording."
-                )]
-            }
-            return HotkeyCaptureSession(
-                allowsStandaloneModifier: true,
-                reservedBindings: reserved ?? []
-            )
-        case .meeting:
-            return HotkeyCaptureSession(
-                allowsStandaloneModifier: false,
-                reservedBindings: [
-                    HotkeyCaptureSession.ReservedBinding(
-                        binding: store.binding,
-                        message: "That shortcut is already used for dictation."
-                    )
-                ]
-            )
-        }
+        HotkeyCaptureSession(allowsStandaloneModifier: target.slot.allowsStandaloneModifier)
     }
 
     private func handle(event: NSEvent) {
@@ -366,9 +514,20 @@ struct HotkeyPane: View {
         case .cancelled:
             stopCapture(cancelled: true)
         case .captured(let candidate):
+            if let owner = conflictingSlot(for: candidate, target: target) {
+                // Still listening: the user can press another key straight away.
+                errorMessage = owner.inUseMessage
+                captureSession.reset()
+                return
+            }
             errorMessage = nil
             switch target {
             case .dictation: store.update(to: candidate)
+            case .second:
+                if store.secondModelId == nil {
+                    store.updateSecondModel(to: defaultSecondModelId)
+                }
+                store.updateSecondBinding(to: candidate)
             case .meeting: store.updateMeetingBinding(to: candidate)
             }
             stopCapture(cancelled: false)

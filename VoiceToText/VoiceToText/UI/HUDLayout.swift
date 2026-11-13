@@ -181,6 +181,15 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// The session's snapshot of the size setting, never the live setting —
     /// see `LiveHUDState.hudSize`.
     let size: HUDSize
+    /// How much taller than `HUDMetrics.editorHeight` the review editor is,
+    /// so a long take shows more of itself before it scrolls. Zero for an
+    /// empty transcript, and never past `reviewCeilingShare` of the screen.
+    /// A resumed take keeps it, so its card stays the review's height.
+    let editorGrowth: CGFloat
+
+    /// The tallest a review card grows to, as a share of the visible height
+    /// of the screen it is on.
+    static let reviewCeilingShare: CGFloat = 0.6
 
     @MainActor
     init(state: LiveHUDState) {
@@ -196,6 +205,20 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         }
         resumedSession = state.resumedSession
         size = state.hudSize
+        editorGrowth = Self.editorGrowth(
+            textHeight: state.reviewTextHeight,
+            cardCeiling: state.reviewCardCeiling,
+            baseCardHeight: state.reviewShowsActions ? HUDMetrics.reviewChipsMinHeight : HUDMetrics.reviewMinHeight
+        )
+    }
+
+    /// The editor's growth for text that needs `textHeight` to show without
+    /// scrolling, on a card that may be at most `cardCeiling` tall and is
+    /// `baseCardHeight` before it grows.
+    static func editorGrowth(textHeight: CGFloat, cardCeiling: CGFloat, baseCardHeight: CGFloat) -> CGFloat {
+        let wanted = max(0, textHeight - HUDMetrics.editorHeight)
+        let room = max(0, cardCeiling - baseCardHeight)
+        return min(wanted, room).rounded(.up)
     }
 
     /// A fresh take's recording card at `size` with nothing else on it — the
@@ -210,6 +233,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         hasSalvagedAudio = false
         salvagedSeconds = 0
         self.size = size
+        editorGrowth = 0
     }
 
     // MARK: Compact row
@@ -346,7 +370,12 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     }
 
     private var reviewHeight: CGFloat {
-        showsChips ? HUDMetrics.reviewChipsMinHeight : HUDMetrics.reviewMinHeight
+        (showsChips ? HUDMetrics.reviewChipsMinHeight : HUDMetrics.reviewMinHeight) + editorGrowth
+    }
+
+    /// The review editor: its fixed height, plus whatever a long take grew it by.
+    var editorHeight: CGFloat {
+        HUDMetrics.editorHeight + editorGrowth
     }
 
     /// The card's corner radius: half its height for a compact row, which is a
@@ -387,7 +416,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         if showsMeter { rows.append(HUDMetrics.meterHeight) }
         if showsStreamText { rows.append(HUDMetrics.streamTextHeight) }
         if showsInlineMeter { rows.append(HUDMetrics.inlineMeterHeight) }
-        if showsEditor { rows.append(HUDMetrics.editorHeight) }
+        if showsEditor { rows.append(editorHeight) }
         if showsChipRow { rows.append(HUDMetrics.chipRowHeight) }
         // The control row, or the compact row that stands in its slot at the
         // same height.

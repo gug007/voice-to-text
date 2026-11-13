@@ -4,8 +4,8 @@ import SwiftUI
 /// All) is deleted. A floating glass pill at the bottom of the History /
 /// Conversations panes: a label and a single Undo action. Tapping Undo restores
 /// the recording; otherwise the deletion commits when the store's grace window
-/// elapses. There is no countdown chrome on purpose — the affordance stays calm
-/// and unobtrusive, matching the panes' grouped-list aesthetic.
+/// elapses. The only countdown chrome is a small ring inside Undo that drains
+/// over that window; the pointer on the toast holds it, and the commit with it.
 ///
 /// This is glass surface #3 of the inventory in `GlassSurface.swift`. It used to
 /// hand-roll its own `.regularMaterial` + stroke, which meant Reduce
@@ -16,6 +16,8 @@ import SwiftUI
 /// are popovers whose own window already draws one.
 struct UndoDeletionToast: View {
     let title: String
+    /// The window the deletion commits on, when the caller has one to show.
+    var countdown: UndoCountdown?
     let onUndo: () -> Void
 
     /// L3 elevation is the one thing `glassSurface` does NOT own — it applies
@@ -40,10 +42,15 @@ struct UndoDeletionToast: View {
             Spacer(minLength: Space.s5)
 
             Button(action: onUndo) {
-                Text("Undo")
-                    .typo(.headline)
-                    .foregroundStyle(Palette.accent)
-                    .contentShape(Rectangle())
+                HStack(spacing: Space.s3) {
+                    if let countdown {
+                        UndoCountdownRing(countdown: countdown)
+                    }
+                    Text("Undo")
+                        .typo(.headline)
+                }
+                .foregroundStyle(Palette.accent)
+                .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .keyboardShortcut("z", modifiers: .command)
@@ -52,15 +59,11 @@ struct UndoDeletionToast: View {
         .padding(.horizontal, Space.s6)
         .padding(.vertical, Space.s5)
         .glassSurface(in: Capsule())
-        // Spec L3: `0 16px 48px rgba(0,0,0,0.30)` — the same level the HUD card
-        // carries, pulled in under Reduce Transparency exactly as `HUDElevation`
-        // pulls its own in, so the two L3 surfaces stay a matched pair.
-        .shadow(
-            color: .black.opacity(reduceTransparency ? 0.24 : 0.30),
-            radius: reduceTransparency ? 9 : 24,
-            y: reduceTransparency ? 6 : 16
-        )
+        .floatingShadow(reduceTransparency: reduceTransparency)
         .frame(maxWidth: 460)
+        .onHover { countdown?.setPaused($0) }
+        // Taken away under the pointer, the toast never sees it leave.
+        .onDisappear { countdown?.setPaused(false) }
         .onAppear { announce(title) }
     }
 
@@ -79,40 +82,66 @@ struct UndoDeletionToast: View {
 /// never blocks the list underneath. Honors Reduce Motion.
 struct UndoDeletionBar: View {
     let store: RecordingHistoryStore
-    /// The toast has always been the one surface in the app that honoured an
-    /// accessibility setting. It still does — it just reads the resolved
-    /// vocabulary now instead of re-deriving a spring from
-    /// `accessibilityReduceMotion` by hand, so it can never drift from the HUD
-    /// it shares an elevation level with.
-    @Environment(\.motion) private var motion
 
     var body: some View {
         let pending = store.pendingDeletion
-        return ZStack {
-            if let pending {
-                UndoDeletionToast(title: Self.title(for: pending.entries)) {
-                    store.undoPendingDeletion()
-                }
-                .padding(.horizontal, Space.s7)
-                .padding(.bottom, Space.s7)
-                .transition(
-                    motion.reduceMotion
-                    ? .opacity
-                    : .move(edge: .bottom).combined(with: .opacity)
-                )
+        return FloatingBottomBar(item: pending, animationValue: pending != nil) { pending in
+            UndoDeletionToast(
+                title: Self.title(for: pending),
+                countdown: store.pendingDeletionCountdown
+            ) {
+                store.undoPendingDeletion()
+            }
+        }
+    }
+
+    /// The toast line, derived from what was deleted: Clear All reads "All
+    /// recordings deleted", a selection is counted, and a single one names its
+    /// kind.
+    private static func title(for pending: RecordingHistoryStore.PendingDeletion) -> String {
+        guard pending.entries.count == 1, let entry = pending.entries.first else {
+            return pending.isClearAll
+                ? "All recordings deleted"
+                : HistorySelection.deletionTitle(count: pending.entries.count)
+        }
+        return (entry.source ?? .dictation) == .meeting ? "Conversation deleted" : "Recording deleted"
+    }
+}
+
+/// The bottom-of-pane slot the Undo toasts and the History selection bar float
+/// in. It fills the pane but only takes hits while something is showing, and
+/// enters on the HUD's spring: both are L3 glass arriving over content, and
+/// under Reduce Motion both collapse to the 0.15s fade.
+struct FloatingBottomBar<Value: Equatable, Content: View>: View {
+    private let content: Content?
+    private let animationValue: Value
+    @Environment(\.motion) private var motion
+
+    init<Item>(item: Item?, animationValue: Value, @ViewBuilder content: (Item) -> Content) {
+        self.content = item.map(content)
+        self.animationValue = animationValue
+    }
+
+    init(isPresented: Bool, animationValue: Value, @ViewBuilder content: () -> Content) {
+        self.content = isPresented ? content() : nil
+        self.animationValue = animationValue
+    }
+
+    var body: some View {
+        ZStack {
+            if let content {
+                content
+                    .padding(.horizontal, Space.s7)
+                    .padding(.bottom, Space.s7)
+                    .transition(
+                        motion.reduceMotion
+                        ? .opacity
+                        : .move(edge: .bottom).combined(with: .opacity)
+                    )
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        .allowsHitTesting(pending != nil)
-        // Same spring as the HUD's entrance: both are L3 glass arriving over
-        // content, and under Reduce Motion both collapse to the 0.15s fade.
-        .animation(motion.hudEnter, value: pending != nil)
-    }
-
-    /// The toast line, derived from what was deleted: a batch (Clear All) reads
-    /// "All recordings deleted"; a single one names its kind.
-    private static func title(for entries: [RecordingHistoryEntry]) -> String {
-        guard entries.count == 1, let entry = entries.first else { return "All recordings deleted" }
-        return (entry.source ?? .dictation) == .meeting ? "Conversation deleted" : "Recording deleted"
+        .allowsHitTesting(content != nil)
+        .animation(motion.hudEnter, value: animationValue)
     }
 }

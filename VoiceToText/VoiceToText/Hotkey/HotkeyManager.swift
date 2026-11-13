@@ -20,6 +20,7 @@ private final class StandaloneModifierEventTapContext {
 nonisolated enum HotkeySlot: UInt32 {
     case dictation = 1
     case meeting = 2
+    case secondDictation = 3
 }
 
 final class HotkeyManager {
@@ -33,9 +34,11 @@ final class HotkeyManager {
     private let signature: OSType = OSType(0x56544C48)
     private var handler: Handler?
     private var meetingHandler: (() -> Void)?
+    private var secondDictationHandler: Handler?
     /// The dictation binding as last registered, so the meeting slot can refuse
     /// a colliding binding without reaching into the store.
     private var dictationBinding: HotkeyBinding?
+    private var meetingBinding: HotkeyBinding?
     private var registrationGeneration: UInt64 = 0
     private var standaloneModifierState = StandaloneModifierHotkeyState(
         modifierKeyCode: UInt16(kVK_RightControl)
@@ -134,6 +137,7 @@ final class HotkeyManager {
         ) else { return }
 
         meetingHandler = handler
+        meetingBinding = binding
         isMeetingRegistered = true
         AppLog.app.info("Conversation hotkey registered: keyCode=\(binding.keyCode) modifiers=\(binding.modifiers)")
     }
@@ -141,7 +145,42 @@ final class HotkeyManager {
     func unregisterMeeting() {
         unregisterCarbonHotkey(slot: .meeting)
         meetingHandler = nil
+        meetingBinding = nil
         isMeetingRegistered = false
+    }
+
+    // MARK: - Second dictation slot
+
+    /// Registers the second dictation shortcut. Carbon-only, like the
+    /// conversation slot, and for the same reason; it delivers presses and
+    /// releases so hold mode works on it too.
+    func registerSecondDictation(binding: HotkeyBinding, handler: @escaping Handler) {
+        unregisterSecondDictation()
+
+        guard !binding.isStandaloneModifier else {
+            AppLog.app.error("Second dictation hotkey can't be a standalone modifier; Right Control is reserved for dictation")
+            return
+        }
+        var others: [ShortcutSlot: ShortcutKey] = [:]
+        others[.dictation] = dictationBinding?.shortcutKey
+        others[.conversation] = meetingBinding?.shortcutKey
+        guard ShortcutConflicts.owner(of: binding.shortcutKey, assigningTo: .secondDictation, bindings: others) == nil else {
+            AppLog.app.error("Second dictation hotkey matches another shortcut; refusing to register it")
+            return
+        }
+        guard registerCarbonHotkey(
+            slot: .secondDictation,
+            keyCode: binding.keyCode,
+            modifiers: binding.modifiers
+        ) else { return }
+
+        secondDictationHandler = handler
+        AppLog.app.info("Second dictation hotkey registered: keyCode=\(binding.keyCode) modifiers=\(binding.modifiers)")
+    }
+
+    func unregisterSecondDictation() {
+        unregisterCarbonHotkey(slot: .secondDictation)
+        secondDictationHandler = nil
     }
 
     // MARK: - Carbon plumbing
@@ -250,6 +289,17 @@ final class HotkeyManager {
             guard eventKind == UInt32(kEventHotKeyPressed) else { return }
             AppLog.app.info("Conversation hotkey pressed")
             meetingHandler?()
+        case .secondDictation:
+            switch eventKind {
+            case UInt32(kEventHotKeyPressed):
+                AppLog.app.info("Second dictation hotkey pressed")
+                secondDictationHandler?(.pressed)
+            case UInt32(kEventHotKeyReleased):
+                AppLog.app.info("Second dictation hotkey released")
+                secondDictationHandler?(.released)
+            default:
+                break
+            }
         }
     }
 

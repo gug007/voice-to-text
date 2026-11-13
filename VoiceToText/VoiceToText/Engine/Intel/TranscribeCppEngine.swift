@@ -46,6 +46,7 @@ actor TranscribeCppEngine: TranscriptionEngine {
             if !model.isDownloaded() {
                 progress?(0.0, "Connecting to HuggingFace…")
                 try await TranscribeCppDownload.fetch(model, progress: progress)
+                try Task.checkCancellation()
             }
             // The worker starts here: the first time after an install, its
             // Metal shaders compile, which takes a few seconds.
@@ -54,7 +55,7 @@ actor TranscribeCppEngine: TranscriptionEngine {
             isLoaded = true
             progress?(1.0, "Ready")
         } catch {
-            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription)
+            throw TranscriptionEngineError.modelLoadFailed(error.localizedDescription, underlying: error)
         }
     }
 

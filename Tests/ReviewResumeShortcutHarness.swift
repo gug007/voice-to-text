@@ -33,6 +33,19 @@ struct ReviewResumeShortcutHarness {
         try expect(!matches(true, "к", "к"), "a Cyrillic ⌘ layer without Latin doesn't match")
         try expect(!matches(true, nil, nil), "no characters → no match")
         try expect(!matches(false, "r", "r"), "⌘⇧R / ⌥R / bare R do not resume")
+
+        func copies(_ commandShift: Bool, _ plain: String?, _ commandLayer: String?) -> Bool {
+            ReviewCopyShortcut.matches(
+                isCommandShiftOnly: commandShift,
+                charactersIgnoringModifiers: plain,
+                commandLayerCharacters: commandLayer
+            )
+        }
+        try expect(copies(true, "C", "c"), "US layout ⇧⌘C copies")
+        try expect(copies(true, "С", "c"), "Russian layout ⇧⌘C copies via the ⌘ layer")
+        try expect(!copies(false, "c", "c"), "plain ⌘C is left to the editor")
+        try expect(!copies(true, "J", "j"), "Dvorak ⇧⌘J (QWERTY C position) does not copy")
+        try expect(!copies(true, nil, nil), "no characters → no copy")
         print("Review resume shortcut harness passed")
     }
 }

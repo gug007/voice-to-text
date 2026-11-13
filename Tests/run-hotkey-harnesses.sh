@@ -20,6 +20,12 @@ swiftc -parse-as-library \
 "$TMPDIR/meeting-hotkey-policy-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Hotkey/SecondShortcutPolicy.swift \
+  Tests/SecondShortcutPolicyHarness.swift \
+  -o "$TMPDIR/second-shortcut-policy-harness"
+"$TMPDIR/second-shortcut-policy-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Dictation/RecordingStartGate.swift \
   Tests/RecordingStartGateHarness.swift \
   -o "$TMPDIR/recording-start-gate-harness"
@@ -61,6 +67,7 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  VoiceToText/VoiceToText/Hotkey/SecondShortcutPolicy.swift \
   Tests/HotkeyBindingHarness.swift \
   -o "$TMPDIR/hotkey-binding-harness"
 "$TMPDIR/hotkey-binding-harness"
@@ -81,6 +88,7 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  VoiceToText/VoiceToText/Hotkey/SecondShortcutPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyCaptureSession.swift \
   Tests/HotkeyCaptureHarness.swift \
   -o "$TMPDIR/hotkey-capture-harness"
@@ -89,6 +97,7 @@ swiftc -parse-as-library \
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/Hotkey/HotkeyActionPolicy.swift \
   VoiceToText/VoiceToText/Hotkey/HotkeyBinding.swift \
+  VoiceToText/VoiceToText/Hotkey/SecondShortcutPolicy.swift \
   Tests/HotkeyStoreHarness.swift \
   -o "$TMPDIR/hotkey-store-harness"
 "$TMPDIR/hotkey-store-harness"
@@ -120,6 +129,7 @@ swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/AppLogger.swift \
   VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Actions/DictationAction.swift \
+  VoiceToText/VoiceToText/Actions/ActionOrdering.swift \
   VoiceToText/VoiceToText/Actions/ActionRunner.swift \
   Tests/ActionRunnerHarness.swift \
   -o "$TMPDIR/action-runner-harness"
@@ -273,6 +283,24 @@ swiftc -parse-as-library \
 "$TMPDIR/review-resume-shortcut-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Dictation/ReviewPolicy.swift \
+  Tests/ReviewPolicyHarness.swift \
+  -o "$TMPDIR/review-policy-harness"
+"$TMPDIR/review-policy-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/ClippingDetector.swift \
+  Tests/ClippingDetectorHarness.swift \
+  -o "$TMPDIR/clipping-detector-harness"
+"$TMPDIR/clipping-detector-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/DesignSystem/UndoCountdownTimeline.swift \
+  Tests/UndoCountdownHarness.swift \
+  -o "$TMPDIR/undo-countdown-harness"
+"$TMPDIR/undo-countdown-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Engine/TranscriptionFailure.swift \
   VoiceToText/VoiceToText/Dictation/DictationTakePolicy.swift \
   Tests/DictationTakePolicyHarness.swift \
@@ -326,6 +354,12 @@ swiftc -parse-as-library \
 "$TMPDIR/history-search-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/HistorySelection.swift \
+  Tests/HistorySelectionHarness.swift \
+  -o "$TMPDIR/history-selection-harness"
+"$TMPDIR/history-selection-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/UpdateEligibility.swift \
   VoiceToText/VoiceToText/Support/UpdateCheckPolicy.swift \
   Tests/UpdateCheckPolicyHarness.swift \
@@ -349,3 +383,22 @@ swiftc -parse-as-library \
   Tests/CaptureRingCursorHarness.swift \
   -o "$TMPDIR/capture-ring-cursor-harness"
 "$TMPDIR/capture-ring-cursor-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ModelDownloadLedger.swift \
+  Tests/ModelDownloadLedgerHarness.swift \
+  -o "$TMPDIR/model-download-ledger-harness"
+"$TMPDIR/model-download-ledger-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/ModelDownloadFailure.swift \
+  Tests/ModelDownloadFailureHarness.swift \
+  -o "$TMPDIR/model-download-failure-harness"
+"$TMPDIR/model-download-failure-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Engine/CloudProvider.swift \
+  VoiceToText/VoiceToText/Engine/ProviderKeyNeed.swift \
+  Tests/ProviderKeyNeedHarness.swift \
+  -o "$TMPDIR/provider-key-need-harness"
+"$TMPDIR/provider-key-need-harness"

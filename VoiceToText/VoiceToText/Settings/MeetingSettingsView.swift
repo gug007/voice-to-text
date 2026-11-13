@@ -34,7 +34,7 @@ struct MeetingsPane: View {
     /// target. The media types are kept so promised-content drags from other
     /// apps still register. The file's actual kind is validated on drop, not
     /// here — so the overlay can light up for any file (see `handleDrop`).
-    private let acceptedDropTypes: [UTType] = [.fileURL, .audiovisualContent, .audio, .movie]
+    private let acceptedDropTypes: [UTType] = [.fileURL] + MediaFileImport.acceptedContentTypes
 
     /// Show the "drop to transcribe" overlay only when a drag is hovering *and*
     /// we're free to take it.
@@ -123,7 +123,18 @@ struct MeetingsPane: View {
 
     @ViewBuilder
     private var conversationsList: some View {
-        if !conversations.isEmpty {
+        if conversations.isEmpty {
+            // While the first one records or transcribes, the session card's
+            // progress is the state; "nothing yet" would contradict it.
+            if !controller.isBusy {
+                LibraryEmptyState(
+                    systemImage: "person.2.wave.2",
+                    title: "No conversations yet",
+                    message: "Record a call, or drop an audio or video file here. Transcripts appear in this list and in History."
+                )
+                .transition(.opacity)
+            }
+        } else {
             VStack(alignment: .leading, spacing: Space.s4) {
                 GroupCaption(text: conversationsCaption) {
                     if hasFavoriteConversations {
@@ -324,22 +335,10 @@ struct MeetingsPane: View {
                 )
             ])
         ]
-        let models = selectableConversationModels
-        let local = models.filter { !$0.isCloud }
-        if !local.isEmpty {
+        for section in ModelGroup.sections(of: selectableConversationModels) {
             sections.append(DropdownSection(
-                header: "On this Mac",
-                items: local.map {
-                    DropdownItem<String?>(value: $0.id, title: $0.sectionedDisplayName)
-                }
-            ))
-        }
-        for provider in CloudProvider.allCases {
-            let group = models.filter { $0.backend.cloudProvider == provider }
-            guard !group.isEmpty else { continue }
-            sections.append(DropdownSection(
-                header: provider.displayName,
-                items: group.map {
+                header: section.group.title,
+                items: section.models.map {
                     DropdownItem<String?>(value: $0.id, title: $0.sectionedDisplayName)
                 }
             ))
@@ -468,7 +467,7 @@ struct MeetingsPane: View {
                     style: .secondary,
                     tint: Palette.ink
                 ) {
-                    chooseAndImportFile()
+                    MediaFileImport.chooseAndImport()
                 }
                 .help("Transcribe an audio or video file already on this Mac")
 
@@ -560,21 +559,6 @@ struct MeetingsPane: View {
         let base = "Record a conversation — your mic plus everything you hear"
         guard let binding = hotkeyStore.meetingBinding else { return base }
         return "\(base) (\(binding.displayKeys.joined()) from any app)"
-    }
-
-    /// Lets the user pick an audio or video file, then transcribes it into the
-    /// conversation list. The sandbox is off, so a plain open panel can read the
-    /// chosen file directly.
-    private func chooseAndImportFile() {
-        let panel = NSOpenPanel()
-        panel.allowsMultipleSelection = false
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowedContentTypes = [.audiovisualContent, .audio, .movie]
-        panel.message = "Choose an audio or video file to transcribe."
-        panel.prompt = "Transcribe"
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task { await controller.importMedia(url: url) }
     }
 
     // MARK: - Drag-and-drop import
@@ -689,7 +673,7 @@ struct MeetingsPane: View {
             return true
         }
 
-        guard let typeID = provider.registeredTypeIdentifiers.first(where: Self.isMediaType) else {
+        guard let typeID = provider.registeredTypeIdentifiers.first(where: MediaFileImport.isMediaType) else {
             controller.rejectImport("“\(name)” isn't an audio or video file.")
             return false
         }
@@ -715,7 +699,7 @@ struct MeetingsPane: View {
         defer { if stagedCopy { try? FileManager.default.removeItem(at: url) } }
         let controller = MeetingController.shared
         guard !controller.isBusy else { return }
-        guard isSupportedMedia(url) else {
+        guard MediaFileImport.isSupportedMedia(url) else {
             controller.rejectImport("“\(url.lastPathComponent)” isn't an audio or video file.")
             return
         }
@@ -736,23 +720,6 @@ struct MeetingsPane: View {
         } catch {
             return nil
         }
-    }
-
-    /// Pure and nonisolated: called from the nonisolated provider closures.
-    nonisolated private static func isMediaType(_ identifier: String) -> Bool {
-        UTType(identifier).map(isMedia) ?? false
-    }
-
-    nonisolated private static func isMedia(_ type: UTType) -> Bool {
-        type.conforms(to: .audio) || type.conforms(to: .movie) || type.conforms(to: .audiovisualContent)
-    }
-
-    /// Whether a URL points at audio or video we can import — mirrors the open
-    /// panel's accepted content types.
-    private static func isSupportedMedia(_ url: URL) -> Bool {
-        let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
-            ?? UTType(filenameExtension: url.pathExtension)
-        return type.map(isMedia) ?? false
     }
 
     private var transcribingDetail: String {

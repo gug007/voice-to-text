@@ -35,6 +35,8 @@ struct HotkeyBinding: Codable, Equatable {
 
     var displayKeys: [String] { modifierSymbols + [keyLabel] }
 
+    var shortcutKey: ShortcutKey { ShortcutKey(keyCode: keyCode, modifiers: modifiers) }
+
     static let functionKeyCodes: Set<Int> = [
         kVK_F1, kVK_F2, kVK_F3, kVK_F4, kVK_F5, kVK_F6, kVK_F7, kVK_F8,
         kVK_F9, kVK_F10, kVK_F11, kVK_F12, kVK_F13, kVK_F14, kVK_F15,
@@ -135,18 +137,28 @@ final class HotkeyStore {
     private let modeStorageKey = "hotkey.recordingMode.v1"
     private let meetingBindingStorageKey = "hotkey.meetingBinding.v1"
     private let escapeCancelsDictationStorageKey = "hotkey.escapeCancelsDictation.v1"
+    private let secondBindingStorageKey = "hotkey.secondBinding.v1"
+    private let secondModelIdStorageKey = "hotkey.secondModelId.v1"
     private(set) var binding: HotkeyBinding = .defaultBinding
     private(set) var mode: RecordingShortcutMode = .toggle
     /// The conversation shortcut. Optional and off by default — conversation
     /// recording is a deliberate, occasional act, so it gets no key until the
     /// user asks for one.
     private(set) var meetingBinding: HotkeyBinding?
+    /// The second dictation shortcut, which dictates with `secondModelId`
+    /// without making it the dictation model. Optional, off by default.
+    private(set) var secondBinding: HotkeyBinding?
+    /// The catalog id a press of `secondBinding` dictates with. Kept as set:
+    /// an id the catalog no longer has is reported at the press, never
+    /// swapped for another model here.
+    private(set) var secondModelId: String?
     /// Whether Esc discards an in-flight dictation. On by default. Off means Esc
     /// is never swallowed while recording or transcribing, so it reaches the app
     /// the user is actually working in.
     private(set) var escapeCancelsDictation = true
     @ObservationIgnored var onChange: (() -> Void)?
     @ObservationIgnored var onMeetingChange: (() -> Void)?
+    @ObservationIgnored var onSecondChange: (() -> Void)?
 
     private init() { load() }
 
@@ -178,6 +190,30 @@ final class HotkeyStore {
         updateMeetingBinding(to: nil)
     }
 
+    func updateSecondBinding(to new: HotkeyBinding?) {
+        guard new != secondBinding else { return }
+        secondBinding = new
+        saveSecondBinding()
+        onSecondChange?()
+    }
+
+    func updateSecondModel(to id: String?) {
+        guard id != secondModelId else { return }
+        secondModelId = id
+        if let id {
+            UserDefaults.standard.set(id, forKey: secondModelIdStorageKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: secondModelIdStorageKey)
+        }
+    }
+
+    /// Removes the second shortcut and forgets its model, so setting it again
+    /// starts from a fresh default.
+    func clearSecondShortcut() {
+        updateSecondBinding(to: nil)
+        updateSecondModel(to: nil)
+    }
+
     func updateEscapeCancelsDictation(_ new: Bool) {
         guard new != escapeCancelsDictation else { return }
         escapeCancelsDictation = new
@@ -199,6 +235,12 @@ final class HotkeyStore {
            let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
             meetingBinding = decoded
         }
+
+        if let data = UserDefaults.standard.data(forKey: secondBindingStorageKey),
+           let decoded = try? JSONDecoder().decode(HotkeyBinding.self, from: data) {
+            secondBinding = decoded
+        }
+        secondModelId = UserDefaults.standard.string(forKey: secondModelIdStorageKey)
 
         // `object(forKey:)`, not `bool(forKey:)`: a missing key has to read as
         // on, and `bool(forKey:)` would call it off for everyone upgrading.
@@ -225,5 +267,14 @@ final class HotkeyStore {
             return
         }
         UserDefaults.standard.set(data, forKey: meetingBindingStorageKey)
+    }
+
+    /// Cleared the same way as the conversation shortcut: the key goes.
+    private func saveSecondBinding() {
+        guard let secondBinding, let data = try? JSONEncoder().encode(secondBinding) else {
+            UserDefaults.standard.removeObject(forKey: secondBindingStorageKey)
+            return
+        }
+        UserDefaults.standard.set(data, forKey: secondBindingStorageKey)
     }
 }

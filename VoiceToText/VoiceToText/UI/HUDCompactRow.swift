@@ -53,6 +53,20 @@ struct HUDCompactRow: View {
     /// a model download or "Transcribing" after Finish. The Large card spells
     /// this out in its own rows; here it is the tooltip.
     var status: String = ""
+    /// Transcribing: what the card is doing — "Transcribing", or the model
+    /// wait's "Downloading" — in the meter's slot instead of the frozen bars.
+    /// Nil keeps the frozen meter, as the conversation card does.
+    var transcribingTitle: String?
+    /// Transcribing: the share of a take's parts already done, once the
+    /// engine has said how many there are. Fills the finish slot's ring.
+    var transcribingFraction: Double?
+    /// What VoiceOver says for the finish slot while it is busy, when more
+    /// than the phase's name: "Transcribing, part 3 of 12".
+    var busyAccessibilityLabel: String?
+    /// Recording: a problem with the input worth saying — the dot turns to
+    /// the warning colour and the sentence goes in the tooltip and the
+    /// accessibility value.
+    var warning: String?
     /// Before the finish slot in every phase, in the same spot: the dictation
     /// card's Cancel. Nil on the conversation card, which has no Cancel on
     /// purpose — one stray click must not throw away an hour of meeting.
@@ -66,21 +80,37 @@ struct HUDCompactRow: View {
             case .preparing(let percent):
                 preparingLabel(percent: percent)
             case .recording, .transcribing:
-                RecordingPulse(isLive: phase == .recording)
-                LevelBars(
-                    samples: samples,
-                    isFrozen: phase == .transcribing,
-                    isOverloaded: isOverloaded,
-                    barCount: metrics.meterBars,
-                    barSpacing: metrics.meterSpacing,
-                    window: metrics.meterWindow
-                )
-                .frame(height: metrics.meterHeight)
-                .frame(maxWidth: .infinity)
-                readoutView
-                    // The meter gives way, never the readout: a conversation's
-                    // clock grows to "1:02:33" past the hour.
-                    .fixedSize()
+                HStack(spacing: Space.s4) {
+                    RecordingPulse(isLive: phase == .recording, isWarning: phase == .recording && warning != nil)
+                    if phase == .transcribing, let transcribingTitle {
+                        ShimmerText(transcribingTitle)
+                            .typo(.headline)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        LevelBars(
+                            samples: samples,
+                            isFrozen: phase == .transcribing,
+                            isOverloaded: isOverloaded,
+                            barCount: metrics.meterBars,
+                            barSpacing: metrics.meterSpacing,
+                            window: metrics.meterWindow
+                        )
+                        .frame(height: metrics.meterHeight)
+                        .frame(maxWidth: .infinity)
+                    }
+                    readoutView
+                        // The meter gives way, never the readout: a conversation's
+                        // clock grows to "1:02:33" past the hour.
+                        .fixedSize()
+                }
+                .help(phase == .recording ? (warning ?? "") : "")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(phase == .recording ? "Recording" : "Transcribing")
+                .accessibilityValue(leadingAccessibilityValue)
+                // The finish slot already says what a titled transcribing row does.
+                .accessibilityHidden(phase == .transcribing && transcribingTitle != nil)
             }
 
             HStack(spacing: metrics.controlSpacing) {
@@ -94,6 +124,17 @@ struct HUDCompactRow: View {
             // "Cancel" truncated to "Can…".
             .fixedSize()
         }
+    }
+
+    private var readoutText: String {
+        switch readout {
+        case .clock(let text), .counter(let text): return text
+        }
+    }
+
+    private var leadingAccessibilityValue: String {
+        guard let warning, phase == .recording else { return readoutText }
+        return "\(readoutText). \(warning)"
     }
 
     @ViewBuilder
@@ -135,7 +176,11 @@ struct HUDCompactRow: View {
         if phase == .recording {
             control(finishControl)
         } else {
-            HUDBusySlot(status: status, accessibilityLabel: isPreparing ? "Preparing" : "Transcribing") {
+            HUDBusySlot(
+                status: status,
+                accessibilityLabel: isPreparing ? "Preparing" : (busyAccessibilityLabel ?? "Transcribing"),
+                fraction: isPreparing ? nil : transcribingFraction
+            ) {
                 control(finishControl, action: {})
             }
         }

@@ -11,29 +11,15 @@ enum HotkeyCaptureOutcome: Equatable {
 }
 
 struct HotkeyCaptureSession {
-    /// A binding this capture must refuse, paired with the reason to show. Used
-    /// to keep the dictation and conversation shortcuts off each other's keys.
-    struct ReservedBinding: Equatable {
-        let binding: HotkeyBinding
-        let message: String
-
-        init(binding: HotkeyBinding, message: String) {
-            self.binding = binding
-            self.message = message
-        }
-    }
-
     /// False for the conversation shortcut: standalone Right Control needs the
     /// single CGEvent tap, which dictation owns.
     private let allowsStandaloneModifier: Bool
-    private let reservedBindings: [ReservedBinding]
     private var pendingStandaloneModifier: HotkeyBinding?
     private var suppressStandaloneModifierUntilRelease = false
     private var captureIsComplete = false
 
-    init(allowsStandaloneModifier: Bool = true, reservedBindings: [ReservedBinding] = []) {
+    init(allowsStandaloneModifier: Bool = true) {
         self.allowsStandaloneModifier = allowsStandaloneModifier
-        self.reservedBindings = reservedBindings
     }
 
     /// Clears the in-flight capture only; the configuration is fixed for the
@@ -70,9 +56,6 @@ struct HotkeyCaptureSession {
         let candidate = HotkeyBinding.fromEvent(event)
         guard candidate.modifiers != 0 || candidate.isFunctionKey || candidate.isStandaloneModifier else {
             return .rejected(missingModifierMessage)
-        }
-        if let message = reservedMessage(for: candidate) {
-            return .rejected(message)
         }
 
         captureIsComplete = true
@@ -123,15 +106,8 @@ struct HotkeyCaptureSession {
 
         guard pendingStandaloneModifier == candidate else { return .ignored }
         pendingStandaloneModifier = nil
-        if let message = reservedMessage(for: candidate) {
-            return .rejected(message)
-        }
         captureIsComplete = true
         return .captured(candidate)
-    }
-
-    private func reservedMessage(for candidate: HotkeyBinding) -> String? {
-        reservedBindings.first { $0.binding == candidate }?.message
     }
 
     private var missingModifierMessage: String {

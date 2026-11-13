@@ -33,6 +33,7 @@ struct DictationTakePolicyHarness {
         try nothingInstalledAndOfflineOffersNothing()
         try aFirstOutOfCreditRefusalLeadsWithTheMac()
         try aRepeatRefusalOffersTheLastingSwitch()
+        try aSecondShortcutTakeNeverSwitchesTheDictationModel()
         try outOfCreditWithNothingToFallBackToOpensSettings()
         try offlineLeadsWithAnInstalledModelAndNeverADownload()
         try aRefusedKeyStillPointsAtTheKey()
@@ -422,6 +423,21 @@ struct DictationTakePolicyHarness {
                 && fetch.secondary == .useForDictation(id: "whisper-large-v3-turbo"),
             "a repeat refusal with a download on offer switches to that model"
         )
+    }
+
+    /// Review: a second-shortcut take out of credit offered "Use for
+    /// Dictation", which switched the dictation model that never failed.
+    private static func aSecondShortcutTakeNeverSwitchesTheDictationModel() throws {
+        for local in [ready, download] {
+            let actions = Policy.failureCard(
+                failure: .quotaExhausted,
+                local: { local },
+                isRepeatRefusal: true,
+                offersDictationSwitch: false
+            )
+            try expect(actions.primary == Policy.localAction(for: local), "the model on this Mac still leads")
+            try expect(actions.secondary == .retryCloud, "with Retry <provider> beside it, never Use for Dictation")
+        }
     }
 
     private static func outOfCreditWithNothingToFallBackToOpensSettings() throws {

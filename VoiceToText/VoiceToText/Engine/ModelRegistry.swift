@@ -1,4 +1,5 @@
 import Foundation
+import Network
 import Observation
 import OSLog
 
@@ -76,6 +77,7 @@ struct ModelDescriptor: Identifiable, Hashable, Sendable {
 
     var isCloud: Bool { backend.isCloud }
     var isRealtime: Bool { backend.isStreaming }
+    var approxSizeBytes: Int64 { Int64(approxSizeMB) * 1_000_000 }
 
     var resolverCandidate: ConversationModelResolver.Candidate {
         ConversationModelResolver.Candidate(
@@ -489,6 +491,8 @@ final class ModelRegistry {
     private enum Keys {
         static let activeModelId = "activeModelId"
         static let conversationModelId = "conversationModelId"
+        static let cancelledDownloadsToRemove = "cancelledDownloadsToRemove"
+        static let launchSkippedDownload = "launchSkippedDownload"
     }
 
     static let shared = ModelRegistry()
@@ -509,6 +513,26 @@ final class ModelRegistry {
     /// the answer can change: a preparation that ends (installed, failed or
     /// stalled out), a delete, and `refreshInstalledState`.
     private(set) var downloadedLocalModelIDs: Set<String> = []
+
+    private(set) var downloads = ModelDownloadLedger() {
+        didSet {
+            guard downloads.launchSkippedID != oldValue.launchSkippedID else { return }
+            if let id = downloads.launchSkippedID {
+                UserDefaults.standard.set(id, forKey: Keys.launchSkippedDownload)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Keys.launchSkippedDownload)
+            }
+        }
+    }
+
+    /// Why a local preparation failed, for the readiness's `.failed`;
+    /// `ModelDownloadFailure.sentence` words it for the Models pane.
+    private(set) var failureCauses: [String: ModelDownloadFailure.Cause] = [:]
+
+    /// Per model, the cancelled preparations still winding down
+    /// (`ModelDownloadLedger`). A new preparation of the model waits on it.
+    @ObservationIgnored
+    private var drainTasks: [String: Task<Void, Never>] = [:]
 
     @ObservationIgnored
     private var engines: [String: TranscriptionEngine] = [:]
@@ -568,9 +592,13 @@ final class ModelRegistry {
             .flatMap { ModelCatalog.model(for: $0)?.id }
             ?? ModelCatalog.defaultModelID
         self.conversationModelId = UserDefaults.standard.string(forKey: Keys.conversationModelId)
+        self.downloads = ModelDownloadLedger(
+            launchSkippedID: UserDefaults.standard.string(forKey: Keys.launchSkippedDownload)
+        )
         #if arch(x86_64)
         TranscribeCppModel.removeLegacyWhisperCppModels()
         #endif
+        removeDownloadsCancelledBeforeQuit()
         refreshInstalledState()
         NotificationCenter.default.addObserver(
             forName: OpenAIAPIKeyStore.didChangeNotification,
@@ -597,11 +625,16 @@ final class ModelRegistry {
 
     /// Kick off a background download of the active model if it isn't already
     /// installed or being prepared. Safe to call multiple times — no-ops when
-    /// the model is already present or a download is in flight.
+    /// the model is already present or a download is in flight, and for a
+    /// model whose download the user cancelled (`ModelDownloadLedger`).
     func bootstrapActiveModelIfNeeded() {
         let id = activeModelId
         guard let descriptor = ModelCatalog.model(for: id) else { return }
         if descriptor.isCloud { return }
+        if downloads.skipsLaunchDownload(of: id) {
+            AppLog.engine.notice("Launch download of \(id, privacy: .public) skipped: the user cancelled it")
+            return
+        }
         switch readiness(for: id) {
         case .installed, .preparing:
             return
@@ -648,6 +681,9 @@ final class ModelRegistry {
         case .groq:
             next = GroqAPIKey.read() != nil ? .installed(sizeBytes: 0) : .notInstalled
         case nil:
+            // A download in flight is its own readiness: its folder already
+            // holds files, which would read as installed.
+            if preparationTasks[model.id] != nil, case .preparing = readiness[model.id] { return }
             let state = ModelStorage.installedState(model)
             next = state.installed ? .installed(sizeBytes: state.sizeBytes) : .notInstalled
         }
@@ -721,6 +757,7 @@ final class ModelRegistry {
         guard ModelCatalog.model(for: modelId) != nil else { return }
         activeModelId = modelId
         UserDefaults.standard.set(modelId, forKey: Keys.activeModelId)
+        downloads.dictationModelChanged(to: modelId)
         CloudCreditStatus.shared.clearSwitchedFrom()
     }
 
@@ -809,17 +846,24 @@ final class ModelRegistry {
 
         if let existingTask = preparationTasks[id] {
             let generation = preparationGenerations[id] ?? 0
-            let engine = await awaitPreparationOrStall(existingTask, id: id)
+            let engine = await awaitPreparationOrStall(existingTask, id: id, generation: generation)
             if engine == nil { evictStalledPreparation(id: id, generation: generation) }
             return engine
         }
 
         let generation = nextPreparationGeneration(for: id)
+        if !descriptor.isCloud {
+            downloads.began(id, isDownload: !ModelStorage.isDownloaded(descriptor, readiness: readiness(for: id)))
+        }
+        failureCauses[id] = nil
         readiness[id] = .preparing(fraction: 0.0, message: "Starting…")
         let engine = makeEngine(for: descriptor)
+        let drain = drainTasks[id]
 
         let task = Task<TranscriptionEngine?, Never> { @MainActor [weak self] in
-            guard let self else { return nil }
+            if let drain { await drain.value }
+            guard let self, self.isCurrentPreparation(id: id, generation: generation),
+                  !Task.isCancelled else { return nil }
             do {
                 try await engine.prepare { [weak self] fraction, message in
                     Task { @MainActor [weak self] in
@@ -834,19 +878,36 @@ final class ModelRegistry {
                 // Touch *before* evicting so the engine we're about to hand back
                 // is the newest entry and can never be the one dropped.
                 self.touchResidentEngine(descriptor)
+                self.downloads.ended(id)
                 self.readiness[id] = .installed(sizeBytes: ModelStorage.diskUsageBytes(descriptor))
                 self.refreshDownloadedLocalModels()
                 return engine
             } catch {
                 guard self.isCurrentPreparation(id: id, generation: generation),
                       !Task.isCancelled else { return nil }
-                self.readiness[id] = .failed(error.localizedDescription)
+                let cause = descriptor.isCloud ? nil : await Self.failureCause(
+                    of: error,
+                    descriptor: descriptor,
+                    wasDownloading: self.downloads.canCancel(id)
+                )
+                guard self.isCurrentPreparation(id: id, generation: generation),
+                      !Task.isCancelled else { return nil }
+                self.downloads.ended(id)
+                if cause == .cancelled {
+                    // Cancelled underneath us (URLError -999): no failure, and
+                    // no download left in flight for the readiness to keep.
+                    self.preparationTasks[id] = nil
+                    self.updateReadiness(for: descriptor)
+                } else {
+                    self.failureCauses[id] = cause
+                    self.readiness[id] = .failed(error.localizedDescription)
+                }
                 self.refreshDownloadedLocalModels()
                 return nil
             }
         }
         preparationTasks[id] = task
-        let prepared = await awaitPreparationOrStall(task, id: id)
+        let prepared = await awaitPreparationOrStall(task, id: id, generation: generation)
         if isCurrentPreparation(id: id, generation: generation) {
             preparationTasks[id] = nil
         }
@@ -905,7 +966,8 @@ final class ModelRegistry {
     /// (and, via the dedup above, every later attempt with it) until relaunch.
     private func awaitPreparationOrStall(
         _ task: Task<TranscriptionEngine?, Never>,
-        id: String
+        id: String,
+        generation: UInt64
     ) async -> TranscriptionEngine? {
         let gate = TimeoutGate()
         return await withCheckedContinuation { (continuation: CheckedContinuation<TranscriptionEngine?, Never>) in
@@ -919,6 +981,15 @@ final class ModelRegistry {
                 while stalledMs < Self.stallTimeoutMs(for: self.readiness[id]) {
                     try? await Task.sleep(for: .milliseconds(Self.prepareStallPollMs))
                     if gate.isResolved { return }
+                    // Cancelled or deleted: the SDK call may not return for a
+                    // while, and nobody should wait on it.
+                    if !self.isCurrentPreparation(id: id, generation: generation) {
+                        if gate.resolve() {
+                            let ready = self.readiness[id]?.isInstalled == true ? self.engines[id] : nil
+                            continuation.resume(returning: ready)
+                        }
+                        return
+                    }
                     let readiness = self.readiness[id]
                     // The load/compile tail (CoreML prewarm) emits no progress
                     // callbacks and can legitimately run for minutes on a cold
@@ -958,9 +1029,142 @@ final class ModelRegistry {
         guard isCurrentPreparation(id: id, generation: generation) else { return }
         guard case .preparing = readiness[id] else { return }
         preparationTasks[id] = nil
+        downloads.ended(id)
+        failureCauses[id] = .stalled
         readiness[id] = .failed("Preparation stalled. Check your connection and try again.")
         _ = nextPreparationGeneration(for: id)
         refreshDownloadedLocalModels()
+    }
+
+    // MARK: - Cancelling a download
+
+    func canCancelDownload(id: String) -> Bool {
+        guard case .preparing = readiness(for: id) else { return false }
+        return downloads.canCancel(id)
+    }
+
+    /// Whether the last preparation of `id` ended in `cancelDownload`, so a
+    /// caller that waited on it can stand down quietly instead of failing.
+    func preparationWasCancelled(id: String) -> Bool {
+        downloads.wasCancelled(id)
+    }
+
+    /// How many downloads of `id` the user has cancelled
+    /// (`ModelDownloadLedger.cancelCount`).
+    func downloadCancelCount(id: String) -> Int {
+        downloads.cancelCount(id)
+    }
+
+    /// Stops a local model's preparation and removes its files. What the SDK
+    /// writes before it notices is removed when it returns, or at next launch.
+    func cancelDownload(id: String) {
+        guard let descriptor = ModelCatalog.model(for: id), !descriptor.isCloud,
+              canCancelDownload(id: id), downloads.cancel(id, isDictationModel: id == activeModelId) else { return }
+        AppLog.engine.notice("Download of \(id, privacy: .public) cancelled")
+        let task = preparationTasks[id]
+        task?.cancel()
+        preparationTasks[id] = nil
+        _ = nextPreparationGeneration(for: id)
+        engines[id] = nil
+        residentLocalEngines.removeAll { $0 == id }
+        failureCauses[id] = nil
+        Self.removeFiles(of: descriptor)
+        readiness[id] = .notInstalled
+        refreshDownloadedLocalModels()
+        persistDownloadsToRemove()
+
+        let previous = drainTasks[id]
+        drainTasks[id] = Task { @MainActor [weak self] in
+            await previous?.value
+            _ = await task?.value
+            Self.removeFiles(of: descriptor)
+            guard let self else { return }
+            self.downloads.drained(id)
+            self.persistDownloadsToRemove()
+            if !self.downloads.isDraining(id) { self.drainTasks[id] = nil }
+            if self.preparationTasks[id] == nil {
+                self.updateReadiness(for: descriptor)
+                self.refreshDownloadedLocalModels()
+            }
+        }
+    }
+
+    private static func removeFiles(of descriptor: ModelDescriptor) {
+        do {
+            try ModelStorage.delete(descriptor)
+        } catch {
+            AppLog.engine.error("Couldn't remove the files of \(descriptor.id, privacy: .public): \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func persistDownloadsToRemove() {
+        let ids = downloads.drainingIDs
+        if ids.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Keys.cancelledDownloadsToRemove)
+        } else {
+            UserDefaults.standard.set(ids, forKey: Keys.cancelledDownloadsToRemove)
+        }
+    }
+
+    /// A download cancelled just before a quit may have written files after
+    /// the cancel removed them; they go before anything reads the disk.
+    private func removeDownloadsCancelledBeforeQuit() {
+        guard let ids = UserDefaults.standard.stringArray(forKey: Keys.cancelledDownloadsToRemove) else { return }
+        for id in ids {
+            guard let descriptor = ModelCatalog.model(for: id), !descriptor.isCloud else { continue }
+            Self.removeFiles(of: descriptor)
+        }
+        UserDefaults.standard.removeObject(forKey: Keys.cancelledDownloadsToRemove)
+    }
+
+    // MARK: - Why a download failed
+
+    /// The failed preparation of `id` in one plain sentence; nil unless it
+    /// failed. The full message stays in the readiness's `.failed`.
+    func failureSentence(for id: String) -> String? {
+        guard case .failed(let message) = readiness(for: id) else { return nil }
+        return ModelDownloadFailure.sentence(for: failureCauses[id] ?? .other(message), formatBytes: \.formattedDiskSize)
+            ?? message
+    }
+
+    /// `error` as `ModelDownloadFailure` reads it, plus what no error says
+    /// reliably: being offline (only while downloading) and the room on disk.
+    private static func failureCause(
+        of error: Error,
+        descriptor: ModelDescriptor,
+        wasDownloading: Bool
+    ) async -> ModelDownloadFailure.Cause {
+        let root = (error as? TranscriptionEngineError)?.underlyingError ?? error
+        let isOffline = wasDownloading ? await networkIsUnavailable() : false
+        let freeBytes = (try? ModelStorage.modelsVolumeURL.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ))?.volumeAvailableCapacityForImportantUsage
+        return ModelDownloadFailure.cause(
+            of: root,
+            isOffline: isOffline,
+            neededBytes: descriptor.approxSizeBytes,
+            freeBytes: freeBytes
+        )
+    }
+
+    /// One reading of the current network path. Built outside the main
+    /// actor: the handler runs on the monitor's queue.
+    private nonisolated static func networkIsUnavailable() async -> Bool {
+        await withCheckedContinuation { continuation in
+            let gate = TimeoutGate()
+            let monitor = NWPathMonitor()
+            monitor.pathUpdateHandler = { path in
+                guard gate.resolve() else { return }
+                monitor.cancel()
+                continuation.resume(returning: path.status != .satisfied)
+            }
+            monitor.start(queue: DispatchQueue(label: "voice-to-text-ai.VoiceToText.models.network", qos: .utility))
+            DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                guard gate.resolve() else { return }
+                monitor.cancel()
+                continuation.resume(returning: false)
+            }
+        }
     }
 
     /// How long `readiness` may go without progress before it counts as
@@ -997,6 +1201,8 @@ final class ModelRegistry {
         preparationTasks[id]?.cancel()
         preparationTasks[id] = nil
         _ = nextPreparationGeneration(for: id)
+        downloads.ended(id)
+        failureCauses[id] = nil
         engines[id] = nil
         residentLocalEngines.removeAll { $0 == id }
         backgroundEngines[id] = nil

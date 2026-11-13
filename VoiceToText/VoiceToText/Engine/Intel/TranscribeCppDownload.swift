@@ -126,7 +126,7 @@ nonisolated enum TranscribeCppDownload {
             }
             guard let received, let progress else { return }
             let fraction = min(max(Double(received) / Double(max(totalBytes, 1)), 0), 1)
-            progress(fraction, "Downloading \(received / 1_000_000) of \(totalBytes / 1_000_000) MB")
+            progress(fraction, "Downloading \(received.formattedDiskSize) of \(totalBytes.formattedDiskSize)")
         }
     }
 }

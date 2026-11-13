@@ -45,6 +45,19 @@ enum ModelStorage {
             .appendingPathComponent("models/argmaxinc/whisperkit-coreml/\(variant)", isDirectory: true)
     }
 
+    /// The Hub's download records for a variant, and the `.incomplete` file
+    /// of any download that stopped part way — which it resumes from, and
+    /// which can run to hundreds of megabytes outside the model folder.
+    nonisolated static func whisperKitDownloadCacheFolder(variant: String) -> URL {
+        whisperKitBaseURL
+            .appendingPathComponent("models/argmaxinc/whisperkit-coreml/.cache/huggingface/download/\(variant)", isDirectory: true)
+    }
+
+    /// Where the local models live, for asking its volume how much room is left.
+    nonisolated static var modelsVolumeURL: URL {
+        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+    }
+
     /// Whether the model's folder holds any file. Stops at the first one,
     /// where `installedState` sizes the whole tree.
     static func isInstalled(_ descriptor: ModelDescriptor) -> Bool {
@@ -129,6 +142,12 @@ enum ModelStorage {
             try FileManager.default.removeItem(at: stale)
         }
         #endif
+        if descriptor.backend == .whisperKit {
+            let cache = whisperKitDownloadCacheFolder(variant: descriptor.backendModelId)
+            if FileManager.default.fileExists(atPath: cache.path) {
+                try FileManager.default.removeItem(at: cache)
+            }
+        }
         guard let url = location(for: descriptor) else { return }
         if FileManager.default.fileExists(atPath: url.path) {
             try FileManager.default.removeItem(at: url)
@@ -137,7 +156,7 @@ enum ModelStorage {
 }
 
 extension Int64 {
-    var formattedDiskSize: String {
+    nonisolated var formattedDiskSize: String {
         let mb = Double(self) / 1_000_000.0
         if mb >= 1000 {
             return String(format: "%.2f GB", mb / 1000.0)

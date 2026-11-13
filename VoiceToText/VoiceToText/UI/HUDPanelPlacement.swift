@@ -147,6 +147,12 @@ final class HUDPanelPlacement {
 
     // MARK: Placement
 
+    /// The visible height of the screen the card is on, or is about to
+    /// appear on — what a card that grows with its content is held to.
+    var visibleHeight: CGFloat {
+        activeScreen().visibleFrame.height
+    }
+
     /// The screen the HUD belongs on: whatever screen it is already showing on
     /// (a morph must never teleport the card between displays), otherwise the
     /// screen holding the focused window of the frontmost app — which is where

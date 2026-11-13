@@ -236,9 +236,10 @@ open -g voicetotext://cancel
   the scheme. If it isn't running, opening the URL launches it (in the background) and
   the first toggle may take a moment while the model loads; subsequent toggles are instant.
 - VoiceToText needs **Microphone** and **Accessibility** permissions (it prompts on first use).
-- "Review before paste" is on by default: after recording, a small panel appears to
-  confirm/edit before the text is pasted. Press the hotkey (or send `toggle` again) to
-  confirm. You can disable this in VoiceToText → Settings.
+- "Review before paste" is set to Always by default: after recording, a small panel
+  appears to confirm/edit before the text is pasted. Press the hotkey (or send `toggle`
+  again) to confirm. In VoiceToText → Settings you can review only takes longer than
+  15 seconds, or never.
 - If you ship your own build of VoiceToText with a different bundle id (e.g. the
   `*.dev` build from `scripts/dev.sh`), it registers the same `voicetotext://` scheme;
   whichever copy LaunchServices has indexed most recently will handle the URL.

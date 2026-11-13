@@ -5,6 +5,8 @@ struct CloudPane: View {
     @Bindable private var elevenKeyStore = ElevenLabsAPIKeyStore.shared
     @Bindable private var groqKeyStore = GroqAPIKeyStore.shared
     @Bindable private var credit = CloudCreditStatus.shared
+    /// A key just removed, held for its Undo toast and no longer.
+    @State private var pendingUndo: PendingUndo?
 
     /// The provider tints, as light/dark pairs — raw `.blue` / `.purple`
     /// are not tokens and read differently in each appearance.
@@ -59,6 +61,7 @@ struct CloudPane: View {
 
             privacyFooter
         }
+        .overlay { UndoRemovalBar(pending: $pendingUndo) }
     }
 
     // MARK: - Provider section
@@ -89,18 +92,35 @@ struct CloudPane: View {
                             .foregroundStyle(Palette.inkMuted)
                     }
                     Spacer(minLength: Space.s5)
-                    StatusLabel(
-                        level: hasKey && !isOutOfCredit ? .ready : .warning,
-                        text: statusText(hasKey: hasKey, keySuffix: keySuffix, isOutOfCredit: isOutOfCredit)
-                    )
+                    keyStatus(provider: config.provider, hasKey: hasKey, keySuffix: keySuffix, isOutOfCredit: isOutOfCredit)
                 }
 
                 APIKeyEntryView(
                     config: config,
                     showsManagementControls: true,
-                    autoFocusesField: autoFocusesField
+                    autoFocusesField: autoFocusesField,
+                    onRemoved: { pendingUndo = $0 }
                 )
             }
+        }
+    }
+
+    /// A provider with no key is only "Not connected" unless something the
+    /// user chose runs on it (`ProviderKeyNeed`); then it warns, and says what.
+    @ViewBuilder
+    private func keyStatus(provider: CloudProvider, hasKey: Bool, keySuffix: String?, isOutOfCredit: Bool) -> some View {
+        if hasKey {
+            StatusLabel(
+                level: isOutOfCredit ? .warning : .ready,
+                text: statusText(keySuffix: keySuffix, isOutOfCredit: isOutOfCredit)
+            )
+        } else if let reason = ProviderKeyNeed.current(for: provider).statusText {
+            StatusLabel(level: .warning, text: reason)
+        } else {
+            Text("Not connected")
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .fixedSize()
         }
     }
 
@@ -110,8 +130,7 @@ struct CloudPane: View {
     /// key pasted below, so this pane is also where it goes away. No billing
     /// link — the provider's own dashboard is the place for that, and its
     /// URL is theirs to move.
-    private func statusText(hasKey: Bool, keySuffix: String?, isOutOfCredit: Bool) -> String {
-        guard hasKey else { return "Not set" }
+    private func statusText(keySuffix: String?, isOutOfCredit: Bool) -> String {
         let status = isOutOfCredit ? FailureCardCopy.outOfCreditLabel : "Connected"
         guard let keySuffix else { return status }
         return "\(status) · …\(keySuffix)"

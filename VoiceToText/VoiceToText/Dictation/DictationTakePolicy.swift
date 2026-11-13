@@ -297,18 +297,23 @@ nonisolated enum DictationTakePolicy {
     /// folders and the input sources, and a rate limit or a server error has
     /// no use for either. `isRepeatRefusal` comes from
     /// `CloudCreditStatus.noteRefusal`, read before this failure marks it.
+    /// `offersDictationSwitch` is false for a take the second shortcut ran on
+    /// its own model: the dictation model never failed, so a repeat refusal
+    /// keeps Retry <provider> beside the model on this Mac.
     /// The speech gate's Transcribe Anyway and the cards no engine produced
     /// (permissions, paste) are not this table's.
     static func failureCard(
         failure: TranscriptionFailure,
         local: () -> LocalFallback?,
-        isRepeatRefusal: Bool
+        isRepeatRefusal: Bool,
+        offersDictationSwitch: Bool = true
     ) -> (primary: CardAction, secondary: CardAction?) {
         switch failure {
         case .quotaExhausted:
             guard let fallback = local() else { return (.retry, .chooseModel) }
             let primary = localAction(for: fallback)
-            return (primary, isRepeatRefusal ? .useForDictation(id: fallback.modelID) : .retryCloud)
+            let switches = isRepeatRefusal && offersDictationSwitch
+            return (primary, switches ? .useForDictation(id: fallback.modelID) : .retryCloud)
         case .offline:
             guard case .ready(let id, _)? = local() else { return (.retry, nil) }
             return (.transcribeOnMac(id: id), .retryCloud)

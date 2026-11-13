@@ -14,6 +14,17 @@ private nonisolated enum InsightMenuCommand: Hashable {
     case customPrompt
 }
 
+/// History's multi-select hooks for one row. Nil in Conversations, which has
+/// no selection mode, so its rows keep every click they always had.
+struct RecordingRowSelection {
+    let isSelecting: Bool
+    let isSelected: Bool
+    /// A click while selecting, or a ⌘-click at any time.
+    let onToggle: () -> Void
+    /// A ⇧-click: selects through to this row.
+    let onExtend: () -> Void
+}
+
 /// A single saved-recording row: leading play tile, timestamp + metadata, copy
 /// and delete controls, and the transcript(s) below. After a regeneration a
 /// recording can hold more than one transcript; each version is then shown in
@@ -36,6 +47,7 @@ struct RecordingRow: View {
     /// The live History search query, so matched substrings can be marked in
     /// the transcript. Empty everywhere else.
     var highlight: String = ""
+    var selection: RecordingRowSelection? = nil
     /// Which of Transcript / Summary / Action Items this row is showing. Owned
     /// by the pane, not by this view — see `RecordingsList` for why a row that
     /// scrolls out of view must not take its selection with it.
@@ -82,6 +94,8 @@ struct RecordingRow: View {
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
 
+    private var isSelecting: Bool { selection?.isSelecting ?? false }
+
     /// The dictation that saved this row is still transcribing it. Its stored
     /// status is what the row would say if that never finished; until then
     /// the row says it is working, and offers nothing that would race it.
@@ -109,7 +123,11 @@ struct RecordingRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s5) {
             HStack(alignment: .center, spacing: Space.s5) {
-                PlayTile(isPlaying: isPlaying, action: onPlay)
+                if let selection, selection.isSelecting {
+                    selectionCheckbox(selection)
+                } else {
+                    PlayTile(isPlaying: isPlaying, action: onPlay)
+                }
 
                 VStack(alignment: .leading, spacing: Space.s2) {
                     Text(RecordingDateFormat.rowLabel(entry.createdAt))
@@ -158,10 +176,55 @@ struct RecordingRow: View {
         }
         .padding(Space.s6)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .background {
+            if selection?.isSelected == true, isSelecting {
+                ConcentricRectangle(inset: Space.s2) { $0.fill(Palette.wellFill) }
+                    .padding(Space.s2)
+            }
+        }
         .contentShape(Rectangle())
+        // Selecting, the whole row is one target and nothing under it plays,
+        // expands or selects text. Kept mounted either way so entering the
+        // mode doesn't rebuild the row and fold every expanded transcript.
+        .overlay {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if NSEvent.modifierFlags.contains(.shift) {
+                        selection?.onExtend()
+                    } else {
+                        selection?.onToggle()
+                    }
+                }
+                .allowsHitTesting(isSelecting)
+                .accessibilityHidden(true)
+        }
+        .gesture(
+            TapGesture().modifiers(.command).onEnded { selection?.onToggle() },
+            including: selection != nil && !isSelecting ? .all : .subviews
+        )
+        .gesture(
+            TapGesture().modifiers(.shift).onEnded { selection?.onExtend() },
+            including: selection != nil && !isSelecting ? .all : .subviews
+        )
         .onHover { isHovering = $0 }
         .animation(motion.hover, value: isHovering)
         .onDisappear { copyResetTask?.cancel() }
+    }
+
+    /// Stands in for the play tile while selecting, at the same size so the
+    /// row doesn't shift. A real toggle named by the row's date, so VoiceOver
+    /// and the keyboard can select without the click target over the row.
+    private func selectionCheckbox(_ selection: RecordingRowSelection) -> some View {
+        let label = RecordingDateFormat.rowLabel(entry.createdAt)
+        return Toggle(label, isOn: Binding(
+            get: { selection.isSelected },
+            set: { _ in selection.onToggle() }
+        ))
+        .toggleStyle(.checkbox)
+        .labelsHidden()
+        .accessibilityLabel(label)
+        .frame(width: 28, height: 28)
     }
 
     /// Favorite / regenerate / copy / delete. Quiet by default: only the star
@@ -175,7 +238,7 @@ struct RecordingRow: View {
     @ViewBuilder
     private var actionButtons: some View {
         HStack(spacing: Space.s3) {
-            if entry.isFavorited || isHovering {
+            if entry.isFavorited || (isHovering && !isSelecting) {
                 iconButton(
                     systemName: entry.isFavorited ? "star.fill" : "star",
                     help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
@@ -186,7 +249,7 @@ struct RecordingRow: View {
             // Popover-open states keep the anchor buttons mounted after the
             // pointer leaves the row — an anchor that unmounts (hover ends when
             // the cursor enters the popover) tears its popover down with it.
-            if isHovering || isRegenerating || showRenameSpeakers || showRegenerateMenu
+            if (isHovering && !isSelecting) || isRegenerating || showRenameSpeakers || showRegenerateMenu
                 || showInsightMenu || showCustomPrompt || isOpeningCustomPrompt {
                 if !speakerLabels.isEmpty {
                     renameSpeakersControl
@@ -849,40 +912,34 @@ struct RecordingRow: View {
     /// still being fetched — or a Whisper folder a cancelled download left
     /// half full — keeps its "Download" label (`ModelStorage.isDownloaded`).
     private var regenerateModelSections: [DropdownSection<String>] {
-        var sections: [DropdownSection<String>] = []
-        let all = ModelCatalog.all.filter { !$0.isRealtime }
-        let local = all.filter { !$0.isCloud }
         let registry = ModelRegistry.shared
-        let onDisk = Set(local.filter {
-            ModelStorage.isDownloaded($0, readiness: registry.readiness(for: $0.id))
-        }.map(\.id))
-        let installed = local.filter { onDisk.contains($0.id) }
-        let notInstalled = local.filter { !onDisk.contains($0.id) }
-        if !local.isEmpty {
-            sections.append(DropdownSection(
-                header: "On this Mac",
+        return ModelGroup.sections(of: ModelCatalog.all.filter { !$0.isRealtime }).map { section in
+            if let provider = section.group.provider {
+                let detail = provider.hasAPIKey ? nil : "Needs an API key"
+                return DropdownSection(
+                    header: section.group.title,
+                    items: section.models.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName, detail: detail) }
+                )
+            }
+            let onDisk = Set(section.models.filter {
+                ModelStorage.isDownloaded($0, readiness: registry.readiness(for: $0.id))
+            }.map(\.id))
+            let installed = section.models.filter { onDisk.contains($0.id) }
+            let notInstalled = section.models.filter { !onDisk.contains($0.id) }
+            return DropdownSection(
+                header: section.group.title,
                 items: installed.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName) }
                     + notInstalled.map {
                         DropdownItem(value: $0.id, title: $0.sectionedDisplayName, detail: Self.downloadDetail($0))
                     }
-            ))
+            )
         }
-        for provider in CloudProvider.allCases {
-            let group = all.filter { $0.backend.cloudProvider == provider }
-            guard !group.isEmpty else { continue }
-            let detail = provider.hasAPIKey ? nil : "Needs an API key"
-            sections.append(DropdownSection(
-                header: provider.displayName,
-                items: group.map { DropdownItem(value: $0.id, title: $0.sectionedDisplayName, detail: detail) }
-            ))
-        }
-        return sections
     }
 
     /// "Download · ~470 MB" for a local model that isn't on disk yet.
     private static func downloadDetail(_ model: ModelDescriptor) -> String {
         guard model.approxSizeMB > 0 else { return "Not downloaded" }
-        return "Download · ~\((Int64(model.approxSizeMB) * 1_000_000).formattedDiskSize)"
+        return "Download · ~\(model.approxSizeBytes.formattedDiskSize)"
     }
 
     /// Hover control opening the Generate / Regenerate menu, and — from that

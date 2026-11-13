@@ -12,6 +12,7 @@ nonisolated enum APIKeyVerification: Sendable {
 /// Everything `APIKeyEntryView` needs to serve one provider. Built by the
 /// factories below; no call site assembles one by hand.
 struct APIKeyProviderConfig {
+    let provider: CloudProvider
     let providerName: String
     /// Placeholder shown while no key is stored.
     let pastePrompt: String
@@ -20,6 +21,8 @@ struct APIKeyProviderConfig {
     let verify: @MainActor (String) async -> APIKeyVerification
     let verifyStored: @MainActor () async -> APIKeyVerification
     let save: @MainActor (String) -> Void
+    /// The stored key itself, read only to hold it for a removal's Undo.
+    let readKey: @MainActor () -> String?
     let clear: @MainActor () -> Void
     let hasKey: @MainActor () -> Bool
     let keySuffix: @MainActor () -> String?
@@ -28,6 +31,7 @@ struct APIKeyProviderConfig {
 extension APIKeyProviderConfig {
     static var openAI: APIKeyProviderConfig {
         APIKeyProviderConfig(
+            provider: .openAI,
             providerName: "OpenAI",
             pastePrompt: "Paste your OpenAI key (starts with sk-)",
             getKeyURL: OpenAIEndpoint.apiKeysDocs,
@@ -35,6 +39,7 @@ extension APIKeyProviderConfig {
             verify: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(apiKey: $0)) },
             verifyStored: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection()) },
             save: { OpenAIAPIKeyStore.shared.setKey($0) },
+            readKey: { OpenAIAPIKey.read() },
             clear: { OpenAIAPIKeyStore.shared.clearKey() },
             hasKey: { OpenAIAPIKeyStore.shared.hasKey },
             keySuffix: { OpenAIAPIKeyStore.shared.keySuffix }
@@ -43,6 +48,7 @@ extension APIKeyProviderConfig {
 
     static var elevenLabs: APIKeyProviderConfig {
         APIKeyProviderConfig(
+            provider: .elevenLabs,
             providerName: "ElevenLabs",
             pastePrompt: "Paste your ElevenLabs key",
             getKeyURL: URL(string: "https://elevenlabs.io/app/settings/api-keys")!,
@@ -50,6 +56,7 @@ extension APIKeyProviderConfig {
             verify: { await APIKeyVerification(ElevenLabsRealtimeEngine.testConnection(apiKey: $0)) },
             verifyStored: { await APIKeyVerification(ElevenLabsRealtimeEngine.testConnection()) },
             save: { ElevenLabsAPIKeyStore.shared.setKey($0) },
+            readKey: { ElevenLabsAPIKey.read() },
             clear: { ElevenLabsAPIKeyStore.shared.clearKey() },
             hasKey: { ElevenLabsAPIKeyStore.shared.hasKey },
             keySuffix: { ElevenLabsAPIKeyStore.shared.keySuffix }
@@ -58,6 +65,7 @@ extension APIKeyProviderConfig {
 
     static var groq: APIKeyProviderConfig {
         APIKeyProviderConfig(
+            provider: .groq,
             providerName: "Groq",
             pastePrompt: "Paste your Groq key (starts with gsk_)",
             getKeyURL: GroqEndpoint.apiKeysDocs,
@@ -65,6 +73,7 @@ extension APIKeyProviderConfig {
             verify: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(apiKey: $0, service: .groq)) },
             verifyStored: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(service: .groq)) },
             save: { GroqAPIKeyStore.shared.setKey($0) },
+            readKey: { GroqAPIKey.read() },
             clear: { GroqAPIKeyStore.shared.clearKey() },
             hasKey: { GroqAPIKeyStore.shared.hasKey },
             keySuffix: { GroqAPIKeyStore.shared.keySuffix }
@@ -114,6 +123,9 @@ struct APIKeyEntryView: View {
     /// the second provider in a pane, so the two don't fight over first responder.
     var autoFocusesField: Bool = true
     var onConnected: () -> Void = {}
+    /// Hands Remove's Undo to the pane, which shows the toast. Nil removes
+    /// the key outright, as before.
+    var onRemoved: ((PendingUndo) -> Void)? = nil
 
     @State private var draft: String = ""
     @State private var status: Status?
@@ -372,10 +384,33 @@ struct APIKeyEntryView: View {
     }
 
     private func removeKey() {
+        let removedKey = config.readKey()
+        let previousStatus = status
+        let outOfCreditSince = CloudCreditStatus.shared.flaggedSince(config.provider)
         config.clear()
         clearDraft()
         status = Status(message: "Key removed.", kind: .neutral)
         isFieldFocused = true
+        guard let removedKey, let onRemoved else { return }
+        let config = config
+        let statusBinding = $status
+        onRemoved(PendingUndo(title: "\(config.providerName) key removed") {
+            // A key pasted since is the one the user wants now.
+            guard !config.hasKey() else { return }
+            config.save(removedKey)
+            // Saving reads as a new key, which clears an out-of-credit flag;
+            // this is the same key, so the flag it had comes back with it.
+            if let outOfCreditSince {
+                CloudCreditStatus.shared.noteFailure(.quotaExhausted, provider: config.provider, at: outOfCreditSince)
+            }
+            statusBinding.wrappedValue = previousStatus
+                ?? Status(message: Self.restoredMessage(suffix: config.keySuffix()), kind: .neutral)
+        })
+    }
+
+    private static func restoredMessage(suffix: String?) -> String {
+        guard let suffix else { return "Key restored." }
+        return "Key restored — ending in …\(suffix)"
     }
 
     private func clearDraft() {

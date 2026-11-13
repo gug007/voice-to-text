@@ -101,6 +101,9 @@ struct HUDBusySlot<Footprint: View>: View {
     /// The tooltip: what the card is waiting on.
     let status: String
     let accessibilityLabel: String
+    /// How much of the work is done, when that is known: the spinner
+    /// becomes a ring that fills instead of turning.
+    var fraction: Double?
     /// The control whose slot this holds. Drawn hidden, so it only sizes.
     @ViewBuilder let footprint: Footprint
 
@@ -110,7 +113,7 @@ struct HUDBusySlot<Footprint: View>: View {
                 .hidden()
                 .disabled(true)
                 .accessibilityHidden(true)
-            HUDSpinner()
+            HUDSpinner(fraction: fraction)
                 .help(status)
                 .accessibilityElement()
                 .accessibilityLabel(accessibilityLabel)
@@ -282,13 +285,16 @@ struct RecordingPulse: View {
     /// settles to the meter's frozen grey on the same 0.4s clock the bars
     /// desaturate on, rather than blinking on over a dead meter.
     var isLive: Bool = true
+    /// The input has been clipping for a while: the dot takes the warning
+    /// colour while it lasts.
+    var isWarning: Bool = false
 
     @Environment(\.motion) private var motion
     @State private var pulsing = false
 
     var body: some View {
         Circle()
-            .fill(isLive ? Palette.signalLive : Palette.inkFaint.opacity(0.30))
+            .fill(isLive ? (isWarning ? Palette.signalWarn : Palette.signalLive) : Palette.inkFaint.opacity(0.30))
             .frame(width: 9, height: 9)
             .opacity(liveOpacity)
             .onAppear {
@@ -298,6 +304,7 @@ struct RecordingPulse: View {
                 }
             }
             .animation(motion.reduceMotion ? Motion.reduced : .smooth(duration: 0.4), value: isLive)
+            .animation(motion.hover, value: isWarning)
     }
 
     private var liveOpacity: Double {
@@ -312,6 +319,9 @@ struct RecordingPulse: View {
 /// Motion and this one has to come to rest: a still arc, which next to the
 /// frozen meter still reads as busy.
 struct HUDSpinner: View {
+    /// Determinate once known: the arc fills from the top instead of turning.
+    var fraction: Double?
+
     @Environment(\.motion) private var motion
     @State private var turning = false
 
@@ -324,18 +334,26 @@ struct HUDSpinner: View {
         ZStack {
             Circle()
                 .stroke(Palette.ink.opacity(0.10), lineWidth: Self.lineWidth)
-            Circle()
-                .trim(from: 0, to: Self.arc)
-                .stroke(Palette.inkMuted, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
-                .rotationEffect(.degrees(turning ? 360 : 0))
-        }
-        .frame(width: Self.diameter, height: Self.diameter)
-        .onAppear {
-            guard motion.repeatsAllowed else { return }
-            withAnimation(.linear(duration: Self.period).repeatForever(autoreverses: false)) {
-                turning = true
+            if let fraction {
+                Circle()
+                    .trim(from: 0, to: max(0, min(1, fraction)))
+                    .stroke(Palette.inkMuted, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+                    .animation(motion.layout, value: fraction)
+            } else {
+                Circle()
+                    .trim(from: 0, to: Self.arc)
+                    .stroke(Palette.inkMuted, style: StrokeStyle(lineWidth: Self.lineWidth, lineCap: .round))
+                    .rotationEffect(.degrees(turning ? 360 : 0))
+                    .onAppear {
+                        guard motion.repeatsAllowed else { return }
+                        withAnimation(.linear(duration: Self.period).repeatForever(autoreverses: false)) {
+                            turning = true
+                        }
+                    }
             }
         }
+        .frame(width: Self.diameter, height: Self.diameter)
     }
 }
 

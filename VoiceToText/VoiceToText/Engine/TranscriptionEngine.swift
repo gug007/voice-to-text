@@ -80,17 +80,23 @@ protocol StreamingTranscriptionEngine: TranscriptionEngine {
 
 enum TranscriptionEngineError: LocalizedError {
     case notReady
-    case modelLoadFailed(String)
+    case modelLoadFailed(String, underlying: (any Error)? = nil)
     case transcriptionFailed(String)
 
     var errorDescription: String? {
         switch self {
         case .notReady:
             return "Transcription engine is not ready. Call prepare() first."
-        case .modelLoadFailed(let reason):
+        case .modelLoadFailed(let reason, _):
             return "Model load failed: \(reason)"
         case .transcriptionFailed(let reason):
             return "Transcription failed: \(reason)"
         }
+    }
+
+    /// What the engine caught, which `ModelDownloadFailure` reads.
+    var underlyingError: (any Error)? {
+        if case .modelLoadFailed(_, let underlying) = self { return underlying }
+        return nil
     }
 }

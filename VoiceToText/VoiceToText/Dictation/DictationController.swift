@@ -220,6 +220,22 @@ final class DictationController {
         let chosenOverModelID: String?
     }
 
+    /// The second shortcut's model for this take, kept by a Resume so every
+    /// card and History row names the model the take really used.
+    @ObservationIgnored
+    private var takeModelOverride: RetryModelOverride?
+
+    /// What a take with no model chosen for it runs on.
+    private var takeModel: ModelDescriptor? {
+        takeModelOverride?.model ?? ModelRegistry.shared.activeModel
+    }
+
+    /// Which shortcut a start came from, for the model it runs on.
+    private enum TakeModelSource {
+        case dictationModel
+        case secondShortcut
+    }
+
     /// What Return runs on the failure card: its primary button, when that
     /// button carries the ↩ hint. Stored with the card, because the primary
     /// is no longer always Retry — out of credit it is "Transcribe on Mac",
@@ -418,14 +434,15 @@ final class DictationController {
     /// The review cancelled most recently, while its Undo notice is up.
     @ObservationIgnored
     private var discardedReview: DiscardedReview?
+    /// Its Undo window, which hovering the notice pauses.
     @ObservationIgnored
-    private var discardUndoTask: Task<Void, Never>?
+    private var discardUndoCountdown: UndoCountdown?
 
     /// The recording cancelled most recently, while its Undo notice is up.
     @ObservationIgnored
     private var discardedRecording: DiscardedRecording?
     @ObservationIgnored
-    private var discardedRecordingTask: Task<Void, Never>?
+    private var discardedRecordingCountdown: UndoCountdown?
 
     /// Takes down the notice saying where a cancelled transcription went.
     @ObservationIgnored
@@ -477,10 +494,6 @@ final class DictationController {
         }
     }
 
-    private var reviewBeforePaste: Bool {
-        UserDefaults.standard.bool(forKey: "review.beforePaste")
-    }
-
     private init() {
         Task.detached(priority: .utility) {
             await VoiceActivityGate.shared.prewarm()
@@ -507,6 +520,10 @@ final class DictationController {
         registerCurrentBinding()
         HotkeyStore.shared.onChange = { [weak self] in
             Task { @MainActor in self?.registerCurrentBinding() }
+        }
+        registerSecondBinding()
+        HotkeyStore.shared.onSecondChange = { [weak self] in
+            Task { @MainActor in self?.registerSecondBinding() }
         }
         installHotkeyHealthObservers()
         installExternalAppTracking()
@@ -558,6 +575,16 @@ final class DictationController {
         let binding = HotkeyStore.shared.binding
         HotkeyManager.shared.register(binding: binding) { [weak self] event in
             Task { @MainActor in self?.handleHotkeyEvent(event) }
+        }
+    }
+
+    private func registerSecondBinding() {
+        guard let binding = HotkeyStore.shared.secondBinding else {
+            HotkeyManager.shared.unregisterSecondDictation()
+            return
+        }
+        HotkeyManager.shared.registerSecondDictation(binding: binding) { [weak self] event in
+            Task { @MainActor in self?.handleHotkeyEvent(event, modelSource: .secondShortcut) }
         }
     }
 
@@ -623,6 +650,12 @@ final class DictationController {
     }
 
     func handleHotkeyEvent(_ event: DictationHotkeyEvent) {
+        handleHotkeyEvent(event, modelSource: .dictationModel)
+    }
+
+    /// Either dictation shortcut, through the one policy: a press of either
+    /// finishes a take the other started. Only a start reads `modelSource`.
+    private func handleHotkeyEvent(_ event: DictationHotkeyEvent, modelSource: TakeModelSource) {
         AppLog.dictation.info("hotkey event \(String(describing: event)), current state=\(String(describing: self.state))")
         let mode = HotkeyStore.shared.mode
         let events = standaloneModifierEventCoordinator.normalize(
@@ -631,13 +664,14 @@ final class DictationController {
             state: hotkeyState
         )
         for normalizedEvent in events {
-            handleNormalizedHotkeyEvent(normalizedEvent, mode: mode)
+            handleNormalizedHotkeyEvent(normalizedEvent, mode: mode, modelSource: modelSource)
         }
     }
 
     private func handleNormalizedHotkeyEvent(
         _ event: DictationHotkeyEvent,
-        mode: RecordingShortcutMode
+        mode: RecordingShortcutMode,
+        modelSource: TakeModelSource
     ) {
         if event == .cancel, recordingStartGate.hasActiveStart {
             cancelPendingRecording()
@@ -659,7 +693,11 @@ final class DictationController {
             state: hotkeyState,
             event: event
         )
-        performHotkeyAction(action, pendingHoldStart: mode == .hold && action == .startRecording)
+        performHotkeyAction(
+            action,
+            pendingHoldStart: mode == .hold && action == .startRecording,
+            modelSource: modelSource
+        )
     }
 
     private var hotkeyState: DictationHotkeyState {
@@ -676,7 +714,8 @@ final class DictationController {
 
     private func performHotkeyAction(
         _ action: DictationHotkeyAction,
-        pendingHoldStart: Bool = false
+        pendingHoldStart: Bool = false,
+        modelSource: TakeModelSource = .dictationModel
     ) {
         switch action {
         case .startRecording:
@@ -698,7 +737,7 @@ final class DictationController {
                 return
             }
             let startID = recordingStartGate.beginStart(pendingHold: pendingHoldStart)
-            Task { await startRecording(startID: startID) }
+            Task { await startRecording(startID: startID, modelSource: modelSource) }
         case .stopAndTranscribe:
             Task { await stopAndTranscribe() }
         case .confirmPaste:
@@ -774,13 +813,12 @@ final class DictationController {
         pendingReviewBanner = nil
         pasteTarget = nil
         state = .idle
-        LiveHUDPanel.shared.showDiscarded(message: "Recording discarded") { [weak self] in
-            self?.undoDiscardedRecording()
-        }
-        discardedRecordingTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(RecordingHistoryStore.undoGraceSeconds))
-            guard !Task.isCancelled else { return }
+        let countdown = UndoCountdown(duration: RecordingHistoryStore.undoGraceSeconds) { [weak self] in
             self?.finalizeDiscardedRecording()
+        }
+        discardedRecordingCountdown = countdown
+        LiveHUDPanel.shared.showDiscarded(message: "Recording discarded", countdown: countdown) { [weak self] in
+            self?.undoDiscardedRecording()
         }
     }
 
@@ -793,8 +831,8 @@ final class DictationController {
               let discarded = discardedRecording,
               discarded.takeRunID == takeRunID else { return }
         AppLog.dictation.info("Discarded recording restored")
-        discardedRecordingTask?.cancel()
-        discardedRecordingTask = nil
+        discardedRecordingCountdown?.cancel()
+        discardedRecordingCountdown = nil
         discardedRecording = nil
         lastFailedSamples = nil
         retryModelOverride = nil
@@ -833,8 +871,8 @@ final class DictationController {
     /// from anything that takes the card (`retireNotices`). A no-op when
     /// nothing is held.
     private func finalizeDiscardedRecording() {
-        discardedRecordingTask?.cancel()
-        discardedRecordingTask = nil
+        discardedRecordingCountdown?.cancel()
+        discardedRecordingCountdown = nil
         guard discardedRecording != nil else { return }
         discardedRecording = nil
         LiveHUDPanel.shared.hideDiscardedNotice()
@@ -847,15 +885,20 @@ final class DictationController {
     /// which the Models pane shows too — so cancelling doesn't read as
     /// having thrown the half-fetched model away.
     private func showCancelledTranscriptionNotice(downloadContinues: Bool) {
-        retireNotices()
-        LiveHUDPanel.shared.showDiscarded(
-            message: downloadContinues
+        showTransientNotice(
+            downloadContinues
                 ? FailureCardCopy.cancelledWhileDownloadingNotice
                 : "Transcription cancelled — saved to History",
-            onUndo: nil
+            for: Self.cancelNoticeDuration
         )
+    }
+
+    /// A one-line notice with nothing on it to act on, gone by itself.
+    private func showTransientNotice(_ message: String, for duration: Duration) {
+        retireNotices()
+        LiveHUDPanel.shared.showDiscarded(message: message, onUndo: nil)
         cancelNoticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: Self.cancelNoticeDuration)
+            try? await Task.sleep(for: duration)
             guard !Task.isCancelled else { return }
             self?.dismissCancelNotice()
         }
@@ -980,13 +1023,12 @@ final class DictationController {
         // pending in History (History off, or only a failed take, which stays)
         // there is nothing to say about it.
         let message = discarded.historyIDs.isEmpty ? "Dictation discarded" : "Discarded — leaving History"
-        LiveHUDPanel.shared.showDiscarded(message: message) { [weak self] in
-            self?.undoDiscardedReview()
-        }
-        discardUndoTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: .seconds(RecordingHistoryStore.undoGraceSeconds))
-            guard !Task.isCancelled else { return }
+        let countdown = UndoCountdown(duration: RecordingHistoryStore.undoGraceSeconds) { [weak self] in
             self?.finalizeDiscardedReview()
+        }
+        discardUndoCountdown = countdown
+        LiveHUDPanel.shared.showDiscarded(message: message, countdown: countdown) { [weak self] in
+            self?.undoDiscardedReview()
         }
     }
 
@@ -996,8 +1038,8 @@ final class DictationController {
         guard state == .idle, !recordingStartGate.hasActiveStart,
               let discarded = discardedReview else { return }
         AppLog.dictation.info("Discarded review restored")
-        discardUndoTask?.cancel()
-        discardUndoTask = nil
+        discardUndoCountdown?.cancel()
+        discardUndoCountdown = nil
         discardedReview = nil
         pendingHistoryIDs = discarded.historyIDs
         pasteTarget = discarded.pasteTarget
@@ -1029,8 +1071,8 @@ final class DictationController {
     /// off screen — a new dictation, a failure card, quitting — because its
     /// Undo goes with it. A no-op when nothing is pending.
     private func finalizeDiscardedReview() {
-        discardUndoTask?.cancel()
-        discardUndoTask = nil
+        discardUndoCountdown?.cancel()
+        discardUndoCountdown = nil
         guard let discarded = discardedReview else { return }
         discardedReview = nil
         for id in discarded.historyIDs {
@@ -1290,6 +1332,18 @@ final class DictationController {
                 Task { @MainActor in self?.resumeRecording() }
                 return nil
             }
+            // ⇧⌘C copies the text and closes the card, matched like ⌘R. Shift
+            // is required, so a plain ⌘C still copies the editor's selection;
+            // scoped to the card, so ⇧⌘C in Settings is left alone.
+            if ReviewCopyShortcut.matches(
+                isCommandShiftOnly: event.modifierFlags
+                    .intersection([.command, .option, .control, .shift]) == [.command, .shift],
+                charactersIgnoringModifiers: event.charactersIgnoringModifiers,
+                commandLayerCharacters: event.characters(byApplyingModifiers: .command)
+            ), MainActor.assumeIsolated({ LiveHUDPanel.shared.isReviewPanelEvent(event) }) {
+                Task { @MainActor in self?.copyReview() }
+                return nil
+            }
             // ⌘1–⌘9 run the matching review action. Matched by physical key
             // (kVK_ANSI_*) so layouts with shifted digit rows (e.g. AZERTY)
             // work; checked synchronously against this session's snapshot so
@@ -1511,7 +1565,10 @@ final class DictationController {
 
     // MARK: - Start
 
-    private func startRecording(startID: RecordingStartGate.StartID) async {
+    private func startRecording(
+        startID: RecordingStartGate.StartID,
+        modelSource: TakeModelSource = .dictationModel
+    ) async {
         guard recordingStartGate.accepts(startID) else { return }
         // A new dictation takes the card, and any notice's Undo with it.
         retireNotices()
@@ -1545,7 +1602,25 @@ final class DictationController {
             return
         }
 
-        guard let descriptor = ModelRegistry.shared.activeModel else {
+        // A Resume carries on with the take's own model.
+        if resumeContext == nil {
+            takeModelOverride = nil
+            if modelSource == .secondShortcut {
+                // Never the dictation model in its place: a missing one is reported.
+                guard let model = HotkeyStore.shared.secondModelId.flatMap(ModelCatalog.model(for:)) else {
+                    AppLog.dictation.error("startRecording: the second shortcut's model is not in the catalog")
+                    recordingStartGate.finish(startID)
+                    enterFailureHUD(
+                        message: "The second shortcut's model is no longer available. Choose another in Settings.",
+                        action: .openSettings { WindowOpener.shared.showMain(section: .hotkey) }
+                    )
+                    return
+                }
+                takeModelOverride = RetryModelOverride(model: model, chosenOverModelID: ModelRegistry.shared.activeModel?.id)
+            }
+        }
+
+        guard let descriptor = takeModel else {
             AppLog.dictation.error("startRecording: no active model")
             recordingStartGate.finish(startID)
             enterFailureHUD(message: "No active model selected.")
@@ -1565,7 +1640,7 @@ final class DictationController {
             return
         }
 
-        AppLog.dictation.info("startRecording: active model=\(descriptor.id)")
+        AppLog.dictation.info("startRecording: model=\(descriptor.id)\(self.takeModelOverride != nil ? " (second shortcut)" : "")")
         guard recordingStartGate.accepts(startID) else { return }
         state = .preparing(modelDisplayName: descriptor.displayName)
         beginPreparingPhase(
@@ -1573,9 +1648,16 @@ final class DictationController {
             descriptor: descriptor,
             isResume: resumeContext != nil
         )
+        let cancelsBefore = ModelRegistry.shared.downloadCancelCount(id: descriptor.id)
         let preparedModel = await ModelRegistry.shared.prepareModel(id: descriptor.id)
         guard recordingStartGate.accepts(startID) else { return }
         guard let engine = preparedModel else {
+            // Cancelled in the Models pane: the same exit as the card's own
+            // Cancel, not a failure — even when a new Download followed.
+            if ModelRegistry.shared.downloadCancelCount(id: descriptor.id) != cancelsBefore {
+                cancelPendingRecording()
+                return
+            }
             AppLog.dictation.error("startRecording: prepareModel returned nil")
             recordingStartGate.finish(startID)
             enterFailureHUD(message: preparationErrorMessage(for: descriptor))
@@ -1938,7 +2020,7 @@ final class DictationController {
         // The run's own exit is fenced off by the bump above, so its hold on
         // the take — the samples, the row — is released here instead.
         let samples = inFlightTranscriptionSamples
-        let model = inFlightModel ?? ModelRegistry.shared.activeModel
+        let model = inFlightModel ?? takeModel
         inFlightTranscriptionSamples = nil
         inFlightModel = nil
         releaseTakeInFlight()
@@ -2069,7 +2151,11 @@ final class DictationController {
         retrySkipsSpeechGate: Bool
     ) {
         var reason: String?
-        if case .failed(let message) = ModelRegistry.shared.readiness(for: model.id) { reason = message }
+        if case .failed(let message) = ModelRegistry.shared.readiness(for: model.id) {
+            reason = message
+        } else if ModelRegistry.shared.preparationWasCancelled(id: model.id) {
+            reason = "The download was cancelled in Models"
+        }
         AppLog.dictation.error("Couldn't download \(model.id, privacy: .public) for the take: \(reason ?? "no reason given", privacy: .public)")
         let choose = DictationTakePolicy.CardAction.chooseModel
         failTake(
@@ -2183,7 +2269,7 @@ final class DictationController {
             // take's buttons chose for it.
             takeHistoryRow = nil
             retryModelOverride = nil
-            failTake(message: note, samples: samples, model: ModelRegistry.shared.activeModel)
+            failTake(message: note, samples: samples, model: takeModel)
 
         // A resumed take has no failure card: `enterFailureHUD` restores the
         // review it came from instead, so the loser of the race arrives to
@@ -2203,7 +2289,7 @@ final class DictationController {
             takeHistoryRow = nil
             let saved = holdFailedTakeInHistory(
                 samples: samples,
-                model: ModelRegistry.shared.activeModel,
+                model: takeModel,
                 status: .init(kind: .failed, message: note)
             )
             enterReview(
@@ -2385,9 +2471,18 @@ final class DictationController {
     /// model is still the one it was chosen over; otherwise nil, the
     /// dictation model. A Retry after the user picked another model in
     /// Settings runs that model, not the override — which may be the very
-    /// model whose own run just failed.
+    /// model whose own run just failed. The second shortcut's model, which a
+    /// take with no override runs on, gives way to it the same way.
     private func retryModel(choosing chosen: ModelDescriptor?) -> ModelDescriptor? {
         let activeModelID = ModelRegistry.shared.activeModel?.id
+        if let take = takeModelOverride,
+           !DictationTakePolicy.keepsRetryModelOverride(
+               chosenOverModelID: take.chosenOverModelID,
+               activeModelID: activeModelID
+           ) {
+            AppLog.dictation.info("Retry follows the dictation model the user picked since the second shortcut ran the take on \(take.model.id, privacy: .public)")
+            takeModelOverride = nil
+        }
         if let chosen {
             retryModelOverride = RetryModelOverride(model: chosen, chosenOverModelID: activeModelID)
         } else if let override = retryModelOverride,
@@ -2434,7 +2529,7 @@ final class DictationController {
         skipSpeechGate: Bool = false,
         model override: ModelDescriptor? = nil
     ) async {
-        guard let descriptor = override ?? ModelRegistry.shared.activeModel else {
+        guard let descriptor = override ?? takeModel else {
             // Still words the user spoke: kept like any failed take, with
             // Retry for once a model is chosen.
             failTake(
@@ -2637,11 +2732,15 @@ final class DictationController {
         // no moment at which they could notice it stops mid-sentence. The
         // setting means "don't slow me down", and it is answering the normal
         // case; this one is already abnormal.
+        let opensReview = ReviewPolicy.opensReview(
+            takeSeconds: Double(samples.count) / AudioConfig.targetSampleRate,
+            in: .standard
+        )
         if let resume = resumeContext {
             resumeContext = nil
             let spliced = resume.splicing(processed)
             enterReview(text: spliced.text, cursorLocation: spliced.caret, banner: takeReviewBanner())
-        } else if reviewBeforePaste || pendingReviewBanner != nil {
+        } else if opensReview || pendingReviewBanner != nil {
             enterReview(text: processed, banner: takeReviewBanner())
         } else {
             // No review step: the text is delivered and kept right away.
@@ -2789,6 +2888,7 @@ final class DictationController {
         // walks the model folders and the input sources. Offline, only a
         // model already here can help.
         var fallback: DictationTakePolicy.LocalFallback?
+        let offersDictationSwitch = takeModelOverride == nil
         let actions = DictationTakePolicy.failureCard(
             failure: failure,
             local: {
@@ -2798,7 +2898,8 @@ final class DictationController {
                 )
                 return fallback
             },
-            isRepeatRefusal: isRepeatRefusal
+            isRepeatRefusal: isRepeatRefusal,
+            offersDictationSwitch: offersDictationSwitch
         )
         let provider = model.backend.cloudProvider?.displayName
 
@@ -2821,7 +2922,7 @@ final class DictationController {
             localLanguages: localModel?.languages,
             capturedSeconds: Double(samples.count) / AudioConfig.targetSampleRate,
             savedToHistory: saved,
-            isRepeatRefusal: isRepeatRefusal,
+            isRepeatRefusal: isRepeatRefusal && offersDictationSwitch,
             engineMessage: engineMessage
         )
         let primary = cardAction(actions.primary, labelled: copy.primary, failedModel: model)
@@ -2953,7 +3054,8 @@ final class DictationController {
         action: FailureAction? = nil,
         detail: String? = nil,
         savedToHistory: Bool = false,
-        resumeBanner: ResumeFailureBanner? = nil
+        resumeBanner: ResumeFailureBanner? = nil,
+        onCopy: (@MainActor () -> Void)? = nil
     ) {
         // A start that failed before recording began still has its preparing
         // card up (and its Esc route armed); this hands both over.
@@ -3022,6 +3124,7 @@ final class DictationController {
             secondaryActionIcon: secondaryAction?.icon,
             onRetry: { resolvedAction?.run() },
             onSecondaryAction: secondaryAction?.run,
+            onCopy: onCopy,
             onCancel: { [weak self] in self?.dismissFailure() }
         )
         installFailureEscMonitor()
@@ -3171,6 +3274,7 @@ final class DictationController {
             onPaste: { [weak self] in self?.confirmPaste() },
             onCancel: { [weak self] in self?.cancelReview() },
             onResume: { [weak self] in self?.resumeRecording() },
+            onCopy: { [weak self] in self?.copyReview() },
             onRetry: bannerRetry,
             secondaryActionTitle: bannerAction?.title,
             secondaryActionIcon: bannerAction?.icon,
@@ -3470,6 +3574,39 @@ final class DictationController {
         }
     }
 
+    /// Copy on the review card: the edited text goes on the clipboard and
+    /// nowhere else, and the dictation ends as a paste would — its takes
+    /// stay in History, nothing is held for Undo.
+    private func copyReview() {
+        guard case .reviewing = state else { return }
+        cancelReviewAction()
+        lastFailedSamples = nil
+        retryModelOverride = nil
+        takeHistoryRow = nil
+        commitPendingHistory()
+        let edited = LiveHUDPanel.shared.currentReviewText
+        removeReviewEscMonitor()
+        pasteTarget = nil
+        state = .idle
+        guard !edited.isEmpty else {
+            LiveHUDPanel.shared.hide()
+            return
+        }
+        KeystrokeOutput.copyOnly(edited)
+        AppLog.dictation.info("Review copied to the clipboard (\(edited.count) chars)")
+        showTransientNotice("Copied to clipboard", for: Self.copiedNoticeDuration)
+    }
+
+    /// The failure card's Copy, for text the controller holds that never
+    /// reached the clipboard. The card stays: what it says still needs fixing.
+    private func copyFailedDelivery(_ text: String) {
+        guard case .error = state else { return }
+        KeystrokeOutput.copyOnly(text)
+        LiveHUDPanel.shared.failureTextCopied()
+    }
+
+    private static let copiedNoticeDuration: Duration = .seconds(2)
+
     private static func waitForModifiersClear() async -> PasteDeliveryReport.ModifierWait {
         let start = ContinuousClock.now
         let deadline = start.advanced(by: PasteTiming.maxModifierWait)
@@ -3578,9 +3715,12 @@ final class DictationController {
         guard AccessibilityPermission.isGranted else {
             AccessibilityPermission.promptForPermission()
             AppLog.dictation.warning("Missing Accessibility permission, could not type \(text.count) characters")
+            // The text never reached the clipboard, so the card offers it.
             enterFailureHUD(
                 message: PermissionCopy.accessibilityHUDMessage,
-                action: .openSettings { AccessibilityPermission.openSystemSettings() }
+                action: .openSettings { AccessibilityPermission.openSystemSettings() },
+                detail: "Copy the text to paste it yourself.",
+                onCopy: { [weak self] in self?.copyFailedDelivery(text) }
             )
             return
         }

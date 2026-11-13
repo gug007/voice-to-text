@@ -278,6 +278,15 @@ enum ModelGroup: String, Identifiable {
         model.backend.cloudProvider == provider
     }
 
+    /// `models` split by group in reading order — "On this Mac", then each
+    /// provider — keeping catalog order within a group and dropping empty ones.
+    static func sections(of models: [ModelDescriptor]) -> [(group: ModelGroup, models: [ModelDescriptor])] {
+        [ModelGroup.local, .openAI, .elevenLabs, .groq].compactMap { group in
+            let members = models.filter(group.contains)
+            return members.isEmpty ? nil : (group, members)
+        }
+    }
+
     static func group(for model: ModelDescriptor) -> ModelGroup {
         guard let provider = model.backend.cloudProvider else { return .local }
         switch provider {
@@ -363,7 +372,17 @@ private struct GroupHeaderRow: View {
                     StatusLabel(level: .ready, text: keyStatusText(provider, "Connected"))
                 }
             } else {
-                AddAPIKeyButton(provider: provider, onShowCloudSettings: onShowCloudSettings)
+                let need = ProviderKeyNeed.current(for: provider, registry: registry)
+                HStack(spacing: Space.s4) {
+                    if let reason = need.statusText {
+                        StatusLabel(level: .warning, text: reason)
+                    }
+                    AddAPIKeyButton(
+                        provider: provider,
+                        isNeeded: need.isNeeded,
+                        onShowCloudSettings: onShowCloudSettings
+                    )
+                }
             }
         } else if registry.totalDiskUsageBytes > 0 {
             // Moved here from the pane header: it is a fact about the local
@@ -463,10 +482,14 @@ private struct ActiveModelCard: View {
                             .typo(.caption)
                             .foregroundStyle(Palette.inkMuted)
                             .fixedSize(horizontal: false, vertical: true)
-                        Text(ModelFacts.facets(for: model, readiness: registry.readiness(for: model.id)))
-                            .typo(.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                        if !model.isCloud, let failure = registry.failureSentence(for: model.id) {
+                            DownloadFailureLine(sentence: failure, readiness: registry.readiness(for: model.id))
+                        } else {
+                            Text(ModelFacts.facets(for: model, readiness: registry.readiness(for: model.id)))
+                                .typo(.caption)
+                                .monospacedDigit()
+                                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                        }
                     }
 
                     Spacer(minLength: Space.s5)
@@ -493,7 +516,11 @@ private struct ActiveModelCard: View {
                     StatusLabel(level: .ready, text: "Connected")
                 }
             } else {
-                AddAPIKeyButton(provider: provider, onShowCloudSettings: onShowCloudSettings)
+                AddAPIKeyButton(
+                    provider: provider,
+                    isNeeded: ProviderKeyNeed.current(for: provider, registry: registry).isNeeded,
+                    onShowCloudSettings: onShowCloudSettings
+                )
             }
         } else {
             localReadiness(for: model)
@@ -515,7 +542,14 @@ private struct ActiveModelCard: View {
             }
 
         case .preparing(let fraction, let message):
-            PreparingIndicator(fraction: fraction, message: message)
+            PreparingIndicator(
+                fraction: fraction,
+                message: message,
+                modelName: model.sectionedDisplayName,
+                onCancel: registry.canCancelDownload(id: model.id)
+                    ? { registry.cancelDownload(id: model.id) }
+                    : nil
+            )
 
         case .installed:
             StatusLabel(level: .ready, text: "Installed")
@@ -556,6 +590,9 @@ private struct ModelRow: View {
         CloudCreditStatus.shared.isOutOfCredit(model.backend.cloudProvider)
     }
     private var name: String { model.sectionedDisplayName }
+    private var failureSentence: String? {
+        model.isCloud ? nil : registry.failureSentence(for: model.id)
+    }
 
     var body: some View {
         HStack(spacing: Space.s5) {
@@ -620,13 +657,17 @@ private struct ModelRow: View {
                         .lineLimit(1)
                     badges
                 }
-                Text(ModelFacts.facets(for: model, readiness: readiness, isOutOfCredit: isOutOfCredit))
-                    .typo(.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(ModelFacts.detailsText(for: model))
+                if let failureSentence {
+                    DownloadFailureLine(sentence: failureSentence, readiness: readiness)
+                } else {
+                    Text(ModelFacts.facets(for: model, readiness: readiness, isOutOfCredit: isOutOfCredit))
+                        .typo(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .help(ModelFacts.detailsText(for: model))
+                }
             }
             // Claim all free row width — otherwise the column settles at its
             // ideal size and the leftover becomes a blank gap while the title
@@ -729,7 +770,14 @@ private struct ModelRow: View {
             .controlSize(.small)
 
         case .preparing(let fraction, let message):
-            PreparingIndicator(fraction: fraction, message: message)
+            PreparingIndicator(
+                fraction: fraction,
+                message: message,
+                modelName: name,
+                onCancel: registry.canCancelDownload(id: model.id)
+                    ? { registry.cancelDownload(id: model.id) }
+                    : nil
+            )
 
         case .installed:
             StatusLabel(level: .ready, text: "Installed")
@@ -765,7 +813,9 @@ private struct ModelRow: View {
             case .installed:
                 Button("Delete from Mac…", role: .destructive) { isConfirmingDelete = true }
             case .preparing:
-                EmptyView()
+                if registry.canCancelDownload(id: model.id) {
+                    Button("Cancel Download") { registry.cancelDownload(id: model.id) }
+                }
             }
         }
     }
@@ -773,9 +823,12 @@ private struct ModelRow: View {
     /// The facets a sighted reader gets from the meta line, plus the readiness
     /// word they get from the trailing control — which VoiceOver would otherwise
     /// reach only after the row itself. "Out of credit" rides on the readiness
-    /// word rather than the facets, so it is read once.
+    /// word rather than the facets, so it is read once. A failed download
+    /// reads its reason in full, as the tooltip does.
     private var accessibilityValue: String {
-        ModelFacts.facets(for: model, readiness: readiness) + ", " + readinessWord
+        let value = ModelFacts.facets(for: model, readiness: readiness) + ", " + readinessWord
+        guard let failureSentence, case .failed(let message) = readiness else { return value }
+        return value + ". " + failureSentence + " " + message
     }
 
     private var readinessWord: String {
@@ -795,41 +848,81 @@ private struct ModelRow: View {
 // MARK: - Shared readiness pieces
 
 /// The compact download indicator: a 120pt bar, the stage message, and the
-/// percentage in the machine register so it doesn't jitter as it counts.
+/// percentage in the machine register so it doesn't jitter as it counts —
+/// with a stop button beside it while the preparation is a download that
+/// can be cancelled.
 private struct PreparingIndicator: View {
     let fraction: Double
     let message: String
+    let modelName: String
+    let onCancel: (() -> Void)?
     @Environment(\.increaseContrast) private var increaseContrast
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: Space.s2) {
-            ProgressView(value: fraction)
-                .progressViewStyle(.linear)
-                .frame(width: 120)
-            HStack(spacing: Space.s3) {
-                Text(message)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkMuted)
-                    .lineLimit(1)
-                Text("\(Int(fraction * 100))%")
-                    .typo(.mono)
-                    .contentTransition(.numericText())
-                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+        HStack(spacing: Space.s3) {
+            VStack(alignment: .trailing, spacing: Space.s2) {
+                ProgressView(value: fraction)
+                    .progressViewStyle(.linear)
+                    .frame(width: 120)
+                HStack(spacing: Space.s3) {
+                    Text(message)
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                        .lineLimit(1)
+                    Text("\(Int(fraction * 100))%")
+                        .typo(.mono)
+                        .contentTransition(.numericText())
+                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                }
+            }
+            .accessibilityElement(children: .combine)
+
+            if let onCancel {
+                Button(action: onCancel) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(Typo.headline)
+                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Cancel download of \(modelName)")
+                .help("Cancel download")
             }
         }
-        .accessibilityElement(children: .combine)
     }
 }
 
-/// The warn-tinted "Add API key →" affordance and the popover behind it. Owns
-/// its own presentation state so the hero card and a group header can each
-/// carry one without sharing a flag.
+/// A failed row's meta line: the reason in plain words, in the warning tint,
+/// with the full error in the tooltip.
+private struct DownloadFailureLine: View {
+    let sentence: String
+    let readiness: ModelReadiness
+
+    var body: some View {
+        Text(sentence)
+            .typo(.caption)
+            .foregroundStyle(Palette.signalWarn)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .help(fullText)
+    }
+
+    private var fullText: String {
+        guard case .failed(let message) = readiness, message != sentence else { return sentence }
+        return "\(sentence)\n\(message)"
+    }
+}
+
+/// The "Add API key →" affordance and the popover behind it. Owns its own
+/// presentation state so the hero card and a group header can each carry one
+/// without sharing a flag. Warn-tinted only while something the user chose
+/// needs the key (`ProviderKeyNeed`); otherwise it is an offer, in ink.
 ///
 /// It never calls `setActive`: both of its call sites are about a provider, not
 /// a model — the hero's model is already active, and a header speaks for every
 /// row under it.
 private struct AddAPIKeyButton: View {
     let provider: CloudProvider
+    let isNeeded: Bool
     let onShowCloudSettings: () -> Void
     @State private var isShowingKeyEntry = false
 
@@ -843,12 +936,12 @@ private struct AddAPIKeyButton: View {
                     .font(Typo.micro)
             }
             .typo(.captionMedium)
-            .foregroundStyle(Palette.signalWarn)
+            .foregroundStyle(isNeeded ? Palette.signalWarn : Palette.inkMuted)
             .padding(.horizontal, Space.s4)
             .padding(.vertical, Space.s2)
             .background(
                 RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .fill(Palette.signalWarn.opacity(0.12))
+                    .fill(isNeeded ? Palette.signalWarn.opacity(0.12) : Palette.wellFill)
             )
         }
         .buttonStyle(.plain)
@@ -1008,7 +1101,7 @@ private enum ModelFacts {
     }
 
     static func approximateSize(_ model: ModelDescriptor) -> String {
-        "~\((Int64(model.approxSizeMB) * 1_000_000).formattedDiskSize)"
+        "~\(model.approxSizeBytes.formattedDiskSize)"
     }
 
     /// One line per measurement. Each names its own benchmark and prints Whisper

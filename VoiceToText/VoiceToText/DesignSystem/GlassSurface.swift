@@ -84,6 +84,16 @@ extension View {
             opaqueFill: opaqueFill
         )
     }
+
+    /// Spec L3, `0 16px 48px rgba(0,0,0,0.30)`, pulled in under Reduce
+    /// Transparency: the HUD card, the undo toast and the History selection bar.
+    func floatingShadow(reduceTransparency: Bool) -> some View {
+        shadow(
+            color: .black.opacity(reduceTransparency ? 0.24 : 0.30),
+            radius: reduceTransparency ? 9 : 24,
+            y: reduceTransparency ? 6 : 16
+        )
+    }
 }
 
 // MARK: - Controls on glass

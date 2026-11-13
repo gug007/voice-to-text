@@ -2,9 +2,9 @@ import { granolaAlternativeConfig } from "@/components/seo/new-alternatives-page
 import { landingMetadata, SeoLandingPage } from "@/components/seo/seo-landing";
 
 export const metadata = landingMetadata(granolaAlternativeConfig, {
-  title: "Free Granola alternative for Mac (2026): local transcripts",
+  title: "Granola alternative for Mac: free, on-device transcripts",
   description:
-    "Bot-free meeting capture, on-device transcripts, and optional AI summaries with your own key. Granola's wins included.",
+    "No bot, no account: VoiceToText transcribes calls on your Mac for free. Who should stay with Granola, who should switch, and what stays on the Mac.",
 });
 
 export default function GranolaAlternativePage() {

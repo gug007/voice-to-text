@@ -2,9 +2,8 @@ import { whisperVsParakeetConfig } from "@/components/seo/model-and-apple-page-d
 import { landingMetadata, SeoLandingPage } from "@/components/seo/seo-landing";
 
 export const metadata = landingMetadata(whisperVsParakeetConfig, {
-  title: "Parakeet vs Whisper on Mac: which local model?",
-  description:
-    "Parakeet TDT v3 vs Whisper Large v3 and four more local models: two public WER benchmarks, 25 vs 99 languages, download sizes, and a fair test.",
+  title: whisperVsParakeetConfig.title,
+  description: whisperVsParakeetConfig.description,
 });
 
 export default function WhisperVsParakeetMacPage() {

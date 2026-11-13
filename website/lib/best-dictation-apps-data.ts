@@ -1,3 +1,5 @@
+import { CLOUD_PROVIDERS_OR } from "./app-facts";
+
 export type ProductId =
   | "voicetotext"
   | "apple-dictation"
@@ -51,11 +53,11 @@ export const products: Product[] = [
     correction:
       "Not yet timed. Edit the complete transcript before paste, add a take at the caret with ⌘R, or turn review off for instant paste. Opt-in AI actions (⌘1–⌘9) run on your OpenAI key.",
     privacy:
-      "Parakeet and Whisper run on-device. An OpenAI or ElevenLabs model sends audio to that provider with your key; AI actions and summaries send transcript text to OpenAI.",
+      `Parakeet and Whisper run on-device. An ${CLOUD_PROVIDERS_OR} model sends audio to that provider with your key; AI actions and summaries send transcript text to OpenAI.`,
     languages:
       "Model-dependent: Parakeet (local, default) covers 25 European languages; local Whisper covers 99; all detect the language automatically, as do optional cloud models (90–99+).",
     price:
-      "Free, no paid tier. Your own OpenAI or ElevenLabs key is billed for cloud transcription, AI actions and AI summaries.",
+      `Free, no paid tier. Your own ${CLOUD_PROVIDERS_OR} key is billed for cloud transcription, and your OpenAI key for AI actions and AI summaries.`,
     sourceHref: "https://github.com/gug007/voice-to-text",
     reviewed: "2026-09-23",
   },
@@ -101,7 +103,7 @@ export const products: Product[] = [
     privacy:
       "Cloud transcription. “Improve the model for everyone” controls training; “Dictation Cloud Storage” separately controls server storage. Zero-retention dictation needs both off; Notetaker and AI summaries rely on cloud storage.",
     languages: "100+ for dictation; Notetaker transcribes 21 languages.",
-    price: "Free plan (2,000 words a week on desktop); Pro $15/user/month or $12 billed annually; Growth and Enterprise for teams.",
+    price: "Free plan (2,000 words a week); Pro $15/user/month or $12 billed annually; Growth and Enterprise for teams.",
     sourceHref: "https://wisprflow.ai/features",
     reviewed: "2026-09-23",
     comparePath: "/wispr-flow-alternative",

@@ -41,6 +41,8 @@ const COLUMNS: FooterColumn[] = [
     title: "Learn",
     links: [
       { kind: "route", href: GUIDE_PATH, label: "Mac voice-to-text setup" },
+      { kind: "route", href: "/record-meetings-without-a-bot-mac", label: "Record meetings without a bot" },
+      { kind: "route", href: "/free-meeting-recorder-mac", label: "Free meeting recorder" },
       { kind: "route", href: "/offline-speech-to-text-mac", label: "Offline speech to text" },
       { kind: "route", href: "/voice-to-text-for-coding", label: "Voice to text for coding" },
       { kind: "route", href: "/apple-dictation-alternative", label: "Apple Dictation alternative" },

@@ -7,6 +7,8 @@
 //   VoiceToText/Actions/DictationAction.swift   built-in AI actions
 //   VoiceToText/Engine/WhisperKitEngine.swift   Whisper model loading (offline once installed)
 //   VoiceToText/Engine/OpenAIRealtimeEngine.swift, ElevenLabsRealtimeEngine.swift  live text
+//   VoiceToText/Engine/CloudProvider.swift      the cloud providers, in the app's order
+//   VoiceToText/Settings/MicrophoneCard.swift   the microphone picker (Settings → General)
 //   VoiceToText/UI/HUDLayout.swift, Settings/HUDSizeCard.swift  HUD sizes and where live text shows
 // Two claims live outside this repo's copy and must be re-read with it: the
 // macOS microphone prompt (INFOPLIST_KEY_NSMicrophoneUsageDescription in
@@ -14,7 +16,9 @@
 // audio stays on the Mac — cloud models send it to their provider.
 // When the app's catalog changes, update this file and bump CATALOG_SNAPSHOT.
 
-export const CATALOG_SNAPSHOT = "September 2026 · VoiceToText v0.0.57";
+/** The release whose source the facts below were checked against. */
+export const APP_VERSION = "v0.3.8";
+export const CATALOG_SNAPSHOT = `November 2026 · VoiceToText ${APP_VERSION}`;
 
 export const APP_REQUIREMENTS = {
   minMacOS: "15.0",
@@ -25,7 +29,10 @@ export const APP_REQUIREMENTS = {
   short: "macOS 15.0+ · Apple Silicon or Intel",
 } as const;
 
-export type ModelProvider = "On this Mac" | "OpenAI" | "ElevenLabs";
+/** The cloud providers in CloudProvider.swift's order. Each bills the user's own API key. */
+export const CLOUD_PROVIDERS = ["OpenAI", "ElevenLabs", "Groq"] as const;
+export type CloudProviderName = (typeof CLOUD_PROVIDERS)[number];
+export type ModelProvider = "On this Mac" | CloudProviderName;
 export type WerBenchmark = "Artificial Analysis AA-WER" | "Open ASR Leaderboard";
 export type ModelChip = "Recommended" | "Most accurate" | "Fastest";
 export type LiveTextCadence = "word by word" | "phrase by phrase";
@@ -80,6 +87,8 @@ export type ModelFact = {
   languagesInApp: string;
   /** Provider list price per hour of audio, billed to the user's own key. 0 for local models. */
   pricePerHourUSD: number;
+  /** A billing caveat the price alone hides (Groq bills at least 10 s per request). */
+  priceNote?: string;
   /** The 1–10 Quality score the Models pane prints. */
   quality: number;
   /** The pane prefixes the score with "≈": it rests on indirect evidence. */
@@ -96,7 +105,7 @@ export type ModelFact = {
 const AA = "Artificial Analysis AA-WER" as const;
 const OPEN_ASR = "Open ASR Leaderboard" as const;
 
-/** All 15 models in the app's catalog order: 6 local, then 9 cloud. */
+/** Every model in the app's catalog order: the local ones, then the cloud ones. Count with MODEL_CATALOG.length. */
 export const MODEL_CATALOG: readonly ModelFact[] = [
   {
     id: "parakeet-tdt-v3",
@@ -145,7 +154,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
       { benchmark: OPEN_ASR, percent: 7.75, estimate: false },
       { benchmark: AA, percent: 4.6, estimate: false, note: "Best-host figure (Groq)." },
     ],
-    approxDownloadMB: 632,
+    approxDownloadMB: 1638,
     bestFor: "Whisper on your Mac in 99 languages, quicker than Large v3.",
   },
   {
@@ -167,7 +176,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
       { benchmark: OPEN_ASR, percent: 7.44, estimate: false },
       { benchmark: AA, percent: 4.1, estimate: false, note: "Best-host figure (fal.ai)." },
     ],
-    approxDownloadMB: 626,
+    approxDownloadMB: 1620,
     chip: "Most accurate",
     bestFor: "The most accurate model that stays on your Mac, if you can wait a little longer.",
   },
@@ -187,7 +196,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     quality: 7.4,
     qualityApprox: true,
     wer: [{ benchmark: OPEN_ASR, percent: 8.59, estimate: false }],
-    approxDownloadMB: 244,
+    approxDownloadMB: 486,
     bestFor: "Whisper on a Mac short on disk space, with more mistakes.",
   },
   {
@@ -206,7 +215,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     quality: 6.6,
     qualityApprox: true,
     wer: [{ benchmark: OPEN_ASR, percent: 10.32, estimate: false }],
-    approxDownloadMB: 77,
+    approxDownloadMB: 147,
     bestFor: "Slow Macs where a small download matters more than accuracy.",
   },
   {
@@ -225,7 +234,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     quality: 5.6,
     qualityApprox: true,
     wer: [{ benchmark: OPEN_ASR, percent: 12.81, estimate: false }],
-    approxDownloadMB: 39,
+    approxDownloadMB: 77,
     bestFor: "Testing your setup. Too many mistakes for daily use.",
   },
   {
@@ -396,7 +405,7 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     quality: 7.6,
     qualityApprox: false,
     wer: [{ benchmark: AA, percent: 4.5, estimate: false }],
-    bestFor: "The lowest-cost cloud option, nearly as accurate as GPT-4o Transcribe.",
+    bestFor: "The cheapest OpenAI model, nearly as accurate as GPT-4o Transcribe.",
   },
   {
     id: "openai-whisper-1",
@@ -423,13 +432,67 @@ export const MODEL_CATALOG: readonly ModelFact[] = [
     ],
     bestFor: "OpenAI's older hosted Whisper; newer OpenAI models score as well or better for the same price or less.",
   },
+  {
+    id: "groq-whisper-large-v3-turbo",
+    name: "Whisper Large v3 Turbo",
+    provider: "Groq",
+    isLocal: false,
+    isDefault: false,
+    live: false,
+    showsLiveText: false,
+    worksOffline: false,
+    conversations: true,
+    diarize: false,
+    languagesInApp: "99 languages",
+    pricePerHourUSD: 0.04,
+    priceNote: "Groq bills each request as at least 10 seconds of audio.",
+    quality: 7.5,
+    qualityApprox: false,
+    wer: [
+      { benchmark: OPEN_ASR, percent: 7.75, estimate: false },
+      {
+        benchmark: AA,
+        percent: 4.6,
+        estimate: false,
+        note: "Measured on Groq — Artificial Analysis's best host for this model.",
+      },
+    ],
+    bestFor: "The cheapest cloud option: Whisper Large v3 Turbo on Groq's servers, fast and in 99 languages, and a quick choice on an Intel Mac.",
+  },
+  {
+    id: "groq-whisper-large-v3",
+    name: "Whisper Large v3",
+    provider: "Groq",
+    isLocal: false,
+    isDefault: false,
+    live: false,
+    showsLiveText: false,
+    worksOffline: false,
+    conversations: true,
+    diarize: false,
+    languagesInApp: "99 languages",
+    pricePerHourUSD: 0.111,
+    priceNote: "Groq bills each request as at least 10 seconds of audio.",
+    quality: 8.0,
+    qualityApprox: true,
+    wer: [
+      { benchmark: OPEN_ASR, percent: 7.44, estimate: false },
+      {
+        benchmark: AA,
+        percent: 4.1,
+        estimate: true,
+        note: "Artificial Analysis's best-host figure for these weights (fal.ai); Groq serves the same model.",
+      },
+    ],
+    bestFor: "Full Whisper Large v3 on Groq, a little more accurate than Turbo, without the large download or the wait on a slower Mac.",
+  },
 ];
 
 export const QUALITY_SCORE_SOURCES =
   "Quality scores (1–10) are the ones the app's Models pane shows. They are derived from third-party published word error rates — Artificial Analysis AA-WER first, the Hugging Face Open ASR Leaderboard where Artificial Analysis has no figure — on a log scale anchored so Whisper Large v3 scores 8.0. \"≈\" marks a score built from indirect evidence. VoiceToText does not run its own accuracy tests.";
 
 export const DOWNLOAD_SIZE_NOTE =
-  "Download sizes are the app's catalog estimates; the space a model takes on disk can be larger (Whisper Large v3 is about 1.6 GB once installed).";
+  "Download sizes are the app's catalog estimates on an Apple Silicon Mac; the space a model takes once installed can differ, and Intel Macs download different builds of the same models.";
 
 /**
  * The offline note, worded once for every page that needs it in full.
@@ -510,6 +573,31 @@ export const liveOnStopModelNames = (): string[] =>
   MODEL_CATALOG.filter((m) => m.live && !m.showsLiveText).map((m) => m.name);
 export const defaultModel = (): ModelFact => MODEL_CATALOG.find((m) => m.isDefault) ?? MODEL_CATALOG[0];
 export const modelById = (id: string): ModelFact | undefined => MODEL_CATALOG.find((m) => m.id === id);
+/** "A, B or C". */
+export function joinNamesOr(names: readonly string[]): string {
+  return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;
+}
+/** "OpenAI, ElevenLabs or Groq": where a cloud model may send audio. */
+export const CLOUD_PROVIDERS_OR = joinNamesOr(CLOUD_PROVIDERS);
+/** "OpenAI, ElevenLabs and Groq". */
+export const CLOUD_PROVIDERS_AND = joinNames(CLOUD_PROVIDERS);
+export const cloudModelsBy = (provider: CloudProviderName): ModelFact[] =>
+  MODEL_CATALOG.filter((m) => m.provider === provider);
+const byPrice = (a: ModelFact, b: ModelFact) => a.pricePerHourUSD - b.pricePerHourUSD;
+/** The cloud model with the lowest list price per hour. */
+export const cheapestCloudModel = (): ModelFact => [...cloudModels()].sort(byPrice)[0];
+/** The cloud model with the highest list price per hour. */
+export const priciestCloudModel = (): ModelFact => [...cloudModels()].sort(byPrice).at(-1)!;
+
+/**
+ * The microphone picker, Settings → General → Microphone (Settings/MicrophoneCard.swift,
+ * shipped in v0.3.4). "System default" follows macOS; a chosen microphone is used for
+ * dictation and conversations from the next recording. An unplugged chosen microphone
+ * stays selected, and recording falls back to the system default until it is back
+ * (Audio/InputDeviceCatalog.swift).
+ */
+export const MICROPHONE_SETTING =
+  "Settings → General → Microphone picks the input for dictation and conversations: the macOS system default, or a specific microphone. A change applies from the next recording. If the chosen microphone is unplugged, it stays selected and the app records from the system default until it is back.";
 
 /** "Free" for local models, otherwise "$0.27/hr" as the Models pane prints it. */
 export function formatPrice(model: Pick<ModelFact, "pricePerHourUSD">): string {
@@ -521,7 +609,9 @@ export function formatQuality(model: Pick<ModelFact, "quality" | "qualityApprox"
   return `${model.qualityApprox ? "≈" : ""}${model.quality.toFixed(1)}`;
 }
 
-/** "470 MB" style catalog estimate, or undefined for cloud models. */
+/** "~470 MB" or "~1.64 GB", the catalog estimate as the Models pane prints it; undefined for cloud models. */
 export function formatDownloadSize(model: Pick<ModelFact, "approxDownloadMB">): string | undefined {
-  return model.approxDownloadMB === undefined ? undefined : `~${model.approxDownloadMB} MB`;
+  const mb = model.approxDownloadMB;
+  if (mb === undefined) return undefined;
+  return mb >= 1000 ? `~${(mb / 1000).toFixed(2)} GB` : `~${mb} MB`;
 }

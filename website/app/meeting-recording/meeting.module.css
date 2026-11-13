@@ -18,12 +18,30 @@
   position: relative;
   z-index: 10;
   width: min(100%, 760px);
-  margin-top: var(--space-12);
+  margin-top: var(--space-10);
   text-align: left;
 }
 @media (max-width: 640px) {
-  .heroStage { margin-top: var(--space-10); }
+  .heroStage { margin-top: var(--space-8); }
 }
+
+/* ---------- The short answer: the scope plate, holding prose ---------- */
+.answerSection:global(.section) { padding-block: clamp(48px, 6vw, 80px); }
+.answer { margin-top: 0; align-items: start; }
+.answerBody h2 {
+  margin-bottom: var(--space-3);
+  font-size: var(--fs-h3);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-heading);
+}
+.answerBody p {
+  font-size: 16px;
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  max-width: 46em;
+}
+.answerBody p + p { margin-top: var(--space-3); }
+.answerBody .answerLinks { font-size: 15px; }
 
 /* ---------- How it captures: the example transcript ---------- */
 .transcriptBody {

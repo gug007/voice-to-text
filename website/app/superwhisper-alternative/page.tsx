@@ -2,9 +2,9 @@ import { superwhisperAlternativeConfig } from "@/components/seo/vendor-compariso
 import { landingMetadata, SeoLandingPage } from "@/components/seo/seo-landing";
 
 export const metadata = landingMetadata(superwhisperAlternativeConfig, {
-  title: "Free Superwhisper alternative for Mac (2026), local-first",
+  title: "Superwhisper alternative for Mac: free, local, no account",
   description:
-    "Compare local models, platforms, formatting, meetings, source access, and the tradeoffs that matter.",
+    "Free local dictation, review before paste and meeting recording, vs Superwhisper's platforms and Super Mode. Who should switch, plus other alternatives.",
 });
 
 export default function SuperwhisperAlternativePage() {

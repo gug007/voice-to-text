@@ -90,6 +90,18 @@ const GROUPS: ComparisonGroup[] = [
         verdict:
           "MacWhisper is the deeper file tool, with exports, batch runs and an editor. VoiceToText is free and built around dictation and meetings.",
       },
+      {
+        path: "/record-meetings-without-a-bot-mac",
+        title: "Meeting bots vs. recording on your Mac",
+        verdict:
+          "A bot can attend a meeting without you and name speakers from the call. On-Mac capture adds nobody to Zoom, Meet or Teams, and transcribes on your Mac.",
+      },
+      {
+        path: "/free-meeting-recorder-mac",
+        title: "Free meeting recorder for Mac",
+        verdict:
+          "What VoiceToText gives you free (recording, local transcripts, search) and what bills your own key, set against the usual minute caps and seats.",
+      },
     ],
   },
   {

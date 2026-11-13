@@ -2511,7 +2511,7 @@ span.brand__mark {
 .cloud__head p { font-size: 14.5px; }
 .cloud__lede { font-size: 14.5px; line-height: 1.6; color: var(--text-muted); max-width: 52em; }
 .cloud__lede .badge { font-size: 10px; padding: 2px 6px; vertical-align: 1px; }
-/* nine cloud models: three full rows of three, one column on phones */
+/* cloud models: three per row, one column on phones */
 .cloud__grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .cm {
   display: grid;

@@ -14,7 +14,7 @@ import { FeatureCard } from "@/components/ui/feature-card";
 import { Icon, type IconName } from "@/components/ui/icon";
 import { TrafficLights } from "@/components/ui/traffic-lights";
 import { WaveBars } from "@/components/ui/wave-bars";
-import { AI_TEXT_MODEL, APP_REQUIREMENTS, MODEL_CATALOG } from "@/lib/app-facts";
+import { AI_TEXT_MODEL, APP_REQUIREMENTS } from "@/lib/app-facts";
 import { AUTHOR_URL, RELEASES_URL } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/pages";
 import {
@@ -28,13 +28,14 @@ import {
   meetingFaqPageJsonLd,
   meetingPageJsonLd,
   personJsonLd,
+  REGENERATE_MODEL_COUNT,
 } from "@/lib/seo";
 
 import styles from "./meeting.module.css";
 
-const TITLE = "Free Meeting Recorder for Mac — System Audio & Transcript";
+const TITLE = "Record & Transcribe Meetings on Mac — Free, No Bot";
 const DESCRIPTION =
-  "Record Zoom, Meet, Teams, and FaceTime on Mac: mic + system audio, no bot. Transcribe on-device by default; optional AI summaries and action items.";
+  "Free meeting recorder for Mac: record Zoom, Google Meet and Teams calls with no bot joining. Mic + system audio, on-device transcripts, no account.";
 
 export const metadata: Metadata = {
   title: TITLE,
@@ -59,8 +60,6 @@ export const metadata: Metadata = {
   },
 };
 
-const MODEL_COUNT = MODEL_CATALOG.length;
-
 const RECORD_FROM = [
   "Zoom",
   "Google Meet",
@@ -79,7 +78,7 @@ const TRANSCRIPT = [
   { who: "Leo", said: "None. I’ll send the notes right after this call." },
 ] as const;
 
-const HERO_META = ["Signed & notarized", "Mic + system audio", "No bot in the call"];
+const HERO_META = ["Free · no account", "No bot in the call", "Signed & notarized"];
 
 type Step = {
   index: string;
@@ -123,10 +122,10 @@ const STEPS: Step[] = [
           way. It’s Small by default; make it Medium or Large, or turn it Off, in Settings → Conversations.
         </p>
         <p>
-          The first time, macOS asks for Screen Recording; Microphone was already granted when you first
-          opened the app. Enable VoiceToText in System Settings → Privacy &amp; Security → Screen Recording,
-          then start the recording again. Screen Recording is how an app gets system audio; VoiceToText
-          records only the audio, never the screen.
+          The first time, macOS asks for permission to record screen and system audio; Microphone was already
+          granted when you first opened the app. Turn VoiceToText on in System Settings → Privacy &amp;
+          Security → Screen &amp; System Audio Recording, then start the recording again. That permission is
+          how an app gets system audio; VoiceToText records only the audio, never the screen.
         </p>
       </>
     ),
@@ -180,7 +179,7 @@ const CAPABILITIES: Capability[] = [
   {
     icon: "sparkle",
     title: "Regenerate and compare",
-    body: `Re-run any recording with any of the ${MODEL_COUNT} models and keep both transcripts side by side, so you can pick the better one and remove the other.`,
+    body: `Re-run any recording with any of the ${REGENERATE_MODEL_COUNT} models that transcribe recordings and keep both transcripts side by side, so you can pick the better one and remove the other.`,
   },
   {
     icon: "box",
@@ -356,13 +355,13 @@ export default function MeetingRecordingPage() {
               Meeting recording · macOS
             </p>
             <h1 id="mr-hero-title" className="hero__title">
-              Record &amp; transcribe meetings{" "}
+              Meeting recorder for Mac.{" "}
               <br />
-              <span className="hero__title-accent">on your Mac. Free.</span>
+              <span className="hero__title-accent">Free. No bot in the call.</span>
             </h1>
             <p className="hero__lead">
-              Capture your mic and the call’s system audio together, with no bot joining the meeting. Transcribe
-              on your Mac by default, then get a summary and action items when you want them.
+              Your mic and the call’s audio, recorded together on your Mac with nothing joining the meeting, and
+              transcribed on-device by default.
             </p>
             <div className="hero__ctas">
               <DownloadButton placement="meeting_hero" />
@@ -382,6 +381,45 @@ export default function MeetingRecordingPage() {
             </p>
             <div className={styles.heroStage}>
               <ConversationMockup />
+            </div>
+          </div>
+        </section>
+
+        {/* Plain sentences an answer engine can quote whole. */}
+        <section
+          className={`section section--band ${styles.answerSection}`}
+          id="short-answer"
+          aria-labelledby="mr-answer-title"
+        >
+          <div className="container">
+            <div className={`${styles.scope} ${styles.answer}`}>
+              <span className={styles.scopeIcon} aria-hidden="true">
+                <Icon name="mic" size="lg" />
+              </span>
+              <div className={styles.answerBody}>
+                <h2 id="mr-answer-title">The short answer</h2>
+                <p>
+                  VoiceToText is a free Mac app that records meetings and transcribes them on your Mac. It
+                  captures your microphone and the Mac’s system audio together, so both sides of the call are
+                  recorded, and no bot joins the meeting. It works with Zoom, Google Meet, Microsoft Teams,
+                  FaceTime, Webex, Discord and any other app that plays sound, whether you are the host or a
+                  participant.
+                </p>
+                <p>
+                  It is free, with no account, no subscription and no limit on minutes. Transcription runs
+                  on-device by default with the Parakeet model, so the audio stays on your Mac. Cloud models,
+                  speaker labels and AI summaries are optional, and the provider bills them to your own API key.
+                </p>
+                <p className={styles.answerLinks}>
+                  <Link className="link" href="/record-meetings-without-a-bot-mac">
+                    Recording Zoom, Meet and Teams without a bot
+                  </Link>
+                  <span aria-hidden="true"> · </span>
+                  <Link className="link" href="/free-meeting-recorder-mac">
+                    What’s free and what can cost money
+                  </Link>
+                </p>
+              </div>
             </div>
           </div>
         </section>
@@ -411,6 +449,13 @@ export default function MeetingRecordingPage() {
                     <li key={name} className="ai__app">{name}</li>
                   ))}
                 </ul>
+                <p className={styles.inlineLink}>
+                  Using one app in particular?{" "}
+                  <Link className="link" href="/record-meetings-without-a-bot-mac">
+                    How bot-free recording works in Zoom, Google Meet and Teams
+                  </Link>
+                  .
+                </p>
               </div>
               <figure className="ai__transcript" aria-label="Example meeting transcript recorded on a Mac">
                 <div className="ai__transcript-chrome" aria-hidden="true">
@@ -614,9 +659,25 @@ export default function MeetingRecordingPage() {
           <div className="container">
             <p className="section__eyebrow">Compare and keep going</p>
             <h2 id="meeting-related-title" className="section__title">
-              See the alternatives, or use the same app beyond meetings.
+              Go deeper on meetings, or use the same app beyond them.
             </h2>
             <div className="guide__choices">
+              <article className="guide__choice">
+                <h3>
+                  <Link className="link" href="/record-meetings-without-a-bot-mac">
+                    Record Zoom, Meet &amp; Teams without a bot
+                  </Link>
+                </h3>
+                <p>How on-Mac capture works in each call app, compared with a bot that joins the meeting.</p>
+              </article>
+              <article className="guide__choice">
+                <h3>
+                  <Link className="link" href="/free-meeting-recorder-mac">
+                    What’s free, and what costs money
+                  </Link>
+                </h3>
+                <p>No account, trial or minute cap, and the per-hour list prices of the optional cloud extras.</p>
+              </article>
               <article className="guide__choice">
                 <h3>
                   <Link className="link" href="/granola-alternative">
@@ -624,14 +685,6 @@ export default function MeetingRecordingPage() {
                   </Link>
                 </h3>
                 <p>Bot-free AI meeting notes: local transcription and your own key, compared with Granola.</p>
-              </article>
-              <article className="guide__choice">
-                <h3>
-                  <Link className="link" href="/wispr-flow-alternative">
-                    VoiceToText vs Wispr Flow
-                  </Link>
-                </h3>
-                <p>Dictation, meeting notes, pricing, and where your audio is processed, side by side.</p>
               </article>
               <article className="guide__choice">
                 <h3>
@@ -656,14 +709,6 @@ export default function MeetingRecordingPage() {
                   </Link>
                 </h3>
                 <p>Understand local model downloads, supported workflows, and when audio stays on your Mac.</p>
-              </article>
-              <article className="guide__choice">
-                <h3>
-                  <Link className="link" href="/voice-to-text-for-coding">
-                    Dictate into coding tools
-                  </Link>
-                </h3>
-                <p>Use the global shortcut for prompts and implementation notes in AI and development tools.</p>
               </article>
             </div>
           </div>

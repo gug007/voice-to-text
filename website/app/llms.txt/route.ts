@@ -3,6 +3,8 @@ import {
   APP_REQUIREMENTS,
   BUILT_IN_ACTIONS,
   CATALOG_SNAPSHOT,
+  CLOUD_PROVIDERS_AND,
+  CLOUD_PROVIDERS_OR,
   cloudModels,
   CONVERSATION_HUD_DEFAULT,
   CONVERSATION_HUD_SETTINGS,
@@ -14,6 +16,7 @@ import {
   liveOnStopModelNames,
   liveTextModelNames,
   localModels,
+  MICROPHONE_SETTING,
   MODEL_CATALOG,
   QUALITY_SCORE_SOURCES,
   type ModelFact,
@@ -32,18 +35,26 @@ export const dynamic = "force-static";
 
 // `satisfies` makes a new route in PAGES fail the type check until it has a line here.
 const PAGE_SUMMARIES = {
-  "/": ["Home", "What VoiceToText does, the model catalog, FAQ and download."],
+  "/": ["Home", "What VoiceToText does (dictation, meeting recording, history), the full model catalog with prices and quality scores, FAQ and download."],
   "/how-to-use-voice-to-text-on-mac": [
     "How to use voice to text on Mac",
     "Turning on the built-in Mac Dictation and its shortcut, then VoiceToText's install, permissions, shortcut, review panel and settings, step by step.",
   ],
   "/meeting-recording": [
     "Meeting recording (Conversations)",
-    "Recording mic + system audio, file uploads, speaker labels and AI summaries.",
+    "Recording a call's mic + system audio with no bot, file uploads, the transcription model, speaker labels and AI summaries.",
+  ],
+  "/record-meetings-without-a-bot-mac": [
+    "Record Zoom, Google Meet and Teams calls without a bot",
+    "How on-Mac capture (mic + system audio via ScreenCaptureKit) works in each call app, host or participant; a meeting bot compared with on-Mac recording; what other participants see; consent.",
+  ],
+  "/free-meeting-recorder-mac": [
+    "Free meeting recorder for Mac",
+    "What is free (recording, local transcription, history, search; no account, trial or minute cap) and what costs money (cloud models, speaker labels, AI summaries, billed to your own API key), with per-hour list prices.",
   ],
   "/offline-speech-to-text-mac": [
     "Offline speech to text for Mac",
-    "What stays on the Mac with local models and what uses the network.",
+    "What stays on the Mac with local models, what uses the network, and how to check it.",
   ],
   "/voice-to-text-for-coding": [
     "Voice to text for coding",
@@ -51,36 +62,36 @@ const PAGE_SUMMARIES = {
   ],
   "/whisper-vs-parakeet-mac": [
     "Whisper vs. Parakeet on Mac",
-    "Choosing between the local models: languages, quality scores and download size.",
+    "Choosing between the local models: languages, published word error rates, quality scores and download size.",
   ],
   "/apple-dictation-alternative": [
     "Apple Dictation alternative",
-    "How VoiceToText differs from the dictation built into macOS.",
+    "How VoiceToText differs from the dictation built into macOS: review before paste, model choice, meetings and history.",
   ],
   "/superwhisper-alternative": [
     "Superwhisper alternative",
-    "VoiceToText compared with Superwhisper, with sources.",
+    "Who should stay with Superwhisper and who might switch: platforms, local vs cloud models, AI formatting, price, and other Superwhisper alternatives, from vendor sources.",
   ],
   "/wispr-flow-alternative": [
     "Wispr Flow alternative",
-    "VoiceToText compared with Wispr Flow, with sources.",
+    "VoiceToText (on-device by default) compared with Wispr Flow (cloud dictation): privacy, price, platforms and features, from vendor sources.",
   ],
   "/granola-alternative": [
     "Granola alternative",
-    "VoiceToText's Conversations compared with Granola for meeting notes, with sources.",
+    "Granola compared with VoiceToText's Conversations for meetings: where audio is processed, what stays on the Mac, platforms, price, and the source-available question, from vendor sources.",
   ],
   "/macwhisper-alternative": [
     "MacWhisper alternative",
-    "VoiceToText compared with MacWhisper, with sources.",
+    "Who should stay with MacWhisper (file transcription, exports, subtitles) and who might switch (dictation, meetings), plus other MacWhisper alternatives, from vendor sources.",
   ],
   "/dragon-for-mac-alternative": [
     "Dragon for Mac alternative",
     "What replaced the discontinued Dragon for Mac (Apple Dictation, Voice Control, VoiceToText), with sources. VoiceToText is not a medical dictation product.",
   ],
-  "/compare": ["Comparisons", "Index of every VoiceToText comparison page."],
+  "/compare": ["Comparisons", "Index of every VoiceToText comparison page, by vendor."],
   "/compare/best-dictation-apps-for-mac": [
     "Best dictation apps for Mac",
-    "A sourced comparison of Mac dictation apps, including VoiceToText.",
+    "A sourced comparison of seven Mac dictation apps, including VoiceToText, on dictation, files, meetings, privacy, languages and price.",
   ],
 } as const satisfies Record<PagePath, readonly [name: string, summary: string]>;
 
@@ -106,6 +117,7 @@ function buildLlmsTxt(): string {
   const cloud = cloudModels();
   const fallback = defaultModel();
   const diarize = MODEL_CATALOG.filter((m) => m.diarize).map((m) => m.name);
+  const priceNotes = [...new Set(cloud.flatMap((m) => (m.priceNote ? [m.priceNote] : [])))];
   const pages = (Object.keys(PAGES) as PagePath[]).map((path) => {
     const [name, summary] = PAGE_SUMMARIES[path];
     return `- [${name}](${pageUrl(path)}): ${summary}`;
@@ -113,7 +125,7 @@ function buildLlmsTxt(): string {
 
   return `# VoiceToText
 
-> VoiceToText is a free dictation and meeting-transcription app for Mac (${APP_REQUIREMENTS.short}). Press a global shortcut, speak, review the text, and it is pasted into whatever app you were using. By default it transcribes on the Mac with the local ${fallback.name} model, which works with the network off once downloaded; OpenAI and ElevenLabs models are optional and use your own API key. It also records conversations (your microphone plus system audio), transcribes audio and video files, and keeps a searchable local history. No account, no paid tier; the source is available on GitHub.
+> VoiceToText is a free, local-first dictation and meeting-transcription app for Mac (${APP_REQUIREMENTS.short}). Press a global shortcut, speak, review the text, and it is pasted into whatever app you were using. It offers ${MODEL_CATALOG.length} transcription models: by default it transcribes on the Mac with the local ${fallback.name} model, which works with the network off once downloaded, and ${local.length - 1} more local models are available; ${cloud.length} ${CLOUD_PROVIDERS_AND} cloud models are optional and use your own API key. It also records meetings and calls (your microphone plus system audio, with no bot joining the call), transcribes audio and video files, and keeps a searchable local history. No account, no paid tier; the source is available on GitHub, though not under an open-source license.
 
 Facts below describe ${CATALOG_SNAPSHOT}.
 
@@ -121,7 +133,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 
 - Price: free. No paid tier, no subscription, no VoiceToText account.
 - Source: available on GitHub at ${REPO_URL}. The repository has no license file, so describe it as "source available", not "open source".
-- Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor}. Local models run much faster on Apple Silicon than on Intel.
+- Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor} (one universal build). Local models run much faster on Apple Silicon than on Intel; on Intel they run through transcribe.cpp, on the graphics card when it works and on the CPU otherwise.
 - Download: ${DMG_URL} (DMG containing a signed, notarized app). All releases: ${RELEASES_URL}
 - Website: ${SITE_URL}
 - App shape: a regular Mac window (panes: General, Conversations, History, Shortcut, Models, Actions, Cloud, Updates) with a Dock icon, plus a menu bar item. Menu-bar-only is optional (turn off "Show in Dock"). Launch at login is on after first run. Appearance: System, Light or Dark.
@@ -133,6 +145,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 - While recording, a floating HUD shows a level meter, the elapsed time, and Cancel (Esc) / Finish. Settings → General → Recording HUD sets its size: ${DICTATION_HUD_SIZES.map(({ size, isDefault, looks }) => `${size}${isDefault ? " (default)" : ""}: ${looks}`).join("; ")}. Only Large shows text while you speak. The review panel is the same at every size.
 - "Review before pasting" is on by default: Return pastes, Shift+Return adds a new line, pressing the shortcut again pastes, Esc cancels, ⌘R records another take inserted at the cursor. With review off, text is pasted as soon as you stop.
 - Output is a paste, not typing: the clipboard is saved, the text is pasted with a synthetic ⌘V, and the previous clipboard is restored about 0.25 s later. It works wherever ⌘V pastes text; fields that block pasting won't receive it.
+- Microphone: ${MICROPHONE_SETTING}
 - If the microphone changes mid-take (for example AirPods switching profile), capture restarts automatically; otherwise the audio captured so far is still transcribed. Failed transcriptions keep the audio for Retry.
 
 ## AI actions (optional)
@@ -145,6 +158,9 @@ ${list(BUILT_IN_ACTIONS)}
 ## Conversations (meeting recording)
 
 - Records your microphone plus system audio (the other people on Zoom, Meet, Teams, FaceTime, Webex, Discord or any app that plays audio). No bot joins the call.
+- Works the same whether the user hosts or joins the call, in the meeting app or a browser: it doesn't use the meeting app's own recording, and nothing is installed in Zoom, Meet or Teams. Everything the Mac plays is recorded except VoiceToText's own sound.
+- VoiceToText notifies no one that a call is being recorded, so telling participants and following consent laws is the user's responsibility. The Recording HUD may show in a screen share.
+- If macOS stops the capture or the disk fills up mid-recording, everything captured up to then is saved and transcribed.
 - Start from the Conversations pane, the menu bar, or an optional Conversation shortcut (no default key; press to start, press again to stop).
 - While a conversation records, a floating Recording HUD sits at the top centre of the screen with a level meter, the running clock, and one button: Stop & Transcribe. It has no Cancel; Cancel stays in the Conversations pane. It can be dragged, and it stays up through transcription (Medium and Large show progress such as 3/12 on long recordings). Settings → Conversations → Recording HUD: ${CONVERSATION_HUD_SETTINGS.join(", ")} (default ${CONVERSATION_HUD_DEFAULT}); Off hides it, leaving the menu bar's running clock.
 - Transcribed after you stop, not live. Recordings over 12 minutes are split at quiet points into roughly 10-minute segments.
@@ -167,16 +183,16 @@ ${MODEL_CATALOG.length} models: ${local.length} local and ${cloud.length} cloud.
 On this Mac (downloaded once from Hugging Face; audio stays on the Mac). ${WHISPER_OFFLINE_NOTE}
 ${local.map(modelLine).join("\n")}
 
-Cloud (your own API key; audio goes directly from the Mac to the provider, which bills you at its list price):
+Cloud (your own API key; audio goes directly from the Mac to the provider, which bills you at its list price${priceNotes.length > 0 ? `; ${priceNotes.join(" ")}` : ""}):
 ${cloud.map(modelLine).join("\n")}
 
 - LIVE models are for dictation only, and their text shows while you speak only in the Large recording HUD; with Small (the default) or Medium it appears when you stop. In the Large HUD, ${joinNames(liveTextModelNames("word by word"))} shows text word by word as you speak. With ${joinNames(liveTextModelNames("phrase by phrase"))}, OpenAI transcribes each phrase after a short pause (about half a second), so text appears phrase by phrase. With ${joinNames(liveOnStopModelNames())}, the text appears only when you stop.
-- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (once per recording, or per 10-minute part of a longer one, from its first speech; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages and ElevenLabs Scribe 90+, detected automatically.
+- Languages: ${fallback.name} covers ${fallback.languagesInApp}, detected automatically. Local Whisper models cover 99 languages, also detected automatically (once per recording, or per 10-minute part of a longer one, from its first speech; there is no language picker), most accurately in English and other major languages. For a language outside ${fallback.name}'s 25, use a Whisper model or a cloud model: OpenAI models cover 99+ languages, Groq's Whisper models 99 and ElevenLabs Scribe 90+, detected automatically.
 
 ## Privacy and network
 
 - With local models and no API keys, the app connects only to Hugging Face (each model downloads once) and GitHub Releases (update check at launch and every 24 hours). Audio and transcripts stay on the Mac. Once a local model has downloaded, transcription works fully offline.
-- Cloud transcription models send audio to OpenAI or ElevenLabs. AI actions and AI insights send transcript text to OpenAI. Adding an API key sends one verification request to that provider.
+- A cloud transcription model sends audio to its provider (${CLOUD_PROVIDERS_OR}). AI actions and AI insights send transcript text to OpenAI. Adding an API key sends one verification request to that provider.
 - API keys are stored in the macOS login Keychain on the Mac (older versions kept them in the app's preferences and move them to the Keychain on first launch).
 - No VoiceToText servers, no accounts, and no analytics or telemetry in the app. The website uses Google Analytics.
 - Updates are never silent: the app offers Install Update, Later or Skip This Version.
@@ -193,7 +209,7 @@ ${cloud.map(modelLine).join("\n")}
 - Live transcript during Conversations, pausing a conversation, automatic meeting detection, calendar integration, or meeting-app plugins.
 - On-device speaker identification, or recognising speakers by name.
 - Export or sharing of transcripts (copy to clipboard only), transcript editing in History, iCloud sync, or playback scrubbing.
-- Sounds, notifications, or a microphone picker (the macOS default input is used).
+- Sounds or notifications.
 - A local AI model for actions or insights, or a choice of AI model for them.
 
 ## Key pages

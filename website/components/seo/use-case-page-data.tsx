@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { CLOUD_PROVIDERS_OR } from "@/lib/app-facts";
+
 import type { SeoLandingConfig } from "./seo-landing";
 
 export const offlineSpeechToTextConfig: SeoLandingConfig = {
@@ -25,7 +27,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
       With Parakeet, the default model, transcription runs on your Mac and works with Wi-Fi off. The app
       download, the first model download and the update check need the internet. Whisper models also
       transcribe on your Mac and work with Wi-Fi off once downloaded. Audio
-      leaves the Mac only if you choose an OpenAI or ElevenLabs cloud model. Transcript text leaves the Mac
+      leaves the Mac only if you choose a cloud model from {CLOUD_PROVIDERS_OR}. Transcript text leaves the Mac
       only if you run an AI action or generate an AI summary, and then it goes to OpenAI on your own key.
     </>
   ),
@@ -54,8 +56,8 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
           disk, and the app contacts Hugging Face only to download one.
         </>,
         <>
-          Everything else is opt-in and tied to a key you paste in. A cloud transcription model (OpenAI or
-          ElevenLabs) sends the audio to that provider, whether you use it for dictation, a meeting, a
+          Everything else is opt-in and tied to a key you paste in. A cloud transcription model ({CLOUD_PROVIDERS_OR})
+          sends the audio to that provider, whether you use it for dictation, a meeting, a
           file import or a “Regenerate with” pass in History. AI actions in the review panel and AI
           summaries, action items or custom results on a recording send transcript text to OpenAI. Adding a
           key also sends one verification request to that provider.
@@ -152,7 +154,8 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
             <>
               On the Mac, Parakeet covers 25 European languages automatically, and the local Whisper models
               cover 99, with accuracy that varies by language. The app has no language setting. Cloud models
-              also detect the language (OpenAI covers 99+ and ElevenLabs 90+), but they are not offline. The{" "}
+              also detect the language (OpenAI covers 99+, Groq’s hosted Whisper 99 and ElevenLabs 90+), but
+              they are not offline. The{" "}
               <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet guide</Link> compares
               the six local models.
             </>
@@ -179,7 +182,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     rows: [
       {
         label: "Audio processing",
-        cells: ["Runs on the Mac after a one-time model download.", "Runs at OpenAI or ElevenLabs, sent directly from your Mac."],
+        cells: ["Runs on the Mac after a one-time model download.", `Runs at ${CLOUD_PROVIDERS_OR}, sent directly from your Mac.`],
       },
       {
         label: "Internet during transcription",
@@ -193,7 +196,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
         label: "Languages",
         cells: [
           "Parakeet: 25 European languages, automatic. Local Whisper: 99 languages, automatic.",
-          "OpenAI 99+ or ElevenLabs 90+, detected automatically.",
+          "OpenAI 99+, Groq 99 or ElevenLabs 90+, detected automatically.",
         ],
       },
       {
@@ -240,7 +243,7 @@ export const offlineSpeechToTextConfig: SeoLandingConfig = {
     {
       question: "Which languages work offline?",
       answer:
-        "Parakeet TDT v3, the default, covers 25 European languages, detects them automatically and works fully offline. The local Whisper models cover 99 languages, also detected automatically and fully offline. OpenAI and ElevenLabs cloud models cover 90 to 99+, but they send the audio to that provider.",
+        `Parakeet TDT v3, the default, covers 25 European languages, detects them automatically and works fully offline. The local Whisper models cover 99 languages, also detected automatically and fully offline. Cloud models from ${CLOUD_PROVIDERS_OR} cover 90 to 99+, but they send the audio to that provider.`,
     },
     {
       question: "Can I record meetings offline?",

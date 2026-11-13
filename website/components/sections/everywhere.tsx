@@ -3,8 +3,9 @@ import type { CSSProperties, ReactNode } from "react";
 import { ExternalLink } from "@/components/ui/external-link";
 import { Glyph, type GlyphName } from "@/components/ui/glyph";
 import { HotkeyCombo } from "@/components/ui/hotkey-combo";
-import { BUILT_IN_ACTIONS, MODEL_CATALOG } from "@/lib/app-facts";
+import { BUILT_IN_ACTIONS } from "@/lib/app-facts";
 import { INTEGRATION_URL } from "@/lib/constants";
+import { REGENERATE_MODEL_COUNT } from "@/lib/seo-meeting";
 import { countWord } from "@/lib/seo";
 
 /** Each app tile colours its monogram from a hue set inline. Hues stay on the
@@ -62,7 +63,7 @@ const BUILT_INS: BuiltIn[] = [
   {
     glyph: "versions",
     title: "Regenerate, keep both",
-    body: `Re-run any saved recording with another of the ${MODEL_CATALOG.length} models. Each version stays side by side.`,
+    body: `Re-run any saved recording with another of the ${REGENERATE_MODEL_COUNT} models that transcribe recordings. Each version stays side by side.`,
   },
   {
     glyph: "sparkles",

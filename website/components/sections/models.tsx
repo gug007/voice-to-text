@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { CSSProperties } from "react";
 
 import {
+  CLOUD_PROVIDERS_OR,
   cloudModels,
   formatPrice,
   formatQuality,
@@ -50,6 +51,7 @@ function Quality({ model }: { model: ModelFact }) {
 export function Models() {
   const local = localModels();
   const cloud = cloudModels();
+  const priceNotes = [...new Set(cloud.flatMap((m) => (m.priceNote ? [m.priceNote] : [])))];
 
   return (
     <section className="section section--band" id="models" aria-labelledby="models-title">
@@ -105,8 +107,9 @@ export function Models() {
             </p>
           </div>
           <p className="cloud__lede">
-            Audio goes straight from your Mac to OpenAI or ElevenLabs, which detect the language on their side (99+
-            and 90+ languages). <span className="badge badge--live">Live</span> models stream your audio while you
+            Audio goes straight from your Mac to the provider you pick, {CLOUD_PROVIDERS_OR}, which detects the
+            language on its side (99+ languages at OpenAI, 99 for Groq’s hosted Whisper, 90+ at ElevenLabs).{" "}
+            <span className="badge badge--live">Live</span> models stream your audio while you
             speak. In the Large dictation HUD, {joinNames(liveTextModelNames("word by word"))} shows the words one by one,
             while {joinNames(liveTextModelNames("phrase by phrase"))} add each phrase after a short pause;{" "}
             {joinNames(liveOnStopModelNames())} shows its text only when you stop.
@@ -136,7 +139,8 @@ export function Models() {
           Quality scores (1–10) are derived from third-party published word error rates — Artificial Analysis AA-WER
           and the Open ASR Leaderboard, September 2026 snapshot — not from VoiceToText’s own tests. “≈” marks a score
           built on indirect evidence. The app shows the same numbers in Settings → Models, with filters and sorting.
-          Prices are the providers’ list prices per hour of audio.
+          Prices are the providers’ list prices per hour of audio (September 2026; Groq October 2026).{" "}
+          {priceNotes.join(" ")}
         </p>
         <p className="models__src">
           Not sure which local model to start with?{" "}

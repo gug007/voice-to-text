@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { CATALOG_SNAPSHOT, cloudModels, localModels } from "@/lib/app-facts";
+import { CATALOG_SNAPSHOT, CLOUD_PROVIDERS_AND, CLOUD_PROVIDERS_OR, cloudModels, localModels } from "@/lib/app-facts";
 import { formatDisplayDate, page } from "@/lib/pages";
 
 import type { SeoLandingConfig } from "./seo-landing";
@@ -74,7 +74,7 @@ export const dragonForMacAlternativeConfig: SeoLandingConfig = {
         cells: [
           "No longer sold. Version 6 launched at $300 in 2016.",
           "Included with macOS.",
-          "Free. Cloud models and AI features bill your own OpenAI or ElevenLabs key.",
+          `Free. Cloud models and AI features bill your own ${CLOUD_PROVIDERS_OR} key.`,
         ],
       },
       {
@@ -211,7 +211,7 @@ export const dragonForMacAlternativeConfig: SeoLandingConfig = {
           body: (
             <>
               {LOCAL_COUNT} models run on the Mac: Parakeet TDT v3, the default, for 25 European languages, and
-              five Whisper sizes for 99. {CLOUD_COUNT} optional OpenAI and ElevenLabs models use your own API key.{" "}
+              five Whisper sizes for 99. {CLOUD_COUNT} optional {CLOUD_PROVIDERS_AND} models use your own API key.{" "}
               <Link href="/whisper-vs-parakeet-mac">Parakeet vs. Whisper</Link> explains the local choice.
             </>
           ),

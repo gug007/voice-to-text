@@ -1,11 +1,17 @@
 import {
   APP_REQUIREMENTS,
   BUILT_IN_ACTIONS,
+  CLOUD_PROVIDERS,
+  CLOUD_PROVIDERS_AND,
+  CLOUD_PROVIDERS_OR,
   MODEL_CATALOG,
+  cheapestCloudModel,
   cloudModels,
   defaultModel,
+  formatPrice,
   liveTextModelNames,
   localModels,
+  modelById,
 } from "./app-facts";
 import {
   AUTHOR_URL,
@@ -37,9 +43,12 @@ export const HOME_DESCRIPTION =
 export const HOME_TWITTER_DESCRIPTION =
   "Dictate into any Mac app with Option+Space, or record calls and get a transcript. Free, works offline by default, no account, source on GitHub.";
 
-const NUMBER_WORDS = ["Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
+const NUMBER_WORDS = [
+  "Zero", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten",
+  "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen", "Twenty",
+];
 
-/** "Six", "Nine" — a sentence should not open on a digit. */
+/** "Six", "Eleven" — a sentence should not open on a digit. */
 export function countWord(n: number): string {
   return NUMBER_WORDS[n] ?? String(n);
 }
@@ -50,9 +59,12 @@ const DEFAULT_MODEL = defaultModel();
 const joinList = (xs: readonly string[]) =>
   new Intl.ListFormat("en", { style: "long", type: "conjunction" }).format(xs);
 const lower = (n: number) => countWord(n).toLowerCase();
-const CLOUD_BY_PROVIDER = [...new Set(CLOUD.map((m) => m.provider))].map(
+const CLOUD_BY_PROVIDER = CLOUD_PROVIDERS.map(
   (p) => `${p} ${joinList(CLOUD.filter((m) => m.provider === p).map((m) => m.name))}`,
 );
+const CHEAPEST_CLOUD = cheapestCloudModel();
+const GPT_TRANSCRIBE = modelById("openai-gpt-transcribe")!;
+const GROQ_COUNT = CLOUD.filter((m) => m.provider === "Groq").length;
 // GPT Realtime Whisper is live but only shows its text when you stop.
 const LIVE_WORDS = liveTextModelNames("word by word");
 const LIVE_PHRASES = liveTextModelNames("phrase by phrase");
@@ -65,7 +77,7 @@ export const softwareApplicationJsonLd = {
   "@id": SOFTWARE_ID,
   name: "VoiceToText",
   alternateName: "VoiceToText for Mac",
-  description: `Free voice to text and speech to text app for Mac, with source available on GitHub. Press Option+Space in any app, speak, check the text, and it is pasted at your cursor. Record meetings and calls (microphone plus system audio) or import an audio or video file, and keep every transcript in a searchable local history. Transcription runs on your Mac with ${lower(LOCAL.length)} local models after a one-time download, or with ${lower(CLOUD.length)} optional OpenAI and ElevenLabs cloud models under your own API key. Optional AI actions, summaries, and action items use your own OpenAI key.`,
+  description: `Free voice to text and speech to text app for Mac, with source available on GitHub. Press Option+Space in any app, speak, check the text, and it is pasted at your cursor. Record meetings and calls (microphone plus system audio) or import an audio or video file, and keep every transcript in a searchable local history. Transcription runs on your Mac with ${lower(LOCAL.length)} local models after a one-time download, or with ${lower(CLOUD.length)} optional ${CLOUD_PROVIDERS_AND} cloud models under your own API key. Optional AI actions, summaries, and action items use your own OpenAI key.`,
   keywords:
     "voice to text mac, speech to text mac, mac dictation, dictation app for mac, offline speech recognition mac, free voice to text, meeting transcription mac, whisper mac app",
   url: `${SITE_URL}/`,
@@ -175,12 +187,12 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "Is VoiceToText free?",
     answer:
-      "Yes. VoiceToText has no paid tier, no account, and no in-app purchases, and its source is available on GitHub. The optional cloud models and AI features bill your own OpenAI or ElevenLabs account at the provider's prices.",
+      `Yes. VoiceToText has no paid tier, no account, and no in-app purchases, and its source is available on GitHub. The optional cloud models and AI features bill your own ${CLOUD_PROVIDERS_OR} account at the provider's prices.`,
   },
   {
     question: "Does it work offline? Is my voice data sent anywhere?",
     answer:
-      "Yes, with a local model, Parakeet (the default) or Whisper: after a one-time download it works with the network off, and your audio is transcribed on your Mac and never leaves it. Apart from model downloads and an update check, nothing leaves your Mac unless you opt in: a cloud model sends audio directly to OpenAI or ElevenLabs under your own API key, and AI actions, summaries, and action items send the transcript text to OpenAI. VoiceToText has no servers of its own, so it never receives your audio or your text.",
+      `Yes, with a local model, Parakeet (the default) or Whisper: after a one-time download it works with the network off, and your audio is transcribed on your Mac and never leaves it. Apart from model downloads and an update check, nothing leaves your Mac unless you opt in: a cloud model sends audio directly to ${CLOUD_PROVIDERS_OR} under your own API key, and AI actions, summaries, and action items send the transcript text to OpenAI. VoiceToText has no servers of its own, so it never receives your audio or your text.`,
   },
   {
     question: "How do I use voice to text on my Mac?",
@@ -200,17 +212,17 @@ export const faqEntries: FaqEntry[] = [
   {
     question: "What are the system requirements?",
     answer:
-      "macOS 15.0 or later on an Apple Silicon or Intel Mac. Local models run much faster on Apple Silicon; on an Intel Mac, transcription takes noticeably longer. The default local model is a one-time download of about 470 MB; cloud models need an internet connection and your own API key.",
+      `macOS 15.0 or later on an Apple Silicon or Intel Mac; the app is a universal build. Local models run much faster on Apple Silicon; on an Intel Mac they run through transcribe.cpp and take noticeably longer, so Groq's hosted Whisper models are a fast cloud option there. The default local model is a one-time download of about ${DEFAULT_MODEL.approxDownloadMB} MB; cloud models need an internet connection and your own API key.`,
   },
   {
     question: "How accurate is it? Which models does it use?",
     answer:
-      "You choose from 15 models. Parakeet TDT v3 is the recommended default: fast, on-device, and 25 European languages. Whisper Large v3 is the most accurate local model; Large v3 Turbo, Small, Base, and Tiny trade accuracy for size. With your own API key, GPT Transcribe tops the cloud list, followed by Scribe v2 Realtime, and GPT-4o Mini Transcribe is the cheapest at $0.18 per hour. The Models pane shows a 1–10 quality score for each, based on published word error rates rather than our own tests, so try two or three on your own voice.",
+      `You choose from ${MODEL_CATALOG.length} models: ${lower(LOCAL.length)} on your Mac and ${lower(CLOUD.length)} in the cloud. Parakeet TDT v3 is the recommended default: fast, on-device, and 25 European languages. Whisper Large v3 is the most accurate local model; Large v3 Turbo, Small, Base, and Tiny trade accuracy for size. With your own API key, ${GPT_TRANSCRIBE.name} tops the cloud list, followed by Scribe v2 Realtime, and Groq's hosted ${CHEAPEST_CLOUD.name} is the cheapest at ${formatPrice(CHEAPEST_CLOUD).replace("/hr", " per hour")}. The Models pane shows a 1–10 quality score for each, based on published word error rates rather than our own tests, so try two or three on your own voice.`,
   },
   {
     question: "Which languages does it support?",
     answer:
-      "It depends on the model, and there is no language setting to change. Parakeet TDT v3, the default, recognizes 25 European languages automatically. The local Whisper models cover 99 languages, also detected automatically. Or use a cloud model with your own key: OpenAI's models cover 99 or more languages and ElevenLabs Scribe v2 Realtime more than 90, detected automatically.",
+      `It depends on the model, and there is no language setting to change. Parakeet TDT v3, the default, recognizes 25 European languages automatically. The local Whisper models cover 99 languages, also detected automatically. Or use a cloud model with your own key: OpenAI's models cover 99 or more languages, Groq's ${lower(GROQ_COUNT)} Whisper models 99, and ElevenLabs Scribe v2 Realtime more than 90, detected automatically.`,
   },
   {
     question: "Can it record meetings and write summaries or action items?",

@@ -15,6 +15,8 @@ import {
   AI_TEXT_MODEL,
   APP_REQUIREMENTS,
   BUILT_IN_ACTIONS,
+  CLOUD_PROVIDERS_AND,
+  CLOUD_PROVIDERS_OR,
   MODEL_CATALOG,
   cloudModels,
   defaultModel,
@@ -32,6 +34,7 @@ import {
   GUIDE_PUBLISHED,
   GUIDE_UPDATED,
   INDEXABLE_ROBOTS,
+  countWord,
   guideArticleJsonLd,
   guideBreadcrumbJsonLd,
   guideFaqEntries,
@@ -42,13 +45,15 @@ import {
 
 import styles from "./guide.module.css";
 
-const TITLE = "How to Use Voice to Text on Mac: Shortcut & Setup (2026)";
+const TITLE = "Voice to Text on Mac: Keyboard Shortcut & How to Set It Up";
 const DESCRIPTION =
-  "Turn on Dictation in System Settings → Keyboard, then press the Microphone key or your shortcut. Or try VoiceToText for review, local models and meetings.";
+  "Press the Microphone key or Fn-D to start Mac Dictation, Esc to stop. Change it in System Settings → Keyboard → Dictation. VoiceToText uses Option-Space.";
 
 /* The built-in Dictation steps follow Apple's Mac User Guide and its Mac
    keyboard shortcuts page (https://support.apple.com/en-us/102650); re-check
-   them there when macOS changes. */
+   them there when macOS changes. Last checked 2026-11-13 against the macOS 27
+   guide and the shortcuts page published 2026-09-14 ("Fn-D: Start or stop
+   dictation"). */
 const APPLE_DICTATION_GUIDE = "https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac";
 const APPLE_DICTATION_COMMANDS =
   "https://support.apple.com/guide/mac-help/commands-for-dictating-text-on-mac-mh40695/mac";
@@ -89,10 +94,10 @@ const LIVE_COUNT = liveModels().length;
 const LIVE_TEXT_COUNT = liveModels().filter((m) => m.showsLiveText).length;
 const LARGE_V3 = modelById("whisper-large-v3");
 const TURBO = modelById("whisper-large-v3-turbo");
+const SMALL = modelById("whisper-small");
+const TINY = modelById("whisper-tiny");
 
-const NUMBER_WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"];
-const spell = (n: number) => NUMBER_WORDS[n] ?? String(n);
-const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const spell = (n: number) => countWord(n).toLowerCase();
 
 /** A keyboard key with a spoken name, the way HotkeyCombo does it. */
 function Key({ glyph, name }: { glyph: string; name: string }) {
@@ -103,6 +108,61 @@ function Key({ glyph, name }: { glyph: string; name: string }) {
     </>
   );
 }
+
+type ShortcutTable = {
+  caption: string;
+  rows: { action: string; keys: ReactNode }[];
+};
+
+/* The answer to "what is the Mac voice to text shortcut", at the top of the
+   article. The built-in half follows the same Apple pages as BUILT_IN_STEPS;
+   the VoiceToText half follows Hotkey/HotkeyBinding.swift (⌥Space default),
+   HotkeyActionPolicy.swift (toggle default, hold optional) and
+   HotkeyCaptureSession.swift (what a shortcut may be). */
+const SHORTCUT_TABLES: ShortcutTable[] = [
+  {
+    caption: "Mac Dictation, built in",
+    rows: [
+      {
+        action: "Start or stop",
+        keys: (
+          <>
+            The Microphone key (🎤), if your keyboard has one, or <Key glyph="fn" name="Function or Globe" />
+            <Key glyph="D" name="D" />
+          </>
+        ),
+      },
+      { action: "Your shortcut", keys: "The one shown in System Settings → Keyboard → Dictation → Shortcut" },
+      { action: "Stop", keys: <><Key glyph="Esc" name="Escape" />, or the key you started with</> },
+      { action: "From the menu", keys: "Edit → Start Dictation" },
+      {
+        action: "Change the shortcut",
+        keys: (
+          <>
+            Pick an option in the Shortcut menu, such as pressing <Key glyph="fn" name="Function or Globe" />{" "}
+            twice, or choose Customize and press your own, such as Option-Z
+          </>
+        ),
+      },
+    ],
+  },
+  {
+    caption: "VoiceToText",
+    rows: [
+      { action: "Start, then finish", keys: <><HotkeyCombo /> once to start, again to finish</> },
+      {
+        action: "Hold to talk",
+        keys: <>Hold <HotkeyCombo /> after choosing Hold to record in Settings → Shortcut</>,
+      },
+      { action: "Paste the text", keys: <><Key glyph="Return" name="Return" /> in the review panel</> },
+      { action: "Cancel the take", keys: <Key glyph="Esc" name="Escape" /> },
+      {
+        action: "Change the shortcut",
+        keys: "Settings → Shortcut: any key with ⌘ ⌥ ⌃ or ⇧, F1–F20 on their own, or Right Control alone (it needs Input Monitoring)",
+      },
+    ],
+  },
+];
 
 type GuideStep = {
   title: ReactNode;
@@ -127,7 +187,7 @@ const BUILT_IN_STEPS: GuideStep[] = [
         <p>Start Dictation in any of these ways:</p>
         <dl className={styles.keys}>
           <dt><Key glyph="🎤" name="Microphone key" /></dt>
-          <dd>The Microphone key in the top row, if your keyboard has one</dd>
+          <dd>The Microphone key in the top row, if your keyboard has one. Press and release it: holding it activates Siri</dd>
           <dt><Key glyph="fn" name="Function or Globe" /><Key glyph="D" name="D" /></dt>
           <dd>Start or stop dictation, from Apple’s list of Mac keyboard shortcuts</dd>
           <dt>Your shortcut</dt>
@@ -263,7 +323,7 @@ const APP_HELPS: Choice[] = [
   {
     icon: "cloud",
     title: "A choice of models",
-    body: `${capitalize(spell(LOCAL.length))} local models work with the network off after one download: Parakeet for 25 European languages and Whisper for 99. ${capitalize(spell(CLOUD.length))} optional cloud models use your own key.`,
+    body: `${countWord(LOCAL.length)} local models work with the network off after one download: Parakeet for 25 European languages and Whisper for 99. ${countWord(CLOUD.length)} optional cloud models use your own key.`,
   },
   {
     icon: "mic",
@@ -304,12 +364,12 @@ const MODELS: Choice[] = [
   {
     icon: "box",
     title: "Whisper Small, Base, and Tiny",
-    body: "Smaller downloads, from roughly 250 MB down to under 50 MB, for Macs short on disk space. They make noticeably more mistakes, and they cover the same 99 languages.",
+    body: `Smaller downloads, from ${(SMALL && formatDownloadSize(SMALL)) ?? "a few hundred MB"} for Small down to ${(TINY && formatDownloadSize(TINY)) ?? "under 100 MB"} for Tiny, for Macs short on disk space. They make noticeably more mistakes, and they cover the same 99 languages.`,
   },
   {
     icon: "cloud",
     title: "Cloud models, with your key",
-    body: `${capitalize(spell(CLOUD.length))} optional OpenAI and ElevenLabs models detect the language on their side (90 to 99+ languages). ${capitalize(spell(LIVE_COUNT))} are live models, and with ${spell(LIVE_TEXT_COUNT)} of them text appears while you speak in the Large recording HUD, word by word or phrase by phrase. Audio goes to the provider, billed to your key at ${CHEAPEST_CLOUD} to ${PRICIEST_CLOUD}.`,
+    body: `${countWord(CLOUD.length)} optional ${CLOUD_PROVIDERS_AND} models detect the language on their side (90 to 99+ languages). ${countWord(LIVE_COUNT)} are live models, and with ${spell(LIVE_TEXT_COUNT)} of them text appears while you speak in the Large recording HUD, word by word or phrase by phrase. Audio goes to the provider, billed to your key at ${CHEAPEST_CLOUD} to ${PRICIEST_CLOUD}.`,
   },
 ];
 
@@ -426,7 +486,7 @@ const TROUBLESHOOTING: { title: string; body: ReactNode }[] = [
   },
   {
     title: "The words come out in the wrong language",
-    body: "There is no language setting. Parakeet covers 25 European languages automatically. For other languages, choose a Whisper model (99 languages) or an OpenAI or ElevenLabs cloud model; each detects the language on its own. Whisper is most accurate in English and other widely spoken languages.",
+    body: `There is no language setting. Parakeet covers 25 European languages automatically. For other languages, choose a Whisper model (99 languages) or a cloud model from ${CLOUD_PROVIDERS_OR}; each detects the language on its own. Whisper is most accurate in English and other widely spoken languages.`,
   },
   {
     title: "Saying “comma” or “new line” types the word",
@@ -434,11 +494,11 @@ const TROUBLESHOOTING: { title: string; body: ReactNode }[] = [
   },
   {
     title: "Transcription is slow or inaccurate",
-    body: "Try Parakeet for local speed, or Whisper Large v3 for the most accurate transcription on your Mac. Speak close to the microphone and cut background noise. VoiceToText records from the macOS default input, which you choose in System Settings → Sound.",
+    body: "Try Parakeet for local speed, or Whisper Large v3 for the most accurate transcription on your Mac. Speak close to the microphone and cut background noise. VoiceToText records from the microphone chosen in Settings → General → Microphone; “System default” follows the input set in System Settings → Sound.",
   },
   {
     title: "My AirPods switched mid-sentence",
-    body: "When the microphone changes in the middle of a dictation, capture restarts on its own and the take continues. If it can’t, what was already captured is still transcribed, and the review panel tells you if audio dropped out for a second or more.",
+    body: "When the microphone changes in the middle of a dictation, capture restarts on its own and the take continues. If it can’t, what was already captured is still transcribed, and the review panel tells you if audio dropped out for a second or more. To stay on one microphone whatever macOS switches to, choose it in Settings → General → Microphone; if it’s unplugged, the app records from the system default until it’s back.",
   },
   {
     title: "Transcription failed",
@@ -446,7 +506,7 @@ const TROUBLESHOOTING: { title: string; body: ReactNode }[] = [
   },
   {
     title: "“Recording too short” or “No speech detected”",
-    body: "Takes under half a second, or with no speech in them, are dropped so the model doesn’t invent text. Watch the level meter on the recording card: if it barely moves, check the input device in System Settings → Sound.",
+    body: "Takes under half a second, or with no speech in them, are dropped so the model doesn’t invent text. Watch the level meter on the recording card: if it barely moves, check which microphone is chosen in Settings → General → Microphone.",
   },
 ];
 
@@ -472,15 +532,15 @@ export default function VoiceToTextGuidePage() {
               </nav>
               <p className="hero__eyebrow">
                 <span className="hero__eyebrow-dot" aria-hidden="true" />
-                Practical guide · about 13 minutes
+                Practical guide · about 14 minutes
               </p>
               <h1 id="guide-title" className="hero__title guide-hero__title">
                 {GUIDE_H1}
               </h1>
               <p className="hero__lead guide-hero__lead">
-                macOS has Dictation built in: turn it on in Keyboard settings and press the Microphone key or
-                your shortcut. For a review step, offline model choice and meeting transcripts, VoiceToText adds
-                a shortcut that pastes into any app.
+                Press the Microphone key or Fn-D to start Mac Dictation and Esc to stop, once Dictation is on in
+                System Settings → Keyboard. For a review step, offline model choice and meeting transcripts,
+                VoiceToText adds an Option-Space shortcut that pastes into any app.
               </p>
               <div className="hero__ctas">
                 <DownloadButton placement="guide_hero" />
@@ -495,6 +555,47 @@ export default function VoiceToTextGuidePage() {
               </p>
             </div>
           </header>
+
+          <section className={`section how ${styles.shortcutBand}`} id="shortcut" aria-labelledby="shortcut-title">
+            <div className="container guide__container">
+              <p className="section__eyebrow">Mac voice to text shortcut</p>
+              <h2 id="shortcut-title" className="section__title">The keyboard shortcut for voice to text on Mac.</h2>
+              <p className="section__deck">
+                With Dictation turned on, press the Microphone key or Fn-D, speak, and press Esc when you’re
+                done. Apple’s guide names no single default shortcut: the Shortcut menu in System Settings →
+                Keyboard → Dictation shows the one your Mac uses and lets you change it. VoiceToText starts and
+                finishes with Option-Space.
+              </p>
+              <div className={styles.shortcutGrid}>
+                {SHORTCUT_TABLES.map(({ caption, rows }) => (
+                  <div key={caption} className={styles.shortcutPlate}>
+                    <table className={styles.shortcuts}>
+                      <caption>{caption}</caption>
+                      <thead>
+                        <tr>
+                          <th scope="col">Action</th>
+                          <th scope="col">Keys</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map(({ action, keys }) => (
+                          <tr key={action}>
+                            <th scope="row">{action}</th>
+                            <td>{keys}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ))}
+              </div>
+              <p className="guide__context-link">
+                Using both? Give each its own shortcut so they never compete for the same keys. Step by step:{" "}
+                <a className="link" href="#built-in-dictation">turn on Mac Dictation</a> or{" "}
+                <a className="link" href="#quick-start">set up VoiceToText</a>.
+              </p>
+            </div>
+          </section>
 
           <section className="section guide-section" id="built-in-dictation" aria-labelledby="built-in-title">
             <div className="container guide__container">
@@ -648,7 +749,7 @@ export default function VoiceToTextGuidePage() {
               </div>
               <p className="guide__context-link">
                 Deciding between the two local families? Read{" "}
-                <Link className="link" href="/whisper-vs-parakeet-mac">Whisper vs Parakeet on Mac</Link>. For a
+                <Link className="link" href="/whisper-vs-parakeet-mac">Parakeet vs Whisper on Mac</Link>. For a
                 privacy walkthrough, see how{" "}
                 <Link className="link" href="/offline-speech-to-text-mac">
                   offline speech to text works on Mac

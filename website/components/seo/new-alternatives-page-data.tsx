@@ -1,5 +1,15 @@
 import Link from "next/link";
 
+import {
+  APP_VERSION,
+  CLOUD_PROVIDERS_OR,
+  cloudModels,
+  localModels,
+  MODEL_CATALOG,
+} from "@/lib/app-facts";
+import { formatDisplayDate, page, type PagePath } from "@/lib/pages";
+import { REGENERATE_MODEL_COUNT } from "@/lib/seo-meeting";
+
 import type { SeoLandingConfig } from "./seo-landing";
 
 // Competitor facts on these two pages come only from the vendor's own pages,
@@ -7,20 +17,32 @@ import type { SeoLandingConfig } from "./seo-landing";
 // them, update the copy and that date together; drop any fact you can no
 // longer find on an official page rather than keeping it from memory.
 
+/** The date a page's vendor sources were last re-checked, as display text. */
+function sourcesChecked(path: PagePath): string {
+  const record = page(path);
+  return formatDisplayDate(record.sourcesReviewed ?? record.published);
+}
+
+const GRANOLA_CHECKED = sourcesChecked("/granola-alternative");
+const MACWHISPER_CHECKED = sourcesChecked("/macwhisper-alternative");
+const MODEL_COUNT = MODEL_CATALOG.length;
+const LOCAL_COUNT = localModels().length;
+const CLOUD_COUNT = cloudModels().length;
+
 export const granolaAlternativeConfig: SeoLandingConfig = {
   path: "/granola-alternative",
-  title: "Free Granola Alternative for Mac (2026): Local Transcripts",
+  title: "Granola Alternative for Mac: Free, On-Device Transcripts",
   description:
-    "VoiceToText is free and keeps meetings past 30 days; Granola Basic keeps 30 and Business is $14/user/month. Bot-free capture, on-device transcripts.",
+    "Free Mac recorder, no bot, no account: VoiceToText transcribes calls on your Mac. Granola transcribes in the cloud and needs a Google or Microsoft login.",
   breadcrumb: "Granola alternative",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Balanced comparison",
-  readingTime: "9 min",
+  readingTime: "10 min",
   h1: "A Granola alternative that transcribes calls on your Mac.",
   lead:
-    "Granola is an AI notepad for meetings: it listens through your computer’s audio, turns your notes into AI-written meeting notes, and syncs with your calendar on desktop and phone. VoiceToText is a free Mac app that records your mic and the call’s audio, transcribes on-device by default, and can then write a summary and action items with your own OpenAI key.",
+    "Stay with Granola if you want AI notes built from what you type during the call, calendar prep, templates, team sharing and apps for Windows, iPhone and Android; its Basic plan is free but shows only the last 30 days of notes. Switch to VoiceToText if the audio should be transcribed on your Mac rather than by a cloud provider, or you don’t want an account: it is free and keeps every recording until you delete it. It is Mac-only, with no live notes, calendar or sharing, and it sends text to OpenAI only when you ask for a summary.",
   heroPoints: [
-    "Sources checked September 23, 2026",
+    `Sources checked ${GRANOLA_CHECKED}`,
     "Granola’s wins listed first",
     "Prices from vendor pages",
     "No meeting bot in either app",
@@ -29,39 +51,42 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
     <>
       VoiceToText’s developer wrote this page, so read it as a comparison by an interested party. Every
       Granola fact below comes from Granola’s own website, pricing page, security page or help center, checked
-      on September 23, 2026 and linked under <a href="#sources">Sources</a>. This page is not affiliated with
+      on {GRANOLA_CHECKED} and linked under <a href="#sources">Sources</a>. This page is not affiliated with
       or endorsed by Granola; the name is used only to identify the product being compared.
     </>
   ),
   summaryTitle: "Which one fits your meetings?",
   summary: (
     <>
-      Choose Granola if you want to take notes during the call and get AI-written notes, calendar-aware
-      prep, templates, shared folders, and apps for Windows and phones, and you’re fine with audio going to
-      cloud transcription providers and a paid plan once 30 days of history isn’t enough. Choose VoiceToText
-      if you want a free Mac app that makes the transcript on your Mac by default, keeps recordings in a local
-      history, and treats AI summaries as an optional step you run with your own OpenAI key. VoiceToText is
-      also a system-wide dictation app.
+      Choose Granola if you take notes during calls and want them turned into AI-written meeting notes, with
+      calendar-aware prep, templates, shared folders, voice typing and apps for Windows and phones, and you’re
+      fine signing in with Google or Microsoft and having audio go to cloud transcription providers. Choose
+      VoiceToText if you want a free Mac app with no account that makes the transcript on your Mac by default,
+      keeps every recording in a local history, and treats AI summaries as an optional step you run with your
+      own OpenAI key.
     </>
   ),
   atAGlance: {
-    title: "At a glance, as of September 2026.",
-    caption:
-      "VoiceToText v0.0.57 compared with Granola’s official pages, checked September 23, 2026. Plans and features can change.",
+    title: "At a glance, as of November 2026.",
+    caption: `VoiceToText ${APP_VERSION} compared with Granola’s official pages, checked ${GRANOLA_CHECKED}. Plans and features can change.`,
     columns: ["VoiceToText", "Granola"],
     rows: [
       {
         label: "Price",
         cells: [
-          "Free. No paid tier, no account.",
-          "Basic is free with 30 days of meeting history. Business is $14 per user per month.",
+          "Free. No paid tier.",
+          "Basic is free and shows the last 30 days of notes. Business is $14 and Enterprise $35 per user per month.",
         ],
+      },
+      {
+        label: "Account",
+        cells: ["None.", "Sign-in with a Google or Microsoft account."],
       },
       {
         label: "How it hears the call",
         cells: [
           "Your mic plus the Mac’s system audio. No bot joins.",
-          "Your computer’s mic and system audio. No bot joins.",
+          "Your computer’s mic and system audio on Mac or Windows. No bot joins.",
         ],
       },
       {
@@ -89,12 +114,23 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         label: "Calendar and sharing",
         cells: [
           "None. You start and stop recording; copy text to share it.",
-          "Google and Microsoft calendars, shared folders, and Slack on the free plan.",
+          "Google and Microsoft calendars; shared folders and Slack on every plan.",
+        ],
+      },
+      {
+        label: "Dictation",
+        cells: [
+          "⌥Space in any Mac app, with a review step before paste.",
+          "Voice typing in any app on Mac, Windows and iOS; Android coming soon.",
         ],
       },
       {
         label: "Platforms",
         cells: ["macOS 15 or later, Apple Silicon or Intel.", "macOS 14 or later, Windows, iOS and Android."],
+      },
+      {
+        label: "Source code",
+        cells: ["Public on GitHub, without an open-source license.", "No public source mentioned on its site."],
       },
     ],
   },
@@ -113,12 +149,12 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "Notes while you listen",
           body:
-            "You write as much or as little as you like in a Granola note while it captures audio, and a transcript panel shows the conversation live. Notes, action items and follow-ups are ready when the meeting ends. On Google Meet (through Granola’s browser extension) and Zoom, speaker tags, included on every plan, label who said what by each participant’s display name; elsewhere the transcript splits Me (your mic) from Them (system audio).",
+            "You write as much or as little as you like in a Granola note while it captures audio, and a transcript panel shows the conversation live. On Mac and Windows, speaker tags, included on every plan, label who said what by display name in Google Meet (through Chrome or Granola’s extension), the Zoom desktop app and Microsoft Teams; elsewhere the transcript splits Me (your mic) from Them (system audio).",
         },
         {
           title: "Calendar and meeting prep",
           body:
-            "Granola connects to Google and Microsoft calendars. Its site says it prepares a brief before external meetings, and its pricing page lists pre-meeting briefs and follow-up emails on the Business plan.",
+            "Granola connects to Google and Microsoft calendars, and its pricing page lists pre-meeting briefs and follow-up emails on the Business plan.",
         },
         {
           title: "Templates and recipes",
@@ -128,7 +164,12 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "Teams and every device",
           body:
-            "Shared folders and a Slack integration are on the free plan; Notion, HubSpot and Zapier integrations, API access and central billing come with Business, and SSO with Enterprise. There are apps for Mac, Windows, iPhone, Android and Apple Watch.",
+            "Shared folders, Slack and AI chat are on every plan. Business adds Attio, Notion, HubSpot, Affinity and Zapier integrations, API and MCP access and central billing; Enterprise adds SSO, SCIM and HIPAA-compliant workspaces. There are apps for macOS, Windows, iOS and Android.",
+        },
+        {
+          title: "Voice typing, too",
+          body:
+            "Granola now includes voice typing for writing with your voice in any app, free on every plan. Its page lists it for Mac, Windows and iOS, with Android coming soon. It doesn’t say where that audio is transcribed.",
         },
       ],
     },
@@ -150,7 +191,8 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
               It records your microphone and the Mac’s system audio together, so it works with Zoom, Meet, Teams,
               FaceTime, Webex or any app that plays sound. macOS asks for Microphone and Screen Recording
               permission; the app uses the second one for audio only and never records your screen. Start from
-              the Conversations pane, the menu bar, or an optional Conversation shortcut.
+              the Conversations pane, the menu bar, or an optional Conversation shortcut.{" "}
+              <Link href="/record-meetings-without-a-bot-mac">How it works in Zoom, Meet and Teams</Link>.
             </>
           ),
         },
@@ -173,7 +215,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "A history you keep",
           body:
-            "Audio and transcripts are saved on your Mac. Search finds words across transcripts, summaries, action items and speaker names. You can regenerate a recording with another of the 15 models and keep each version, or import one audio or video file at a time.",
+            `Audio and transcripts are saved on your Mac. Search finds words across transcripts, summaries, action items and speaker names. You can regenerate a recording with any of the ${REGENERATE_MODEL_COUNT} models that transcribe recordings and keep each version, or import one audio or video file at a time.`,
         },
       ],
       note: (
@@ -185,15 +227,18 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
     },
     {
       id: "data-path",
-      eyebrow: "Data path",
-      title: "Neither app sends a bot. They differ on where the audio goes.",
+      eyebrow: "Privacy and security",
+      title: "What stays on your Mac, and what goes to a cloud provider.",
+      intro: <>Neither app sends a bot to the call. They differ on where the audio is turned into text.</>,
       paragraphs: [
         <>
-          Granola’s security page says it transcribes in real time on macOS and Windows using providers such as
-          Deepgram and Assembly, doesn’t store meeting audio, and keeps notes encrypted in a US-hosted AWS
-          cloud. It says third parties like OpenAI and Anthropic may not train on your data, that Granola
-          itself trains on anonymized data unless you opt out in Settings, and that it has a SOC 2 Type 2
-          audit.
+          Granola’s security page says it uses cloud processing for transcription and AI summaries. On macOS and
+          Windows it transcribes in real time through providers such as Deepgram and Assembly; on a phone, after
+          the meeting, from temporarily cached audio. It says it doesn’t store meeting audio, and keeps notes
+          encrypted in a US-hosted AWS environment until you delete them. Third parties may not train on your
+          data; Granola itself trains on anonymized data unless you opt out in Settings. It lists a SOC 2 Type 2
+          report since July 2025, a GDPR data processing agreement on request, and HIPAA-compliant workspaces on
+          Enterprise.
         </>,
         <>
           VoiceToText with a local model transcribes on the Mac and saves the audio and text in your user
@@ -265,12 +310,12 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
         {
           title: "A few calls a week, no budget → VoiceToText",
           body:
-            "Recording, transcription and history are free, and old meetings don’t expire after 30 days; conversations stay in History until you delete them. Add an OpenAI key only if you want summaries.",
+            "Recording, transcription and history are free, and conversations stay in History until you delete them; Granola Basic shows only the last 30 days. Add an OpenAI key only if you want summaries.",
         },
         {
           title: "Windows, phones or in-person → Granola",
           body:
-            "VoiceToText is a Mac app only. Granola covers Windows, iPhone and Android as well.",
+            "VoiceToText is a Mac app only. Granola has apps for Windows, iOS and Android, though its phone apps can’t capture audio from virtual meeting apps.",
         },
       ],
       note: (
@@ -312,30 +357,56 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
       answer:
         "Only with the cloud model GPT-4o Transcribe Diarize, which needs your OpenAI key and sends the audio to OpenAI. It labels Speaker 1, Speaker 2 and so on, and you can rename them with Name speakers. Local models produce one unlabeled transcript.",
     },
+    {
+      question: "Is there a secure Granola alternative that keeps the audio on my Mac?",
+      answer:
+        "VoiceToText with its default local model transcribes on your Mac and saves recordings in your user folder, with no account and no VoiceToText server. The audio leaves the Mac only if you pick a cloud model. Granola's security page describes cloud transcription through providers such as Deepgram and Assembly, a SOC 2 Type 2 report, and HIPAA-compliant workspaces on Enterprise, so the real question is whether meeting audio may leave your Mac at all.",
+    },
+    {
+      question: "Is Granola available on Mac, iPhone and Windows? Does it have dictation?",
+      answer:
+        "Yes. Granola lists apps for macOS, Windows, iOS and Android, though its phone apps can't capture audio from virtual meeting apps. Its voice typing, for writing with your voice in any app, is listed for Mac, Windows and iOS, with Android coming soon, and is free on every plan. VoiceToText runs only on a Mac with macOS 15 or later; its dictation works in any Mac app with Option+Space.",
+    },
+    {
+      question: "Is there an open-source Granola alternative?",
+      answer:
+        "VoiceToText's source code is public on GitHub, so you can read how it records, stores and sends data. The repository has no open-source license, though, so it is source available rather than open source: you can inspect the code, but it doesn't come with rights to modify or redistribute it. We found no statement on Granola's site that its source is public.",
+    },
+    {
+      question: "Is Granola free?",
+      answer:
+        "Granola Basic is free with unlimited meeting notes, but only the last 30 days of meeting history stay viewable. Business is $14 and Enterprise $35 per user per month, according to Granola's pricing page. VoiceToText is free with no paid tier and keeps conversations until you delete them; only optional summaries and cloud models bill your own provider key.",
+    },
   ],
   sources: [
     {
       label: "Granola: Home page",
       href: "https://www.granola.ai/",
       detail:
-        "Product positioning as an AI notepad, bot-free capture from computer audio, supported meeting apps, calendar briefs and platforms.",
+        "Product positioning as an AI notepad for back-to-back meetings, bot-free capture from computer audio, and the platforms it lists.",
     },
     {
       label: "Granola: Pricing",
       href: "https://www.granola.ai/pricing",
       detail:
-        "Basic, Business and Enterprise plans, the $14 Business price, 30-day history on Basic, templates, recipes, shared folders, integrations and SSO.",
+        "Basic, Business ($14) and Enterprise ($35) per user per month, the 30-day history limit on Basic, templates, recipes, shared folders, Slack, voice typing, integrations, SSO, SCIM and HIPAA.",
     },
     {
       label: "Granola: Security",
       href: "https://www.granola.ai/security",
       detail:
-        "Transcription providers, audio not being stored, US-hosted AWS storage, model-training policy and the SOC 2 Type 2 statement.",
+        "Cloud transcription providers, audio not being stored, US-hosted AWS storage and retention, the model-training policy, SOC 2 Type 2, GDPR and HIPAA.",
+    },
+    {
+      label: "Granola: Voice typing",
+      href: "https://www.granola.ai/voice-typing",
+      detail: "Voice typing in any app, the platforms it lists (Mac, Windows and iOS, Android coming soon) and that it is free for all users.",
     },
     {
       label: "Granola Help: How transcription works",
       href: "https://docs.granola.ai/help-center/taking-notes/transcription",
-      detail: "No meeting bot, mic and system audio sent to the transcription provider, the live transcript panel, and Me/Them labels.",
+      detail:
+        "No meeting bot, mic and system audio sent to the transcription provider, the live transcript panel, Me/Them labels, and speaker tags in Google Meet, Zoom and Microsoft Teams.",
     },
     {
       label: "Granola Help: Templates",
@@ -345,7 +416,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
     {
       label: "Granola Help: Setup guide",
       href: "https://docs.granola.ai/help-center/getting-started/setting-up-granola-for-the-first-time",
-      detail: "The macOS 14 minimum, Google or Microsoft sign-in, calendar connection and audio permissions.",
+      detail: "The macOS 14 minimum, sign-in with a Google or Microsoft account only, calendar connection and audio permissions.",
     },
     {
       label: "VoiceToText source repository",
@@ -365,9 +436,9 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
       description: "Compare a file-transcription specialist with a free app built around dictation and meetings.",
     },
     {
-      href: "/compare/best-dictation-apps-for-mac",
-      title: "Best dictation apps for Mac",
-      description: "Seven Mac dictation apps side by side on dictation, files, meetings, privacy, languages and price.",
+      href: "/free-meeting-recorder-mac",
+      title: "Free meeting recorder for Mac",
+      description: "What VoiceToText records and transcribes for free, and what the optional cloud extras cost per hour.",
     },
   ],
   ctaTitle: "Record your next call and read the transcript on your Mac.",
@@ -378,18 +449,18 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
 
 export const macwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/macwhisper-alternative",
-  title: "Free MacWhisper Alternative (2026): Dictation + Calls on Mac",
+  title: "MacWhisper Alternative for Mac: Free, Local, No Account",
   description:
-    "VoiceToText is free; MacWhisper Pro is a €64 one-time license. Local Whisper and Parakeet models, files, meetings, dictation and exports compared.",
+    "VoiceToText is free with no Pro tier or account; MacWhisper Pro is €64 once. Both transcribe on your Mac. Who should switch, plus other alternatives.",
   breadcrumb: "MacWhisper alternative",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Balanced comparison",
-  readingTime: "7 min",
+  readingTime: "9 min",
   h1: "A free MacWhisper alternative for dictation and calls.",
   lead:
-    "MacWhisper is the established Mac app for transcribing files: drag in audio or video, edit the transcript, and export subtitles or documents, with a free version and a one‑time Pro license. VoiceToText is free and leans the other way: dictation into any app first, then meetings and one-file imports, with no export formats.",
+    "Stay with MacWhisper if your work starts with recorded files: even its free version exports .srt and .vtt subtitles, and the one-time Pro license adds batch runs, watched folders, speaker recognition and Word, PDF and Markdown exports. Switch to VoiceToText if you mostly talk into apps or record calls: it is free with no Pro tier or account, transcribes on your Mac by default, and includes the meeting recording that MacWhisper lists under Pro. VoiceToText has no subtitles, export files or batch mode, so file-heavy work is still MacWhisper’s job.",
   heroPoints: [
-    "Sources checked September 23, 2026",
+    `Sources checked ${MACWHISPER_CHECKED}`,
     "MacWhisper’s wins listed first",
     "Prices from vendor pages",
     "Both run models on your Mac",
@@ -397,9 +468,10 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
   disclosure: (
     <>
       VoiceToText’s developer wrote this page, so read it as a comparison by an interested party. Every
-      MacWhisper fact below comes from MacWhisper’s website and its official store page, checked on September
-      23, 2026 and linked under <a href="#sources">Sources</a>. This page is not affiliated with or endorsed
-      by MacWhisper or its developer; the name is used only to identify the product being compared.
+      MacWhisper fact below comes from MacWhisper’s website and its official store page, checked on{" "}
+      {MACWHISPER_CHECKED} and linked under <a href="#sources">Sources</a>, and so does every fact about the
+      other apps named here. This page is not affiliated with or endorsed by MacWhisper or its developer; the
+      name is used only to identify the product being compared.
     </>
   ),
   summaryTitle: "Which one should you install?",
@@ -413,9 +485,8 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
     </>
   ),
   atAGlance: {
-    title: "At a glance, as of September 2026.",
-    caption:
-      "VoiceToText v0.0.57 compared with MacWhisper’s official pages, checked September 23, 2026. Features by tier can change.",
+    title: "At a glance, as of November 2026.",
+    caption: `VoiceToText ${APP_VERSION} compared with MacWhisper’s official pages, checked ${MACWHISPER_CHECKED}. Features by tier can change.`,
     columns: ["VoiceToText", "MacWhisper"],
     rows: [
       {
@@ -440,10 +511,17 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         ],
       },
       {
+        label: "Cloud transcription",
+        cells: [
+          `${CLOUD_COUNT} optional models from ${CLOUD_PROVIDERS_OR}, on your own key.`,
+          "Pro: OpenAI, ElevenLabs, Deepgram, Groq, Gladia or a custom Whisper server.",
+        ],
+      },
+      {
         label: "Files",
         cells: [
           "One audio or video file at a time. No batch.",
-          "Drag-and-drop files. Pro adds batch runs, watched folders and YouTube links.",
+          "Drag-and-drop files. Pro adds batch runs, watched folders and YouTube or media links.",
         ],
       },
       {
@@ -471,7 +549,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         label: "Meetings",
         cells: [
           "Mic plus system audio, no bot, free. Summary and Action Items with your OpenAI key.",
-          "Records meeting apps with automatic start and end detection; system-audio recording is in Pro.",
+          "Pro: auto-records Zoom, Teams, Webex and other meeting apps, with start and end detection.",
         ],
       },
     ],
@@ -491,7 +569,7 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Exports and subtitles",
           body:
-            "The free version exports .srt and .vtt subtitles and plain text. Pro adds Markdown, PDF, HTML, Word and more, plus custom export formats. It supports timecodes, and a video player shows subtitles in sync.",
+            "The free version exports .srt and .vtt subtitles and plain text, with timecodes. Pro adds Markdown, PDF, HTML, Word and custom export formats, plus an inline video player that shows subtitles in sync.",
         },
         {
           title: "Batch and automation",
@@ -501,12 +579,12 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Editing and languages",
           body:
-            "A built-in editor lets you correct and delete segments, with audio playback synced to the text. It lists 100 languages with a language picker or auto-detect, translation, and filler-word removal.",
+            "A built-in editor lets you correct and delete segments, with audio playback synced to the text. It lists 100 languages with a language picker or auto-detect, filler-word removal, and translation in Pro.",
         },
         {
           title: "More models and AI providers",
           body:
-            "Pro adds Parakeet, WhisperKit and Qwen3-ASR models, speaker recognition on the Mac, cloud transcription through several providers, and AI prompts through OpenAI, Anthropic, Google, local Ollama or LM Studio, and others.",
+            "Pro adds Parakeet, WhisperKit and Qwen3-ASR models, speaker recognition on the Mac, cloud transcription through several providers, and AI prompts through OpenAI, Anthropic, Google, Groq, xAI, local Ollama or LM Studio, and others.",
         },
       ],
       note:
@@ -526,9 +604,10 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
           title: "Everything included, for free",
           body: (
             <>
-              There’s no Pro tier. All 15 models are available: 6 run on the Mac, and 9 cloud models work with
-              your own OpenAI or ElevenLabs key. Parakeet TDT v3 is the default.{" "}
-              <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet</Link> explains the local choice.
+              There’s no Pro tier. All {MODEL_COUNT} models are available: {LOCAL_COUNT} run on the Mac, and{" "}
+              {CLOUD_COUNT} cloud models work with your own {CLOUD_PROVIDERS_OR} key. Parakeet TDT v3 is the
+              default. <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet</Link> explains the local
+              choice.
             </>
           ),
         },
@@ -548,6 +627,45 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
             "Dictations, recorded calls and imported files land in one local history. Search covers transcripts, summaries, action items and speaker names, and you can re-transcribe any recording with another model while keeping each version.",
         },
       ],
+    },
+    {
+      id: "other-alternatives",
+      eyebrow: "Other MacWhisper alternatives",
+      title: "Three more Mac apps to consider.",
+      intro: (
+        <>
+          If what you need is MacWhisper’s file work rather than dictation, these are worth a look too. Each line
+          comes from the app’s own site, checked {MACWHISPER_CHECKED}; we haven’t benchmarked any of them.
+        </>
+      ),
+      cards: [
+        {
+          title: "Aiko",
+          body:
+            "Sindre Sorhus’s transcriber is a one-time $24 purchase that covers all its platforms, and it needs macOS, iOS or visionOS 26.6 or later. It transcribes audio and video files on the device and exports text, SRT, WebVTT, JSON and CSV, with timestamps.",
+        },
+        {
+          title: "Buzz",
+          body:
+            "Buzz Classic is free and open source under the MIT license on GitHub. It transcribes and translates audio and video files offline and exports TXT, SRT and VTT. Check its download page for which Macs the current version supports.",
+        },
+        {
+          title: "Superwhisper",
+          body: (
+            <>
+              Mainly a dictation app, on Mac, Windows, iOS and Android, but its Pro plan adds audio and video
+              file transcription. Pro is $8.49 a month, $84.99 a year or $249.99 once. See{" "}
+              <Link href="/superwhisper-alternative">VoiceToText vs. Superwhisper</Link>.
+            </>
+          ),
+        },
+      ],
+      note: (
+        <>
+          For subtitles and exports, Aiko and Buzz are closer to MacWhisper than VoiceToText is. VoiceToText is the
+          pick when the same app also has to handle dictation and meetings.
+        </>
+      ),
     },
     {
       id: "give-up",
@@ -609,12 +727,12 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
         {
           title: "Recording calls without paying → VoiceToText",
           body:
-            "Meeting capture, local transcription and history are part of the free app. MacWhisper lists system-audio recording under Pro.",
+            "Meeting capture, local transcription and history are part of the free app. MacWhisper’s plan table lists meeting recording under Pro, and its store page lists system-audio recording as a Pro feature.",
         },
         {
           title: "Non-English audio on the Mac → it depends",
           body:
-            "Both stay local. VoiceToText’s local Whisper models cover 99 languages, detected automatically, and Parakeet 25 European ones. MacWhisper’s local Whisper setup lists 100 languages.",
+            "Both stay local. VoiceToText’s local Whisper models cover 99 languages, detected automatically, and Parakeet 25 European ones. MacWhisper lists 100 languages, with a picker or auto-detect.",
         },
       ],
       note: (
@@ -628,8 +746,17 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
   faq: [
     {
       question: "Is VoiceToText a free MacWhisper alternative?",
+      answer: `For dictation, meeting capture and single-file transcription, yes. VoiceToText is free with no paid tier or account, and all ${MODEL_COUNT} models are available. It doesn't replace MacWhisper for exports, subtitles, batch transcription or transcript editing.`,
+    },
+    {
+      question: "What are the best MacWhisper alternatives?",
       answer:
-        "For dictation, meeting capture and single-file transcription, yes. VoiceToText is free with no paid tier, and all 15 models are available. It doesn't replace MacWhisper for exports, subtitles, batch transcription or transcript editing.",
+        "It depends on the job. For file transcription with subtitle exports, Aiko (a one-time $24 purchase) and Buzz Classic (free and open source under MIT) both run on the device. For dictation, meetings and one-file imports in one free app, VoiceToText. Superwhisper covers dictation on more platforms and adds file transcription in its Pro plan. MacWhisper itself has a free version, so try that first if exports matter.",
+    },
+    {
+      question: "Is MacWhisper free?",
+      answer:
+        "There is a free version that records from your microphone, transcribes files in 100 languages, exports .srt, .vtt and .txt, and includes system-wide dictation. MacWhisper Pro is a one-time license with lifetime updates: €64 on macwhisper.com, €65 at its Gumroad checkout. VoiceToText has no paid tier at all.",
     },
     {
       question: "Can VoiceToText export SRT or VTT subtitles?",
@@ -657,13 +784,33 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
       label: "MacWhisper: Home and pricing",
       href: "https://macwhisper.com/",
       detail:
-        "Free and Pro features side by side, the one-time Pro price listed there (€64), supported formats, export formats, meeting recording, dictation and AI providers.",
+        "The Free and Pro feature table, the one-time Pro price listed there (€64), supported formats, export formats by tier, meeting recording, dictation, AI providers, watched folders, integrations and the CLI.",
     },
     {
       label: "MacWhisper: Official store page",
       href: "https://goodsnooze.gumroad.com/l/macwhisper",
       detail:
-        "The full feature list by tier, the €65 Pro license price at checkout, supported macOS versions and hardware, Parakeet and Qwen3-ASR requirements, speaker recognition, batch and watched folders, and the iPhone and iPad apps.",
+        "The full feature list by tier, the €65 Pro license price at checkout, supported macOS versions and hardware, Parakeet and Qwen3-ASR requirements, speaker recognition, cloud transcription providers, batch and watched folders, system-audio recording, and the iPhone and iPad apps.",
+    },
+    {
+      label: "Aiko by Sindre Sorhus",
+      href: "https://sindresorhus.com/aiko",
+      detail: "The $24 one-time price, OS requirements, on-device transcription, supported files and export formats.",
+    },
+    {
+      label: "Buzz",
+      href: "https://buzzcaptions.com/",
+      detail: "Buzz Classic as free and open source, offline transcription and translation, and export formats.",
+    },
+    {
+      label: "Buzz on GitHub",
+      href: "https://github.com/chidiwilliams/buzz",
+      detail: "The MIT license and the project’s README.",
+    },
+    {
+      label: "Superwhisper: Voice to text for Mac",
+      href: "https://superwhisper.com/voice-to-text-mac",
+      detail: "Platforms, Pro file transcription and the Pro prices.",
     },
     {
       label: "VoiceToText source repository",

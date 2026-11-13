@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 
 import { ConversationMockup } from "@/components/ui/conversation-mockup";
 import { MEETING_PATH } from "@/lib/seo";
-import { MODEL_CATALOG } from "@/lib/app-facts";
+import { REGENERATE_MODEL_COUNT } from "@/lib/seo-meeting";
 
 import s from "./conversations.module.css";
 
@@ -62,7 +62,7 @@ const STEPS: Step[] = [
     body: (
       <>
         Search across transcripts, summaries, action items and speaker names. Star favorites, play the audio
-        back, or regenerate a transcript with any of the {MODEL_CATALOG.length} models and keep both versions.
+        back, or regenerate a transcript with any of the {REGENERATE_MODEL_COUNT} models that transcribe recordings and keep both versions.
         Audio streams to disk as you record, so if the Mac crashes the call is waiting in History at next
         launch, ready to transcribe.
       </>

@@ -1,5 +1,6 @@
 import { ExternalLink } from "@/components/ui/external-link";
 import { Icon, type IconName } from "@/components/ui/icon";
+import { CLOUD_PROVIDERS_OR } from "@/lib/app-facts";
 import { REPO_URL } from "@/lib/constants";
 
 type PrivacyCard = {
@@ -12,12 +13,12 @@ const CARDS: PrivacyCard[] = [
   {
     icon: "bolt",
     title: "Transcription runs on your Mac",
-    body: "FluidAudio and WhisperKit run Parakeet and Whisper directly on your Mac, so your audio never leaves it. Parakeet, the default, and the Whisper models work with the network off after their one-time download.",
+    body: "Parakeet and Whisper run directly on your Mac — through FluidAudio and WhisperKit on Apple Silicon, transcribe.cpp on Intel — so your audio never leaves it. Parakeet, the default, and the Whisper models work with the network off after their one-time download.",
   },
   {
     icon: "cloud",
     title: "Cloud is opt-in, with your own key",
-    body: "Pick a cloud model and the audio goes straight from your Mac to OpenAI or ElevenLabs on your key. AI actions and recording summaries send transcript text to OpenAI the same way. VoiceToText has no servers of its own to sit in that path.",
+    body: `Pick a cloud model and the audio goes straight from your Mac to ${CLOUD_PROVIDERS_OR} on your key. AI actions and recording summaries send transcript text to OpenAI the same way. VoiceToText has no servers of its own to sit in that path.`,
   },
 ];
 
@@ -87,7 +88,7 @@ const OPT_IN: LedgerRow[] = [
     happens: true,
     icon: "cloud",
     label: "Cloud transcription",
-    note: "audio to OpenAI or ElevenLabs",
+    note: `audio to ${CLOUD_PROVIDERS_OR}`,
     tag: "your key",
   },
   {

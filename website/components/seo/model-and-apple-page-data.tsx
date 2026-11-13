@@ -2,6 +2,10 @@ import Link from "next/link";
 
 import {
   CATALOG_SNAPSHOT,
+  CLOUD_PROVIDERS_AND,
+  CLOUD_PROVIDERS_OR,
+  cheapestCloudModel,
+  cloudModels,
   DOWNLOAD_SIZE_NOTE,
   QUALITY_SCORE_SOURCES,
   formatDownloadSize,
@@ -13,6 +17,7 @@ import {
   type WerBenchmark,
 } from "@/lib/app-facts";
 import { formatDisplayDate, page } from "@/lib/pages";
+import { countWord } from "@/lib/seo";
 
 import type { SeoLandingConfig } from "./seo-landing";
 
@@ -63,7 +68,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
       { label: "Install", cells: ["Free download (macOS 15+, Apple Silicon or Intel)", "Built into macOS"] },
       { label: "Text flow", cells: ["Review, then paste; or instant paste", "Types live at the cursor"] },
       { label: "Spoken commands", cells: ["None; optional AI cleanup actions", "Spoken punctuation, emoji and formatting"] },
-      { label: "Models", cells: ["6 local + 9 optional cloud", "Apple’s system engine"] },
+      { label: "Models", cells: [`${localModels().length} local + ${cloudModels().length} optional cloud`, "Apple’s system engine"] },
       { label: "Meetings and files", cells: ["Records calls and imports files; searchable history", "Not part of Dictation"] },
       { label: "Price", cells: ["Free; cloud and AI features bill your own key", "Included with macOS"] },
     ],
@@ -114,8 +119,8 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
           body: (
             <>
               Six local models run on the Mac: Parakeet (the default, 25 European languages) and five Whisper
-              sizes (99 languages). Nine optional cloud models from OpenAI and ElevenLabs cover 90 to 99+
-              languages and add live text, on your own API key. The{" "}
+              sizes (99 languages). {cloudModels().length} optional cloud models from {CLOUD_PROVIDERS_AND} cover
+              90 to 99+ languages and add live text, on your own API key. The{" "}
               <Link href="/whisper-vs-parakeet-mac">Whisper vs. Parakeet guide</Link> compares the local six.
             </>
           ),
@@ -268,7 +273,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
       {
         label: "Price",
         cells: [
-          "Free. Cloud transcription and AI features bill your own OpenAI or ElevenLabs key.",
+          `Free. Cloud transcription and AI features bill your own ${CLOUD_PROVIDERS_OR} key.`,
           "Included with macOS.",
         ],
       },
@@ -300,7 +305,7 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
     {
       question: "Does VoiceToText cost anything?",
       answer:
-        "No. It is free with no paid tier or account. If you choose a cloud transcription model or use AI actions or AI summaries, your own OpenAI or ElevenLabs key is billed by that provider.",
+        `No. It is free with no paid tier or account. If you choose a cloud transcription model or use AI actions or AI summaries, your own ${CLOUD_PROVIDERS_OR} key is billed by that provider.`,
     },
   ],
   sources: [
@@ -353,8 +358,14 @@ export const appleDictationAlternativeConfig: SeoLandingConfig = {
 };
 
 // ---------------------------------------------------------------------------
-// Whisper vs. Parakeet: every number below comes from lib/app-facts.ts, the
+// Parakeet vs. Whisper: every number below comes from lib/app-facts.ts, the
 // same catalog the app's Models pane prints, so the page and the app agree.
+// Two kinds of fact come from elsewhere, checked 2026-11-13: parameter counts
+// from the upstream model cards (NVIDIA: 600 million for parakeet-tdt-0.6b-v3;
+// OpenAI's Whisper README: 1550 M for large, 809 M for turbo, "an optimized
+// version of large-v3"), and the speed wording from the app's own model notes
+// in ModelRegistry.swift ("Fastest on your Mac", "Noticeably slower than Turbo").
+// The Apple answer follows Apple's Mac User Guide for macOS 27.
 
 function werCell(model: ModelFact, benchmark: WerBenchmark): string {
   const figure = model.wer.find((wer) => wer.benchmark === benchmark);
@@ -374,40 +385,50 @@ const LOCAL = localModels();
 const PARAKEET = LOCAL.find((m) => m.id === "parakeet-tdt-v3")!;
 const LARGE_V3 = LOCAL.find((m) => m.id === "whisper-large-v3")!;
 const TURBO = LOCAL.find((m) => m.id === "whisper-large-v3-turbo")!;
+const TINY = LOCAL.find((m) => m.id === "whisper-tiny")!;
 const GPT_TRANSCRIBE = modelById("openai-gpt-transcribe")!;
 const SCRIBE = modelById("elevenlabs-scribe-v2-realtime")!;
-const MINI = modelById("openai-gpt-4o-mini-transcribe")!;
 const DIARIZE = modelById("openai-gpt-4o-transcribe-diarize")!;
+const CHEAPEST_CLOUD = cheapestCloudModel();
 
 const openAsr = (m: ModelFact) => werCell(m, "Open ASR Leaderboard");
 const aaWer = (m: ModelFact) => werCell(m, "Artificial Analysis AA-WER");
+/** Parakeet's AA-WER as a bare number, for prose that says "an estimated …%" itself. */
+const PARAKEET_AA = PARAKEET.wer.find((wer) => wer.benchmark === "Artificial Analysis AA-WER")?.percent;
+const size = (m: ModelFact) => formatDownloadSize(m) ?? "—";
+/** "25" from "25 European languages". */
+const languageCount = (m: ModelFact) => m.languagesInApp.match(/\d+/)?.[0] ?? m.languagesInApp;
 
 export const whisperVsParakeetConfig: SeoLandingConfig = {
   path: "/whisper-vs-parakeet-mac",
-  title: "Parakeet vs Whisper on Mac (2026): Accuracy, Languages, Size",
-  description: `Parakeet TDT v3 vs Whisper Large v3 on Mac: ${openAsr(PARAKEET)} vs ${openAsr(LARGE_V3)} WER on the Open ASR Leaderboard, 25 vs 99 languages, download sizes, and a fair test.`,
-  breadcrumb: "Whisper vs. Parakeet on Mac",
+  title: "Parakeet vs Whisper on Mac: TDT v3 vs Large v3 and Turbo",
+  description: `Parakeet TDT v3 vs Whisper Large v3: ${openAsr(PARAKEET)} vs ${openAsr(LARGE_V3)} Open ASR WER, ≈${PARAKEET_AA}% vs ${aaWer(LARGE_V3)} AA-WER, ${languageCount(PARAKEET)} vs ${languageCount(LARGE_V3)} languages. Parakeet is faster; Whisper covers more.`,
+  breadcrumb: "Parakeet vs Whisper on Mac",
   parent: { name: "Compare", path: "/compare" },
   eyebrow: "Local model guide",
-  readingTime: "8 min",
-  h1: "Whisper vs. Parakeet on Mac: choose with your audio, not a leaderboard headline.",
-  lead:
-    "VoiceToText runs both model families on your Mac. Parakeet TDT v3 is the default and handles 25 European languages; the five Whisper sizes cover 99 languages and trade download size, speed and accuracy. The right answer depends on your language, your Mac, your microphone and your vocabulary.",
+  readingTime: "9 min",
+  h1: "Parakeet vs Whisper on Mac: Parakeet TDT v3 compared with Whisper Large v3 and Turbo.",
+  lead: `Parakeet TDT v3 is the faster, smaller choice for ${PARAKEET.languagesInApp}. Whisper Large v3 and Large v3 Turbo cover ${LARGE_V3.languagesInApp} and lead one of the two public benchmarks. VoiceToText runs all three on your Mac, offline after a one-time download.`,
   heroPoints: [
-    "Parakeet + 5 Whisper sizes",
     "Two public WER benchmarks",
-    "No universal accuracy winner",
+    `${languageCount(PARAKEET)} vs ${languageCount(LARGE_V3)} languages`,
+    "All three run offline",
     "Test method included",
   ],
-  summaryTitle: "A sensible default",
+  summaryTitle: "Which should you use?",
   summary: (
     <>
-      Start with Parakeet TDT v3, the default. It handles 25 European languages, detected automatically,
-      and it has the lowest Open ASR Leaderboard error rate of the six. For a language outside those 25, use
-      a Whisper model, which covers 99. If you dictate in English, also try Whisper Large v3 or
-      Large v3 Turbo: another benchmark ranks them ahead, and Large v3 has the highest quality score the app
-      shows for an on-device model. Keep whichever makes the fewest meaning-changing mistakes on your own
-      audio.
+      Start with Parakeet TDT v3 if you speak one of its {PARAKEET.languagesInApp}. It is VoiceToText’s
+      default and, in the app’s words, the fastest model on your Mac; it is also the smallest download of the
+      three ({size(PARAKEET)}, against {size(LARGE_V3)} for Whisper Large v3) and has the lowest Open ASR
+      Leaderboard error rate: {openAsr(PARAKEET)}, against {openAsr(LARGE_V3)} for Large v3 and{" "}
+      {openAsr(TURBO)} for Turbo. Choose Whisper for any other language, since it covers{" "}
+      {LARGE_V3.languagesInApp}, or when Parakeet stumbles on your audio: on Artificial Analysis’s AA-WER,
+      Large v3 scores {aaWer(LARGE_V3)} and Turbo {aaWer(TURBO)}, against an estimated {PARAKEET_AA}% for
+      Parakeet. Of the two Whisper models, Turbo is the quicker one, and Large v3, noticeably slower, has the
+      highest quality score of any local model ({formatQuality(LARGE_V3)}). None of these figures were measured
+      on a Mac, so dictate the same minute of your own speech with each and keep the one that makes fewer
+      meaning-changing mistakes.
     </>
   ),
   atAGlance: {
@@ -445,57 +466,35 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
   },
   sections: [
     {
-      id: "families",
-      eyebrow: "Understand the choice",
-      title: "These are model families, not two fixed settings.",
-      paragraphs: [
+      id: "head-to-head",
+      eyebrow: "Head to head",
+      title: "Parakeet TDT v3 vs Whisper Large v3 and Large v3 Turbo.",
+      intro: (
         <>
-          Whisper is OpenAI’s open speech-recognition and speech-translation model family. Its official model
-          card documents multiple sizes, multilingual models, and translation into English. VoiceToText ships
-          five local sizes through WhisperKit: Tiny, Base, Small, Large v3 and Large v3 Turbo. That gives you an
-          explicit storage, memory and accuracy tradeoff.
-        </>,
-        <>
-          Parakeet is NVIDIA’s family of speech-recognition models built on a FastConformer encoder with CTC,
-          RNN-T or TDT decoders. VoiceToText runs Parakeet TDT v3 (0.6B parameters) through FluidAudio.
-          NVIDIA’s model card lists transcription with punctuation, capitalization and timestamps in 25
-          European languages, with the language detected automatically.
-        </>,
-        <>
-          The app wrapper matters too. VoiceToText runs converted, Apple-optimized versions, not the reference
-          PyTorch or NeMo code from the upstream repositories. A benchmark run on other hardware with other
-          decoding settings doesn’t transfer directly to one Mac app.
-        </>,
+          The three models most comparisons are about: NVIDIA’s parakeet-tdt-0.6b-v3, often called Parakeet v3,
+          against OpenAI’s largest Whisper and its faster Turbo variant. VoiceToText runs all three locally.
+        </>
+      ),
+      cards: [
+        {
+          title: "Accuracy depends on the benchmark",
+          body: `On the Open ASR Leaderboard, Parakeet TDT v3 has the lowest word error rate at ${openAsr(PARAKEET)}, ahead of Whisper Large v3 (${openAsr(LARGE_V3)}) and Turbo (${openAsr(TURBO)}). On Artificial Analysis’s AA-WER the order flips: Large v3 ${aaWer(LARGE_V3)}, Turbo ${aaWer(TURBO)}, Parakeet about ${PARAKEET_AA}%, a figure carried over from v2. Lower is better.`,
+        },
+        {
+          title: `${languageCount(PARAKEET)} languages vs ${languageCount(LARGE_V3)}`,
+          body: `Parakeet TDT v3 covers ${PARAKEET.languagesInApp}, English included. Whisper Large v3 and Turbo cover ${LARGE_V3.languagesInApp}. All three detect the language themselves; VoiceToText has no language picker.`,
+        },
+        {
+          title: "0.6 billion parameters vs 1.55 billion",
+          body: `NVIDIA lists 600 million parameters for Parakeet TDT v3, a ${size(PARAKEET)} download in the app. OpenAI lists 1,550 million for Whisper Large v3 (${size(LARGE_V3)}) and 809 million for Turbo (${size(TURBO)}).`,
+        },
+        {
+          title: "Speed: Parakeet first, Large v3 last",
+          body:
+            "VoiceToText calls Parakeet the fastest model on your Mac and Large v3 noticeably slower than Turbo, which OpenAI describes as an optimized Large v3 with faster transcription and minimal loss of accuracy. The app publishes no timings, so time a few dictations on your own Mac.",
+        },
       ],
-    },
-    {
-      id: "benchmarks",
-      eyebrow: "Read the numbers",
-      title: "Why the two leaderboards disagree about Parakeet and Whisper.",
-      paragraphs: [
-        <>
-          On Hugging Face’s Open ASR Leaderboard, Parakeet TDT v3 has the lowest error rate of the six at{" "}
-          {openAsr(PARAKEET)}, ahead of Whisper Large v3 ({openAsr(LARGE_V3)}) and Large v3 Turbo (
-          {openAsr(TURBO)}). On Artificial Analysis’s AA-WER, the order flips: Whisper Large v3 at{" "}
-          {aaWer(LARGE_V3)} and Turbo at {aaWer(TURBO)}, against about{" "}
-          {PARAKEET.wer.find((w) => w.benchmark === "Artificial Analysis AA-WER")?.percent}% for Parakeet.
-        </>,
-        <>
-          Both can be right. The Open ASR Leaderboard averages results over a set of public English test sets.
-          AA-WER uses Artificial Analysis’s own mix, half of it its AgentTalk set and the rest cleaned
-          VoxPopuli and Earnings22 audio. It measured Whisper on hosted cloud versions, and it hasn’t tested
-          Parakeet v3 at all, so the Parakeet figure is v2’s result carried over. Different audio, text
-          normalization and runtimes produce different orderings.
-        </>,
-        <>
-          VoiceToText’s quality score uses AA-WER first and the Open ASR Leaderboard only where AA has no
-          figure. That is why the app scores Whisper Large v3 at {formatQuality(LARGE_V3)} and Parakeet at{" "}
-          {formatQuality(PARAKEET)} while recommending Parakeet as the default. Treat the score as a summary,
-          not a verdict: none of these numbers were measured by VoiceToText, on a Mac, or on your voice.
-        </>,
-      ],
-      note:
-        "The app shows no speed numbers either. It describes Parakeet as its fastest local model and Large v3 Turbo as a quicker Large v3, but only your own Mac can tell you how long each takes.",
+      note: `Turbo or Large v3? Turbo scores ${formatQuality(TURBO)} in the app against ${formatQuality(LARGE_V3)} for Large v3 and is the quicker of the two, so it is the easier Whisper to live with. Move to Large v3 when Turbo misses words that matter.`,
     },
     {
       id: "parakeet",
@@ -530,9 +529,9 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
       paragraphs: [
         <>
           OpenAI’s model card lists Tiny, Base, Small, Medium, Large and Turbo variants. VoiceToText offers
-          Tiny, Base, Small, Large v3 and Large v3 Turbo, from tens of megabytes to several hundred in the
-          catalog, with Large v3 taking about 1.6 GB once installed. The smaller sizes suit a Mac short on
-          space or memory; the larger ones are for when transcript quality matters more than turnaround.
+          Tiny, Base, Small, Large v3 and Large v3 Turbo, from {size(TINY)} for Tiny to {size(LARGE_V3)} for
+          Large v3 in the app’s catalog. The smaller sizes suit a Mac short on space or memory; the larger
+          ones are for when transcript quality matters more than turnaround.
         </>,
         <>
           Upstream, Whisper is multilingual and can translate speech into English. VoiceToText uses it to
@@ -551,13 +550,65 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
       ],
     },
     {
+      id: "benchmarks",
+      eyebrow: "Read the numbers",
+      title: "Why the two leaderboards disagree about Parakeet and Whisper.",
+      paragraphs: [
+        <>
+          On Hugging Face’s Open ASR Leaderboard, Parakeet TDT v3 has the lowest error rate of the six local
+          models at {openAsr(PARAKEET)}. On Artificial Analysis’s AA-WER, Whisper Large v3 ({aaWer(LARGE_V3)})
+          and Turbo ({aaWer(TURBO)}) come out ahead of Parakeet’s estimated {PARAKEET_AA}%.
+        </>,
+        <>
+          Both can be right. The Open ASR Leaderboard averages results over a set of public English test sets.
+          AA-WER uses Artificial Analysis’s own mix, half of it its AgentTalk set and the rest cleaned
+          VoxPopuli and Earnings22 audio. It measured Whisper on hosted cloud versions, and it hasn’t tested
+          Parakeet v3 at all, so the Parakeet figure is v2’s result carried over. Different audio, text
+          normalization and runtimes produce different orderings.
+        </>,
+        <>
+          VoiceToText’s quality score uses AA-WER first and the Open ASR Leaderboard only where AA has no
+          figure. That is why the app scores Whisper Large v3 at {formatQuality(LARGE_V3)} and Parakeet at{" "}
+          {formatQuality(PARAKEET)} while recommending Parakeet as the default. Treat the score as a summary,
+          not a verdict: none of these numbers were measured by VoiceToText, on a Mac, or on your voice.
+        </>,
+      ],
+      note:
+        "The app shows no speed numbers either. It describes Parakeet as the fastest model on your Mac and Large v3 as noticeably slower than Turbo, but only your own Mac can tell you how long each takes.",
+    },
+    {
+      id: "families",
+      eyebrow: "Understand the choice",
+      title: "These are model families, not two fixed settings.",
+      paragraphs: [
+        <>
+          Whisper is OpenAI’s open speech-recognition and speech-translation model family. Its official model
+          card documents multiple sizes, multilingual models, and translation into English. VoiceToText ships
+          five local sizes through WhisperKit: Tiny, Base, Small, Large v3 and Large v3 Turbo. That gives you an
+          explicit storage, memory and accuracy tradeoff.
+        </>,
+        <>
+          Parakeet is NVIDIA’s family of speech-recognition models built on a FastConformer encoder with CTC,
+          RNN-T or TDT decoders. VoiceToText runs Parakeet TDT v3 (0.6B parameters) through FluidAudio.
+          NVIDIA’s model card lists transcription with punctuation, capitalization and timestamps in 25
+          European languages, with the language detected automatically.
+        </>,
+        <>
+          The app wrapper matters too. VoiceToText runs converted, Apple-optimized versions, not the reference
+          PyTorch or NeMo code from the upstream repositories. A benchmark run on other hardware with other
+          decoding settings doesn’t transfer directly to one Mac app.
+        </>,
+      ],
+    },
+    {
       id: "cloud",
       eyebrow: "Beyond local",
       title: "When a cloud model is the better call.",
       intro: (
         <>
-          VoiceToText also offers nine optional cloud models. They send the audio to OpenAI or ElevenLabs on
-          your own API key and are billed per hour of audio, so they are not{" "}
+          VoiceToText also offers {countWord(cloudModels().length).toLowerCase()} optional cloud models. They
+          send the audio to {CLOUD_PROVIDERS_OR} on your own API key and are billed per hour of audio, so they
+          are not{" "}
           <Link href="/offline-speech-to-text-mac">offline</Link>. Four situations favor them.
         </>
       ),
@@ -571,8 +622,8 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
           body: `ElevenLabs’ ${SCRIBE.name} shows words one by one in the Large recording HUD while you talk, scores ${formatQuality(SCRIBE)}, covers ${SCRIBE.languagesInApp} and costs ${formatPrice(SCRIBE)}. Live models work for dictation only; local models show text when you stop.`,
         },
         {
-          title: `Lowest cost: ${MINI.name}`,
-          body: `At ${formatPrice(MINI)}, ${MINI.name} is the cheapest cloud option, with a quality score of ${formatQuality(MINI)}.`,
+          title: `Lowest cost: ${CHEAPEST_CLOUD.name} on ${CHEAPEST_CLOUD.provider}`,
+          body: `At ${formatPrice(CHEAPEST_CLOUD)}, it is the cheapest cloud option, with a quality score of ${formatQuality(CHEAPEST_CLOUD)}.${CHEAPEST_CLOUD.priceNote ? ` ${CHEAPEST_CLOUD.priceNote}` : ""}`,
         },
         {
           title: "Other languages and speaker labels",
@@ -617,6 +668,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     },
   ],
   comparison: {
+    title: "Parakeet TDT v3 vs the Whisper family, in detail.",
     caption:
       "Model-family characteristics as they apply inside VoiceToText; exact behavior depends on the checkpoint and the app release.",
     columns: ["Parakeet TDT v3", "Whisper"],
@@ -678,14 +730,22 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
   },
   faq: [
     {
-      question: "Is Parakeet more accurate than Whisper?",
-      answer:
-        "It depends on the benchmark. On the Open ASR Leaderboard, Parakeet TDT v3 (6.32%) beats Whisper Large v3 (7.44%). On Artificial Analysis AA-WER, Whisper Large v3 (4.1%) beats Parakeet's estimated 6.4%. Test both on your own audio.",
+      question: "Is Parakeet TDT v3 more accurate than Whisper Large v3?",
+      answer: `It depends on the benchmark. On the Open ASR Leaderboard, Parakeet TDT v3 (${openAsr(PARAKEET)}) beats Whisper Large v3 (${openAsr(LARGE_V3)}). On Artificial Analysis AA-WER, Whisper Large v3 (${aaWer(LARGE_V3)}) beats Parakeet's estimated ${PARAKEET_AA}%. Test both on your own audio.`,
+    },
+    {
+      question: "Should I use Whisper Large v3 or Large v3 Turbo?",
+      answer: `Try Turbo first. OpenAI describes it as an optimized Large v3 with faster transcription and minimal loss of accuracy, and the app scores it ${formatQuality(TURBO)} against ${formatQuality(LARGE_V3)} for Large v3, which it calls noticeably slower than Turbo. Both cover ${LARGE_V3.languagesInApp} and run offline; switch to Large v3 if Turbo misses words you need.`,
     },
     {
       question: "Which model is faster on a Mac?",
       answer:
-        "VoiceToText publishes no speed numbers. The app describes Parakeet as its fastest local model and Large v3 Turbo as a quicker version of Large v3. Time a few dictations on your own Mac to be sure.",
+        "VoiceToText publishes no speed numbers. The app describes Parakeet TDT v3 as the fastest model on your Mac and Whisper Large v3 as noticeably slower than Large v3 Turbo. Time a few dictations on your own Mac to be sure.",
+    },
+    {
+      question: "Apple speech vs Parakeet: which should I use on a Mac?",
+      answer:
+        "Apple's speech recognition is what built-in Mac Dictation uses: there is nothing to install, it enters text at the insertion point, and it takes spoken punctuation. Apple says Keyboard settings show whether general text Dictation is processed on your Mac rather than sent to Siri servers, and in macOS 27 Apple Intelligence adds an on-device model that improves spelling, punctuation and capitalization in English on Macs with M3 or later and at least 12 GB of memory. VoiceToText doesn't use Apple's engine, including the SpeechAnalyzer API apps can call on macOS 26 and later; its local models are Parakeet TDT v3 and Whisper, which run on your Mac after a one-time download. This page has no benchmark figure for Apple's engine, so dictate the same paragraph with both and keep the one you correct less.",
     },
     {
       question: "Can local Whisper in VoiceToText transcribe languages other than English?",
@@ -694,8 +754,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
     },
     {
       question: "How much disk space do the local models need?",
-      answer:
-        "The app's catalog lists downloads from about 39 MB (Whisper Tiny) to several hundred MB (Parakeet and the Large models). Installed size can be larger; Whisper Large v3 takes about 1.6 GB. Each model downloads once and then runs fully offline.",
+      answer: `The app's catalog lists downloads from ${size(TINY)} for Whisper Tiny to ${size(LARGE_V3)} for Whisper Large v3 and ${size(TURBO)} for Large v3 Turbo; Parakeet TDT v3, the default, is ${size(PARAKEET)}. The space a model takes once installed can differ. Each model downloads once and then runs fully offline.`,
     },
     {
       question: "Did VoiceToText run these accuracy tests?",
@@ -729,7 +788,7 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
       label: "OpenAI Whisper repository",
       href: "https://github.com/openai/whisper",
       detail:
-        "The reference implementation and current list of model sizes, language behavior, and approximate hardware tradeoffs in the upstream project.",
+        "The reference implementation and its table of model sizes with parameter counts, plus language behavior and approximate hardware tradeoffs in the upstream project.",
     },
     {
       label: "NVIDIA NeMo ASR checkpoints",
@@ -738,10 +797,16 @@ export const whisperVsParakeetConfig: SeoLandingConfig = {
         "NVIDIA’s checkpoint table for Parakeet variants, decoder type, tasks, languages, and model size.",
     },
     {
+      label: "Apple: Dictate messages and documents on Mac",
+      href: "https://support.apple.com/guide/mac-help/dictate-messages-and-documents-mh40584/mac",
+      detail:
+        "Apple’s guide to built-in Dictation, the basis of the Apple answer above: where to check on-device processing, and the on-device Apple Intelligence model in macOS 27.",
+    },
+    {
       label: "VoiceToText source repository",
       href: "https://github.com/gug007/voice-to-text",
       detail:
-        "The app’s source, including the WhisperKit and FluidAudio integrations and the model catalog the table is built from.",
+        "The app’s source, including the WhisperKit and FluidAudio integrations, the model catalog the table is built from, and the speed notes the app shows for each model.",
     },
   ],
   related: [

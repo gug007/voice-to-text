@@ -7,7 +7,7 @@ import { PERSON_ID, SOFTWARE_ID, WEBSITE_ID, type FaqEntry } from "./seo-ids";
 export const GUIDE_PUBLISHED = page(GUIDE_PATH).published;
 export const GUIDE_UPDATED = page(GUIDE_PATH).modified;
 
-export const GUIDE_H1 = "How to use voice to text on Mac — in any app.";
+export const GUIDE_H1 = "How to use voice to text on Mac: the shortcut and setup.";
 
 export const guideArticleJsonLd = {
   "@context": "https://schema.org",
@@ -15,7 +15,7 @@ export const guideArticleJsonLd = {
   "@id": `${GUIDE_URL}#article`,
   headline: GUIDE_H1,
   description:
-    "A practical guide to voice typing on a Mac: turning on the built-in Dictation and its shortcut, then setting up VoiceToText with permissions, the recording card and review panel keys, a local model for your language, optional AI actions, and fixes for common problems.",
+    "The Mac voice to text shortcut (the Microphone key or Fn-D to start Dictation, Esc to stop, changed in System Settings → Keyboard → Dictation), how to turn on built-in Dictation, and how to set up VoiceToText: its Option-Space shortcut, permissions, the recording card and review panel keys, a local model for your language, optional AI actions, and fixes for common problems.",
   url: GUIDE_URL,
   mainEntityOfPage: { "@id": `${GUIDE_URL}#webpage` },
   image: {
@@ -38,9 +38,9 @@ export const guidePageJsonLd = {
   "@type": "WebPage",
   "@id": `${GUIDE_URL}#webpage`,
   url: GUIDE_URL,
-  name: "How to use voice to text on Mac",
+  name: "Voice to text on Mac: keyboard shortcut and setup",
   description:
-    "Turn on Mac Dictation and learn its shortcut, or set up VoiceToText: grant the right permissions, choose an offline model that covers your language, review before pasting, troubleshoot common problems, and dictate into any app.",
+    "The keyboard shortcut for voice to text on Mac and where to change it, how to turn on Dictation, and how to set up VoiceToText: grant the right permissions, choose an offline model that covers your language, review before pasting, troubleshoot common problems, and dictate into any app.",
   datePublished: GUIDE_PUBLISHED,
   dateModified: GUIDE_UPDATED,
   isPartOf: { "@id": WEBSITE_ID },
@@ -63,17 +63,18 @@ export const guideBreadcrumbJsonLd = {
 // One array feeds both the visible FAQ on the guide and the FAQPage JSON-LD
 // below, so the two can never disagree. The built-in answers follow Apple's Mac
 // User Guide ("Dictate messages and documents on Mac") and its Mac keyboard
-// shortcuts page; re-check them there when macOS changes.
+// shortcuts page; re-check them there when macOS changes. Last checked
+// 2026-11-13 (macOS 27 guide; shortcuts page published 2026-09-14).
 export const guideFaqEntries: FaqEntry[] = [
+  {
+    question: "What is the keyboard shortcut for voice to text on Mac?",
+    answer:
+      "Press the Microphone key in the top row if your keyboard has one. Apple's keyboard shortcut list also gives Fn-D to start or stop dictation (on keyboards with a Globe 🌐 key, that is the Fn key). In System Settings → Keyboard → Dictation, the Shortcut menu shows the shortcut your Mac uses and lets you pick another, such as pressing Fn (🌐) twice, or choose Customize to record your own. Press Esc to stop. VoiceToText uses Option-Space by default; change it in its Settings → Shortcut.",
+  },
   {
     question: "How do I turn on voice to text on Mac?",
     answer:
       "Choose Apple menu → System Settings, click Keyboard in the sidebar, go to Dictation and turn it on, then click Enable. To dictate, click where the text should go and press the Microphone key, use your Dictation keyboard shortcut, or choose Edit → Start Dictation. VoiceToText is a separate free app for when you want to review the text before it is pasted.",
-  },
-  {
-    question: "What is the keyboard shortcut for voice to text on Mac?",
-    answer:
-      "Press the Microphone key in the top row if your keyboard has one. Apple's keyboard shortcut list also gives Fn-D (Globe-D) to start or stop dictation. In System Settings → Keyboard → Dictation, the Shortcut menu shows the shortcut your Mac uses and lets you pick another, such as pressing Fn (🌐) twice, or choose Customize to record your own. Press Esc to stop. VoiceToText uses Option-Space by default.",
   },
   {
     question: "Does voice to text on Mac work offline?",

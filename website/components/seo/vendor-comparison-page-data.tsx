@@ -1,6 +1,8 @@
 import Link from "next/link";
 
+import { CLOUD_PROVIDERS_AND, CLOUD_PROVIDERS_OR, cloudModels } from "@/lib/app-facts";
 import { formatDisplayDate, page, type PagePath } from "@/lib/pages";
+import { countWord } from "@/lib/seo";
 
 import type { SeoLandingConfig } from "./seo-landing";
 
@@ -16,27 +18,27 @@ const WISPR_CHECKED = sourcesChecked("/wispr-flow-alternative");
 export const superwhisperAlternativeConfig: SeoLandingConfig = {
   path: "/superwhisper-alternative",
   parent: { name: "Compare", path: "/compare" },
-  title: "Free Superwhisper Alternative for Mac (2026): Local-First",
+  title: "Superwhisper Alternative for Mac: Free, Local, No Account",
   description:
-    "Compare VoiceToText and Superwhisper for Mac dictation: local models, platforms, formatting, meetings and files, source access, requirements, and price.",
+    "VoiceToText is free with no account; Superwhisper Pro is $8.49/month or $249.99 once. Both transcribe on your Mac. Who should switch, plus other options.",
   breadcrumb: "Superwhisper alternative",
   eyebrow: "Balanced comparison",
-  readingTime: "6 min",
-  h1: "A Superwhisper alternative for Mac users who prioritize free, inspectable, local-first software.",
+  readingTime: "8 min",
+  h1: "A free Superwhisper alternative for Mac, local-first and inspectable.",
   lead:
-    "Superwhisper is a mature, cross-platform voice product with local and cloud models, AI formatting, and a wider ecosystem. VoiceToText is a narrower Mac app: free, local by default, with source on GitHub, and built around reviewed paste, meeting recording and a searchable history.",
+    "Stay with Superwhisper if you dictate on Windows, iPhone or Android as well as a Mac, want Super Mode to reshape text for each app, or want Pro’s cloud models and file transcription; its free tier already runs Whisper on your Mac without an account. Switch to VoiceToText if one Mac is enough and you’d rather pay nothing at all: local Parakeet and Whisper, a review step before paste, meeting recording and a searchable history are all free, with the source on GitHub. Superwhisper Pro is $8.49 a month, $84.99 a year or $249.99 once.",
   heroPoints: [
-    "Official vendor sources",
-    "No unverifiable prices",
+    `Sources checked ${SUPERWHISPER_CHECKED}`,
+    "Prices from vendor pages",
     "Both products credited",
     "Local mode vs local mode",
   ],
   summaryTitle: "Which one should you try?",
   summary: (
     <>
-      Choose Superwhisper when cross-platform availability, its Super Mode formatting, a broad model catalog,
-      iOS continuity, and an established commercial product matter. Choose VoiceToText when you want a free
-      Mac app with source on GitHub, no account, a review-before-paste flow, and local meeting and file
+      Choose Superwhisper when cross-platform availability, its Super Mode formatting, a broad model catalog
+      with cloud options in Pro, and an established commercial product matter. Choose VoiceToText when you want
+      a free Mac app with source on GitHub, no account, a review-before-paste flow, and local meeting and file
       transcription with optional AI summaries on your own key. Test both with your language and vocabulary;
       this page does not claim either is more accurate.
     </>
@@ -44,8 +46,8 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
   disclosure: (
     <>
       This is VoiceToText’s own website, written by its developer. There are no affiliate links or
-      sponsorships. Superwhisper facts come from its official pages, checked {SUPERWHISPER_CHECKED} and
-      linked below.
+      sponsorships. Superwhisper facts, and the facts about the other apps named here, come from their official
+      pages, checked {SUPERWHISPER_CHECKED} and linked below.
     </>
   ),
   atAGlance: {
@@ -53,12 +55,19 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     caption: `Superwhisper as documented on its official site (checked ${SUPERWHISPER_CHECKED}).`,
     columns: ["VoiceToText", "Superwhisper"],
     rows: [
-      { label: "Platforms", cells: ["Mac (macOS 15+, Apple Silicon or Intel)", "macOS, Windows, iOS and Android"] },
-      { label: "Local transcription", cells: ["Yes: Parakeet and 5 Whisper sizes", "Yes: on-device models"] },
-      { label: "AI formatting", cells: ["Opt-in actions in review, on your OpenAI key", "Super Mode and modes, built in"] },
-      { label: "Meetings", cells: ["Mic + system audio, no bot; AI summaries on your key", "Records meetings from the device without a bot, with speaker labels"] },
-      { label: "Source", cells: ["Public on GitHub", "Proprietary"] },
-      { label: "Price", cells: ["Free, no paid tier", "Free tier plus paid plans"] },
+      { label: "Platforms", cells: ["Mac (macOS 15+, Apple Silicon or Intel)", "Mac (macOS 14+), Windows, iOS and Android"] },
+      {
+        label: "Local transcription",
+        cells: ["Yes: Parakeet and 5 Whisper sizes", "Yes: Whisper on the free tier; Pro adds Parakeet, Cohere and more"],
+      },
+      { label: "AI formatting", cells: ["Opt-in actions in review, on your OpenAI key", "Super Mode and custom modes, built in"] },
+      {
+        label: "Meetings",
+        cells: ["Mic + system audio, no bot; AI summaries on your key", "On the Mac since October 2026: no bot, speaker labels"],
+      },
+      { label: "Account", cells: ["None", "Not needed to try it or to work offline"] },
+      { label: "Source", cells: ["Public on GitHub", "No public source mentioned"] },
+      { label: "Price", cells: ["Free, no paid tier", "Free tier; Pro $8.49/month, $84.99/year or $249.99 lifetime"] },
     ],
   },
   sections: [
@@ -68,22 +77,30 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "It covers more platforms and more layers of the writing workflow.",
       paragraphs: [
         <>
-          Superwhisper’s official site describes system-wide dictation for macOS, Windows, iOS and Android. It can
-          place text at the cursor, run with a global shortcut or push-to-talk, transcribe files, and use
-          on-device models without an internet connection. Its model catalog also documents optional cloud
-          transcription.
+          Superwhisper’s site lists apps for Mac, Windows, iOS and Android. On a Mac it puts text at the cursor
+          in any app, runs from a global shortcut or push-to-talk, and with a local model transcribes on the
+          device, with no audio leaving it. Its Mac page lists macOS 14 or later on Apple Silicon or Intel,
+          though the Parakeet and Cohere local models aren’t available on Intel.
         </>,
         <>
-          The product’s distinguishing layer is not only speech recognition. Super Mode is presented as
-          context-aware formatting that adapts output to the app, while modes and AI tooling support different
-          writing styles. That can be valuable for someone who wants spoken drafts cleaned and reshaped with
-          less manual review.
+          The product’s distinguishing layer is not only speech recognition. Super Mode adapts its output to the
+          app or screen you’re in, and preset modes such as Voice, Message and Email, plus custom modes, cover
+          different writing styles. That can be valuable for someone who wants spoken drafts cleaned and
+          reshaped with less manual review.
         </>,
         <>
-          Superwhisper is commercial software with a free tier and paid functionality. Pricing and tier
-          contents can change, so this comparison deliberately sends readers to the vendor instead of
-          freezing a price in copy. Its July 2026 changelog says current Mac releases require macOS 14 or
-          later.
+          The free tier doesn’t expire and runs Whisper models on your Mac in 100+ languages; you don’t need an
+          account or an API key to try it. Pro adds more local models such as Parakeet and Cohere, cloud models
+          such as Scribe V2 and Nova 3, your own AI API keys, and file transcription, for $8.49 a month, $84.99
+          a year or $249.99 once, with a 30-day refund. Its pages disagree on whether every local Whisper model
+          is now free, so check the models page for the one you want.
+        </>,
+        <>
+          Meetings arrived on the Mac in version 3.0.0 on October 15, 2026. It records calls in the background
+          with no bot and writes notes and speaker-labeled transcripts with fully offline models; FaceTime calls
+          work since 3.1.0. Superwhisper’s homepage lists Meetings on the free plan, while its meetings page says
+          it is included in Pro. Version 3.3.0, from November 12, 2026, imports meetings from Granola, Wispr Flow
+          and Otter.
         </>,
       ],
     },
@@ -99,8 +116,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
         },
         {
           title: "Local by default",
-          body:
-            "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on your Mac after the model download. Nine optional cloud models need your own OpenAI or ElevenLabs key.",
+          body: `Parakeet (25 European languages) and five Whisper sizes (99 languages) run on your Mac after the model download. ${countWord(cloudModels().length)} optional cloud models need your own ${CLOUD_PROVIDERS_OR} key.`,
         },
         {
           title: "Review as the core workflow",
@@ -155,11 +171,60 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       note: (
         <>
           Both products offer local transcription. “Superwhisper alternative” here means a different product
-          and governance model, not a claim that Superwhisper is cloud-only. For a cloud-only comparison, see{" "}
-          <Link href="/wispr-flow-alternative">VoiceToText vs Wispr Flow</Link>; for a file-transcription
+          and governance model, not a claim that Superwhisper is cloud-only. For a file-transcription
           specialist, see <Link href="/macwhisper-alternative">VoiceToText vs MacWhisper</Link>; for the
           dictation built into macOS, see{" "}
           <Link href="/apple-dictation-alternative">VoiceToText vs Apple Dictation</Link>.
+        </>
+      ),
+    },
+    {
+      id: "other-alternatives",
+      eyebrow: "Other Superwhisper alternatives",
+      title: "Four more Mac dictation apps to consider.",
+      intro: (
+        <>
+          Each line comes from the app’s own site, checked {SUPERWHISPER_CHECKED}. We haven’t benchmarked any of
+          them; try two or three with your own voice.
+        </>
+      ),
+      cards: [
+        {
+          title: "VoiceInk",
+          body:
+            "A Mac-only dictation app for Apple Silicon, sold as a one-time license: $25 for one Mac, $39 for two or $49 for three, with a free trial. It transcribes on the device, and its optional AI enhancement sends text, not audio, to a cloud model. Its source is on GitHub under GPL v3.",
+        },
+        {
+          title: "Spokenly",
+          body:
+            "On macOS, Windows, Linux and iPhone. The Local plan is free, on-device and needs no account, and using your own API keys is free too; Local+ is $29 once, and Pro is $12 a month billed yearly or $15 monthly. It uses cloud models by default, with local Whisper and Parakeet available. Closed source.",
+        },
+        {
+          title: "Wispr Flow",
+          body: (
+            <>
+              Free for 2,000 words a week on Mac, Windows, iPhone and Android; Pro is $15 per user per month, or
+              $12 billed annually. See <Link href="/wispr-flow-alternative">VoiceToText vs. Wispr Flow</Link> for
+              how it handles your audio.
+            </>
+          ),
+        },
+        {
+          title: "MacWhisper",
+          body: (
+            <>
+              Best known for file transcription, it includes system-wide dictation in its free version; Pro, a
+              one-time €64 license on macwhisper.com, adds AI prompts and grammar fixes for dictation. See{" "}
+              <Link href="/macwhisper-alternative">VoiceToText vs. MacWhisper</Link>.
+            </>
+          ),
+        },
+      ],
+      note: (
+        <>
+          Only need quick dictation? Apple’s built-in Dictation needs no install, and its Keyboard settings show
+          whether your speech is processed on the device. See{" "}
+          <Link href="/apple-dictation-alternative">VoiceToText vs. Apple Dictation</Link>.
         </>
       ),
     },
@@ -203,52 +268,59 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     rows: [
       {
         label: "Platforms",
-        cells: ["macOS.", "Official site lists macOS, Windows, iOS and Android."],
+        cells: ["macOS.", "Official site lists Mac, Windows, iOS and Android."],
       },
       {
         label: "Source model",
-        cells: ["Source is public on GitHub.", "Commercial proprietary application."],
+        cells: [
+          "Source is public on GitHub, without an open-source license.",
+          "Commercial app with free and paid plans; no public source mentioned.",
+        ],
       },
       {
         label: "Local transcription",
         cells: [
           "Parakeet (25 European languages) and five Whisper sizes (99 languages) run on the Mac after download, even with the network off.",
-          "Official model catalog lists on-device models that work without internet.",
+          "Free tier runs Whisper on the device without internet; Pro adds Parakeet, Cohere and other local models.",
         ],
       },
       {
         label: "Cloud transcription",
         cells: [
-          "Nine optional OpenAI and ElevenLabs models on your own key, including live text and speaker labels.",
-          "Official catalog lists vendor-proxied cloud models as well as on-device choices.",
+          `${countWord(cloudModels().length)} optional ${CLOUD_PROVIDERS_AND} models on your own key, including live text and speaker labels.`,
+          "Pro includes cloud models such as Scribe V2 and Nova 3, and lets you add your own AI API keys.",
         ],
       },
       {
         label: "Output workflow",
         cells: [
           "Review the complete transcript before paste, or paste instantly; opt-in AI actions on your OpenAI key.",
-          "System-wide dictation plus modes and AI/context-aware formatting promoted by the vendor.",
+          "System-wide dictation plus Super Mode, preset and custom modes for AI formatting.",
         ],
       },
       {
         label: "Meetings and files",
         cells: [
           "Records microphone plus system audio and imports audio or video files. Optional AI summaries, action items and custom prompts on your OpenAI key; searchable local history.",
-          "Official site documents file transcription and a Meetings mode that records meeting-app audio on your device without a bot, with speaker labels.",
+          "Meetings (Mac, since version 3.0.0) records calls on the device with no bot, with speaker-labeled transcripts. File transcription is listed under Pro.",
         ],
       },
       {
         label: "Current Mac requirement",
         cells: [
           "macOS 15+, Apple Silicon or Intel.",
-          "Vendor changelog dated July 6, 2026 says macOS 14+; official Mac page also describes Intel support.",
+          "macOS 14 or later, Apple Silicon or Intel; the Parakeet and Cohere local models aren’t available on Intel.",
         ],
+      },
+      {
+        label: "Account",
+        cells: ["None.", "Not needed to try it or to use it offline."],
       },
       {
         label: "Payment model",
         cells: [
           "Free with no paid tier. Cloud models and AI features bill your own provider key.",
-          "Free tier plus paid features; verify current plan details with the vendor.",
+          "Free tier; Pro $8.49/month, $84.99/year or $249.99 lifetime, with a 30-day refund; Enterprise is custom.",
         ],
       },
     ],
@@ -259,12 +331,27 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     {
       question: "Is there a free alternative to Superwhisper for Mac?",
       answer:
-        "VoiceToText is free with no paid tier or account. It runs Parakeet and Whisper models on your Mac, pastes reviewed text into any app, and records meetings. Superwhisper covers more platforms and formatting features.",
+        "VoiceToText is free with no paid tier or account. It runs Parakeet and Whisper models on your Mac, pastes reviewed text into any app, and records meetings. Superwhisper's own free tier also runs Whisper models on your Mac; Superwhisper covers more platforms and formatting features.",
+    },
+    {
+      question: "How much does Superwhisper cost?",
+      answer:
+        "Superwhisper has a free tier that doesn't expire. Pro is $8.49 a month, $84.99 a year or $249.99 for a lifetime license, with a 30-day refund, and Enterprise is custom, according to superwhisper.com. VoiceToText has no paid tier.",
+    },
+    {
+      question: "What are the best Superwhisper alternatives?",
+      answer:
+        "For a free Mac app with local models, review before paste and meeting recording, VoiceToText. VoiceInk is a one-time purchase from $25 that transcribes on the device on Apple Silicon Macs, with its source under GPL v3. Spokenly has a free local plan and runs on more platforms. Wispr Flow has a free weekly word allowance and a $15 Pro plan. MacWhisper adds dictation to a file-transcription app, and Apple Dictation is built into macOS.",
     },
     {
       question: "Do both apps work offline?",
       answer:
         "Yes, with local models. Superwhisper documents on-device models that work without internet. In VoiceToText, Parakeet, the default, works with the network off after a one-time download, and so do its Whisper models.",
+    },
+    {
+      question: "Does Superwhisper record meetings?",
+      answer:
+        "Yes, on the Mac since version 3.0.0 in October 2026. It records calls with no bot and writes speaker-labeled transcripts with offline models. Its homepage and meetings page disagree on whether Meetings needs Pro. VoiceToText records your mic and the call's system audio for free and transcribes on your Mac by default.",
     },
     {
       question: "Does VoiceToText have AI formatting like Super Mode?",
@@ -279,33 +366,60 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
   ],
   sources: [
     {
+      label: "Superwhisper: Home page",
+      href: "https://superwhisper.com/",
+      detail: "Platforms, the Free, Pro and Enterprise plans, Pro prices, the free tier’s limits, the trial and the refund policy.",
+    },
+    {
       label: "Superwhisper: Voice to text for Mac",
       href: "https://superwhisper.com/voice-to-text-mac",
       detail:
-        "Vendor page for Mac support, cursor insertion, local operation, push-to-talk, file transcription, platform positioning, and its own comparison claims.",
+        "Mac requirements and Intel limits, cursor insertion, push-to-talk, file transcription in Pro, and no account needed to try it.",
     },
     {
       label: "Superwhisper: Models",
       href: "https://superwhisper.com/models",
-      detail:
-        "Vendor’s current catalog separating on-device and cloud transcription choices, languages, and product tiers.",
+      detail: "On-device and cloud models, and which tier each belongs to.",
     },
     {
       label: "Superwhisper: Offline transcription",
       href: "https://superwhisper.com/offline-transcription",
-      detail:
-        "Vendor explanation of local model downloads, offline operation, hardware considerations, and its browser-versus-app privacy distinction.",
+      detail: "Local model downloads, offline operation and no audio leaving the device.",
     },
     {
       label: "Superwhisper: Meeting transcription",
       href: "https://superwhisper.com/meeting-transcription",
-      detail: "Vendor page for on-device meeting recording without a bot, speaker labels and file transcription.",
+      detail: "On-device meeting recording without a bot, speaker labels and the plan it is listed under.",
     },
     {
       label: "Superwhisper: Changelog",
       href: "https://superwhisper.com/changelog",
-      detail:
-        "Primary version history used to date the current macOS requirement and avoid relying on an older review.",
+      detail: "Meetings in 3.0.0, FaceTime in 3.1.0, imports in 3.2.0 and 3.3.0, and the local Whisper pricing change in 2.18.2.",
+    },
+    {
+      label: "VoiceInk",
+      href: "https://tryvoiceink.com/",
+      detail: "One-time license prices, the free trial, Apple Silicon requirement and on-device transcription.",
+    },
+    {
+      label: "VoiceInk on GitHub",
+      href: "https://github.com/Beingpax/VoiceInk",
+      detail: "The GPL v3 license and the project’s README.",
+    },
+    {
+      label: "Spokenly",
+      href: "https://spokenly.app/",
+      detail: "Platforms, the Local, Local+ and Pro plans and their prices, and local and cloud models.",
+    },
+    {
+      label: "Wispr Flow: Pricing",
+      href: "https://wisprflow.ai/pricing",
+      detail: "The free weekly word allowance, Pro pricing and platforms.",
+    },
+    {
+      label: "Apple: Use Dictation on Mac",
+      href: "https://support.apple.com/guide/mac-help/use-dictation-mh40584/mac",
+      detail: "Apple’s built-in Dictation and where to see whether it processes speech on the device.",
     },
     {
       label: "VoiceToText source repository",
@@ -387,7 +501,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         label: "Price",
         cells: [
           "Free, no paid tier",
-          "Free plan (2,000 words a week on desktop); Pro $15/user/month, or $12 billed annually",
+          "Free plan (2,000 words a week); Pro $15/user/month, or $12 billed annually",
         ],
       },
       {
@@ -475,7 +589,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         {
           title: "No account",
           body:
-            "Download from GitHub Releases and dictate without signing in. Optional cloud models and AI features use API keys you paste in, billed by OpenAI or ElevenLabs.",
+            `Download from GitHub Releases and dictate without signing in. Optional cloud models and AI features use API keys you paste in, billed by ${CLOUD_PROVIDERS_OR}.`,
         },
         {
           title: "Review before paste",
@@ -570,7 +684,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       {
         label: "Transcription location",
         cells: [
-          "On the Mac with Parakeet or Whisper; optional OpenAI or ElevenLabs models are chosen separately and use your key.",
+          `On the Mac with Parakeet or Whisper; optional ${CLOUD_PROVIDERS_OR} models are chosen separately and use your key.`,
           "“Transcription always happens in the cloud,” according to Wispr’s privacy page.",
         ],
       },
@@ -627,7 +741,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
         label: "Price",
         cells: [
           "Free with no paid tier. Cloud models and AI features bill your own provider key.",
-          "Free plan with 2,000 words a week on desktop; Pro $15/user/month or $12 billed annually; Growth and Enterprise plans for teams.",
+          "Free plan with 2,000 words a week; Pro $15/user/month or $12 billed annually; Growth and Enterprise plans for teams.",
         ],
       },
     ],

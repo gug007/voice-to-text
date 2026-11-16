@@ -9,6 +9,7 @@ struct RootView: View {
     @State private var showFilePicker = false
     @State private var showRecorder = false
     @State private var alert: String?
+    @AppStorage("home.recordDestination") private var destinationID = ""
 
     private var library: Library { Library.shared }
     private var importer: Importer { Importer.shared }
@@ -93,9 +94,48 @@ struct RootView: View {
         )
     }
 
+    private var destination: MacLink? {
+        guard !destinationID.isEmpty else { return nil }
+        return remote.homeLinks.first { $0.id == destinationID }
+    }
+
+    @ViewBuilder
+    private var destinationPicker: some View {
+        let links = remote.homeLinks
+        if !links.isEmpty {
+            let selection = Binding(get: { destination?.id ?? "" }, set: { destinationID = $0 })
+            Group {
+                if links.count <= 2 {
+                    Picker("Record on", selection: selection) {
+                        destinationOptions(links)
+                    }
+                    .pickerStyle(.segmented)
+                } else {
+                    HStack {
+                        Text("Record on")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Picker("Record on", selection: selection) {
+                            destinationOptions(links)
+                        }
+                        .pickerStyle(.menu)
+                    }
+                }
+            }
+            .padding(.horizontal, 20)
+        }
+    }
+
+    @ViewBuilder
+    private func destinationOptions(_ links: [MacLink]) -> some View {
+        Text("This iPhone").tag("")
+        ForEach(links) { Text($0.shortName).tag($0.id) }
+    }
+
     private var recordBar: some View {
         VStack(spacing: 10) {
-            MacCards()
+            destinationPicker
             if let fraction = importer.fraction {
                 HStack(spacing: 10) {
                     ProgressView(value: fraction)
@@ -106,19 +146,15 @@ struct RootView: View {
                 }
                 .padding(.horizontal, 20)
             }
-            Button(action: startRecording) {
-                HStack(spacing: 10) {
-                    Circle().fill(Palette.live).frame(width: 14, height: 14)
-                    Text("Record")
-                        .font(.headline)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 54)
-                .foregroundStyle(Color(.systemBackground))
-                .background(Color(.label), in: Capsule())
+            if let destination {
+                MacRecordCapsule(link: destination)
+            } else {
+                RecordCapsule(
+                    title: "Record",
+                    accessibility: remote.homeLinks.isEmpty ? "Start recording" : "Start recording on this iPhone",
+                    action: startRecording
+                )
             }
-            .accessibilityLabel("Start recording")
-            .padding(.horizontal, 20)
         }
         .padding(.top, 12)
         .padding(.bottom, 8)
@@ -127,6 +163,7 @@ struct RootView: View {
 
     private func startRecording() {
         Task {
+            await remote.stopListening()
             do {
                 try await Recorder.shared.start()
                 showRecorder = true
@@ -148,6 +185,78 @@ struct RootView: View {
     }
 }
 
+struct RecordCapsule: View {
+    let title: String
+    var stops = false
+    var enabled = true
+    let accessibility: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if stops {
+                    RoundedRectangle(cornerRadius: 3).fill(.white).frame(width: 13, height: 13)
+                } else if enabled {
+                    Circle().fill(Palette.live).frame(width: 14, height: 14)
+                }
+                Text(title)
+                    .font(.headline)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            .padding(.horizontal, 20)
+            .frame(maxWidth: .infinity)
+            .frame(height: 54)
+            .foregroundStyle(stops ? Color.white : Color(.systemBackground))
+            .background(stops ? Palette.live : Color(.label), in: Capsule())
+            .opacity(enabled ? 1 : 0.4)
+        }
+        .disabled(!enabled)
+        .accessibilityLabel(accessibility)
+        .padding(.horizontal, 20)
+    }
+}
+
+struct MacRecordCapsule: View {
+    let link: MacLink
+
+    var body: some View {
+        let name = link.shortName
+        switch link.connection {
+        case .idle, .connecting:
+            RecordCapsule(title: "Connecting to \(name)…", enabled: false, accessibility: "Connecting to \(name)") {}
+        case .unreachable:
+            RecordCapsule(title: "\(name) isn't reachable", enabled: false, accessibility: "\(name) isn't reachable") {}
+        case .connected:
+            switch link.status?.state {
+            case .recording:
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    RecordCapsule(
+                        title: "Stop · \(DurationFormat.clock(link.elapsed(at: context.date)))",
+                        stops: true,
+                        enabled: !link.isSending,
+                        accessibility: "Stop recording on \(name)"
+                    ) {
+                        Task { await link.stopRecording() }
+                    }
+                }
+            case .transcribing, .importing:
+                RecordCapsule(title: "Transcribing on \(name)…", enabled: false, accessibility: "Transcribing on \(name)") {}
+            case .idle, .error, nil:
+                RecordCapsule(
+                    title: link.isSending ? "Starting on \(name)…" : "Record on \(name)",
+                    enabled: !link.isSending,
+                    accessibility: "Start recording a conversation on \(name)"
+                ) {
+                    Task { await link.startRecording() }
+                }
+            }
+        }
+    }
+}
+
 struct LibraryList: View {
     let query: String
     let openSettings: () -> Void
@@ -158,21 +267,25 @@ struct LibraryList: View {
         let searching = HistorySearch.isActive(query)
         let shown = searching ? HistorySearch.filter(library.entries, query: query) : library.entries
 
+        let showsMacs = !searching && !MacRemote.shared.homeLinks.isEmpty
+
         List {
             ModelBanner()
 
-            if !searching {
-                MacConversationsLinks()
+            if showsMacs {
+                MacHomeSections(footer: library.entries.isEmpty ? "Nothing recorded on this iPhone yet." : nil)
             }
 
             if library.entries.isEmpty {
-                ContentUnavailableView(
-                    "No recordings yet",
-                    systemImage: "waveform",
-                    description: Text("Tap Record at a meeting, a lecture or on the go. The transcript is made on this iPhone.")
-                )
-                .listRowSeparator(.hidden)
-                .listRowBackground(Color.clear)
+                if !showsMacs {
+                    ContentUnavailableView(
+                        "No recordings yet",
+                        systemImage: "waveform",
+                        description: Text("Tap Record at a meeting, a lecture or on the go. The transcript is made on this iPhone.")
+                    )
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(Color.clear)
+                }
             } else if searching {
                 Section("Results · \(shown.count)") {
                     ForEach(shown) { RecordingRowLink(entry: $0, query: query) }

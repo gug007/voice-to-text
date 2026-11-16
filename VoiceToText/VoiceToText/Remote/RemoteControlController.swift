@@ -13,6 +13,7 @@ final class RemoteControlController {
     static let shared = RemoteControlController()
 
     static let enabledKey = "remote.iphoneEnabled"
+    static let liveListenKey = "remote.liveListenEnabled"
 
     var isEnabled: Bool {
         didSet {
@@ -21,6 +22,18 @@ final class RemoteControlController {
             apply()
         }
     }
+
+    var liveListenEnabled: Bool {
+        didSet {
+            guard oldValue != liveListenEnabled else { return }
+            UserDefaults.standard.set(liveListenEnabled, forKey: Self.liveListenKey)
+            if !liveListenEnabled { LiveAudioHub.shared.disconnectAll() }
+        }
+    }
+
+    var isLiveListenAllowed: Bool { isEnabled && liveListenEnabled }
+
+    private(set) var liveListeners = 0
 
     let tailnet: TailnetController
 
@@ -44,8 +57,9 @@ final class RemoteControlController {
     #endif
 
     private init() {
-        UserDefaults.standard.register(defaults: [Self.enabledKey: false])
+        UserDefaults.standard.register(defaults: [Self.enabledKey: false, Self.liveListenKey: false])
         isEnabled = UserDefaults.standard.bool(forKey: Self.enabledKey)
+        liveListenEnabled = UserDefaults.standard.bool(forKey: Self.liveListenKey)
         tailnet = TailnetController(settings: { RemoteControlController.tailnetSettings() })
         tailnet.onStateChange = { [weak self] state in self?.tailnetChanged(state) }
     }
@@ -63,6 +77,7 @@ final class RemoteControlController {
         if isEnabled {
             tailnet.start()
         } else {
+            LiveAudioHub.shared.disconnectAll()
             stopListening()
             tailnet.stop()
             browserRequested = false
@@ -106,6 +121,11 @@ final class RemoteControlController {
         loopbackServer?.stop()
         loopbackServer = nil
         #endif
+    }
+
+    func refreshLiveListeners() {
+        let count = LiveAudioHub.shared.listenerCount
+        if liveListeners != count { liveListeners = count }
     }
 
     // MARK: - Node and listener
@@ -239,6 +259,8 @@ enum RemoteRequestRouter {
             return .json(await startConversation())
         case .stopConversation:
             return .json(await stopConversation())
+        case .liveAudio:
+            return liveAudio(client: request.queryValue("client"))
         case .conversations:
             return .json(RemoteConversationList.make(from: RecordingHistoryStore.shared.entries))
         case .conversation(let id):
@@ -273,7 +295,9 @@ enum RemoteRequestRouter {
             message: message,
             mac: macName,
             appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
-            protocol: RemoteProtocol.version
+            protocol: RemoteProtocol.version,
+            liveListen: RemoteControlController.shared.isLiveListenAllowed,
+            listeners: LiveAudioHub.shared.listenerCount
         )
     }
 
@@ -305,6 +329,23 @@ enum RemoteRequestRouter {
         Task { await controller.stop() }
         await waitUntil { controller.state != .recording }
         return status()
+    }
+
+    private static func liveAudio(client: String?) -> RemoteHTTPResponse {
+        guard RemoteControlController.shared.isLiveListenAllowed else {
+            return .error(403, "Listening isn't turned on on this Mac.")
+        }
+        if let client, !LiveAudioHub.isValidClientID(client) {
+            return .error(400, "Malformed client id.")
+        }
+        guard MeetingController.shared.state == .recording else {
+            return .error(409, "This Mac isn't recording a conversation.")
+        }
+        guard let listener = LiveAudioHub.shared.join(client: client) else {
+            return .error(503, "Too many devices are listening already.")
+        }
+        AppLog.remote.notice("iPhone started listening live")
+        return .liveAudio(listener)
     }
 
     private static func waitUntil(_ condition: () -> Bool) async {

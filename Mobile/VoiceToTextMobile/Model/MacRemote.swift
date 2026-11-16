@@ -20,7 +20,8 @@ nonisolated struct RemoteMac: Identifiable, Equatable, Hashable {
     }
 
     init?(node: TailnetStatus.Node) {
-        guard let address = node.preferredAddress else { return nil }
+        let dnsName = node.dnsName.hasSuffix(".") ? String(node.dnsName.dropLast()) : node.dnsName
+        guard let address = dnsName.lowercased().hasSuffix(".ts.net") ? dnsName : node.preferredAddress else { return nil }
         self.init(id: node.id, name: Self.displayName(node.machineName), address: address, isOnline: node.isOnline)
     }
 
@@ -133,6 +134,7 @@ final class MacRemote {
     static let shared = MacRemote()
 
     let tailnet: TailnetController
+    let listener = LiveListener()
 
     private(set) var links: [MacLink] = []
 
@@ -162,6 +164,7 @@ final class MacRemote {
                 directory: base.appendingPathComponent("Tailscale", isDirectory: true)
             )
         })
+        listener.onEnd = { [weak self] in self?.listeningEnded() }
         observeMacs()
         reconcile()
     }
@@ -220,7 +223,40 @@ final class MacRemote {
         tailnet.cancelSignIn()
     }
 
+    static var liveClientID: String {
+        let key = "remote.liveClientID"
+        if let id = UserDefaults.standard.string(forKey: key), UUID(uuidString: id) != nil { return id }
+        let id = UUID().uuidString
+        UserDefaults.standard.set(id, forKey: key)
+        return id
+    }
+
+    func listenState(for link: MacLink) -> LiveListener.State {
+        listener.state(for: link)
+    }
+
+    func startListening(_ link: MacLink) {
+        listener.start(link)
+    }
+
+    func toggleListening(_ link: MacLink) {
+        if listener.linkID == link.id, listener.isActive {
+            listener.stop()
+        } else {
+            listener.start(link)
+        }
+    }
+
+    func stopListening() async {
+        await listener.stopAndWait()
+    }
+
+    func recordingEnded(on link: MacLink) {
+        listener.clear(linkID: link.id)
+    }
+
     func signOut() async {
+        listener.stop()
         await tailnet.signOut()
         tailnet.stop()
         isEnabled = false
@@ -238,12 +274,22 @@ final class MacRemote {
             reconcile()
             links.forEach { $0.startPolling() }
         } else {
-            links.forEach { $0.stopPolling() }
-            if !isLoopback, !isSigningIn {
-                sessions.clear()
-                tailnet.stop()
-            }
+            let kept = listener.isActive ? listener.linkID : nil
+            links.forEach { if $0.id != kept { $0.stopPolling() } }
+            if kept == nil { suspendNetwork() }
         }
+    }
+
+    private func listeningEnded() {
+        guard !isForeground else { return }
+        links.forEach { $0.stopPolling() }
+        suspendNetwork()
+    }
+
+    private func suspendNetwork() {
+        guard !isLoopback, !isSigningIn else { return }
+        sessions.clear()
+        tailnet.stop()
     }
 
     static var audioDirectory: URL {
@@ -291,6 +337,7 @@ final class MacRemote {
                 kept.append(link)
             } else {
                 link.stopPolling()
+                listener.clear(linkID: link.id)
             }
         }
         for mac in current {

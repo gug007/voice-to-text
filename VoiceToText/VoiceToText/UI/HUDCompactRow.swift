@@ -32,6 +32,11 @@ struct HUDCompactRow: View {
         case counter(String)
     }
 
+    struct Badge: Equatable {
+        let title: String
+        let systemImage: String
+    }
+
     /// One trailing control. A circle on the pill, a named capsule on the bar.
     struct Control {
         let title: String
@@ -67,6 +72,7 @@ struct HUDCompactRow: View {
     /// the warning colour and the sentence goes in the tooltip and the
     /// accessibility value.
     var warning: String?
+    var readoutBadge: Badge?
     /// Before the finish slot in every phase, in the same spot: the dictation
     /// card's Cancel. Nil on the conversation card, which has no Cancel on
     /// purpose — one stray click must not throw away an hour of meeting.
@@ -104,6 +110,11 @@ struct HUDCompactRow: View {
                         // The meter gives way, never the readout: a conversation's
                         // clock grows to "1:02:33" past the hour.
                         .fixedSize()
+                    if phase == .recording, let readoutBadge {
+                        HUDReadoutBadge(badge: readoutBadge, showsTitle: false)
+                            .fixedSize()
+                            .transition(.opacity)
+                    }
                 }
                 .help(phase == .recording ? (warning ?? "") : "")
                 .accessibilityElement(children: .ignore)
@@ -133,8 +144,9 @@ struct HUDCompactRow: View {
     }
 
     private var leadingAccessibilityValue: String {
-        guard let warning, phase == .recording else { return readoutText }
-        return "\(readoutText). \(warning)"
+        guard phase == .recording else { return readoutText }
+        let parts = [readoutText, readoutBadge?.title, warning].compactMap { $0 }
+        return parts.joined(separator: ". ")
     }
 
     @ViewBuilder
@@ -210,6 +222,32 @@ struct HUDCompactRow: View {
         if case .preparing = phase { return true }
         return false
     }
+}
+
+struct HUDReadoutBadge: View {
+    let badge: HUDCompactRow.Badge
+    let showsTitle: Bool
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Image(systemName: badge.systemImage)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(Palette.signalLive)
+            if showsTitle {
+                Text(badge.title)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
+                    .lineLimit(1)
+            }
+        }
+        .help(badge.title)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(badge.title)
+    }
+}
+
+extension HUDCompactRow.Badge {
+    static let phoneListening = Self(title: "iPhone listening", systemImage: "iphone.radiowaves.left.and.right")
 }
 
 // MARK: - The controls each card offers

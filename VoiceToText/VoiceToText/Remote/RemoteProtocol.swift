@@ -19,6 +19,7 @@ nonisolated enum RemoteProtocol {
         static let status = "/v1/status"
         static let startConversation = "/v1/conversation/start"
         static let stopConversation = "/v1/conversation/stop"
+        static let liveAudio = "/v1/conversation/live"
         static let conversations = "/v1/conversations"
 
         static func conversation(_ id: UUID) -> String {
@@ -68,6 +69,8 @@ nonisolated struct RemoteStatus: Codable, Equatable, Sendable {
     var mac: String
     var appVersion: String
     var `protocol`: Int
+    var liveListen: Bool? = nil
+    var listeners: Int? = nil
 }
 
 /// One conversation in `GET /v1/conversations`: enough for a list row, so

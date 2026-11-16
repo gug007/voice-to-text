@@ -15,6 +15,15 @@ nonisolated struct RemoteHTTPRequest: Equatable, Sendable {
     /// Lowercased names. A repeated header keeps its last value.
     let headers: [String: String]
     let body: Data
+
+    func queryValue(_ name: String) -> String? {
+        guard let query else { return nil }
+        for pair in query.split(separator: "&", omittingEmptySubsequences: true) {
+            let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            if parts[0] == name { return parts.count > 1 ? String(parts[1]) : "" }
+        }
+        return nil
+    }
 }
 
 nonisolated enum RemoteHTTPParser {
@@ -122,16 +131,18 @@ nonisolated struct RemoteHTTPResponse: Sendable {
     enum Body: Sendable {
         case data(Data)
         case file(URL, length: Int64)
+        case liveAudio(LiveAudioListener)
     }
 
     let status: Int
     let contentType: String
     let body: Body
 
-    var contentLength: Int64 {
+    var contentLength: Int64? {
         switch body {
         case .data(let data): return Int64(data.count)
         case .file(_, let length): return length
+        case .liveAudio: return nil
         }
     }
 
@@ -144,6 +155,10 @@ nonisolated struct RemoteHTTPResponse: Sendable {
         }
     }
 
+    static func liveAudio(_ listener: LiveAudioListener) -> RemoteHTTPResponse {
+        RemoteHTTPResponse(status: 200, contentType: LiveAudioWire.contentType, body: .liveAudio(listener))
+    }
+
     static func error(_ status: Int, _ message: String) -> RemoteHTTPResponse {
         let data = (try? RemoteProtocol.makeEncoder().encode(RemoteErrorBody(error: message))) ?? Data()
         return RemoteHTTPResponse(status: status, contentType: "application/json", body: .data(data))
@@ -153,7 +168,7 @@ nonisolated struct RemoteHTTPResponse: Sendable {
     func head() -> Data {
         var text = "HTTP/1.1 \(status) \(Self.reason(for: status))\r\n"
         text += "Content-Type: \(contentType)\r\n"
-        text += "Content-Length: \(contentLength)\r\n"
+        if let contentLength { text += "Content-Length: \(contentLength)\r\n" }
         text += "Cache-Control: no-store\r\n"
         text += "Connection: close\r\n\r\n"
         return Data(text.utf8)
@@ -184,6 +199,7 @@ nonisolated enum RemoteRoute: Equatable, Sendable {
     case status
     case startConversation
     case stopConversation
+    case liveAudio
     case conversations
     case conversation(UUID)
     case audio(UUID)
@@ -203,6 +219,8 @@ nonisolated enum RemoteRoute: Equatable, Sendable {
             (route, expected) = (.startConversation, "POST")
         case RemoteProtocol.Path.stopConversation:
             (route, expected) = (.stopConversation, "POST")
+        case RemoteProtocol.Path.liveAudio:
+            (route, expected) = (.liveAudio, "GET")
         case RemoteProtocol.Path.conversations:
             (route, expected) = (.conversations, "GET")
         default:

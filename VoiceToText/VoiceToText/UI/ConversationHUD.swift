@@ -63,6 +63,7 @@ final class ConversationHUDState {
     var levels: [Double] = Array(repeating: 0, count: MeetingController.levelHistoryCount)
     var transcribedChunks = 0
     var totalChunks = 0
+    var isPhoneListening = false
 
     /// Bumped each time the card appears from hidden, which replays its
     /// entrance (see `HUDPresentation`).
@@ -149,6 +150,7 @@ final class ConversationHUDPanel {
             _ = meeting.levelHistory
             _ = meeting.transcribedChunks
             _ = meeting.totalChunks
+            _ = RemoteControlController.shared.liveListeners
         } onChange: { [weak self] in
             // `guard let` first, as in `MenuBarItem`: the Task must capture an
             // immutable reference, not the weak var.
@@ -184,6 +186,7 @@ final class ConversationHUDPanel {
 
         if !isTranscribing { state.levels = meeting.levelHistory }
         state.isTranscribing = isTranscribing
+        state.isPhoneListening = !isTranscribing && RemoteControlController.shared.liveListeners > 0
         state.elapsed = meeting.elapsed
         state.transcribedChunks = meeting.transcribedChunks
         state.totalChunks = meeting.totalChunks

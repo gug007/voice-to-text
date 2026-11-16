@@ -120,6 +120,7 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
     /// Also the salvage path after the stream stopped on its own or the writer
     /// failed — whatever reached the disk is kept.
     func stop() async -> (url: URL, duration: Double)? {
+        defer { LiveAudioHub.shared.endSession() }
         guard let stream = takeStream() else { return nil }
         // Throws when the stream already stopped with an error — there's nothing
         // left to stop then, and the flush + finalize below must still run.
@@ -171,6 +172,7 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
 
     /// Stops capture and deletes the partial file (cancelled recording).
     func cancel() async {
+        defer { LiveAudioHub.shared.endSession() }
         guard let stream = takeStream() else {
             processingQueue.sync { writer?.discard(); writer = nil }
             return
@@ -208,6 +210,7 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
         AppLog.audio.error("Meeting stream stopped with error: \(error.localizedDescription, privacy: .public)")
+        LiveAudioHub.shared.endSession()
         let callback = onStopWithError
         Task { @MainActor in callback?(error) }
     }
@@ -254,6 +257,7 @@ final class MeetingRecorder: NSObject, SCStreamOutput, SCStreamDelegate, @unchec
         writer?.append(samples)
         reportWriteFailureIfNeeded()
         emitLevelIfNeeded(samples)
+        LiveAudioHub.shared.submit(samples)
     }
 
     /// The writer drops every buffer after its first failed write, so a

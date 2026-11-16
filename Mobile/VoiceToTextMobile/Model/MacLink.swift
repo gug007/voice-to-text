@@ -42,6 +42,10 @@ final class MacLink: Identifiable {
         status?.mac ?? mac.name
     }
 
+    var shortName: String {
+        MacName.short(macName, among: remote.homeLinks.map(\.macName))
+    }
+
     func elapsed(at date: Date) -> Double {
         guard let status, status.state == .recording else { return 0 }
         return status.elapsed + max(0, date.timeIntervalSince(statusReceivedAt))
@@ -144,6 +148,17 @@ final class MacLink: Identifiable {
         }
     }
 
+    func liveAudioRequest() async throws -> (URLSession, URLRequest) {
+        let transport = try remote.currentTransport()
+        guard let base = transport.baseURL(for: mac),
+              let url = URL(string: "\(RemoteProtocol.Path.liveAudio)?client=\(MacRemote.liveClientID)", relativeTo: base)
+        else { throw MacRemoteError.notConnected }
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        return (try await transport.session(), request)
+    }
+
     private var pollDelay: Double {
         failures < 3 ? 1.0 : min(15.0, pow(2.0, Double(failures - 2)))
     }
@@ -178,9 +193,11 @@ final class MacLink: Identifiable {
     private func apply(_ latest: RemoteStatus) {
         let wasTranscribing = status.map { $0.state == .transcribing || $0.state == .importing } ?? false
         let finishedTranscribing = wasTranscribing && latest.state != .transcribing && latest.state != .importing
+        let stoppedRecording = status?.state == .recording && latest.state != .recording
         status = latest
         statusReceivedAt = Date()
         connection = .connected
+        if stoppedRecording { remote.recordingEnded(on: self) }
         if finishedTranscribing { Task { await refreshConversations() } }
     }
 
@@ -218,5 +235,29 @@ final class MacLink: Identifiable {
         } catch {
             throw MacRemoteError.badReply
         }
+    }
+}
+
+nonisolated enum MacName {
+    static func short(_ name: String) -> String {
+        var trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let suffix = trimmed.range(of: #"\s\(\d+\)$"#, options: .regularExpression) {
+            trimmed.removeSubrange(suffix)
+        }
+        for mark in ["\u{2019}s ", "'s "] {
+            guard let possessive = trimmed.range(of: mark) else { continue }
+            let rest = trimmed[possessive.upperBound...].trimmingCharacters(in: .whitespaces)
+            if !rest.isEmpty {
+                trimmed = rest
+                break
+            }
+        }
+        return trimmed.isEmpty ? name : trimmed
+    }
+
+    static func short(_ name: String, among names: [String]) -> String {
+        let candidate = short(name)
+        let clashes = names.contains { $0 != name && short($0) == candidate }
+        return clashes ? name : candidate
     }
 }

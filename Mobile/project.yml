@@ -42,6 +42,7 @@ targets:
           - History/TranscriptInsight.swift
           - History/TranscriptInsightRequest.swift
           - Remote/RemoteProtocol.swift
+          - Remote/LiveAudioWire.swift
           - Remote/TailnetStatus.swift
           - Remote/TailnetController.swift
     dependencies:
@@ -57,6 +58,10 @@ targets:
         NSLocalNetworkUsageDescription: Voice to Text connects straight to your Mac over Tailscale when both are on the same network.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            ts.net:
+              NSIncludesSubdomains: true
+              NSExceptionAllowsInsecureHTTPLoads: true
         UIBackgroundModes: [audio]
         UILaunchScreen: {}
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]

@@ -16,6 +16,11 @@ struct RemoteControlGroup: View {
                 isOn: $remote.isEnabled
             )
             if remote.isEnabled {
+                SettingsRow(
+                    "Let iPhone listen live",
+                    caption: "Hear the conversation on your iPhone while this Mac records it. The Mac shows when an iPhone is listening.",
+                    isOn: $remote.liveListenEnabled
+                )
                 accountRow
                 if remote.tailnet.state.isRunning {
                     connectionRow
@@ -24,6 +29,7 @@ struct RemoteControlGroup: View {
         }
         .animation(motion.layout, value: remote.isEnabled)
         .animation(motion.layout, value: remote.tailnet.state)
+        .animation(motion.layout, value: remote.liveListeners)
     }
 
     private var footer: String {
@@ -76,6 +82,14 @@ struct RemoteControlGroup: View {
         if let error = remote.listenError {
             StatusRow(.error, title: "Can't accept connections", message: error)
                 .settingsRowPadding()
+        } else if remote.liveListeners > 0 {
+            StatusRow(
+                icon: "iphone.radiowaves.left.and.right",
+                tint: Palette.signalLive,
+                title: remote.liveListeners == 1 ? "iPhone listening" : "\(remote.liveListeners) iPhones listening",
+                message: "Hearing this conversation live."
+            )
+            .settingsRowPadding()
         } else if let client = remote.lastClient {
             StatusRow(
                 icon: "iphone",

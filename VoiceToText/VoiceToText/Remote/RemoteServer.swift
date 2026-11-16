@@ -172,6 +172,8 @@ nonisolated final class RemoteHTTPServer: @unchecked Sendable {
     static let requestTimeout: TimeInterval = 10
     /// A write that makes no progress for this long ends the connection.
     static let writeStallSeconds = 30
+    static let streamStallSeconds = 5
+    static let streamPollSeconds: TimeInterval = 1
 
     private let listener: RemoteListenerSocket
     private let authorize: Authorizer
@@ -304,8 +306,14 @@ nonisolated final class RemoteHTTPServer: @unchecked Sendable {
     }
 
     private static func send(_ response: RemoteHTTPResponse, to fd: Int32) {
+        if case .liveAudio(let listener) = response.body {
+            stream(listener, head: response.head(), to: fd)
+            return
+        }
         guard write(response.head(), to: fd) else { return }
         switch response.body {
+        case .liveAudio:
+            return
         case .data(let data):
             _ = write(data, to: fd)
         case .file(let url, let length):
@@ -319,6 +327,39 @@ nonisolated final class RemoteHTTPServer: @unchecked Sendable {
                 sent += Int64(data.count)
             }
         }
+    }
+
+    private static func stream(_ listener: LiveAudioListener, head: Data, to fd: Int32) {
+        defer { listener.close() }
+        var timeout = timeval(tv_sec: streamStallSeconds, tv_usec: 0)
+        setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+        guard write(head, to: fd), write(LiveAudioStreamHeader.standard.encoded(), to: fd) else { return }
+        AppLog.remote.notice("Live audio stream started")
+        var sent = 0
+        defer { AppLog.remote.notice("Live audio stream ended after \(sent, privacy: .public) packets, \(listener.dropped, privacy: .public) dropped") }
+        while true {
+            let next = listener.next(timeout: streamPollSeconds)
+            if peerClosed(fd) { return }
+            switch next {
+            case .frame(let frame):
+                guard write(frame.encoded(), to: fd) else { return }
+                sent += 1
+            case .timedOut:
+                continue
+            case .ended:
+                return
+            }
+        }
+    }
+
+    private static func peerClosed(_ fd: Int32) -> Bool {
+        var poller = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+        guard poll(&poller, 1, 0) > 0 else { return false }
+        if poller.revents & Int16(POLLERR | POLLHUP | POLLNVAL) != 0 { return true }
+        var scratch = [UInt8](repeating: 0, count: 512)
+        let count = scratch.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+        if count < 0 { return errno != EINTR && errno != EAGAIN }
+        return count == 0
     }
 
     @discardableResult

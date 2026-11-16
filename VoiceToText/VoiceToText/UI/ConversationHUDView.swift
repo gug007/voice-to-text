@@ -40,6 +40,7 @@ private struct ConversationCard: View {
             clock: state.elapsed.formattedClock,
             chunkProgress: state.chunkProgress,
             stopHint: HUDKeyHints.stopConversation,
+            isPhoneListening: state.isPhoneListening,
             onStop: onStop
         )
         .padding(layout.contentInsets)
@@ -52,6 +53,7 @@ private struct ConversationCard: View {
         .onGeometryChange(for: CGSize.self, of: { $0.size }, action: onCardSize)
         .animation(morph, value: layout)
         .animation(morph, value: state.isTranscribing)
+        .animation(morph, value: state.isPhoneListening)
         .modifier(HUDPresentation(presentationCount: state.presentationCount, isDismissing: state.isDismissing))
     }
 }
@@ -76,6 +78,7 @@ struct ConversationHUDContent: View {
     var chunkProgress: String?
     /// The conversation shortcut, when one is set.
     var stopHint: String?
+    var isPhoneListening: Bool = false
     var onStop: () -> Void = {}
 
     var body: some View {
@@ -87,6 +90,7 @@ struct ConversationHUDContent: View {
                 isOverloaded: isOverloaded,
                 readout: compactReadout(compactRow),
                 status: transcribingStatus,
+                readoutBadge: isPhoneListening ? .phoneListening : nil,
                 finishControl: .stopAndTranscribe(hint: stopHint, action: onStop)
             )
             .frame(height: HUDMetrics.controlRowHeight)
@@ -131,6 +135,15 @@ struct ConversationHUDContent: View {
                     }
                 } else {
                     HUDClock(text: clock)
+                        .fixedSize()
+                    if isPhoneListening {
+                        ViewThatFits(in: .horizontal) {
+                            HUDReadoutBadge(badge: .phoneListening, showsTitle: true)
+                            HUDReadoutBadge(badge: .phoneListening, showsTitle: false)
+                        }
+                        .layoutPriority(1)
+                        .transition(.opacity)
+                    }
                 }
                 Spacer(minLength: Space.s4)
                 if isTranscribing {
@@ -139,6 +152,7 @@ struct ConversationHUDContent: View {
                     }
                 } else {
                     stopButton(action: onStop)
+                        .fixedSize()
                 }
             }
             .frame(height: HUDMetrics.controlRowHeight)

@@ -415,7 +415,16 @@ swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
   VoiceToText/VoiceToText/Remote/RemoteProtocol.swift \
   VoiceToText/VoiceToText/Remote/TailnetStatus.swift \
+  VoiceToText/VoiceToText/Remote/LiveAudioWire.swift \
+  VoiceToText/VoiceToText/Remote/LiveAudioHub.swift \
   VoiceToText/VoiceToText/Remote/RemoteHTTP.swift \
   Tests/RemoteProtocolHarness.swift \
   -o "$TMPDIR/remote-protocol-harness"
 "$TMPDIR/remote-protocol-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Remote/LiveAudioWire.swift \
+  VoiceToText/VoiceToText/Remote/LiveAudioHub.swift \
+  Tests/LiveAudioHarness.swift \
+  -o "$TMPDIR/live-audio-harness"
+"$TMPDIR/live-audio-harness"

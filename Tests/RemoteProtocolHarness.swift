@@ -22,6 +22,7 @@ struct RemoteProtocolHarness {
         try refusesMalformedRequests()
         try framesResponses()
         try matchesRoutes()
+        try readsQueryValues()
         try sanitisesHostNames()
         try decodesTailnetStatus()
         try allowsOnlyTheSameUser()
@@ -44,6 +45,17 @@ struct RemoteProtocolHarness {
         let error = RemoteStatus(state: .error, elapsed: 0, message: "Microphone access is required.", mac: "Studio", appVersion: "0.4.0", protocol: 1)
         let errorBack = try RemoteProtocol.makeDecoder().decode(RemoteStatus.self, from: RemoteProtocol.makeEncoder().encode(error))
         try expect(errorBack.message == "Microphone access is required.", "error text survives")
+        try expect(errorBack.liveListen == nil && errorBack.listeners == nil, "live fields are optional")
+
+        let live = RemoteStatus(state: .recording, elapsed: 3, message: nil, mac: "Studio", appVersion: "0.4.0", protocol: 1, liveListen: true, listeners: 2)
+        let liveData = try RemoteProtocol.makeEncoder().encode(live)
+        try expect(try RemoteProtocol.makeDecoder().decode(RemoteStatus.self, from: liveData) == live, "live fields round-trip")
+        let liveObject = try JSONSerialization.jsonObject(with: liveData) as? [String: Any]
+        try expect(liveObject?["liveListen"] as? Bool == true, "liveListen on the wire")
+        try expect(liveObject?["listeners"] as? Int == 2, "listeners on the wire")
+        let older = Data(#"{"state":"idle","elapsed":0,"mac":"Studio","appVersion":"0.3.9","protocol":1}"#.utf8)
+        let olderBack = try RemoteProtocol.makeDecoder().decode(RemoteStatus.self, from: older)
+        try expect(olderBack.liveListen == nil && olderBack.listeners == nil, "a Mac without live listening still decodes")
     }
 
     private static func entry(
@@ -207,6 +219,14 @@ struct RemoteProtocolHarness {
         let file = RemoteHTTPResponse(status: 200, contentType: "audio/mp4", body: .file(URL(fileURLWithPath: "/x.m4a"), length: 123_456_789))
         try expect(String(decoding: file.head(), as: UTF8.self).contains("Content-Length: 123456789\r\n"), "a file's length is announced up front")
         try expect(RemoteHTTPResponse.reason(for: 404) == "Not Found", "reason phrases")
+
+        let live = RemoteHTTPResponse.liveAudio(LiveAudioListener())
+        let liveHead = String(decoding: live.head(), as: UTF8.self)
+        try expect(liveHead.hasPrefix("HTTP/1.1 200 OK\r\n"), "a live stream is a 200")
+        try expect(liveHead.contains("Content-Type: \(LiveAudioWire.contentType)\r\n"), "a live stream's content type")
+        try expect(!liveHead.contains("Content-Length"), "a live stream has no length: it ends when the connection closes")
+        try expect(liveHead.contains("Connection: close\r\n"), "a live stream closes its connection")
+        try expect(live.contentLength == nil, "no content length")
     }
 
     private static func matchesRoutes() throws {
@@ -215,6 +235,11 @@ struct RemoteProtocolHarness {
         try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/start") == .success(.startConversation), "start")
         try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/stop") == .success(.stopConversation), "stop")
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversations") == .success(.conversations), "list")
+        try expect(RemoteRoute.match(method: "GET", path: "/v1/conversation/live") == .success(.liveAudio), "live audio")
+        try expect(RemoteRoute.match(method: "GET", path: RemoteProtocol.Path.liveAudio) == .success(.liveAudio), "live audio by constant")
+        try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/live") == .failure(.methodNotAllowed), "live audio is GET only")
+        try expect(RemoteRoute.match(method: "GET", path: "/v1/conversation/live/") == .failure(.notFound), "no trailing slash")
+        try expect(RemoteRoute.match(method: "GET", path: "/v1/conversation/LIVE") == .failure(.notFound), "paths are case-sensitive")
         try expect(RemoteRoute.match(method: "GET", path: RemoteProtocol.Path.conversation(id)) == .success(.conversation(id)), "detail")
         try expect(RemoteRoute.match(method: "GET", path: RemoteProtocol.Path.audio(id)) == .success(.audio(id)), "audio")
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversations/\(id.uuidString.lowercased())") == .success(.conversation(id)), "a lowercase id")
@@ -226,6 +251,25 @@ struct RemoteProtocolHarness {
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversations/\(id.uuidString)/audio/x") == .failure(.notFound), "a deeper path")
         try expect(RemoteRoute.match(method: "GET", path: "/") == .failure(.notFound), "the root")
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversations/../status") == .failure(.notFound), "no path tricks")
+    }
+
+    private static func readsQueryValues() throws {
+        func request(_ target: String) throws -> RemoteHTTPRequest {
+            guard case .complete(let parsed) = RemoteHTTPParser.parse(Data("GET \(target) HTTP/1.1\r\nHost: mac\r\n\r\n".utf8)) else {
+                throw RemoteProtocolHarnessFailure(description: "parses \(target)")
+            }
+            return parsed
+        }
+        let live = try request("/v1/conversation/live?client=phone-1")
+        try expect(live.path == RemoteProtocol.Path.liveAudio, "the query is not part of the path")
+        try expect(RemoteRoute.match(method: live.method, path: live.path) == .success(.liveAudio), "a live request with a client id routes")
+        try expect(live.queryValue("client") == "phone-1", "the client id")
+        try expect(try request("/v1/conversation/live").queryValue("client") == nil, "no query")
+        try expect(try request("/v1/conversation/live?x=1&client=b&client=c").queryValue("client") == "b", "the first of several")
+        try expect(try request("/v1/conversation/live?client=").queryValue("client") == "", "an empty value")
+        try expect(try request("/v1/conversation/live?client").queryValue("client") == "", "a bare name")
+        try expect(try request("/v1/conversation/live?clientx=1").queryValue("client") == nil, "names match whole")
+        try expect(try request("/v1/conversation/live?a=1&&client=z=y").queryValue("client") == "z=y", "only the first = splits")
     }
 
     private static func sanitisesHostNames() throws {

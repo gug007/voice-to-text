@@ -28,8 +28,22 @@ enum DebugLaunch {
         if let path = defaults.string(forKey: "debugImport") {
             await Importer.shared.importFile(URL(fileURLWithPath: path))
         }
+        if defaults.bool(forKey: "debugRemoteListen") {
+            Task { await listenWhenRecording() }
+        }
         if let command = defaults.string(forKey: "debugRemote") {
             await runRemote(command)
+        }
+    }
+
+    private static func listenWhenRecording() async {
+        guard let link = await waitForMac() else { return }
+        while !Task.isCancelled {
+            if link.connection == .connected, link.status?.state == .recording, link.status?.liveListen == true {
+                MacRemote.shared.startListening(link)
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(250))
         }
     }
 

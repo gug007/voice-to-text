@@ -29,6 +29,7 @@
 		50C9F433BD8B4CFEFFE6443D /* AudioChunker.swift in Sources */ = {isa = PBXBuildFile; fileRef = B4155513A64E53ACC93D6DAD /* AudioChunker.swift */; };
 		50E446F22B3FFB10B278846B /* AudioChunkReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D1EF3C66B13C0039C61F26E /* AudioChunkReader.swift */; };
 		55F56DD441A074C253397A20 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82FB134C5A09F8133F4EB243 /* Theme.swift */; };
+		582C3A5D213415B563B4FBD6 /* LiveListener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 945F4DB06411132529EC84A1 /* LiveListener.swift */; };
 		5C2E4796EDFFF40E26030335 /* TranscriptInsightRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7668BD34B1EE42622380A263 /* TranscriptInsightRequest.swift */; };
 		5CF10388ED6CC69ABF7A6DE7 /* VoiceToTextMobileApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1CD52FE765C6B35682749B7E /* VoiceToTextMobileApp.swift */; };
 		6CB9214CD97B23E6B7CAC111 /* VAD.swift in Sources */ = {isa = PBXBuildFile; fileRef = 12E5DADBA2BC59DBCD65806E /* VAD.swift */; };
@@ -47,7 +48,9 @@
 		ACD719FF78957F44B448B65E /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943990C3F658B034E3515E71 /* AppLogger.swift */; };
 		BE495E527CBABA120C3FAF5F /* WAVEncoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8FBB914F59E2FA7419450B24 /* WAVEncoder.swift */; };
 		CD0EC8F4024C03656E18AFAB /* RecordingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE14DF0BEACD961625B783CB /* RecordingView.swift */; };
+		D53AAC2C2EE434D1F16D444C /* LiveAudioDecoder.swift in Sources */ = {isa = PBXBuildFile; fileRef = D9EC0F8E4278B01760177D5E /* LiveAudioDecoder.swift */; };
 		DC0BF6C0167D72C6F5BC60D7 /* SpeechEnergy.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1DD720737E92BC5B1F94068 /* SpeechEnergy.swift */; };
+		E9F197801C8C6B25EB03BEB1 /* LiveAudioWire.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6444B8A04E59AE7DB938FFCE /* LiveAudioWire.swift */; };
 		F344696CE6D1E969A6DA7906 /* TailscaleKit in Frameworks */ = {isa = PBXBuildFile; productRef = 770B440655EE440E5130971C /* TailscaleKit */; };
 		F85DC4481200DC852D9B0EDE /* TailnetController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3221CC31CC611DF0E85DAB8 /* TailnetController.swift */; };
 		FED3471CE6E5CAD94DEF5C3C /* OpenAIKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9D331BC26D04470FBC26A394 /* OpenAIKey.swift */; };
@@ -67,6 +70,7 @@
 		5B8C0AB105F21925709E64A0 /* MacViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacViews.swift; sourceTree = "<group>"; };
 		5D1EF3C66B13C0039C61F26E /* AudioChunkReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunkReader.swift; sourceTree = "<group>"; };
 		603B19033861B2F0DF3139F2 /* Transcriber.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transcriber.swift; sourceTree = "<group>"; };
+		6444B8A04E59AE7DB938FFCE /* LiveAudioWire.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAudioWire.swift; sourceTree = "<group>"; };
 		6C25096D312FC7BB27934F01 /* RootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RootView.swift; sourceTree = "<group>"; };
 		71E85B4AB282A2014519E4E5 /* AppConstants.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppConstants.swift; sourceTree = "<group>"; };
 		7668BD34B1EE42622380A263 /* TranscriptInsightRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptInsightRequest.swift; sourceTree = "<group>"; };
@@ -77,6 +81,7 @@
 		8FBB914F59E2FA7419450B24 /* WAVEncoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WAVEncoder.swift; sourceTree = "<group>"; };
 		9138AE12D39661CA26430B55 /* VadTuning.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VadTuning.swift; sourceTree = "<group>"; };
 		943990C3F658B034E3515E71 /* AppLogger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppLogger.swift; sourceTree = "<group>"; };
+		945F4DB06411132529EC84A1 /* LiveListener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveListener.swift; sourceTree = "<group>"; };
 		967F5D2D2C7D8296AB44CAE7 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		9D331BC26D04470FBC26A394 /* OpenAIKey.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OpenAIKey.swift; sourceTree = "<group>"; };
 		9D7F7EC0CE9B7620335F06AB /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetailView.swift; sourceTree = "<group>"; };
@@ -89,6 +94,7 @@
 		CF37FAE6FC8EC3F067BFADF6 /* SpeechGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGate.swift; sourceTree = "<group>"; };
 		D1F7E059469891B8DF61F676 /* HistoryIndexCodec.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryIndexCodec.swift; sourceTree = "<group>"; };
 		D8511449CC1794E72DF54110 /* VoiceToTextMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = VoiceToTextMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D9EC0F8E4278B01760177D5E /* LiveAudioDecoder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveAudioDecoder.swift; sourceTree = "<group>"; };
 		DB4F7D53501F9480FEA4D0D4 /* Importer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Importer.swift; sourceTree = "<group>"; };
 		DB9909EEDCE6727F276CE2BF /* RecordingHistoryEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingHistoryEntry.swift; sourceTree = "<group>"; };
 		E1DD720737E92BC5B1F94068 /* SpeechEnergy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechEnergy.swift; sourceTree = "<group>"; };
@@ -166,6 +172,7 @@
 		611598578F7CC81C18BAA00E /* Remote */ = {
 			isa = PBXGroup;
 			children = (
+				6444B8A04E59AE7DB938FFCE /* LiveAudioWire.swift */,
 				8B4606A64DAE92E02313495D /* RemoteProtocol.swift */,
 				B3221CC31CC611DF0E85DAB8 /* TailnetController.swift */,
 				048FE68A09BE579EC92C5D0F /* TailnetStatus.swift */,
@@ -261,6 +268,8 @@
 				DB4F7D53501F9480FEA4D0D4 /* Importer.swift */,
 				F912BF469BAE0E204F38C0AB /* Insights.swift */,
 				E22E7F7518DD785643A2970B /* Library.swift */,
+				D9EC0F8E4278B01760177D5E /* LiveAudioDecoder.swift */,
+				945F4DB06411132529EC84A1 /* LiveListener.swift */,
 				B9748588768696C5AEF86208 /* MacLink.swift */,
 				C38E69A9E76CB6AC0224A240 /* MacRemote.swift */,
 				9D331BC26D04470FBC26A394 /* OpenAIKey.swift */,
@@ -359,6 +368,9 @@
 				1CBCF0F1E085EE90FBD552BF /* Importer.swift in Sources */,
 				8B49AFE0227A09B717D2561F /* Insights.swift in Sources */,
 				0F56E0B100CBC572B95CAEBB /* Library.swift in Sources */,
+				D53AAC2C2EE434D1F16D444C /* LiveAudioDecoder.swift in Sources */,
+				E9F197801C8C6B25EB03BEB1 /* LiveAudioWire.swift in Sources */,
+				582C3A5D213415B563B4FBD6 /* LiveListener.swift in Sources */,
 				711CCA7AFF755855432A017E /* MacLink.swift in Sources */,
 				823A52E0BFA943DD4C33A1EC /* MacRemote.swift in Sources */,
 				4169F48759BB04003D71B7A5 /* MacViews.swift in Sources */,

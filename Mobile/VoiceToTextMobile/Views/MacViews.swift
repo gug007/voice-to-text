@@ -6,67 +6,140 @@ enum MacRoute: Hashable {
     case conversation(String, UUID)
 }
 
-struct MacCards: View {
+struct MacHomeSections: View {
+    let footer: String?
+
     var body: some View {
         let links = MacRemote.shared.homeLinks
-        if !links.isEmpty {
-            VStack(spacing: 8) {
-                ForEach(links) { MacCard(link: $0) }
-            }
+        ForEach(links) { link in
+            MacHomeSection(link: link, footer: link === links.last ? footer : nil)
         }
     }
 }
 
-struct MacCard: View {
+struct MacHomeSection: View {
     let link: MacLink
+    let footer: String?
+
+    private static let previewCount = 2
 
     var body: some View {
+        Section {
+            NavigationLink(value: MacRoute.conversations(link.id)) {
+                header
+            }
+            ForEach(link.conversations.prefix(Self.previewCount)) { MacConversationRow(macID: link.id, row: $0) }
+            if link.conversations.count > Self.previewCount {
+                NavigationLink(value: MacRoute.conversations(link.id)) {
+                    Text("See all \(link.conversations.count)")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(Palette.ready)
+                }
+                .accessibilityLabel("See all \(link.conversations.count) conversations on \(link.shortName)")
+            }
+        } footer: {
+            if let footer { Text(footer) }
+        }
+    }
+
+    private var header: some View {
         HStack(spacing: 12) {
+            Image(systemName: "laptopcomputer")
+                .font(.title3)
+                .foregroundStyle(.secondary)
+                .frame(width: 30)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 3) {
-                Label(link.macName, systemImage: "laptopcomputer")
-                    .font(.subheadline.weight(.semibold))
+                Text(link.shortName)
+                    .font(.body.weight(.semibold))
                     .lineLimit(1)
-                detail
+                status
                     .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(5)
+                    .lineLimit(3)
             }
             .accessibilityElement(children: .combine)
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
             Spacer(minLength: 8)
             action
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 14))
-        .padding(.horizontal, 20)
+        .padding(.vertical, 4)
+    }
+
+    private var listening: LiveListener.State {
+        MacRemote.shared.listenState(for: link)
+    }
+
+    private var listeningWord: String? {
+        switch listening {
+        case .listening: return "listening"
+        case .connecting: return "connecting…"
+        case .reconnecting: return "reconnecting…"
+        case .off, .failed: return nil
+        }
     }
 
     @ViewBuilder
-    private var detail: some View {
+    private func recordingLine(_ clock: String) -> some View {
+        if let word = listeningWord {
+            ViewThatFits(in: .horizontal) {
+                StatusLine(text: "Recording · \(clock) · \(word)", dot: Palette.live)
+                StatusLine(text: "\(clock) · \(word)", dot: Palette.live)
+                StatusLine(text: word, dot: Palette.live)
+                    .lineLimit(1)
+            }
+            .monospacedDigit()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recording · \(clock) · \(word)")
+        } else if link.status?.liveListen == true {
+            ViewThatFits(in: .horizontal) {
+                StatusLine(text: "Recording · \(clock)", dot: Palette.live)
+                StatusLine(text: clock, dot: Palette.live)
+                    .lineLimit(1)
+            }
+            .monospacedDigit()
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recording · \(clock)")
+        } else {
+            StatusLine(text: "Recording · \(clock)", dot: Palette.live)
+                .monospacedDigit()
+        }
+    }
+
+    private var readyText: String {
+        guard link.conversationsLoaded, link.conversationsError == nil else { return "Ready" }
+        switch link.conversations.count {
+        case 0: return "Ready · no conversations yet"
+        case 1: return "Ready · 1 conversation"
+        case let count: return "Ready · \(count) conversations"
+        }
+    }
+
+    @ViewBuilder
+    private var status: some View {
         if let error = link.commandError {
-            Text(error).foregroundStyle(Palette.live)
+            StatusLine(text: error, dot: Palette.live, alert: true)
         } else {
             switch link.connection {
             case .idle, .connecting:
-                Text("Connecting…")
+                StatusLine(text: "Connecting…", dot: Color(.systemGray3))
             case .unreachable:
-                Text(link.lastFailure.map { "Mac not reachable: \($0)" } ?? "Mac not reachable")
+                StatusLine(text: "Asleep or not reachable", dot: Color(.systemGray3))
             case .connected:
                 switch link.status?.state {
                 case .recording:
-                    TimelineView(.periodic(from: .now, by: 1)) { context in
-                        HStack(spacing: 6) {
-                            Circle().fill(Palette.live).frame(width: 7, height: 7)
-                            Text("Recording · \(DurationFormat.clock(link.elapsed(at: context.date)))")
-                                .monospacedDigit()
+                    if case .failed(let message) = listening {
+                        StatusLine(text: message, dot: Palette.live, alert: true)
+                    } else {
+                        TimelineView(.periodic(from: .now, by: 1)) { context in
+                            recordingLine(DurationFormat.clock(link.elapsed(at: context.date)))
                         }
                     }
                 case .transcribing, .importing:
-                    Text("Transcribing on Mac…")
+                    StatusLine(text: "Transcribing on Mac…", dot: Color(.systemGray3))
                 case .error:
-                    Text(link.status?.message ?? "The Mac couldn't record.").foregroundStyle(Palette.live)
+                    StatusLine(text: link.status?.message ?? "The Mac couldn't record.", dot: Palette.live, alert: true)
                 case .idle, nil:
-                    Text(link.status?.message ?? "Ready")
+                    StatusLine(text: readyText, dot: Palette.ready)
                 }
             }
         }
@@ -76,66 +149,104 @@ struct MacCard: View {
     private var action: some View {
         switch link.connection {
         case .idle, .connecting:
-            ProgressView().accessibilityLabel("Connecting to \(link.macName)")
+            ProgressView().accessibilityLabel("Connecting to \(link.shortName)")
         case .unreachable:
-            Button("Retry") { link.retry() }
-                .buttonStyle(.bordered)
-                .accessibilityLabel("Retry connecting to \(link.macName)")
+            Button { link.retry() } label: {
+                RowPill(title: "Retry", fill: Color(.tertiarySystemFill), ink: Color(.label))
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Retry connecting to \(link.shortName)")
         case .connected:
             switch link.status?.state {
             case .recording:
-                Button {
-                    Task { await link.stopRecording() }
-                } label: {
-                    Label("Stop", systemImage: "stop.fill")
-                        .font(.subheadline.weight(.semibold))
+                HStack(spacing: 12) {
+                    if link.status?.liveListen == true {
+                        ListenButton(link: link, state: listening)
+                    }
+                    Button {
+                        Task { await link.stopRecording() }
+                    } label: {
+                        RowPill(title: "Stop", systemImage: "stop.fill", fill: Palette.live, ink: .white)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(link.isSending)
+                    .opacity(link.isSending ? 0.4 : 1)
+                    .accessibilityLabel("Stop recording on \(link.shortName)")
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Palette.live)
-                .disabled(link.isSending)
-                .accessibilityLabel("Stop recording on \(link.macName)")
+                .fixedSize()
             case .transcribing, .importing:
-                ProgressView().accessibilityLabel("Transcribing on \(link.macName)")
+                ProgressView().accessibilityLabel("Transcribing on \(link.shortName)")
             case .idle, .error, nil:
-                Button {
-                    Task { await link.startRecording() }
-                } label: {
-                    Text("Record on Mac")
-                        .font(.subheadline.weight(.semibold))
-                }
-                .buttonStyle(.bordered)
-                .disabled(link.isSending)
-                .accessibilityLabel("Start recording a conversation on \(link.macName)")
+                EmptyView()
             }
         }
     }
 }
 
-struct MacConversationsLinks: View {
+private struct RowPill: View {
+    let title: String
+    var systemImage: String?
+    let fill: Color
+    let ink: Color
+
     var body: some View {
-        let links = MacRemote.shared.connectedLinks
-        if !links.isEmpty {
-            Section {
-                ForEach(links) { link in
-                    NavigationLink(value: MacRoute.conversations(link.id)) {
-                        Label {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("Conversations on \(link.macName)")
-                                if link.conversationsLoaded, link.conversationsError == nil {
-                                    Text(link.conversations.isEmpty ? "None yet" : "\(link.conversations.count) recorded")
-                                        .font(.footnote)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        } icon: {
-                            Image(systemName: "laptopcomputer")
-                        }
-                    }
-                }
-            } header: {
-                Text(links.count > 1 ? "On your Macs" : "On your Mac")
-            }
+        HStack(spacing: 5) {
+            if let systemImage { Image(systemName: systemImage).font(.caption.weight(.bold)) }
+            Text(title)
         }
+        .font(.subheadline.weight(.semibold))
+        .foregroundStyle(ink)
+        .padding(.horizontal, 14)
+        .frame(height: 34)
+        .background(fill, in: Capsule())
+        .fixedSize()
+    }
+}
+
+private struct StatusLine: View {
+    let text: String
+    let dot: Color
+    var alert = false
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Circle()
+                .fill(dot)
+                .frame(width: 7, height: 7)
+                .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
+            Text(text)
+                .foregroundStyle(alert ? Palette.live : .secondary)
+        }
+    }
+}
+
+struct ListenButton: View {
+    let link: MacLink
+    let state: LiveListener.State
+
+    var body: some View {
+        let on = state == .listening
+        let busy = state == .connecting || state == .reconnecting
+        Button {
+            MacRemote.shared.toggleListening(link)
+        } label: {
+            ZStack {
+                Circle().fill(on ? Color(.label) : Color(.tertiarySystemFill))
+                if busy {
+                    ProgressView().controlSize(.small)
+                } else {
+                    Image(systemName: "headphones")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(on ? Color(.systemBackground) : Color(.label))
+                }
+            }
+            .frame(width: 34, height: 34)
+            .frame(width: 44, height: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(Recorder.shared.isActive)
+        .accessibilityLabel(on || busy ? "Stop listening to \(link.macName)" : "Listen live to \(link.macName)")
     }
 }
 

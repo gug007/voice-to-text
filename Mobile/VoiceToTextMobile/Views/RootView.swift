@@ -33,6 +33,7 @@ struct RootView: View {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Settings", systemImage: "gearshape") { showSettings = true }
                     }
+                    ToolbarItem(placement: .principal) { destinationMenu }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Import audio", systemImage: "square.and.arrow.down") { showFilePicker = true }
                             .disabled(importer.isImporting)
@@ -100,42 +101,33 @@ struct RootView: View {
     }
 
     @ViewBuilder
-    private var destinationPicker: some View {
+    private var destinationMenu: some View {
         let links = remote.homeLinks
         if !links.isEmpty {
-            let selection = Binding(get: { destination?.id ?? "" }, set: { destinationID = $0 })
-            Group {
-                if links.count <= 2 {
-                    Picker("Record on", selection: selection) {
-                        destinationOptions(links)
-                    }
-                    .pickerStyle(.segmented)
-                } else {
-                    HStack {
-                        Text("Record on")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Picker("Record on", selection: selection) {
-                            destinationOptions(links)
-                        }
-                        .pickerStyle(.menu)
-                    }
+            Menu {
+                Picker("Record on", selection: Binding(get: { destination?.id ?? "" }, set: { destinationID = $0 })) {
+                    Label("This iPhone", systemImage: "iphone").tag("")
+                    ForEach(links) { Label($0.shortName, systemImage: "laptopcomputer").tag($0.id) }
                 }
+            } label: {
+                HStack(spacing: 5) {
+                    Text(destination?.shortName ?? "This iPhone")
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(.secondary)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 6)
             }
-            .padding(.horizontal, 20)
+            .accessibilityLabel("Record on")
+            .accessibilityValue(destination?.shortName ?? "This iPhone")
         }
-    }
-
-    @ViewBuilder
-    private func destinationOptions(_ links: [MacLink]) -> some View {
-        Text("This iPhone").tag("")
-        ForEach(links) { Text($0.shortName).tag($0.id) }
     }
 
     private var recordBar: some View {
         VStack(spacing: 10) {
-            destinationPicker
             if let fraction = importer.fraction {
                 HStack(spacing: 10) {
                     ProgressView(value: fraction)

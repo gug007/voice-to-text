@@ -16,6 +16,8 @@ struct APIKeyProviderConfig {
     let providerName: String
     /// Placeholder shown while no key is stored.
     let pastePrompt: String
+    /// How the provider's keys start, when they have a fixed prefix.
+    let keyPrefix: String?
     let getKeyURL: URL
     let looksLikeKey: (String) -> Bool
     let verify: @MainActor (String) async -> APIKeyVerification
@@ -33,7 +35,8 @@ extension APIKeyProviderConfig {
         APIKeyProviderConfig(
             provider: .openAI,
             providerName: "OpenAI",
-            pastePrompt: "Paste your OpenAI key (starts with sk-)",
+            pastePrompt: "Paste your OpenAI key",
+            keyPrefix: "sk-",
             getKeyURL: OpenAIEndpoint.apiKeysDocs,
             looksLikeKey: OpenAIAPIKey.looksLikeKey,
             verify: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(apiKey: $0)) },
@@ -51,6 +54,7 @@ extension APIKeyProviderConfig {
             provider: .elevenLabs,
             providerName: "ElevenLabs",
             pastePrompt: "Paste your ElevenLabs key",
+            keyPrefix: nil,
             getKeyURL: URL(string: "https://elevenlabs.io/app/settings/api-keys")!,
             looksLikeKey: ElevenLabsAPIKey.looksLikeKey,
             verify: { await APIKeyVerification(ElevenLabsRealtimeEngine.testConnection(apiKey: $0)) },
@@ -67,7 +71,8 @@ extension APIKeyProviderConfig {
         APIKeyProviderConfig(
             provider: .groq,
             providerName: "Groq",
-            pastePrompt: "Paste your Groq key (starts with gsk_)",
+            pastePrompt: "Paste your Groq key",
+            keyPrefix: "gsk_",
             getKeyURL: GroqEndpoint.apiKeysDocs,
             looksLikeKey: GroqAPIKey.looksLikeKey,
             verify: { await APIKeyVerification(OpenAITranscriptionEngine.testConnection(apiKey: $0, service: .groq)) },
@@ -107,6 +112,23 @@ extension APIKeyVerification {
     }
 }
 
+
+/// One line of feedback under a key field or a provider row.
+struct APIKeyStatusMessage: Equatable {
+    enum Kind { case neutral, success, failure }
+
+    let text: String
+    let kind: Kind
+
+    var color: Color {
+        switch kind {
+        case .neutral: return Palette.inkMuted
+        case .success: return Palette.signalReady
+        case .failure: return Palette.signalWarn
+        }
+    }
+}
+
 /// Paste → verified → saved, in one step. The user copies a key on the
 /// provider's site, comes back, and pastes: the paste itself triggers
 /// verification, and a key the provider accepts is stored without a Save click.
@@ -116,65 +138,84 @@ extension APIKeyVerification {
 /// ⌘V does the work.
 struct APIKeyEntryView: View {
     let config: APIKeyProviderConfig
-    /// Test and Remove. On in the Cloud pane, off in the inline popovers,
-    /// where the only job is getting a working key in.
-    var showsManagementControls: Bool = false
+    /// Visible label above the field. Nil where the container already names
+    /// it (the "OpenAI API key" popovers).
+    var fieldLabel: String? = nil
     /// Whether this field grabs focus on appear when no key is stored. Off for
     /// the second provider in a pane, so the two don't fight over first responder.
     var autoFocusesField: Bool = true
+    /// The provider's verdict on a key this field connected, so the Cloud row
+    /// can keep showing it once the field goes away.
+    var onVerified: ((APIKeyVerification) -> Void)? = nil
+    /// Shows a Cancel button next to Connect (replacing a stored key).
+    var onCancel: (() -> Void)? = nil
+    /// Last on purpose: an unlabeled trailing closure lands here.
     var onConnected: () -> Void = {}
-    /// Hands Remove's Undo to the pane, which shows the toast. Nil removes
-    /// the key outright, as before.
-    var onRemoved: ((PendingUndo) -> Void)? = nil
 
     @State private var draft: String = ""
-    @State private var status: Status?
+    @State private var status: APIKeyStatusMessage?
     @State private var isConnecting = false
-    @State private var isTesting = false
+    /// The running verification, cancelled when the field goes away so a key
+    /// the user backed out of is never saved.
+    @State private var connectTask: Task<Void, Never>?
     /// The value the paste heuristic last fired on, so a rejected key isn't
     /// re-verified on every keystroke that follows.
     @State private var lastAutoTried: String?
     @FocusState private var isFieldFocused: Bool
 
-    private enum StatusKind { case neutral, success, failure }
-
-    private struct Status {
-        let message: String
-        let kind: StatusKind
-    }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s5) {
-            if !config.hasKey() {
-                getKeyCallout
+        VStack(alignment: .leading, spacing: Space.s3) {
+            if let fieldLabel {
+                Text(fieldLabel)
+                    .typo(.captionMedium)
+                    .foregroundStyle(Palette.inkMuted)
             }
 
-            keyField
+            HStack(spacing: Space.s4) {
+                keyField
+                connectButton
+                if let onCancel {
+                    Button("Cancel") {
+                        connectTask?.cancel()
+                        onCancel()
+                    }
+                    .buttonTier(.secondary)
+                }
+            }
 
-            controlRow
+            // One line where it fits (the Cloud pane); the link drops under
+            // the hint in the narrow popovers.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+                    hintText
+                    Spacer(minLength: Space.s4)
+                    getKeyLink
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    hintText
+                    getKeyLink
+                }
+            }
 
             if let status {
-                Text(status.message)
+                Text(status.text)
                     .typo(.caption)
-                    .foregroundStyle(color(for: status.kind))
+                    .foregroundStyle(status.color)
                     .fixedSize(horizontal: false, vertical: true)
                     .transition(.opacity)
             }
-
-            if config.hasKey() {
-                quietGetKeyLink
-            }
         }
-        .defaultFocus($isFieldFocused, autoFocusesField && !config.hasKey())
+        .defaultFocus($isFieldFocused, autoFocusesField)
         .onChange(of: draft) { old, new in
             handleDraftChange(from: old, to: new)
         }
         .onAppear {
-            if autoFocusesField && !config.hasKey() {
+            if autoFocusesField {
                 isFieldFocused = true
             }
         }
         .onDisappear {
+            connectTask?.cancel()
             draft = ""
             status = nil
             lastAutoTried = nil
@@ -183,112 +224,61 @@ struct APIKeyEntryView: View {
 
     // MARK: - Pieces
 
-    private var getKeyCallout: some View {
-        VStack(alignment: .leading, spacing: Space.s3) {
-            Link(destination: config.getKeyURL) {
-                HStack(spacing: Space.s2) {
-                    Text("Get an API key")
-                    Image(systemName: "arrow.up.right")
-                        .font(Typo.micro)
-                }
-                .typo(.captionMedium)
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
-
-            Text("Create a key on \(config.providerName), copy it, and paste it here. It's verified and saved automatically.")
+    @ViewBuilder
+    private var hintText: some View {
+        if let hint {
+            hint
                 .typo(.caption)
                 .foregroundStyle(Palette.inkMuted)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
+    private var getKeyLink: some View {
+        ExternalLink("Get an API key", destination: config.getKeyURL, font: Typo.caption)
+    }
+
     private var keyField: some View {
         SecureField(
-            "",
+            "\(config.providerName) API key",
             text: $draft,
             prompt: Text(fieldPrompt).foregroundStyle(Palette.inkFaint)
         )
         .textFieldStyle(.plain)
-        .font(Typo.mono)
+        // SF Mono only for the typed key; the placeholder stays SF Pro.
+        .font(draft.isEmpty ? Typo.body : Typo.code)
         .focused($isFieldFocused)
-        .padding(.horizontal, Space.s5)
-        .padding(.vertical, Space.s5)
-        .background {
-            // Radius 10 = the plate's 16 minus this well's 6pt inset.
-            ConcentricRectangle(inset: Space.s3) { shape in
-                shape
-                    .fill(Palette.wellFill)
-                    .overlay(shape.strokeBorder(Palette.hairline))
+        // Esc cancels only from the focused field, so two open Replace
+        // fields never compete for it. Without a Cancel, Esc is left alone
+        // (it closes the key popovers).
+        .onExitCommand(perform: onCancel.map { cancel in
+            { () -> Void in
+                connectTask?.cancel()
+                cancel()
             }
-        }
-        .onSubmit { Task { await connect() } }
+        })
+        .padding(.horizontal, Space.s4)
+        .frame(height: FormMetrics.fieldHeight)
+        .framedTextField(isFocused: isFieldFocused)
+        .onSubmit { startConnect() }
     }
 
-    @ViewBuilder
-    private var controlRow: some View {
-        HStack(spacing: Space.s5) {
-            Button {
-                Task { await connect() }
-            } label: {
-                if isConnecting {
-                    HStack(spacing: Space.s3) {
-                        ProgressView().controlSize(.small)
-                        Text("Connecting…")
-                    }
-                } else {
-                    Text("Connect")
+    private var connectButton: some View {
+        Button {
+            startConnect()
+        } label: {
+            if isConnecting {
+                HStack(spacing: Space.s3) {
+                    ProgressView().controlSize(.mini)
+                    Text("Connecting…")
                 }
-            }
-            .buttonStyle(FilledButtonStyle())
-            .disabled(trimmedDraft.isEmpty || isBusy)
-
-            if showsManagementControls && config.hasKey() {
-                Button {
-                    Task { await testStoredKey() }
-                } label: {
-                    if isTesting {
-                        HStack(spacing: Space.s3) {
-                            ProgressView().controlSize(.small)
-                            Text("Testing…")
-                        }
-                    } else {
-                        Text("Test")
-                    }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .disabled(isBusy)
-
-                Spacer()
-
-                // Destructive text button: quiet by default, signalLive on hover
-                // — never a filled red control.
-                Button {
-                    removeKey()
-                } label: {
-                    Text("Remove")
-                        .typo(.captionMedium)
-                }
-                .buttonStyle(DestructiveTextButtonStyle())
-                .help("Forget the saved API key")
             } else {
-                Spacer()
+                Text("Connect")
             }
         }
-    }
-
-    private var quietGetKeyLink: some View {
-        Link(destination: config.getKeyURL) {
-            HStack(spacing: Space.s2) {
-                Text("Get an API key")
-                Image(systemName: "arrow.up.right")
-                    .font(Typo.micro)
-            }
-            .typo(.captionMedium)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(Palette.accent)
+        .buttonTier(.primary)
+        .disabled(trimmedDraft.isEmpty || isConnecting)
+        .help(trimmedDraft.isEmpty ? "Paste or type a key first" : "Check and save this key")
     }
 
     // MARK: - State
@@ -297,33 +287,33 @@ struct APIKeyEntryView: View {
         draft.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
-    private var isBusy: Bool { isConnecting || isTesting }
-
     private var fieldPrompt: String {
         guard config.hasKey() else { return config.pastePrompt }
         if let suffix = config.keySuffix() {
-            return "Replace key ending in …\(suffix)"
+            return "Paste a new key to replace …\(suffix)"
         }
-        return "Replace existing key"
+        return "Paste a new key"
     }
 
-    private func color(for kind: StatusKind) -> Color {
-        switch kind {
-        case .neutral: return Palette.inkMuted
-        case .success: return Palette.signalReady
-        case .failure: return Palette.signalWarn
-        }
+    /// "Starts with gsk_", the prefix set as code and not followed by a
+    /// full stop that would read as part of it.
+    private var hint: Text? {
+        config.keyPrefix.map { Text("Starts with ") + Text($0).font(Typo.code) }
+    }
+
+    private func report(_ message: APIKeyStatusMessage) {
+        status = message
     }
 
     // MARK: - Actions
 
     private func handleDraftChange(from old: String, to new: String) {
-        guard !isBusy else { return }
+        guard !isConnecting else { return }
         guard Self.isLikelyPaste(from: old, to: new) else { return }
         let candidate = new.trimmingCharacters(in: .whitespacesAndNewlines)
         guard config.looksLikeKey(candidate), candidate != lastAutoTried else { return }
         lastAutoTried = candidate
-        Task { await connect() }
+        startConnect()
     }
 
     /// A paste lands as one big jump or replaces the whole field; typing only
@@ -334,83 +324,46 @@ struct APIKeyEntryView: View {
         return !new.hasPrefix(old) && !old.hasPrefix(new)
     }
 
-    private func connect() async {
+    /// One verification at a time: a paste and a Return (or two Returns)
+    /// must not start a second one that Cancel can't reach.
+    private func startConnect() {
         let candidate = trimmedDraft
-        guard !candidate.isEmpty, !isBusy else { return }
+        guard !candidate.isEmpty, !isConnecting else { return }
         isConnecting = true
+        connectTask = Task { await connect(candidate) }
+    }
+
+    private func connect(_ candidate: String) async {
         defer { isConnecting = false }
 
-        switch await config.verify(candidate) {
+        let verdict = await config.verify(candidate)
+        // Cancelled or gone while the provider answered: save nothing.
+        guard !Task.isCancelled else { return }
+        switch verdict {
         case .ok:
             config.save(candidate)
             clearDraft()
-            status = Status(message: connectedMessage(), kind: .success)
+            report(APIKeyStatusMessage(text: Self.connectedMessage(config), kind: .success))
+            onVerified?(verdict)
             onConnected()
 
         case .rejected:
             // Deliberately not saved: a key the provider refuses would only fail
             // again at the first dictation, far from the field that can fix it.
-            status = Status(
-                message: "\(config.providerName) rejected this key. Check it and try again.",
+            report(APIKeyStatusMessage(
+                text: "\(config.providerName) rejected this key. Check it and try again.",
                 kind: .failure
-            )
+            ))
 
         case .failed(let message):
             // Offline, or the provider is having a moment — neither is a reason
             // to make the user paste again later, so the key is stored anyway.
             config.save(candidate)
             clearDraft()
-            status = Status(message: "Saved, but couldn't verify: \(message)", kind: .neutral)
+            report(APIKeyStatusMessage(text: "Saved, but couldn't verify: \(message)", kind: .neutral))
+            onVerified?(verdict)
             onConnected()
         }
-    }
-
-    private func testStoredKey() async {
-        guard !isBusy else { return }
-        isTesting = true
-        defer { isTesting = false }
-
-        switch await config.verifyStored() {
-        case .ok:
-            status = Status(message: connectedMessage(), kind: .success)
-        case .rejected:
-            status = Status(
-                message: "\(config.providerName) rejected this key. Check it and try again.",
-                kind: .failure
-            )
-        case .failed(let message):
-            status = Status(message: "Couldn't verify: \(message)", kind: .neutral)
-        }
-    }
-
-    private func removeKey() {
-        let removedKey = config.readKey()
-        let previousStatus = status
-        let outOfCreditSince = CloudCreditStatus.shared.flaggedSince(config.provider)
-        config.clear()
-        clearDraft()
-        status = Status(message: "Key removed.", kind: .neutral)
-        isFieldFocused = true
-        guard let removedKey, let onRemoved else { return }
-        let config = config
-        let statusBinding = $status
-        onRemoved(PendingUndo(title: "\(config.providerName) key removed") {
-            // A key pasted since is the one the user wants now.
-            guard !config.hasKey() else { return }
-            config.save(removedKey)
-            // Saving reads as a new key, which clears an out-of-credit flag;
-            // this is the same key, so the flag it had comes back with it.
-            if let outOfCreditSince {
-                CloudCreditStatus.shared.noteFailure(.quotaExhausted, provider: config.provider, at: outOfCreditSince)
-            }
-            statusBinding.wrappedValue = previousStatus
-                ?? Status(message: Self.restoredMessage(suffix: config.keySuffix()), kind: .neutral)
-        })
-    }
-
-    private static func restoredMessage(suffix: String?) -> String {
-        guard let suffix else { return "Key restored." }
-        return "Key restored — ending in …\(suffix)"
     }
 
     private func clearDraft() {
@@ -418,7 +371,7 @@ struct APIKeyEntryView: View {
         lastAutoTried = nil
     }
 
-    private func connectedMessage() -> String {
+    static func connectedMessage(_ config: APIKeyProviderConfig) -> String {
         guard let suffix = config.keySuffix() else { return "Connected." }
         return "Connected — key ending in …\(suffix)"
     }

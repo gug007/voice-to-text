@@ -83,6 +83,12 @@ final class ActionsStore {
         updated.isUserEdited = actions[index].isUserEdited
             || actions[index].name != action.name
             || actions[index].prompt != action.prompt
+        // Back to the template's exact text (Restore Default): catalog
+        // updates apply to it again.
+        if let template = ActionCatalog.defaults.first(where: { $0.id == updated.templateId }),
+           template.name == action.name, template.prompt == action.prompt {
+            updated.isUserEdited = false
+        }
         actions[index] = updated
         persist()
     }

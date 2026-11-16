@@ -9,7 +9,7 @@ import SwiftUI
 /// A pinned device that is unplugged stays selected and says so, rather than
 /// the setting quietly resetting itself: plugging it back in is then all it
 /// takes, and nobody comes back to find their choice gone.
-struct MicrophoneCard: View {
+struct MicrophoneRow: View {
     /// Read from `MicrophonePreference`, which every write goes through, and
     /// re-read when it announces one. Not `@AppStorage`: its keys contain
     /// dots, and a dotted key is not observed when written from outside the
@@ -19,16 +19,15 @@ struct MicrophoneCard: View {
 
     var body: some View {
         let menu = MicrophoneMenu(storedUID: stored.uid, lastKnownName: stored.lastKnownName, snapshot: monitor.snapshot)
-        Plate {
-            SettingHeader(title: "Microphone", subtitle: menu.subtitle) {
-                MinimalDropdown(
-                    selection: Binding(get: { menu.selection }, set: { select($0) }),
-                    sections: sections(for: menu),
-                    popupWidth: 300
-                )
-            }
+        SettingsRow("Microphone", caption: menu.subtitle) {
+            MinimalDropdown(
+                selection: Binding(get: { menu.selection }, set: { select($0) }),
+                sections: sections(for: menu),
+                title: "Microphone",
+                tooltip: "The microphone dictation and conversations record from"
+            )
         }
-        // Listening only while the card is on screen; the monitor is shared
+        // Listening only while the row is on screen; the monitor is shared
         // and counts its observers, so a reopened pane adds no listeners.
         .task { await monitor.observe() }
         .onReceive(NotificationCenter.default.publisher(for: MicrophonePreference.didChangeNotification)) { _ in

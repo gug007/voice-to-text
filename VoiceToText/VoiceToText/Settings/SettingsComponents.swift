@@ -37,9 +37,12 @@ extension ProviderIconTile {
     }
 }
 
-/// Title + subtitle on the left, a switch on the right — the standard row for
-/// a boolean setting inside a `Plate`. `isLocked` dims the switch when one
-/// setting forces another on (see the General pane's Dock / menu bar pair).
+/// Title + subtitle on the left, a switch on the right, for a boolean setting
+/// inside a padded `Plate`. `isLocked` dims the switch when one setting forces
+/// another on (see the General pane's Dock / menu bar pair).
+///
+/// Inside a `SettingsGroup` use `SettingsRow(_:caption:isOn:)` instead — it
+/// carries the row padding this view leaves to its plate.
 struct SettingsToggleRow: View {
     let title: String
     let subtitle: String
@@ -50,7 +53,7 @@ struct SettingsToggleRow: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: Space.s2) {
                 Text(title)
-                    .typo(.headline)
+                    .typo(.body)
                     .foregroundStyle(Palette.ink)
                 Text(subtitle)
                     .typo(.caption)

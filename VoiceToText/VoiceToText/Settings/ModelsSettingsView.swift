@@ -2,22 +2,12 @@ import SwiftUI
 
 // MARK: - The Models pane
 //
-// A hero card answering "what am I dictating with, and does it work", then one
-// flush plate per provider group: "On this Mac", "OpenAI", "ElevenLabs", "Groq".
-//
-// The grouping is what makes the rows short. Where the audio goes, who bills
-// it, whether the key is connected and how much disk the group occupies are all
-// facts about a *group*, so they are stated once in its header row. A model row
-// then carries only what distinguishes it from the row above it: its name, at
-// most one editorial chip, and the three numbers a reader is actually choosing
-// between (quality, price or size, languages).
-//
-// This replaced 14 identical floating cards that repeated "Cloud", "Connected"
-// and "99+ languages" on every one of them, signalled the active model three
-// ways at once (accent bar + tint wash + ACTIVE chip) while offering no "choose
-// this" affordance, and selected a row with an `onTapGesture` no keyboard could
-// reach. Selection is a real `Button` with a radio indicator now, and the
-// indicator is the only thing that says "active".
+// "In Use" assigns models: one picker each for dictation, conversations and the
+// second shortcut. Below it the catalog, one table-like group per provider
+// ("On this Mac", "OpenAI", "ElevenLabs", "Groq") with aligned columns for
+// accuracy, speed, size or price and languages. Rows show which roles they
+// fill; clicking one opens its details, and its ⋯ menu assigns, downloads or
+// deletes.
 
 struct ModelsPane: View {
     @Bindable var registry: ModelRegistry
@@ -33,23 +23,13 @@ struct ModelsPane: View {
 
         var title: String {
             switch self {
-            case .all: return "All"
+            case .all: return "All Models"
             case .local: return "On this Mac"
             case .cloud: return "Cloud"
             }
         }
 
-        var symbol: String? {
-            switch self {
-            case .all: return nil
-            case .local: return "laptopcomputer"
-            case .cloud: return "cloud.fill"
-            }
-        }
-
-        /// The groups this scope shows, in reading order. Empty ones are dropped
-        /// downstream, so a catalog without ElevenLabs models simply has no
-        /// ElevenLabs plate rather than an empty one.
+        /// The groups this scope shows, in reading order. Empty ones are dropped.
         var groups: [ModelGroup] {
             switch self {
             case .all: return [.local, .openAI, .elevenLabs, .groq]
@@ -66,27 +46,14 @@ struct ModelsPane: View {
         var title: String {
             switch self {
             case .featured: return "Featured"
-            case .quality: return "Quality"
+            case .quality: return "Accuracy"
             case .speed: return "Speed"
             case .name: return "Name"
             }
         }
-
-        /// The sort menu uses `.labelStyle(.titleAndIcon)`, so every option
-        /// needs a glyph — the icons are what survive a condensed menu bar.
-        var symbol: String {
-            switch self {
-            case .featured: return "sparkles"
-            case .quality: return "target"
-            case .speed: return "bolt.fill"
-            case .name: return "textformat"
-            }
-        }
     }
 
-    /// Sort runs *within* a group, never across them — a "by quality" list that
-    /// interleaved local and cloud models would undo the grouping that lets the
-    /// rows be this short.
+    /// Sorting runs within a group, never across groups.
     private func models(in group: ModelGroup) -> [ModelDescriptor] {
         sorted(ModelCatalog.all.filter(group.contains))
     }
@@ -95,19 +62,13 @@ struct ModelsPane: View {
         scope.groups.filter { !models(in: $0).isEmpty }
     }
 
-    /// Swift's `sorted(by:)` is stable, so ties keep their curated catalog order.
+    /// `sorted(by:)` is stable, so ties keep their curated catalog order.
     private func sorted(_ models: [ModelDescriptor]) -> [ModelDescriptor] {
         switch sort {
         case .featured:
             return models
         case .quality:
-            // `quality` is derived straight from published word error rates, so
-            // it is the whole key — there is nothing left to break ties with
-            // that isn't already in the number. Unscored models sort last, and
-            // the stable sort leaves genuine ties in catalog order.
-            return models.sorted {
-                ($0.quality ?? -1) > ($1.quality ?? -1)
-            }
+            return models.sorted { ($0.quality ?? -1) > ($1.quality ?? -1) }
         case .speed:
             return models.sorted { $0.speed > $1.speed }
         case .name:
@@ -120,36 +81,29 @@ struct ModelsPane: View {
 
     var body: some View {
         PaneScaffold {
-            PaneHeader(
-                title: "Models",
-                subtitle: "Pick the model you want to use for dictation."
-            )
+            PaneHeader(subtitle: "Choose the model that turns your speech into text.")
 
             SwitchedFromCloudBanner(registry: registry, credit: credit)
 
-            ActiveModelCard(registry: registry, onShowCloudSettings: onShowCloudSettings)
+            InUseGroup(registry: registry, onShowCloudSettings: onShowCloudSettings)
 
             ForEach(visibleGroups) { group in
-                ModelGroupPlate(
+                ModelGroupSection(
                     group: group,
                     models: models(in: group),
                     registry: registry,
+                    explainsAccuracy: group == visibleGroups.first,
                     onShowCloudSettings: onShowCloudSettings
                 )
                 #if arch(x86_64)
-                // Where the local models run, under the plate that lists them.
                 if group == .local {
                     IntelGPUCard()
                 }
                 #endif
             }
         }
-        // Selection changes animate across the whole pane rather than per-row,
-        // so the hero and the chosen row adopt the accent in one motion.
         .animation(motion.select, value: registry.activeModelId)
-        // The switched-from banner comes and goes as a block, which is layout.
         .animation(motion.layout, value: credit.switchedFromModelId)
-        // Filtering and reordering move rows, which is layout, not selection.
         .animation(motion.layout, value: scope)
         .animation(motion.layout, value: sort)
         .toolbar { toolbarContent }
@@ -157,62 +111,39 @@ struct ModelsPane: View {
     }
 
     // MARK: - Toolbar
-    //
-    // The scope filter and the sort control were two homeless widgets floating
-    // in the pane's first row — a hand-rolled capsule segmented control and a
-    // "Sort by" label next to a custom dropdown. They are toolbar items now:
-    // no custom background, no border, no divider. The system groups same-type
-    // items onto one shared glass capsule and separates the two functional
-    // groups with a `ToolbarSpacer` where it exists.
 
+    /// Two native pop-ups, like History's filter, so they stay in reach while
+    /// the list scrolls.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            Picker("Scope", selection: $scope) {
+            Picker("Show", selection: $scope) {
                 ForEach(ModelScope.allCases) { item in
-                    if let symbol = item.symbol {
-                        Label(item.title, systemImage: symbol).tag(item)
-                    } else {
-                        Text(item.title).tag(item)
-                    }
+                    Text(item.title).tag(item)
                 }
             }
-            .pickerStyle(.segmented)
-            .labelStyle(.titleAndIcon)
-            .labelsHidden()
-            .controlSize(.small)
-            .help("Show all models, only local ones, or only cloud ones")
-        }
-
-        // macOS 26+ only. Below it, the system's own inter-item spacing keeps
-        // the two groups apart — a little tighter, never merged.
-        if #available(macOS 26.0, *) {
-            ToolbarSpacer(.fixed, placement: .primaryAction)
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help("Show all models, only models on this Mac, or only cloud models")
         }
 
         ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Picker("Sort by", selection: $sort) {
-                    ForEach(ModelSort.allCases) { option in
-                        Label(option.title, systemImage: option.symbol).tag(option)
-                    }
+            Picker("Sort", selection: $sort) {
+                ForEach(ModelSort.allCases) { option in
+                    Text("Sort by \(option.title)").tag(option)
                 }
-                .pickerStyle(.inline)
-                .labelStyle(.titleAndIcon)
-            } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
             }
-            .menuIndicator(.hidden)
-            .help("Sort the model list")
+            .pickerStyle(.menu)
+            .fixedSize()
+            .help("Sort the models in each group")
         }
     }
 }
 
 // MARK: - Groups
 
-/// The provider groups. One value owns the title, the privacy sentence and
-/// the tile, so the hero card and the group header can never disagree about what
-/// an OpenAI model looks like.
+/// The provider groups. One value owns the title and the privacy sentence, so
+/// every place that lists models by provider agrees on both.
 enum ModelGroup: String, Identifiable {
     case local, openAI, elevenLabs, groq
 
@@ -236,50 +167,28 @@ enum ModelGroup: String, Identifiable {
         }
     }
 
-    /// Where the audio goes and who bills it — the two things a reader needs
-    /// before picking anything in the group, said once per group instead of
-    /// once per row.
+    /// Where the audio goes and who bills it.
     var subtitle: String {
         switch self {
         case .local:
             return "Audio never leaves this Mac. Free to run."
         case .openAI:
-            return "Audio is sent to OpenAI. Usage is billed to your API key."
+            return "Audio is sent to OpenAI and billed to your API key."
         case .elevenLabs:
-            return "Audio is sent to ElevenLabs. Usage is billed to your API key."
+            return "Audio is sent to ElevenLabs and billed to your API key."
         case .groq:
-            return "Audio is sent to Groq. Usage is billed to your API key."
+            return "Audio is sent to Groq and billed to your API key."
         }
     }
 
-    var tileSymbol: String {
-        switch self {
-        case .local: return "laptopcomputer"
-        case .openAI: return "cloud.fill"
-        case .elevenLabs: return "waveform"
-        case .groq: return "bolt.fill"
-        }
-    }
-
-    /// Matches the Cloud pane's provider tints, so the same provider wears the
-    /// same colour in both panes.
-    var tileTint: Color {
-        switch self {
-        case .local: return Palette.signalReady
-        case .openAI: return Palette.accent
-        case .elevenLabs: return Palette.badgeIndigo
-        case .groq: return Palette.providerGroq
-        }
-    }
-
-    /// A model belongs to the group whose provider it names — and to `.local`
+    /// A model belongs to the group whose provider it names, and to `.local`
     /// when it names none.
     func contains(_ model: ModelDescriptor) -> Bool {
         model.backend.cloudProvider == provider
     }
 
-    /// `models` split by group in reading order — "On this Mac", then each
-    /// provider — keeping catalog order within a group and dropping empty ones.
+    /// `models` split by group in reading order, keeping catalog order within a
+    /// group and dropping empty ones.
     static func sections(of models: [ModelDescriptor]) -> [(group: ModelGroup, models: [ModelDescriptor])] {
         [ModelGroup.local, .openAI, .elevenLabs, .groq].compactMap { group in
             let members = models.filter(group.contains)
@@ -297,109 +206,227 @@ enum ModelGroup: String, Identifiable {
     }
 }
 
-/// One group: a header row, then its models, all inside a single flush plate.
-/// A plain `VStack` rather than a `LazyVStack` — there are at most 17 rows in
-/// the whole pane, and lazy rows drop out of the animation when a sort reorders
-/// them.
-private struct ModelGroupPlate: View {
+/// One provider as a small table: header (title + key or disk status), a
+/// column-title row, the models, and the privacy sentence as the footer.
+private struct ModelGroupSection: View {
     let group: ModelGroup
     let models: [ModelDescriptor]
     @Bindable var registry: ModelRegistry
+    /// The first group on screen carries the one-line accuracy legend.
+    let explainsAccuracy: Bool
     let onShowCloudSettings: () -> Void
+    @State private var isShowingKeyEntry = false
+    @State private var width: CGFloat = 640
 
-    var body: some View {
-        Plate(.flush) {
-            VStack(spacing: 0) {
-                GroupHeaderRow(
-                    group: group,
-                    registry: registry,
-                    onShowCloudSettings: onShowCloudSettings
-                )
-                // Full-bleed under the header: it separates the group's identity
-                // from its contents, where the inset dividers below separate
-                // peers.
-                PlateDivider(leadingInset: 0)
+    /// Below this the languages column is dropped so names keep room.
+    private var isCompact: Bool { width < 560 }
 
-                ForEach(Array(models.enumerated()), id: \.element.id) { index, model in
-                    if index > 0 { PlateDivider() }
-                    ModelRow(model: model, registry: registry)
-                }
-            }
-        }
+    private var footer: String {
+        explainsAccuracy ? "\(group.subtitle) \(ModelFacts.accuracyScale)" : group.subtitle
     }
-}
-
-private struct GroupHeaderRow: View {
-    let group: ModelGroup
-    @Bindable var registry: ModelRegistry
-    let onShowCloudSettings: () -> Void
-    @Environment(\.increaseContrast) private var increaseContrast
 
     var body: some View {
-        HStack(alignment: .center, spacing: Space.s5) {
-            ProviderIconTile(symbol: group.tileSymbol, tint: group.tileTint)
-
-            VStack(alignment: .leading, spacing: Space.s1) {
-                Text(group.title)
-                    .typo(.headline)
-                    .foregroundStyle(Palette.ink)
-                Text(group.subtitle)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
+        SettingsGroup(group.title, footer: footer) {
+            StatColumnTitles(costTitle: group.provider == nil ? "Size" : "Price", isCompact: isCompact)
+            ForEach(models) { model in
+                ModelRow(
+                    model: model,
+                    registry: registry,
+                    isCompact: isCompact,
+                    onAddKey: { isShowingKeyEntry = true }
+                )
             }
-
-            Spacer(minLength: Space.s5)
-
-            trailing
+        } accessory: {
+            accessory
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, Space.s5)
-        // `.contain`, not `.combine`: the trailing control is a button with a
-        // popover, and it has to stay its own element to be reachable.
-        .accessibilityElement(children: .contain)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     }
 
     @ViewBuilder
-    private var trailing: some View {
+    private var accessory: some View {
         if let provider = group.provider {
             if provider.hasAPIKey {
-                // The Cloud pane's label for the same key, so the two panes
-                // never disagree about whether a provider is usable.
                 if CloudCreditStatus.shared.isOutOfCredit(provider) {
                     StatusLabel(level: .warning, text: keyStatusText(provider, FailureCardCopy.outOfCreditLabel))
                 } else {
                     StatusLabel(level: .ready, text: keyStatusText(provider, "Connected"))
                 }
             } else {
-                let need = ProviderKeyNeed.current(for: provider, registry: registry)
                 HStack(spacing: Space.s4) {
-                    if let reason = need.statusText {
+                    if let reason = ProviderKeyNeed.current(for: provider, registry: registry).statusText {
                         StatusLabel(level: .warning, text: reason)
                     }
                     AddAPIKeyButton(
                         provider: provider,
-                        isNeeded: need.isNeeded,
+                        isPresented: $isShowingKeyEntry,
                         onShowCloudSettings: onShowCloudSettings
                     )
                 }
             }
         } else if registry.totalDiskUsageBytes > 0 {
-            // Moved here from the pane header: it is a fact about the local
-            // group, and it was the only thing making the pane title a two-column
-            // layout.
             Text("\(registry.totalDiskUsageBytes.formattedDiskSize) on disk")
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                .typo(.caption)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkMuted)
                 .fixedSize()
         }
     }
 
-    /// "Connected · …abcd", or "Out of credit · …abcd" — the suffix says which
-    /// key, which matters most when it is the one that ran dry.
+    /// "Connected · …abcd": the suffix says which key.
     private func keyStatusText(_ provider: CloudProvider, _ status: String) -> String {
         guard let suffix = provider.apiKeySuffix else { return status }
         return "\(status) · …\(suffix)"
+    }
+}
+
+// MARK: - Columns
+
+/// The fixed column widths every row and title row share, so values line up
+/// down a group. Numbers align on their trailing edge.
+private enum StatColumn {
+    static let accuracy: CGFloat = 56
+    static let speed: CGFloat = 64
+    static let cost: CGFloat = 64
+    static let languages: CGFloat = 60
+    /// "✓ Installed" or the Download button, just before ⋯.
+    static let status: CGFloat = 84
+    static let spacing: CGFloat = Space.s5
+    /// Trailing padding that puts the ⋯ glyph, not its 28pt hit area, on the
+    /// group's trailing edge.
+    static let trailingPadding = FormMetrics.rowHorizontalPadding - (FormMetrics.iconButton - 14) / 2
+}
+
+/// The stat cells, laid out on the shared column widths. Compact (a narrow
+/// window) keeps accuracy and size or price.
+private struct StatCells: View {
+    let accuracy: String
+    let speed: String
+    let cost: String
+    let languages: String
+    var languagesHelp: String?
+    let isCompact: Bool
+    var style: Typo.Style = .body
+    var color: Color = Palette.inkMuted
+
+    var body: some View {
+        HStack(spacing: StatColumn.spacing) {
+            cell(accuracy, width: StatColumn.accuracy, alignment: .trailing)
+            if !isCompact {
+                cell(speed, width: StatColumn.speed, alignment: .leading)
+            }
+            cell(cost, width: StatColumn.cost, alignment: .trailing)
+            if !isCompact {
+                cell(languages, width: StatColumn.languages, alignment: .trailing)
+                    .help(languagesHelp ?? "")
+            }
+        }
+    }
+
+    private func cell(_ text: String, width: CGFloat, alignment: Alignment) -> some View {
+        Text(text)
+            .typo(style)
+            .monospacedDigit()
+            .foregroundStyle(color)
+            .lineLimit(1)
+            .frame(width: width, alignment: alignment)
+    }
+}
+
+/// The column titles under a group header, as the plate's first row.
+private struct StatColumnTitles: View {
+    let costTitle: String
+    let isCompact: Bool
+
+    var body: some View {
+        HStack(spacing: Space.s5) {
+            Text("Model")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            StatCells(
+                accuracy: "Accuracy",
+                speed: "Speed",
+                cost: costTitle,
+                languages: "Languages",
+                isCompact: isCompact,
+                style: .caption,
+                color: Palette.inkMuted
+            )
+            .help(ModelFacts.accuracyScale)
+            Color.clear.frame(width: StatColumn.status, height: 1)
+            Color.clear.frame(width: FormMetrics.iconButton, height: 1)
+        }
+        .typo(.caption)
+        .foregroundStyle(Palette.inkMuted)
+        .padding(.leading, FormMetrics.rowHorizontalPadding)
+        .padding(.trailing, StatColumn.trailingPadding)
+        .padding(.vertical, Space.s3)
+        .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Availability
+
+/// Whether a model can run right now, and if not, what it needs. The rows, the
+/// In Use pickers and the details footer all read this.
+private enum ModelAvailability: Equatable {
+    case ready
+    case needsKey(CloudProvider)
+    case outOfCredit
+    case notDownloaded
+    case downloading(Double)
+    /// Installed, and being loaded into memory or compiled: usable, not a download.
+    case loading
+    case failed
+
+    static func of(_ model: ModelDescriptor, registry: ModelRegistry) -> ModelAvailability {
+        if let provider = model.backend.cloudProvider {
+            // A cloud model's readiness is its key (and the provider's
+            // balance); the registry marks it `.preparing` before every take.
+            guard provider.hasAPIKey else { return .needsKey(provider) }
+            return CloudCreditStatus.shared.isOutOfCredit(provider) ? .outOfCredit : .ready
+        }
+        // A preparation that began as a download stays one — progress and
+        // Cancel — through its first compile, even once its files are on disk.
+        if case .preparing(let fraction, _) = registry.readiness(for: model.id),
+           registry.canCancelDownload(id: model.id) {
+            return .downloading(fraction)
+        }
+        if ModelSwitchPolicy.isLoading(model, registry: registry) { return .loading }
+        switch registry.readiness(for: model.id) {
+        case .installed: return .ready
+        case .notInstalled:
+            return registry.downloadedLocalModelIDs.contains(model.id) ? .ready : .notDownloaded
+        case .preparing(let fraction, _): return .downloading(fraction)
+        case .failed: return .failed
+        }
+    }
+
+    /// The problem, in the words a caption uses; nil when ready.
+    var problem: String? {
+        switch self {
+        case .ready, .loading: return nil
+        case .needsKey(let provider): return "No \(provider.displayName) API key"
+        case .outOfCredit: return FailureCardCopy.outOfCreditLabel
+        case .notDownloaded: return "Not downloaded"
+        case .downloading(let fraction): return "Downloading… \(Int(fraction * 100))%"
+        case .failed: return "Download failed"
+        }
+    }
+}
+
+/// The roles a model fills right now, in the order the In Use group lists them.
+private enum ModelRole: String, CaseIterable, Identifiable {
+    case dictation = "Dictation"
+    case conversations = "Conversations"
+    case secondShortcut = "Second shortcut"
+    var id: String { rawValue }
+
+    static func roles(of model: ModelDescriptor, registry: ModelRegistry) -> [ModelRole] {
+        var roles: [ModelRole] = []
+        if registry.activeModelId == model.id { roles.append(.dictation) }
+        if registry.conversationModel?.id == model.id { roles.append(.conversations) }
+        let hotkeys = HotkeyStore.shared
+        if hotkeys.secondBinding != nil, hotkeys.secondModelId == model.id { roles.append(.secondShortcut) }
+        return roles
     }
 }
 
@@ -407,17 +434,9 @@ private struct GroupHeaderRow: View {
 
 /// "Switched from GPT Transcribe when OpenAI ran out of credit." [Switch Back]
 ///
-/// Shown only while the switch a failure card's "Use for Dictation" made still
-/// stands. Every pick in this pane goes through `ModelRegistry.setActive`,
-/// which forgets the switch — so a user who chose another model themselves,
-/// or pressed Switch Back, never sees it again. The extra check that the
-/// active model is still a local one covers a dictation model changed by any
-/// other route.
-///
-/// It doesn't follow the provider's flag: with dictation running on this Mac,
-/// nothing sends the provider the request that would clear it, so a top-up
-/// goes unseen — and the way back should stay one click for as long as the
-/// user is on the stand-in.
+/// Shown only while a failure card's "Use for Dictation" switch still stands:
+/// every pick in this pane goes through `ModelRegistry.setActive`, which
+/// forgets it, and the active model must still be a local one.
 private struct SwitchedFromCloudBanner: View {
     @Bindable var registry: ModelRegistry
     @Bindable var credit: CloudCreditStatus
@@ -450,176 +469,317 @@ private struct SwitchedFromCloudBanner: View {
     }
 }
 
-// MARK: - Active model card
+// MARK: - In Use
 
-/// The pane's answer to "what am I using right now, and does it work". Static —
-/// it is a readout, not a control, so it never hovers or presses; the only
-/// interactive thing on it is the fix for a readiness problem.
-private struct ActiveModelCard: View {
+/// Where models get assigned: one picker per way of transcribing, the same
+/// dropdown General and Conversations use. Each lists the models that can run
+/// now, grouped by source; the caption says where the audio goes, or what's
+/// missing.
+private struct InUseGroup: View {
     @Bindable var registry: ModelRegistry
     let onShowCloudSettings: () -> Void
-    @Environment(\.increaseContrast) private var increaseContrast
+    @Bindable private var hotkeys = HotkeyStore.shared
 
     var body: some View {
-        if let model = registry.activeModel {
-            let group = ModelGroup.group(for: model)
-            Plate {
-                HStack(alignment: .top, spacing: Space.s5) {
-                    ProviderIconTile(symbol: group.tileSymbol, tint: group.tileTint)
-
-                    VStack(alignment: .leading, spacing: Space.s2) {
-                        Text("Active model")
-                            .typo(.micro)
-                            .textCase(.uppercase)
-                            .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                        Text(model.sectionedDisplayName)
-                            .typo(.title)
-                            .foregroundStyle(Palette.ink)
-                        // The notes are the only text that explains how two
-                        // near-identical models differ. On the hero they get a
-                        // full line instead of a tooltip.
-                        Text(model.notes)
-                            .typo(.caption)
-                            .foregroundStyle(Palette.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
-                        if !model.isCloud, let failure = registry.failureSentence(for: model.id) {
-                            DownloadFailureLine(sentence: failure, readiness: registry.readiness(for: model.id))
-                        } else {
-                            Text(ModelFacts.facets(for: model, readiness: registry.readiness(for: model.id)))
-                                .typo(.caption)
-                                .monospacedDigit()
-                                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                        }
-                    }
-
-                    Spacer(minLength: Space.s5)
-
-                    readiness(for: model)
-                        .controlSize(.small)
+        SettingsGroup("In Use") {
+            if let model = registry.activeModel {
+                InUseRow(title: "Dictation", model: model, registry: registry, onShowCloudSettings: onShowCloudSettings) {
+                    MinimalDropdown(
+                        selection: Binding(
+                            get: { registry.activeModelId },
+                            set: { registry.setActive($0) }
+                        ),
+                        sections: DropdownSection<String>.models(models(including: model.id), value: { $0.id }),
+                        title: "Dictation model",
+                        tooltip: ModelSwitchPolicy.canChangeDictationModel
+                            ? "Choose the dictation model" : "Finish the current dictation first"
+                    )
+                    .disabled(!ModelSwitchPolicy.canChangeDictationModel)
                 }
             }
-            .accessibilityElement(children: .combine)
-        }
-    }
 
-    @ViewBuilder
-    private func readiness(for model: ModelDescriptor) -> some View {
-        if let provider = model.backend.cloudProvider {
-            // Never `registry.readiness(for:)` for a cloud model: the registry
-            // writes `.preparing` to one before every dictation. Having the key
-            // is the whole of cloud readiness — short of a provider that has
-            // refused a take for an empty balance.
-            if provider.hasAPIKey {
-                if CloudCreditStatus.shared.isOutOfCredit(provider) {
-                    StatusLabel(level: .warning, text: FailureCardCopy.outOfCreditLabel)
-                } else {
-                    StatusLabel(level: .ready, text: "Connected")
-                }
-            } else {
-                AddAPIKeyButton(
-                    provider: provider,
-                    isNeeded: ProviderKeyNeed.current(for: provider, registry: registry).isNeeded,
+            if let model = registry.conversationModel {
+                InUseRow(
+                    title: "Conversations",
+                    lead: followsDictation ? followCaption(for: model) : nil,
+                    model: model,
+                    registry: registry,
                     onShowCloudSettings: onShowCloudSettings
-                )
+                ) {
+                    MinimalDropdown(
+                        selection: Binding(
+                            get: { followsDictation ? nil : registry.conversationModelId },
+                            set: { registry.setConversationModel($0) }
+                        ),
+                        sections: conversationSections(current: model),
+                        title: "Conversation model",
+                        tooltip: conversationIsBusy
+                            ? "Finish the current conversation first" : "Choose the conversation model"
+                    )
+                    // A conversation in flight reads this model when its
+                    // transcription starts, so it holds still until it's done.
+                    .disabled(conversationIsBusy)
+                }
             }
-        } else {
-            localReadiness(for: model)
+
+            if let binding = hotkeys.secondBinding {
+                // A stored id that is unset or gone from the catalog shows
+                // "Choose a model" (as the Shortcut pane does), never a
+                // default the shortcut wouldn't actually use.
+                let model = hotkeys.secondModelId.flatMap { ModelCatalog.model(for: $0) }
+                InUseRow(
+                    title: "Second shortcut",
+                    keys: binding.displayKeys,
+                    model: model,
+                    registry: registry,
+                    onShowCloudSettings: onShowCloudSettings
+                ) {
+                    MinimalDropdown(
+                        selection: Binding(
+                            get: { model?.id },
+                            set: { hotkeys.updateSecondModel(to: $0) }
+                        ),
+                        sections: DropdownSection<String?>.models(models(including: model?.id), value: { Optional($0.id) }),
+                        placeholder: "Choose a model",
+                        title: "Second shortcut model",
+                        tooltip: "Choose the second shortcut's model"
+                    )
+                }
+            }
+        }
+    }
+
+    private var followsDictation: Bool {
+        registry.conversationModelId.flatMap { ModelCatalog.model(for: $0) } == nil
+    }
+
+    private var conversationIsBusy: Bool { MeetingController.shared.isBusy }
+
+    /// Models that can run now, plus `currentId` so the selection always has
+    /// an item.
+    private func models(including currentId: String?, excludingLive: Bool = false) -> [ModelDescriptor] {
+        ModelCatalog.all.filter {
+            ($0.id == currentId || ModelSwitchPolicy.isUsable($0, registry: registry))
+                && !(excludingLive && $0.isRealtime)
+        }
+    }
+
+    /// "Same as dictation" first (naming the model it resolves to), then the
+    /// models that can transcribe a recording — live ones can't.
+    private func conversationSections(current: ModelDescriptor) -> [DropdownSection<String?>] {
+        let follow = DropdownSection<String?>(items: [
+            DropdownItem(
+                value: nil,
+                title: "Same as dictation",
+                detail: followsDictation ? current.nameWithSource : registry.dictationModelForConversations?.model.nameWithSource
+            ),
+        ])
+        let explicit = followsDictation ? nil : registry.conversationModelId
+        return [follow] + DropdownSection<String?>.models(models(including: explicit, excludingLive: true), value: { Optional($0.id) })
+    }
+
+    private func followCaption(for model: ModelDescriptor) -> String {
+        model.id == registry.activeModelId ? "Same as dictation." : "Stands in for the live dictation model."
+    }
+}
+
+/// "Dictation" over "Audio is sent to OpenAI.", with the picker (and a fix
+/// button when the model can't run) on the right.
+private struct InUseRow<Control: View>: View {
+    let title: String
+    var keys: [String]?
+    var lead: String?
+    /// Nil when the role has no model yet (the picker says "Choose a model").
+    let model: ModelDescriptor?
+    let registry: ModelRegistry
+    let onShowCloudSettings: () -> Void
+    @ViewBuilder var picker: Control
+    @State private var isShowingKeyEntry = false
+
+    init(
+        title: String,
+        keys: [String]? = nil,
+        lead: String? = nil,
+        model: ModelDescriptor?,
+        registry: ModelRegistry,
+        onShowCloudSettings: @escaping () -> Void,
+        @ViewBuilder picker: () -> Control
+    ) {
+        self.title = title
+        self.keys = keys
+        self.lead = lead
+        self.model = model
+        self.registry = registry
+        self.onShowCloudSettings = onShowCloudSettings
+        self.picker = picker()
+    }
+
+    private var availability: ModelAvailability {
+        model.map { .of($0, registry: registry) } ?? .ready
+    }
+
+    var body: some View {
+        HStack(alignment: .center, spacing: Space.s5) {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                HStack(spacing: Space.s4) {
+                    Text(title)
+                        .typo(.body)
+                        .foregroundStyle(Palette.ink)
+                    if let keys {
+                        Keycap(keys: keys, size: .small)
+                    }
+                }
+                caption
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            fix
+            picker
+        }
+        .settingsRowPadding()
+        .accessibilityElement(children: .contain)
+    }
+
+    /// Only what the picker doesn't already say: the problem, or that the
+    /// model follows dictation.
+    @ViewBuilder
+    private var caption: some View {
+        if let problem = availability.problem {
+            StatusLabel(level: availability == .failed ? .error : .warning, text: problem)
+        } else if let lead {
+            Text(lead)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
         }
     }
 
     @ViewBuilder
-    private func localReadiness(for model: ModelDescriptor) -> some View {
-        switch registry.readiness(for: model.id) {
-        case .notInstalled:
-            HStack(spacing: Space.s4) {
-                Text(ModelFacts.approximateSize(model))
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                Button("Download") {
-                    Task { await registry.prepareModel(id: model.id) }
-                }
-                .buttonStyle(.bordered)
-            }
-
-        case .preparing(let fraction, let message):
-            PreparingIndicator(
-                fraction: fraction,
-                message: message,
-                modelName: model.sectionedDisplayName,
-                onCancel: registry.canCancelDownload(id: model.id)
-                    ? { registry.cancelDownload(id: model.id) }
-                    : nil
+    private var fix: some View {
+        switch availability {
+        case .needsKey(let provider):
+            AddAPIKeyButton(
+                provider: provider,
+                isPresented: $isShowingKeyEntry,
+                purpose: title.lowercased(),
+                onShowCloudSettings: onShowCloudSettings
             )
-
-        case .installed:
-            StatusLabel(level: .ready, text: "Installed")
-
-        case .failed(let message):
-            HStack(spacing: Space.s4) {
-                StatusLabel(level: .error, text: "Failed")
-                    .help(message)
-                Button("Retry") {
+        case .notDownloaded, .failed:
+            if let model {
+                let verb = availability == .failed ? "Retry" : "Download"
+                Button(verb) {
                     Task { await registry.prepareModel(id: model.id) }
                 }
-                .buttonStyle(.bordered)
+                .buttonTier(.secondary)
+                .controlSize(.small)
+                .help("\(verb) \(model.sectionedDisplayName) (\(ModelFacts.approximateSize(model)))")
+                .accessibilityLabel("\(verb == "Retry" ? "Retry the download of" : "Download") the \(title.lowercased()) model")
             }
+        case .ready, .outOfCredit, .downloading, .loading:
+            EmptyView()
         }
     }
 }
 
 // MARK: - Row
 
+/// One catalog row: name (with a lock when its provider has no key, and the
+/// Recommended badge), the stat columns, and ⋯. A second line appears only
+/// when there is something to say: the roles it fills, or its download.
+/// Clicking the row opens its details; it never downloads.
 private struct ModelRow: View {
-    /// 18pt for both indicator states, so the ring and the check occupy exactly
-    /// the same box and the title never shifts when selection moves.
-    private static let indicatorSize: CGFloat = 18
-
     let model: ModelDescriptor
     @Bindable var registry: ModelRegistry
+    let isCompact: Bool
+    let onAddKey: () -> Void
     @State private var isHovering = false
     @State private var isShowingDetails = false
     @State private var isConfirmingDelete = false
+    @State private var afterDetailsClose: AfterDetailsClose?
     @Environment(\.motion) private var motion
     @Environment(\.increaseContrast) private var increaseContrast
 
-    private var isActive: Bool { registry.activeModelId == model.id }
+    private enum AfterDetailsClose { case delete, addKey }
+
+    private var availability: ModelAvailability { .of(model, registry: registry) }
     private var readiness: ModelReadiness { registry.readiness(for: model.id) }
-    /// Cloud rows only: this model's provider refused a take for an empty
-    /// balance and nothing has worked since.
-    private var isOutOfCredit: Bool {
-        CloudCreditStatus.shared.isOutOfCredit(model.backend.cloudProvider)
-    }
+    private var roles: [ModelRole] { ModelRole.roles(of: model, registry: registry) }
     private var name: String { model.sectionedDisplayName }
-    private var failureSentence: String? {
-        model.isCloud ? nil : registry.failureSentence(for: model.id)
+    private var isActive: Bool { registry.activeModelId == model.id }
+    private var isConversationModel: Bool { registry.conversationModel?.id == model.id }
+    private var canUseForConversations: Bool {
+        !model.isRealtime && ModelSwitchPolicy.isUsable(model, registry: registry) && !isConversationModel
+            && !MeetingController.shared.isBusy
+    }
+    private var needsKey: Bool {
+        if case .needsKey = availability { return true }
+        return false
+    }
+    /// The roles it fills, a missing key, or a download in progress or failed
+    /// go on a second line; most rows are one line.
+    private var hasSecondLine: Bool {
+        if !roles.isEmpty || needsKey || isRecommended { return true }
+        switch availability {
+        case .downloading, .failed: return true
+        default: return false
+        }
     }
 
     var body: some View {
-        HStack(spacing: Space.s5) {
-            // The select target and nothing else. Every trailing control sits
-            // outside this button, so clicking Download or ⋯ can't also change
-            // which model dictation uses.
-            Button {
-                registry.setActive(model.id)
-            } label: {
-                selectLabel
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(name)
-            .accessibilityValue(accessibilityValue)
-            .accessibilityHint("Use for dictation")
-            .accessibilityAddTraits(isActive ? [.isSelected] : [])
+        VStack(alignment: .leading, spacing: Space.s1) {
+            HStack(spacing: Space.s5) {
+                Button {
+                    isShowingDetails = true
+                } label: {
+                    nameCell
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .onKeyPress(.return) {
+                    isShowingDetails = true
+                    return .handled
+                }
+                .help("Show details")
+                .accessibilityLabel(name)
+                .accessibilityValue(accessibilityValue)
+                .accessibilityHint("Shows details and options")
+                .accessibilityAddTraits(roles.isEmpty ? [] : [.isSelected])
 
-            trailingControls
+                StatCells(
+                    accuracy: ModelFacts.accuracyValue(model),
+                    speed: ModelFacts.speed(model),
+                    cost: ModelFacts.costValue(model, readiness: readiness),
+                    languages: ModelFacts.languagesValue(model),
+                    languagesHelp: ModelBadges.languagesLabel(model.languages),
+                    isCompact: isCompact
+                )
+                .accessibilityHidden(true)
+
+                // The slot keeps its width on every row (cloud rows leave it
+                // empty) so the stat columns stay under their titles.
+                ZStack(alignment: .trailing) {
+                    Color.clear.frame(width: StatColumn.status, height: 1)
+                    statusCell
+                }
+
+                moreMenu
+            }
+
+            if hasSecondLine {
+                secondLine
+                    .padding(.trailing, FormMetrics.iconButton + Space.s5)
+            }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .frame(minHeight: 56)
-        .background(rowFill)
+        .padding(.leading, FormMetrics.rowHorizontalPadding)
+        .padding(.trailing, StatColumn.trailingPadding)
+        .padding(.vertical, Space.s3 + 1)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+        .background(isHovering ? Palette.plateHover(increaseContrast: increaseContrast) : .clear)
         .contentShape(Rectangle())
+        .onTapGesture { isShowingDetails = true }
         .onHover { isHovering = $0 }
         .animation(motion.hover, value: isHovering)
-        .contextMenu { contextMenuItems }
+        .contextMenu { menuItems }
         .confirmationDialog(
             "Delete \(name)?",
             isPresented: $isConfirmingDelete,
@@ -633,185 +793,130 @@ private struct ModelRow: View {
         }
     }
 
-    /// Active gets the accent wash; hover gets the plate lift. The enclosing
-    /// flush plate clips, so the first and last rows round their own corners.
-    private var rowFill: Color {
-        if isActive { return Palette.accent.opacity(0.08) }
-        if isHovering { return Palette.plateHover(increaseContrast: increaseContrast) }
-        return .clear
+    /// Regular weight; semibold only for a model in use, so those stand out.
+    private var nameCell: some View {
+        Text(name)
+            .typo(roles.isEmpty ? .body : .headline)
+            .foregroundStyle(needsKey ? Palette.inkMuted : Palette.ink)
+            .lineLimit(2)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    // MARK: The select target
+    private var isRecommended: Bool { model.id == ModelBadges.recommendedId }
 
-    private var selectLabel: some View {
-        HStack(spacing: Space.s5) {
-            selectionIndicator
-
-            VStack(alignment: .leading, spacing: Space.s1) {
-                // Title and badges flow: inline while they fit, badges wrap to
-                // the next line instead of truncating the title.
-                BadgeFlow(hSpacing: Space.s3, vSpacing: Space.s2) {
-                    Text(name)
-                        .typo(.headline)
-                        .foregroundStyle(isActive ? Palette.accent : Palette.ink)
-                        .lineLimit(1)
-                    badges
-                }
-                if let failureSentence {
-                    DownloadFailureLine(sentence: failureSentence, readiness: readiness)
-                } else {
-                    Text(ModelFacts.facets(for: model, readiness: readiness, isOutOfCredit: isOutOfCredit))
-                        .typo(.caption)
-                        .monospacedDigit()
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .help(ModelFacts.detailsText(for: model))
-                }
-            }
-            // Claim all free row width — otherwise the column settles at its
-            // ideal size and the leftover becomes a blank gap while the title
-            // truncates.
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .contentShape(Rectangle())
-    }
-
-    /// The radio control that replaced the accent bar, the ACTIVE chip and the
-    /// invisible tap gesture. One affordance, visible at rest, in the position
-    /// every list in macOS puts a selection mark.
-    private var selectionIndicator: some View {
-        Group {
-            if isActive {
-                Image(systemName: "checkmark.circle.fill")
-                    .resizable()
-                    .scaledToFit()
-                    .foregroundStyle(Palette.accent)
-            } else {
-                Circle()
-                    .strokeBorder(
-                        isHovering
-                            ? Palette.inkMuted
-                            : Palette.inkFaint(increaseContrast: increaseContrast),
-                        lineWidth: 1
-                    )
-            }
-        }
-        .frame(width: Self.indicatorSize, height: Self.indicatorSize)
-        .accessibilityHidden(true)
-    }
-
+    /// Local models say whether they're on this Mac: "✓ Installed", or the
+    /// Download button. Cloud rows leave it empty; their header has the key.
     @ViewBuilder
-    private var badges: some View {
-        if model.isRealtime { RealtimeBadge() }
-        if let chip = ModelBadges.editorial(for: model) {
-            Chip(text: chip.text, symbol: chip.symbol, tint: chip.tint)
-        }
-    }
-
-    // MARK: Trailing controls
-
-    @ViewBuilder
-    private var trailingControls: some View {
-        HStack(spacing: Space.s4) {
-            // Cloud rows carry no readiness control at all — their group header
-            // owns the connection state, and repeating it 9 times was most of
-            // what made the old list unreadable.
-            if !model.isCloud { localReadinessControl }
-
-            if readiness.isInstalled, !model.isCloud { moreMenu }
-
-            // Last, so the one control every row has sits in the same column
-            // on every row — the ⋯ menu comes and goes with installation.
-            detailsButton
-        }
-    }
-
-    private var detailsButton: some View {
-        Button {
-            isShowingDetails = true
-        } label: {
-            Image(systemName: "info.circle")
-                .font(Typo.headline)
-                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Details for \(name)")
-        .help("Details")
-        .popover(isPresented: $isShowingDetails, arrowEdge: .bottom) {
-            ModelDetailsPopover(model: model)
-        }
-    }
-
-    private var moreMenu: some View {
-        Menu {
-            Button("Delete from Mac…", role: .destructive) { isConfirmingDelete = true }
-        } label: {
-            Image(systemName: "ellipsis.circle")
-                .font(Typo.headline)
-                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-        }
-        .menuStyle(.button)
-        .buttonStyle(.plain)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .accessibilityLabel("More actions for \(name)")
-    }
-
-    @ViewBuilder
-    private var localReadinessControl: some View {
-        switch readiness {
-        case .notInstalled:
-            Button("Download") {
-                Task { await registry.prepareModel(id: model.id) }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-
-        case .preparing(let fraction, let message):
-            PreparingIndicator(
-                fraction: fraction,
-                message: message,
-                modelName: name,
-                onCancel: registry.canCancelDownload(id: model.id)
-                    ? { registry.cancelDownload(id: model.id) }
-                    : nil
-            )
-
-        case .installed:
-            StatusLabel(level: .ready, text: "Installed")
-
-        case .failed(let message):
-            HStack(spacing: Space.s4) {
-                StatusLabel(level: .error, text: "Failed")
-                    .help(message)
-                Button("Retry") {
-                    Task { await registry.prepareModel(id: model.id) }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-            }
-        }
-    }
-
-    // MARK: Context menu and accessibility
-
-    @ViewBuilder
-    private var contextMenuItems: some View {
-        Button("Use for Dictation") { registry.setActive(model.id) }
-            .disabled(isActive)
-        Button("Details…") { isShowingDetails = true }
-
+    private var statusCell: some View {
         if !model.isCloud {
-            Divider()
-            switch readiness {
-            case .notInstalled, .failed:
+            switch availability {
+            case .ready, .loading:
+                StatusTag("Installed")
+            case .notDownloaded:
                 Button("Download") {
                     Task { await registry.prepareModel(id: model.id) }
                 }
+                .buttonTier(.secondary)
+                .controlSize(.small)
+                .help("Download \(name) (\(ModelFacts.approximateSize(model)))")
+                .accessibilityLabel("Download \(name), \(ModelFacts.approximateSize(model))")
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var secondLine: some View {
+        HStack(spacing: Space.s5) {
+            if isRecommended {
+                BadgeLabel("Recommended")
+            }
+            if !roles.isEmpty {
+                StatusTag("In use for " + ListFormatter.localizedString(byJoining: roles.map { $0.rawValue.lowercased() }))
+            }
+            if needsKey, let provider = model.backend.cloudProvider {
+                StatusTag("Add \(provider.apiKeyPhrase) to use", systemImage: "lock.fill")
+            }
+            switch availability {
+            case .downloading, .failed:
+                LocalDownloadControl(model: model, registry: registry)
+            default:
+                EmptyView()
+            }
+        }
+    }
+
+    // MARK: Menu and details
+
+    private var moreMenu: some View {
+        IconMenu(label: "Details and options for \(name)") {
+            menuItems
+        }
+        .popover(isPresented: $isShowingDetails, arrowEdge: .leading) {
+            detailsPopover
+        }
+    }
+
+    private var detailsPopover: some View {
+        ModelDetailsPopover(
+            model: model,
+            registry: registry,
+            onUseForDictation: {
+                isShowingDetails = false
+                registry.setActive(model.id)
+            },
+            onUseForConversations: {
+                isShowingDetails = false
+                registry.setConversationModel(model.id)
+            },
+            onDownload: {
+                Task { await registry.prepareModel(id: model.id) }
+            },
+            onDelete: readiness.isInstalled && !model.isCloud ? {
+                afterDetailsClose = .delete
+                isShowingDetails = false
+            } : nil,
+            onAddKey: {
+                afterDetailsClose = .addKey
+                isShowingDetails = false
+            }
+        )
+        // The follow-up presents only once the popover is gone, so the
+        // confirmation dialog and the key popover never race its close.
+        .onDisappear {
+            switch afterDetailsClose {
+            case .delete: isConfirmingDelete = true
+            case .addKey: onAddKey()
+            case nil: break
+            }
+            afterDetailsClose = nil
+        }
+    }
+
+    @ViewBuilder
+    private var menuItems: some View {
+        Button("Use for Dictation") { registry.setActive(model.id) }
+            .disabled(isActive || !ModelSwitchPolicy.isUsable(model, registry: registry) || !ModelSwitchPolicy.canChangeDictationModel)
+        if !model.isRealtime {
+            Button("Use for Conversations") { registry.setConversationModel(model.id) }
+                .disabled(!canUseForConversations)
+        }
+        Divider()
+        Button("Details…") { isShowingDetails = true }
+        if needsKey {
+            Button("Add API Key…", action: onAddKey)
+        }
+
+        if !model.isCloud {
+            switch readiness {
+            case .notInstalled, .failed:
+                Button("Download (\(ModelFacts.approximateSize(model)))") {
+                    Task { await registry.prepareModel(id: model.id) }
+                }
             case .installed:
-                Button("Delete from Mac…", role: .destructive) { isConfirmingDelete = true }
+                Divider()
+                Button("Delete Model…", role: .destructive) { isConfirmingDelete = true }
             case .preparing:
                 if registry.canCancelDownload(id: model.id) {
                     Button("Cancel Download") { registry.cancelDownload(id: model.id) }
@@ -820,152 +925,105 @@ private struct ModelRow: View {
         }
     }
 
-    /// The facets a sighted reader gets from the meta line, plus the readiness
-    /// word they get from the trailing control — which VoiceOver would otherwise
-    /// reach only after the row itself. "Out of credit" rides on the readiness
-    /// word rather than the facets, so it is read once. A failed download
-    /// reads its reason in full, as the tooltip does.
-    private var accessibilityValue: String {
-        let value = ModelFacts.facets(for: model, readiness: readiness) + ", " + readinessWord
-        guard let failureSentence, case .failed(let message) = readiness else { return value }
-        return value + ". " + failureSentence + " " + message
-    }
+    // MARK: Accessibility
 
-    private var readinessWord: String {
-        if let provider = model.backend.cloudProvider {
-            guard provider.hasAPIKey else { return "Needs API key" }
-            return isOutOfCredit ? FailureCardCopy.outOfCreditLabel : "Connected"
+    /// The stats a sighted reader scans in the columns, the roles and the state.
+    private var accessibilityValue: String {
+        var parts = [ModelFacts.spokenStats(model, readiness: readiness)]
+        if !roles.isEmpty {
+            parts.append("Used for " + ListFormatter.localizedString(byJoining: roles.map(\.rawValue)))
         }
-        switch readiness {
-        case .notInstalled: return "Not downloaded"
-        case .preparing: return "Downloading"
-        case .installed: return "Installed"
-        case .failed: return "Download failed"
+        if let problem = availability.problem {
+            parts.append(problem)
+        } else if !model.isCloud {
+            parts.append("Installed")
         }
+        return parts.joined(separator: ", ")
     }
 }
 
-// MARK: - Shared readiness pieces
+// MARK: - Local download
 
-/// The compact download indicator: a 120pt bar, the stage message, and the
-/// percentage in the machine register so it doesn't jitter as it counts —
-/// with a stop button beside it while the preparation is a download that
-/// can be cancelled.
-private struct PreparingIndicator: View {
-    let fraction: Double
-    let message: String
-    let modelName: String
-    let onCancel: (() -> Void)?
-    @Environment(\.increaseContrast) private var increaseContrast
+/// A local model's download on the row's second line: the progress with
+/// Cancel, or the failure with Retry.
+private struct LocalDownloadControl: View {
+    let model: ModelDescriptor
+    @Bindable var registry: ModelRegistry
 
     var body: some View {
-        HStack(spacing: Space.s3) {
-            VStack(alignment: .trailing, spacing: Space.s2) {
+        switch registry.readiness(for: model.id) {
+        case .preparing(let fraction, let message):
+            HStack(spacing: Space.s3) {
                 ProgressView(value: fraction)
                     .progressViewStyle(.linear)
-                    .frame(width: 120)
-                HStack(spacing: Space.s3) {
-                    Text(message)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                        .lineLimit(1)
-                    Text("\(Int(fraction * 100))%")
-                        .typo(.mono)
-                        .contentTransition(.numericText())
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+                    .frame(width: 160)
+                Text("\(message) \(Int(fraction * 100))%")
+                    .typo(.caption)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                    .foregroundStyle(Palette.inkMuted)
+                    .lineLimit(1)
+                if registry.canCancelDownload(id: model.id) {
+                    IconButton("xmark.circle.fill", label: "Cancel download of \(model.sectionedDisplayName)") {
+                        registry.cancelDownload(id: model.id)
+                    }
                 }
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
 
-            if let onCancel {
-                Button(action: onCancel) {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(Typo.headline)
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
+        case .failed(let message):
+            HStack(spacing: Space.s4) {
+                Text(registry.failureSentence(for: model.id) ?? "Download failed")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.signalWarn)
+                    .lineLimit(1)
+                    .help(message)
+                Button("Retry") {
+                    Task { await registry.prepareModel(id: model.id) }
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Cancel download of \(modelName)")
-                .help("Cancel download")
+                .buttonTier(.secondary)
+                .controlSize(.small)
+                .accessibilityLabel("Retry download of \(model.sectionedDisplayName)")
             }
+
+        case .installed, .notInstalled:
+            EmptyView()
         }
     }
 }
 
-/// A failed row's meta line: the reason in plain words, in the warning tint,
-/// with the full error in the tooltip.
-private struct DownloadFailureLine: View {
-    let sentence: String
-    let readiness: ModelReadiness
-
-    var body: some View {
-        Text(sentence)
-            .typo(.caption)
-            .foregroundStyle(Palette.signalWarn)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .help(fullText)
-    }
-
-    private var fullText: String {
-        guard case .failed(let message) = readiness, message != sentence else { return sentence }
-        return "\(sentence)\n\(message)"
-    }
-}
-
-/// The "Add API key →" affordance and the popover behind it. Owns its own
-/// presentation state so the hero card and a group header can each carry one
-/// without sharing a flag. Warn-tinted only while something the user chose
-/// needs the key (`ProviderKeyNeed`); otherwise it is an offer, in ink.
-///
-/// It never calls `setActive`: both of its call sites are about a provider, not
-/// a model — the hero's model is already active, and a header speaks for every
-/// row under it.
+/// "Add API Key…" and the key field it opens, in place. The presentation flag
+/// is the caller's, so a row's menu can open the same popover.
 private struct AddAPIKeyButton: View {
     let provider: CloudProvider
-    let isNeeded: Bool
+    @Binding var isPresented: Bool
+    /// What the key is for ("dictation"), so several of these read apart.
+    var purpose: String?
     let onShowCloudSettings: () -> Void
-    @State private var isShowingKeyEntry = false
 
     var body: some View {
-        Button {
-            isShowingKeyEntry = true
-        } label: {
-            HStack(spacing: Space.s2) {
-                Text("Add API key")
-                Image(systemName: "arrow.right")
-                    .font(Typo.micro)
-            }
-            .typo(.captionMedium)
-            .foregroundStyle(isNeeded ? Palette.signalWarn : Palette.inkMuted)
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-            .background(
-                RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                    .fill(isNeeded ? Palette.signalWarn.opacity(0.12) : Palette.wellFill)
-            )
+        Button("Add API Key…") {
+            isPresented = true
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Add \(provider.displayName) API key")
-        .help("Add your API key without leaving this list")
-        .popover(isPresented: $isShowingKeyEntry, arrowEdge: .bottom) {
+        .buttonTier(.secondary)
+        .controlSize(.small)
+        .help("Add your \(provider.displayName) API key without leaving this list")
+        .accessibilityLabel(purpose.map { "Add \(provider.displayName) API key for \($0)" } ?? "Add \(provider.displayName) API key")
+        .popover(isPresented: $isPresented, arrowEdge: .bottom) {
             VStack(alignment: .leading, spacing: Space.s5) {
-                Text("\(provider.displayName) API key")
-                    .typo(.headline)
+                Text("\(provider.displayName) API Key")
+                    .typo(.title)
                     .foregroundStyle(Palette.ink)
 
-                APIKeyEntryView(config: .forProvider(provider)) {
-                    isShowingKeyEntry = false
-                }
+                APIKeyEntryView(config: .forProvider(provider), onConnected: {
+                    isPresented = false
+                })
 
-                Button {
-                    isShowingKeyEntry = false
+                Button("All cloud settings…") {
+                    isPresented = false
                     onShowCloudSettings()
-                } label: {
-                    Text("All cloud settings…")
-                        .typo(.captionMedium)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(Palette.accent)
+                .buttonStyle(TextLinkButtonStyle(font: Typo.caption))
             }
             .padding(Space.s6)
             .frame(width: 380)
@@ -975,125 +1033,244 @@ private struct AddAPIKeyButton: View {
 
 // MARK: - Details popover
 
-/// Everything the row deliberately doesn't print: the notes, the raw word error
-/// rates with their benchmarks, and where the quality score and the price came
-/// from. A popover rather than a tooltip because these are sentences, and
-/// because a tooltip can't be reached from the keyboard.
+/// The facts behind a row, in plain words, with the raw benchmark figures
+/// behind a disclosure. The footer shows the roles the model already fills
+/// and offers the others; installed local models can be deleted from the
+/// Size row.
 private struct ModelDetailsPopover: View {
     let model: ModelDescriptor
-    @Environment(\.increaseContrast) private var increaseContrast
+    @Bindable var registry: ModelRegistry
+    let onUseForDictation: () -> Void
+    let onUseForConversations: () -> Void
+    let onDownload: () -> Void
+    let onDelete: (() -> Void)?
+    let onAddKey: () -> Void
+    @State private var showsSources = false
+
+    private static let labelWidth: CGFloat = 92
+
+    private var availability: ModelAvailability { .of(model, registry: registry) }
+    private var isActive: Bool { registry.activeModelId == model.id }
+    private var isConversationModel: Bool { registry.conversationModel?.id == model.id }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s5) {
+        VStack(alignment: .leading, spacing: Space.s6) {
             VStack(alignment: .leading, spacing: Space.s2) {
-                Text(model.sectionedDisplayName)
-                    .typo(.headline)
-                    .foregroundStyle(Palette.ink)
+                HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+                    Text(model.sectionedDisplayName)
+                        .typo(.title)
+                        .foregroundStyle(Palette.ink)
+                    if model.id == ModelBadges.recommendedId {
+                        BadgeLabel("Recommended")
+                    }
+                }
                 Text(model.notes)
                     .typo(.body)
                     .foregroundStyle(Palette.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                useStatus
+                    .padding(.top, Space.s1)
             }
 
-            let benchmarkLines = ModelFacts.benchmarkLines(for: model)
-            if !benchmarkLines.isEmpty {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Benchmarks")
-                        .typo(.micro)
-                        .textCase(.uppercase)
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                    ForEach(Array(benchmarkLines.enumerated()), id: \.offset) { _, line in
-                        Text(line)
-                            .typo(.caption)
+            Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: Space.s6, verticalSpacing: Space.s4 + 2) {
+                ForEach(ModelFacts.facts(for: model, registry: registry)) { fact in
+                    GridRow {
+                        Text(fact.label)
+                            .typo(.body)
                             .foregroundStyle(Palette.inkMuted)
-                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: Self.labelWidth, alignment: .leading)
+                        VStack(alignment: .leading, spacing: Space.s1) {
+                            Text(fact.value)
+                                .typo(.body)
+                                .foregroundStyle(Palette.ink)
+                            if let detail = fact.detail {
+                                Text(detail)
+                                    .typo(.caption)
+                                    .foregroundStyle(Palette.inkMuted)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
             }
 
-            VStack(alignment: .leading, spacing: Space.s2) {
-                Text(ModelFacts.qualityScale)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                    .fixedSize(horizontal: false, vertical: true)
-                if let priceHelp = ModelFacts.priceProvenance(for: model) {
-                    Text(priceHelp)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                        .fixedSize(horizontal: false, vertical: true)
+            sources
+
+            Divider()
+
+            // One row: Delete on the leading edge, as in the Edit Action
+            // sheet; the actions on the trailing edge.
+            HStack(spacing: Space.s4) {
+                deleteButton
+                Spacer(minLength: Space.s4)
+                actions
+            }
+            .lineLimit(1)
+        }
+        .padding(Space.s6)
+        .frame(width: 440, alignment: .leading)
+        .presentationBackground(Palette.plate)
+    }
+
+    // MARK: Sources
+
+    /// A quiet disclosure: chevron and label as one hit target, in secondary
+    /// ink, so it reads as a footnote rather than as data.
+    @ViewBuilder
+    private var sources: some View {
+        let lines = ModelFacts.sourceLines(for: model)
+        if !lines.isEmpty {
+            VStack(alignment: .leading, spacing: Space.s3) {
+                Button {
+                    showsSources.toggle()
+                } label: {
+                    HStack(spacing: Space.s2) {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 10, weight: .semibold))
+                            .rotationEffect(.degrees(showsSources ? 90 : 0))
+                        Text(model.isQualityApproximate ? "Estimated from public benchmarks" : "Benchmark sources")
+                            .typo(.caption)
+                    }
+                    .foregroundStyle(Palette.inkMuted)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityValue(showsSources ? "Expanded" : "Collapsed")
+
+                if showsSources {
+                    VStack(alignment: .leading, spacing: Space.s3) {
+                        ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                            Text(line)
+                                .typo(.caption)
+                                .foregroundStyle(Palette.inkMuted)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(.leading, Space.s4)
                 }
             }
         }
-        .padding(Space.s6)
-        .frame(width: 340, alignment: .leading)
+    }
+
+    // MARK: Status and footer
+
+    /// "✓ In use for dictation and conversations", or "Not in use".
+    @ViewBuilder
+    private var useStatus: some View {
+        let roles = ModelRole.roles(of: model, registry: registry)
+        if roles.isEmpty {
+            Text("Not in use")
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+        } else {
+            StatusTag("In use for " + ListFormatter.localizedString(byJoining: roles.map { $0.rawValue.lowercased() }))
+        }
+    }
+
+    /// The destructive tier: bordered, red label.
+    @ViewBuilder
+    private var deleteButton: some View {
+        if let onDelete {
+            Button("Delete Model…", role: .destructive, action: onDelete)
+                .buttonTier(.destructive)
+                .fixedSize()
+                .help("Delete this model from your Mac (\(ModelFacts.size(model, readiness: registry.readiness(for: model.id)) ?? ""))")
+        }
+    }
+
+    /// The roles the model doesn't fill yet, as buttons; a model that can't
+    /// run yet offers its fix instead.
+    @ViewBuilder
+    private var actions: some View {
+        switch availability {
+        case .needsKey:
+            Button("Add API Key…", action: onAddKey)
+                .buttonTier(.primary)
+        case .notDownloaded:
+            Button("Download (\(ModelFacts.approximateSize(model)))", action: onDownload)
+                .buttonTier(.primary)
+        case .failed:
+            Button("Retry Download", action: onDownload)
+                .buttonTier(.primary)
+        case .downloading(let fraction):
+            Text("Downloading… \(Int(fraction * 100))%")
+                .typo(.body)
+                .monospacedDigit()
+                .foregroundStyle(Palette.inkMuted)
+        case .ready, .outOfCredit, .loading:
+            // "Use for [Conversations] [Dictation]": only the roles it doesn't
+            // fill yet; the status line under the title names the ones it does.
+            let offersConversations = !model.isRealtime && !isConversationModel
+            if offersConversations || !isActive {
+                Text("Use for")
+                    .typo(.body)
+                    .foregroundStyle(Palette.inkMuted)
+                if offersConversations {
+                    let busy = MeetingController.shared.isBusy
+                    Button("Conversations", action: onUseForConversations)
+                        .buttonTier(isActive ? .primary : .secondary)
+                        .disabled(busy)
+                        .help(busy ? "Finish the current conversation first" : "Transcribe conversations with this model")
+                        .accessibilityLabel("Use for conversations")
+                }
+                if !isActive {
+                    let canChange = ModelSwitchPolicy.canChangeDictationModel
+                    Button("Dictation", action: onUseForDictation)
+                        .buttonTier(.primary)
+                        .disabled(!canChange)
+                        .help(canChange ? "Dictate with this model" : "Finish the current dictation first")
+                        .accessibilityLabel("Use for dictation")
+                }
+            }
+        }
     }
 }
 
 // MARK: - Facts
 
-/// Every string the pane derives from a `ModelDescriptor`, in one place. The
-/// row's tooltip, the details popover and the hero card all print the same
-/// numbers; assembling them three times is how two of them go stale.
+/// Every string the pane derives from a `ModelDescriptor`, in one place, so the
+/// rows, the In Use group and the details popover can't disagree.
 private enum ModelFacts {
 
-    /// The row's one meta line: `Quality 8.9/10 · $0.27/hr · 99+ languages`, or
-    /// `Quality 8.7/10 · 483 MB · 25 European languages`.
-    ///
-    /// "Cloud"/"Local" and "Free" are gone from it — the group header above the
-    /// row already said both, and saying them again on 14 rows is what made the
-    /// line a monospaced wall. What is left is exactly the axes two rows in the
-    /// same group differ on.
-    ///
-    /// `isOutOfCredit` leads the line with "Out of credit" for a cloud model
-    /// whose provider refused a take for an empty balance — first, so the
-    /// tail truncation of a narrow window can never be what hides it, and in
-    /// the line's own faint ink, because the model isn't broken: the account
-    /// behind it is, and the group header already says so in the warning
-    /// tint.
-    ///
-    /// Raw word error rates stay in the details popover rather than earning a
-    /// segment: local and cloud models are measured on different benchmarks, and
-    /// two benchmarks' percentages in one column would invite precisely the
-    /// comparison they don't support. The quality score is the comparable
-    /// number, because it is expressed against a model both benchmarks measure.
-    static func facets(
-        for model: ModelDescriptor,
-        readiness: ModelReadiness,
-        isOutOfCredit: Bool = false
-    ) -> String {
-        var parts: [String] = []
-        if isOutOfCredit, model.isCloud { parts.append(FailureCardCopy.outOfCreditLabel) }
-        parts.append(quality(model))
-        if model.isCloud {
-            if let price = price(model) { parts.append(price) }
-        } else if let size = size(model, readiness: readiness) {
-            parts.append(size)
+    /// The accuracy column: "8.9", or "—" for an unmeasured model.
+    static func accuracyValue(_ model: ModelDescriptor) -> String {
+        guard let quality = model.quality else { return "—" }
+        return String(format: "%.1f", quality)
+    }
+
+    /// The catalog's relative speed (1–10) in words.
+    static func speed(_ model: ModelDescriptor) -> String {
+        switch model.speed {
+        case 9...: return "Very fast"
+        case 7...8: return "Fast"
+        case 5...6: return "Medium"
+        default: return "Slow"
         }
-        parts.append(ModelBadges.languagesLabel(model.languages))
-        return parts.joined(separator: " · ")
     }
 
-    /// "Quality 8.9" — the score derived from published word error rates. "≈"
-    /// marks a score resting on indirect evidence rather than the model's own
-    /// Artificial Analysis figure; a model nothing has benchmarked prints
-    /// "Quality —" rather than inventing a number. The "/10" stays on the row so
-    /// the figure can never be read as a percentage.
-    static func quality(_ model: ModelDescriptor) -> String {
-        guard let quality = model.quality else { return "Quality —" }
-        let prefix = model.isQualityApproximate ? "≈" : ""
-        return "Quality \(prefix)\(String(format: "%.1f", quality))/10"
+    /// The size column for local models (real size once installed), the price
+    /// column for cloud ones; "—" when the catalog has no price.
+    static func costValue(_ model: ModelDescriptor, readiness: ModelReadiness) -> String {
+        if model.isCloud { return price(model) ?? "—" }
+        return size(model, readiness: readiness) ?? "—"
     }
 
-    /// A model the catalog has no price for prints no price segment at all
-    /// rather than a guess — see `ModelDescriptor.pricePerHourUSD`. Local models
-    /// price at 0, and "Free" is already in their group subtitle.
+    /// The count alone ("99", "99+", "25"); the full wording ("25 European
+    /// languages") is the cell's tooltip and the details row.
+    static func languagesValue(_ model: ModelDescriptor) -> String {
+        model.languages.split(separator: " ").first.map(String.init) ?? model.languages
+    }
+
+    /// Nil when the catalog has no price; local models price at 0.
     static func price(_ model: ModelDescriptor) -> String? {
         guard let price = model.pricePerHourUSD, price > 0 else { return nil }
         return String(format: "$%.2f/hr", price)
     }
 
     /// The real on-disk size once installed, the catalog's estimate before.
-    /// Cloud models occupy no disk, so they print no size segment.
     static func size(_ model: ModelDescriptor, readiness: ModelReadiness) -> String? {
         guard !model.isCloud else { return nil }
         if case .installed(let bytes) = readiness { return bytes.formattedDiskSize }
@@ -1101,253 +1278,132 @@ private enum ModelFacts {
     }
 
     static func approximateSize(_ model: ModelDescriptor) -> String {
-        "~\(model.approxSizeBytes.formattedDiskSize)"
+        model.approxSizeBytes.formattedDiskSize
     }
 
-    /// One line per measurement. Each names its own benchmark and prints Whisper
-    /// Large v3's score on that benchmark beside it, because that is the only
-    /// figure that makes one leaderboard's percentage mean anything next to
-    /// another's. A measurement's caveat gets its own line.
-    static func benchmarkLines(for model: ModelDescriptor) -> [String] {
+    /// The columns as VoiceOver reads them: "Accuracy 8.9 out of 10, Fast,
+    /// 1.62 GB, 99 languages".
+    static func spokenStats(_ model: ModelDescriptor, readiness: ModelReadiness) -> String {
+        let accuracy = model.quality.map { String(format: "Accuracy %.1f out of 10", $0) } ?? "Accuracy not measured"
+        return [accuracy, speed(model), costValue(model, readiness: readiness), ModelBadges.languagesLabel(model.languages)]
+            .joined(separator: ", ")
+    }
+
+    // MARK: Details popover
+
+    struct Fact: Identifiable {
+        let label: String
+        let value: String
+        var detail: String?
+        var id: String { label }
+    }
+
+    static func facts(for model: ModelDescriptor, registry: ModelRegistry) -> [Fact] {
+        let readiness = registry.readiness(for: model.id)
+        var facts: [Fact] = []
+
+        if let quality = model.quality {
+            facts.append(Fact(
+                label: "Accuracy",
+                value: String(format: "%.1f/10", quality),
+                detail: accuracyComparison(model, quality: quality)
+            ))
+        } else {
+            facts.append(Fact(label: "Accuracy", value: "Not measured yet"))
+        }
+
+        facts.append(Fact(label: "Speed", value: speed(model)))
+        facts.append(Fact(label: "Text appears", value: model.isRealtime ? "While you speak (live)" : "When you stop"))
+
+        if !model.isCloud {
+            if case .installed(let bytes) = readiness {
+                facts.append(Fact(label: "Size", value: "\(bytes.formattedDiskSize) on disk"))
+            } else {
+                facts.append(Fact(label: "Size", value: "\(approximateSize(model)) download"))
+            }
+        }
+
+        facts.append(Fact(label: "Languages", value: ModelBadges.languagesLabel(model.languages)))
+
+        if let provider = model.backend.cloudProvider?.displayName {
+            let cost = model.pricePerHourUSD.flatMap { $0 > 0 ? String(format: "$%.2f per hour of audio", $0) : nil }
+            facts.append(Fact(label: "Cost", value: cost ?? "Not published", detail: "Billed to your \(provider) API key"))
+            facts.append(Fact(label: "Runs on", value: "\(provider)'s servers"))
+        } else {
+            facts.append(Fact(label: "Cost", value: "Free"))
+            facts.append(Fact(label: "Runs on", value: "This Mac", detail: "Your audio never leaves it"))
+        }
+
+        return facts
+    }
+
+    /// The score as a plain comparison with Whisper Large v3. Three points is
+    /// one doubling of word errors (`ModelQualityScore`), so the ratio follows
+    /// from the score itself.
+    static func accuracyComparison(_ model: ModelDescriptor, quality: Double) -> String {
+        if model.id == "whisper-large-v3" {
+            return "The reference the scores are measured against"
+        }
+        let ratio = pow(2, (ModelQualityScore.referenceScore - quality) / ModelQualityScore.pointsPerDoubling)
+        if abs(ratio - 1) < 0.05 {
+            return "About as accurate as Whisper Large v3"
+        }
+        if ratio < 1 {
+            return "About \(roundedPercent(1 - ratio))% fewer errors than Whisper Large v3"
+        }
+        if ratio < 1.5 {
+            return "About \(roundedPercent(ratio - 1))% more errors than Whisper Large v3"
+        }
+        return String(format: "About %.1f× the errors of Whisper Large v3", ratio)
+    }
+
+    /// To the nearest 5%, never below 5.
+    private static func roundedPercent(_ fraction: Double) -> Int {
+        max(5, Int((fraction * 20).rounded()) * 5)
+    }
+
+    /// The benchmark figures behind the score, with their caveats, the scale
+    /// and where the price comes from.
+    static func sourceLines(for model: ModelDescriptor) -> [String] {
         var lines: [String] = []
         for measurement in model.benchmarks {
             let percent = String(format: "%.1f", measurement.percent)
             let reference = String(format: "%.1f", measurement.benchmark.whisperLargeV3Percent)
-            var line = "\(percent)% WER on \(benchmarkPhrase(measurement.benchmark)) "
-                + "— Whisper Large v3: \(reference)%."
+            var line = "\(benchmarkName(measurement.benchmark)): \(percent)% of words wrong "
+                + "(Whisper Large v3: \(reference)%)."
             if measurement.isEstimate { line += " Estimate." }
+            if let note = measurement.note { line += " \(note)" }
             lines.append(line)
-            if let note = measurement.note { lines.append(note) }
+        }
+        guard !lines.isEmpty else { return [] }
+        lines.append("The score: Whisper Large v3 is 8, and 3 points lower means twice as many word errors.")
+        if let provider = model.backend.cloudProvider?.displayName, model.pricePerHourUSD != nil {
+            lines.append("Price: \(provider)'s list price per hour of audio, September 2026. Approximate.")
         }
         return lines
     }
 
-    static let qualityScale = "Quality: Whisper Large v3 is 8.0; half its errors scores 10, "
-        + "twice its errors scores 5."
+    static let accuracyScale = "Accuracy is out of 10; higher means fewer word errors."
 
-    /// Who charges the price, and the reminder that it is never this app: cloud
-    /// usage bills to the user's own API key. Local models cost nothing, so they
-    /// say so instead of naming a provider.
-    static func priceProvenance(for model: ModelDescriptor) -> String? {
-        guard model.pricePerHourUSD != nil else { return nil }
-        guard let provider = model.backend.cloudProvider?.displayName else {
-            return "Free — runs on this Mac, no per-minute cost."
-        }
-        return "Price is \(provider)'s list price per hour of audio (September 2026), "
-            + "billed by \(provider) to your own API key. Approximate."
-    }
-
-    /// The popover's content as one tooltip string, for the row's meta line.
-    static func detailsText(for model: ModelDescriptor) -> String {
-        var lines = [model.notes]
-        lines.append(contentsOf: benchmarkLines(for: model))
-        lines.append(qualityScale)
-        if let priceHelp = priceProvenance(for: model) { lines.append(priceHelp) }
-        return lines.joined(separator: "\n")
-    }
-
-    /// The benchmark name as it reads mid-sentence. Open ASR needs the "(English
-    /// average)" qualifier spelled out — it is the one place the figure's scope
-    /// is narrower than the model's.
-    private static func benchmarkPhrase(_ benchmark: WERMeasurement.Benchmark) -> String {
+    private static func benchmarkName(_ benchmark: WERMeasurement.Benchmark) -> String {
         switch benchmark {
-        case .openASRLeaderboard:
-            return "the \(benchmark.displayName) (English average)"
-        case .artificialAnalysis:
-            return benchmark.displayName
+        case .openASRLeaderboard: return "Open ASR Leaderboard (English average)"
+        case .artificialAnalysis: return "Artificial Analysis AA-WER"
         }
     }
 }
 
-// MARK: - Subcomponents
+// MARK: - Badges
 
-/// Left-aligned flow for the title line: everything on one line while it
-/// fits, overflowing badges wrap to following lines instead of squeezing or
-/// truncating the title.
-private struct BadgeFlow: Layout {
-    var hSpacing: CGFloat
-    var vSpacing: CGFloat
-
-    nonisolated func sizeThatFits(
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0, y: CGFloat = 0, rowHeight: CGFloat = 0, maxX: CGFloat = 0
-        for view in subviews {
-            var size = view.sizeThatFits(.unspecified)
-            size.width = min(size.width, maxWidth)
-            if x > 0, x + hSpacing + size.width > maxWidth {
-                x = 0
-                y += rowHeight + vSpacing
-                rowHeight = 0
-            }
-            if x > 0 { x += hSpacing }
-            x += size.width
-            rowHeight = max(rowHeight, size.height)
-            maxX = max(maxX, x)
-        }
-        return CGSize(width: maxX, height: y + rowHeight)
-    }
-
-    nonisolated func placeSubviews(
-        in bounds: CGRect,
-        proposal: ProposedViewSize,
-        subviews: Subviews,
-        cache: inout ()
-    ) {
-        let maxWidth = bounds.width
-        var rows: [[(view: LayoutSubview, size: CGSize)]] = [[]]
-        var x: CGFloat = 0
-        for view in subviews {
-            var size = view.sizeThatFits(.unspecified)
-            size.width = min(size.width, maxWidth)
-            if x > 0, x + hSpacing + size.width > maxWidth {
-                rows.append([])
-                x = 0
-            }
-            if x > 0 { x += hSpacing }
-            x += size.width
-            rows[rows.count - 1].append((view, size))
-        }
-        var y = bounds.minY
-        for row in rows {
-            let rowHeight = row.map(\.size.height).max() ?? 0
-            var px = bounds.minX
-            for (view, size) in row {
-                view.place(
-                    at: CGPoint(x: px, y: y + (rowHeight - size.height) / 2),
-                    anchor: .topLeading,
-                    proposal: ProposedViewSize(size)
-                )
-                px += size.width + hSpacing
-            }
-            y += rowHeight + vSpacing
-        }
-    }
-}
-
-/// A subtle rounded editorial chip (symbol + short label), tinted at low opacity.
-private struct Chip: View {
-    let text: String
-    let symbol: String
-    let tint: Color
-
-    var body: some View {
-        HStack(spacing: Space.s1) {
-            Image(systemName: symbol)
-                .font(Typo.micro)
-            Text(text)
-                .typo(.micro)
-                .textCase(.uppercase)
-                .lineLimit(1)
-        }
-        .fixedSize()
-        .foregroundStyle(tint)
-        .padding(.horizontal, Space.s3)
-        .padding(.vertical, Space.s1)
-        .background(Capsule().fill(tint.opacity(0.14)))
-    }
-}
-
-/// Marks a real-time streaming model (text appears as you speak). A softly
-/// pulsing dot + "LIVE".
-private struct RealtimeBadge: View {
-    @State private var pulsing = false
-    @Environment(\.motion) private var motion
-
-    var body: some View {
-        HStack(spacing: Space.s2) {
-            Circle()
-                .fill(Palette.signalWarn)
-                .frame(width: 5, height: 5)
-                .opacity(motion.repeatsAllowed ? (pulsing ? 1.0 : 0.35) : 0.85)
-            Text("LIVE")
-                .typo(.micro)
-        }
-        .foregroundStyle(Palette.signalWarn)
-        .padding(.horizontal, Space.s3)
-        .padding(.vertical, Space.s1)
-        .background(Capsule().fill(Palette.signalWarn.opacity(0.15)))
-        .onAppear {
-            guard motion.repeatsAllowed else { return }
-            withAnimation(.smooth(duration: 1.1).repeatForever(autoreverses: true)) {
-                pulsing = true
-            }
-        }
-    }
-}
-
-// MARK: - Editorial badge logic
-
-/// Presentation-only helpers that derive editorial chips and language labels
-/// from the static catalog. Kept in the Settings layer so `ModelRegistry`
-/// stays free of UI concerns.
+/// Labels derived from the static catalog, kept in the Settings layer so
+/// `ModelRegistry` stays free of UI concerns.
 private enum ModelBadges {
-    /// The highest-scoring local model. When the winner is also the Recommended
-    /// model, the "at most one chip" priority in `editorial(_:)` shows only
-    /// "Recommended" — the honest outcome rather than double-labelling one row.
-    static let mostAccurateLocalId: String? = highestQualityId { !$0.isCloud }
+    /// The one recommendation badge; "most accurate" is the accuracy column
+    /// and the sort order now.
+    static let recommendedId = ModelCatalog.defaultModelID
 
-    /// The highest-scoring cloud model, used for the "Most accurate" chip.
-    static let mostAccurateCloudId: String? = highestQualityId(\.isCloud)
-
-    /// One "Fastest" per cohort, not one per top-speed model. Speed saturates at
-    /// 10 — six models in the catalog are tied there — so the old `speed == 10`
-    /// test printed the chip on three cloud rows at once, which is three ways of
-    /// saying nothing. The tie breaks on quality: of the fastest models, the one
-    /// that is also the most accurate is the one worth pointing at.
-    static let fastestLocalId: String? = fastestId { !$0.isCloud }
-
-    static let fastestCloudId: String? = fastestId(\.isCloud)
-
-    /// `max(by:)` keeps the first of equal maxima, so a tie falls to whichever
-    /// model the catalog lists first — the curated order still breaks ties.
-    private static func highestQualityId(
-        _ isIncluded: (ModelDescriptor) -> Bool
-    ) -> String? {
-        ModelCatalog.all
-            .filter { isIncluded($0) && $0.quality != nil }
-            .max { ($0.quality ?? 0) < ($1.quality ?? 0) }?
-            .id
-    }
-
-    /// The most accurate of the cohort's fastest models — and only if it is
-    /// accurate enough to recommend at all. A model nobody should pick doesn't
-    /// get a chip for being quick about it.
-    private static func fastestId(
-        _ isIncluded: (ModelDescriptor) -> Bool
-    ) -> String? {
-        let cohort = ModelCatalog.all.filter(isIncluded)
-        guard let topSpeed = cohort.map(\.speed).max() else { return nil }
-        let fastest = cohort
-            .filter { $0.speed == topSpeed }
-            .max { ($0.quality ?? 0) < ($1.quality ?? 0) }
-        guard let fastest, (fastest.quality ?? 0) >= 8 else { return nil }
-        return fastest.id
-    }
-
-    /// At most one editorial chip per model. Priority: Recommended, then Most
-    /// accurate, then Fastest — and a model that wins an earlier one simply
-    /// keeps it. The Fastest chip is never handed down to a runner-up, because
-    /// the runner-up is not the fastest.
-    static func editorial(for model: ModelDescriptor) -> (text: String, symbol: String, tint: Color)? {
-        if model.id == "parakeet-tdt-v3" {
-            return ("Recommended", "sparkles", Palette.accent)
-        }
-        if model.id == mostAccurateLocalId || model.id == mostAccurateCloudId {
-            return ("Most accurate", "target", Palette.badgeIndigo)
-        }
-        if model.id == fastestLocalId || model.id == fastestCloudId {
-            return ("Fastest", "bolt.fill", Palette.signalWarn)
-        }
-        return nil
-    }
-
-    /// The `languages` field is a free string ("99", "90+", "25 European languages").
-    /// Append " languages" only when it's a bare count so mixed strings read
-    /// naturally.
+    /// `languages` is a free string ("99", "90+", "25 European languages");
+    /// " languages" is appended only to a bare count.
     static func languagesLabel(_ languages: String) -> String {
         let numericish = languages.contains(where: \.isNumber)
             && languages.allSatisfy { $0.isNumber || $0 == "+" }

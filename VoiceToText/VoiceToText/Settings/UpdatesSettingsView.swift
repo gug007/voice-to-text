@@ -3,184 +3,171 @@ import SwiftUI
 
 struct UpdatesPane: View {
     @Bindable private var updater = AppUpdater.shared
-    @Environment(\.openURL) private var openURL
 
     var body: some View {
         PaneScaffold {
-            PaneHeader(
-                title: "Updates",
-                subtitle: "Keep VoiceToText up to date."
-            )
+            SettingsGroup {
+                versionRow
 
-            versionCard
-            actionCard
-
-            if case .error(let message) = updater.status {
-                // The same status vocabulary the permission group uses.
-                StatusPlate([
-                    StatusItem(
-                        id: "update-error",
-                        level: .warning,
-                        title: "Update failed",
-                        message: message,
-                        actionTitle: "Download Manually",
-                        action: { openURL(AppUpdater.releasesPageURL) }
-                    )
-                ])
-            }
-
-            if case .available(_, _, let notes) = updater.status, !notes.isEmpty {
-                releaseNotesCard(notes)
-            }
-        }
-    }
-
-    // MARK: - Cards
-
-    @ViewBuilder
-    private var versionCard: some View {
-        Plate {
-            HStack {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Current version")
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text(updater.currentVersion)
-                        .typo(.mono)
-                        .foregroundStyle(Palette.inkFaint)
-                }
-                Spacer()
-                statusPill
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var actionCard: some View {
-        Plate {
-            HStack {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text(actionTitle)
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text(actionSubtitle)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-
-                    if case .downloading(let fraction) = updater.status {
-                        ProgressView(value: fraction)
-                            .progressViewStyle(.linear)
-                            .frame(maxWidth: 280)
-                            .padding(.top, Space.s2)
+                if case .error(let message) = updater.status {
+                    StatusRow(.warning, title: "Update failed", message: message) {
+                        ExternalLink("Download manually", destination: AppUpdater.releasesPageURL)
                     }
+                    .settingsRowPadding()
                 }
-                Spacer()
-                actionButton
+
+                if case .available(let version, _, let notes) = updater.status, !notes.isEmpty {
+                    notesRow(version: version, notes: notes)
+                }
+
+                SettingsRow(
+                    "Check for updates automatically",
+                    caption: "At launch and once a day. VoiceToText asks before installing.",
+                    isOn: $updater.automaticallyChecksForUpdates
+                )
+
+                SettingsRow("Release notes", caption: "What changed in each version.") {
+                    ExternalLink("View on GitHub", destination: AppUpdater.releasesPageURL)
+                }
             }
+        }
+        .onChange(of: updater.status) { old, new in
+            // A check's result lands in the status line; say it aloud too.
+            guard old == .checking, new != .checking else { return }
+            AccessibilityNotification.Announcement(statusLine(now: .now).text).post()
         }
     }
 
-    private func releaseNotesCard(_ notes: String) -> some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s4) {
-                Text("Release notes")
-                    .typo(.headline)
+    // MARK: - Version row
+
+    private static let iconSize: CGFloat = 40
+
+    /// The installed version, its update state, and the one action that
+    /// state calls for.
+    private var versionRow: some View {
+        HStack(alignment: .center, spacing: Space.s5) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: Self.iconSize, height: Self.iconSize)
+                // A rim so a dark icon keeps its silhouette on the dark plate.
+                .shadow(color: Palette.iconEdge, radius: 1, x: 0, y: 0.5)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text("VoiceToText \(updater.currentVersion)")
+                    .typo(.body)
                     .foregroundStyle(Palette.ink)
-                Text(notes)
+                    .monospacedDigit()
+                statusCaption
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+
+            actionButton
+                .fixedSize()
+        }
+        .settingsRowPadding()
+        .settingsDividerInset(FormMetrics.rowHorizontalPadding + Self.iconSize + Space.s5)
+    }
+
+    /// Re-rendered every 30 s so "checked 5 min ago" keeps up.
+    private var statusCaption: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            statusCaption(now: context.date)
+        }
+    }
+
+    private func statusCaption(now: Date) -> some View {
+        let status = statusLine(now: now)
+        return VStack(alignment: .leading, spacing: Space.s3) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s2) {
+                if status.showsSpinner {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+                } else if let symbol = status.symbol {
+                    Image(systemName: symbol)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(status.tint)
+                        .accessibilityHidden(true)
+                }
+                Text(status.text)
                     .typo(.caption)
                     .foregroundStyle(Palette.inkMuted)
+                    .monospacedDigit()
                     .fixedSize(horizontal: false, vertical: true)
-                    .textSelection(.enabled)
+            }
+            if let progress = status.progress {
+                ProgressView(value: progress)
+                    .progressViewStyle(.linear)
+                    .frame(maxWidth: 280)
             }
         }
     }
 
-    // MARK: - Status pill
+    private struct StatusLine {
+        var symbol: String?
+        var tint: Color = Palette.inkMuted
+        var text: String
+        var showsSpinner = false
+        var progress: Double?
+    }
 
-    @ViewBuilder
-    private var statusPill: some View {
+    private func statusLine(now: Date) -> StatusLine {
         switch updater.status {
         case .idle:
-            EmptyView()
-
+            return StatusLine(text: lastChecked(now: now).map { "Checked \($0)" } ?? "Last checked: never")
         case .checking:
-            HStack(spacing: Space.s3) {
-                ProgressView().controlSize(.small)
-                Text("Checking…")
-                    .typo(.captionMedium)
-                    .foregroundStyle(Palette.inkMuted)
-            }
-
+            return StatusLine(text: "Checking for updates…", showsSpinner: true)
         case .upToDate:
-            StatusLabel(level: .ready, text: "Up to date")
-
-        case .available(let latest, _, _):
-            Label("v\(latest) available", systemImage: "arrow.down.circle.fill")
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
-                .labelStyle(.titleAndIcon)
-
+            return StatusLine(
+                symbol: "checkmark.circle.fill",
+                tint: Palette.signalReady,
+                text: ["Up to date", lastChecked(now: now).map { "checked \($0)" }]
+                    .compactMap { $0 }.joined(separator: " · ")
+            )
+        case .available(let version, _, _):
+            return StatusLine(
+                symbol: "arrow.down.circle.fill",
+                tint: Palette.ink,
+                text: conversationBusy
+                    ? "Version \(version) is available. Finish the current conversation first: installing quits the app."
+                    : "Version \(version) is available. Installing quits and reopens the app."
+            )
         case .downloading(let fraction):
-            Text("Downloading \(Int(fraction * 100))%")
-                .typo(.mono)
-                .foregroundStyle(Palette.inkMuted)
-                .contentTransition(.numericText())
-
+            return StatusLine(text: "Downloading… \(Int(fraction * 100))%", progress: fraction)
         case .installing:
-            HStack(spacing: Space.s3) {
-                ProgressView().controlSize(.small)
-                Text("Installing…")
-                    .typo(.captionMedium)
-                    .foregroundStyle(Palette.inkMuted)
-            }
-
-        case .installed:
-            StatusLabel(level: .ready, text: "Installed")
-
-        case .error:
-            StatusLabel(level: .warning, text: "Error")
-        }
-    }
-
-    // MARK: - Action card copy
-
-    private var actionTitle: String {
-        switch updater.status {
-        case .available(let v, _, _):
-            return "Version \(v) is ready to install"
-        case .downloading:
-            return "Downloading update…"
-        case .installing:
-            return "Installing update…"
-        case .installed:
-            return "Update installed"
-        case .upToDate:
-            return "You're up to date"
-        default:
-            return "Check for updates"
-        }
-    }
-
-    private var actionSubtitle: String {
-        switch updater.status {
-        case .available:
-            return conversationBusy
-                ? "Finish the current conversation first: installing quits and relaunches the app."
-                : "The app will quit and relaunch automatically."
-        case .downloading(let fraction):
-            return "\(Int(fraction * 100))% downloaded"
-        case .installing:
-            return "Mounting and copying the new app."
+            return StatusLine(text: "Installing…", showsSpinner: true)
         case .installed(let relaunches):
-            return relaunches
-                ? "Quit VoiceToText to finish; it reopens on the new version."
-                : "Quit and reopen VoiceToText to use the new version."
-        case .upToDate:
-            return "You have the latest version."
-        case .error(let message):
-            return message
-        default:
-            return "Fetch the latest release from GitHub."
+            return StatusLine(
+                symbol: "checkmark.circle.fill",
+                tint: Palette.signalReady,
+                text: relaunches
+                    ? "Installed. Quit VoiceToText to finish; it reopens on the new version."
+                    : "Installed. Quit and reopen VoiceToText to use the new version."
+            )
+        case .error:
+            return StatusLine(
+                symbol: "exclamationmark.triangle.fill",
+                tint: Palette.signalWarn,
+                text: ["Couldn't check for updates", lastChecked(now: now).map { "last checked \($0)" }]
+                    .compactMap { $0 }.joined(separator: " · ")
+            )
+        }
+    }
+
+    /// "just now", "5 min ago", "3 hr ago", "yesterday", "4 days ago" — or
+    /// nil before the first answered check.
+    private func lastChecked(now: Date) -> String? {
+        guard let checked = updater.lastCheckedAt else { return nil }
+        let minutes = Int(max(0, now.timeIntervalSince(checked)) / 60)
+        switch minutes {
+        case ..<1: return "just now"
+        case ..<60: return "\(minutes) min ago"
+        case ..<(24 * 60): return "\(minutes / 60) hr ago"
+        case ..<(48 * 60): return "yesterday"
+        default: return "\(minutes / (24 * 60)) days ago"
         }
     }
 
@@ -193,28 +180,48 @@ struct UpdatesPane: View {
     @ViewBuilder
     private var actionButton: some View {
         switch updater.status {
-        case .checking, .downloading, .installing:
-            ProgressView().controlSize(.small)
+        case .checking:
+            // Same button, held disabled, so the row doesn't jump while the
+            // status line shows the spinner.
+            Button("Check Now") {}
+                .buttonTier(.secondary)
+                .disabled(true)
+
+        case .downloading, .installing:
+            EmptyView()
 
         case .available:
             Button("Install Update") {
                 Task { await updater.installUpdate() }
             }
-            .buttonStyle(FilledButtonStyle())
+            .buttonTier(.primary)
             .disabled(conversationBusy)
 
         case .installed:
             Button("Quit VoiceToText") {
                 NSApp.terminate(nil)
             }
-            .buttonStyle(FilledButtonStyle())
+            .buttonTier(.primary)
 
-        default:
+        case .idle, .upToDate, .error:
             Button("Check Now") {
                 Task { await updater.checkForUpdate() }
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
+            .buttonTier(.secondary)
         }
+    }
+
+    private func notesRow(version: String, notes: String) -> some View {
+        VStack(alignment: .leading, spacing: Space.s2) {
+            Text("What's new in \(version)")
+                .typo(.body)
+                .foregroundStyle(Palette.ink)
+            Text(notes)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
+        }
+        .settingsRowPadding()
     }
 }

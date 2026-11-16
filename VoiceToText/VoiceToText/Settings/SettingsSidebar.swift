@@ -3,26 +3,25 @@ import SwiftUI
 
 // MARK: - Sidebar
 //
-// The sidebar used to be `List(Section.allCases)` — eight rows in enum
-// declaration order, which is to say in no order at all. It is two labelled
-// groups now, driven by an explicit array:
+// Two groups driven by an explicit array (`SettingsView.sidebarGroups`),
+// separated by a hairline rather than headers (the titles never fitted
+// General or Updates):
 //
-//   DICTATE    — General, Conversations, History     (what you do)
-//   CONFIGURE  — Shortcut, Models, Actions, Cloud, Updates (how it behaves)
+//   General, Conversations, History
+//   ───
+//   Shortcut, Models, Actions, Cloud, Updates
 //
-// Selection is one accent capsule at 28pt row height that *slides* between rows
-// via `matchedGeometryEffect` on `Motion.select`, and a 44pt pinned footer
-// carries the app mark and the version string.
+// Selection is one accent capsule at 28pt row height that slides between rows
+// via `matchedGeometryEffect` on `Motion.select`. The pinned footer is a live
+// status chip ("Ready · GPT Transcribe") that opens Models.
 //
 // WHY NOT `List(selection:)`: macOS draws the sidebar selection highlight in the
 // NSTableView row view, below anything `.listRowBackground` can reach, so a List
 // cannot host a custom capsule — the two highlights would stack. Rows are
-// therefore buttons, which also means `\.backgroundProminence` (a List-provided
-// value) has nothing to report; the icon/label recolour is derived from
-// `isSelected` in exactly one place instead, which is the same guarantee.
-// Arrow-key navigation, which the List gave for free, is re-implemented below.
+// therefore buttons; arrow-key navigation is re-implemented below.
 
-/// One labelled block of sidebar rows.
+/// One block of sidebar rows. `title` is only the block's identity and its
+/// VoiceOver container label; it is not drawn.
 struct SidebarGroup: Identifiable {
     let title: String
     let sections: [SettingsView.Section]
@@ -44,16 +43,13 @@ struct SettingsSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(alignment: .leading, spacing: Space.s6) {
-                    ForEach(SettingsView.sidebarGroups) { group in
-                        VStack(alignment: .leading, spacing: Space.s1) {
-                            Text(group.title.uppercased())
-                                .typo(.micro)
-                                .foregroundStyle(Palette.inkFaint)
+                VStack(alignment: .leading, spacing: Space.s4) {
+                    ForEach(Array(SettingsView.sidebarGroups.enumerated()), id: \.element.id) { index, group in
+                        if index > 0 {
+                            RowHairline(leadingInset: 0)
                                 .padding(.horizontal, Space.s4)
-                                .padding(.bottom, Space.s2)
-                                .accessibilityAddTraits(.isHeader)
-
+                        }
+                        VStack(alignment: .leading, spacing: Space.s1) {
                             ForEach(group.sections) { section in
                                 SidebarRow(
                                     section: section,
@@ -67,21 +63,24 @@ struct SettingsSidebar: View {
                                 }
                             }
                         }
+                        .accessibilityElement(children: .contain)
+                        .accessibilityLabel(group.title)
                     }
                 }
                 .padding(.horizontal, Space.s4)
                 .padding(.vertical, Space.s5)
                 .animation(motion.select, value: selection)
             }
+            .accessibilityLabel("Settings sections")
 
-            SidebarFooter()
+            SidebarStatusChip()
         }
+        .background(Palette.sidebar.ignoresSafeArea())
         .focusable()
         .focusEffectDisabled()
         .focused($isFocused)
         .onKeyPress(.upArrow) { move(by: -1) }
         .onKeyPress(.downArrow) { move(by: 1) }
-        .accessibilityLabel("Settings sections")
     }
 
     private func move(by delta: Int) -> KeyPress.Result {
@@ -153,44 +152,110 @@ private struct SidebarRow: View {
     }
 }
 
-// MARK: - Footer
+// MARK: - Footer: live status chip
 
-/// 44pt, pinned to the bottom of the column, hairline above: the app mark on
-/// the left, the version on the right. The mark is one of only two places the
-/// brand gradient is allowed to appear — no text sits on it, so the 2.9:1 the
-/// gradient scores against white never matters here.
-private struct SidebarFooter: View {
-    private var versionText: String {
-        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
-        return "v\(short ?? "0.0")"
+/// The sidebar footer, the app's one labelled status readout:
+///
+///   ● Ready
+///   ☁ Dictation · GPT Transcribe
+///   💻 Conversations · Parakeet TDT v3   (only when it differs)
+///
+/// Clicking opens the dictation-model menu (`ActiveModelMenu`); "All Models…"
+/// opens Models, where the conversation model is set.
+private struct SidebarStatusChip: View {
+    private var registry: ModelRegistry { .shared }
+    @Environment(\.motion) private var motion
+
+    /// The conversation model, when it isn't the dictation model.
+    private var separateConversationModel: ModelDescriptor? {
+        guard let conversation = registry.conversationModel,
+              conversation.id != registry.activeModel?.id else { return nil }
+        return conversation
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Palette.divider)
-                .frame(height: 1)
+        let status = AppStatus.current()
 
-            HStack(spacing: Space.s4) {
-                RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
-                    .fill(Palette.brandGradient)
-                    .frame(width: 26, height: 26)
-                    .overlay {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                    }
-                    .accessibilityHidden(true)
-
-                Spacer(minLength: Space.s4)
-
-                Text(versionText)
-                    .typo(.mono)
-                    .foregroundStyle(Palette.inkFaint)
-                    .accessibilityLabel("Version \(versionText)")
+        ActiveModelMenu(menuTitle: "Dictation model") {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                // The chevron rides on the status line so the model lines
+                // below get the chip's full width.
+                HStack(spacing: Space.s3) {
+                    StatusDot(status.tone)
+                    Text(status.title)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(1)
+                    Spacer(minLength: Space.s2)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(Palette.inkMuted)
+                        .accessibilityHidden(true)
+                }
+                RoleModelLine(role: "Dictation", model: registry.activeModel)
+                if let conversation = separateConversationModel {
+                    RoleModelLine(role: "Conversations", model: conversation)
+                }
             }
-            .padding(.horizontal, Space.s5)
-            .frame(height: 44)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .buttonStyle(SidebarChipButtonStyle())
+        .padding(.horizontal, Space.s3)
+        .padding(.bottom, Space.s4)
+        .padding(.top, Space.s2)
+        .help("\(spokenLine(status)). Click to change the dictation model.")
+        .accessibilityLabel("Status: \(spokenLine(status))")
+        .animation(motion.layout, value: status)
+    }
+
+    private func spokenLine(_ status: AppStatus) -> String {
+        var parts = [status.title]
+        if let model = registry.activeModel { parts.append("Dictation: \(model.nameWithSource)") }
+        if let conversation = separateConversationModel { parts.append("Conversations: \(conversation.nameWithSource)") }
+        return parts.joined(separator: ". ")
+    }
+}
+
+/// "☁ Dictation · GPT Transcribe": the source glyph, the role, the model.
+private struct RoleModelLine: View {
+    let role: String
+    let model: ModelDescriptor?
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Image(systemName: model?.sourceSymbol ?? "questionmark.circle")
+                .font(.system(size: 9, weight: .medium))
+                .frame(width: 12)
+                .accessibilityHidden(true)
+            Text("\(role) · \(model?.sectionedDisplayName ?? "None")")
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .typo(.caption)
+        .foregroundStyle(Palette.inkMuted)
+    }
+}
+
+/// The chip's surface: well fill at rest, deeper on hover and press.
+private struct SidebarChipButtonStyle: ButtonStyle {
+    @Environment(\.motion) private var motion
+    @State private var isHovering = false
+
+    func makeBody(configuration: Configuration) -> some View {
+        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
+        configuration.label
+            .padding(.horizontal, Space.s4)
+            .padding(.vertical, Space.s3 + 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(shape.fill(fill(isPressed: configuration.isPressed)))
+            .overlay(shape.strokeBorder(Palette.hairline, lineWidth: 0.5))
+            .contentShape(shape)
+            .onHover { isHovering = $0 }
+            .animation(motion.hover, value: isHovering)
+    }
+
+    private func fill(isPressed: Bool) -> Color {
+        if isPressed { return Palette.ink.opacity(0.12) }
+        return isHovering ? Palette.ink.opacity(0.08) : Palette.wellFill
     }
 }

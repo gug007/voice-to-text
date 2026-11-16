@@ -15,9 +15,13 @@ import SwiftUI
 
 // MARK: - Typography
 
-/// The six-step type scale plus three special registers. SF Pro throughout,
-/// SF Mono for the machine register. Weights in use: regular, medium, semibold
-/// — bold is deliberately absent.
+/// The six-step type scale plus three special registers. SF Pro throughout;
+/// SF Mono only for typed API-key characters (`code`). Weights in use: regular,
+/// medium, semibold — bold is deliberately absent.
+///
+/// Weight rule: semibold is for group headers and list-item titles (History /
+/// Conversations rows, model names, action names). A setting row's title is
+/// regular (`body`).
 ///
 /// `Typo.headline` is the plain `Font`. `.typo(.headline)` additionally applies
 /// the tracking and line-height that belong to the step, and is what call sites
@@ -26,13 +30,15 @@ nonisolated enum Typo {
 
     // Six-step scale.
 
-    /// 26 / semibold / −0.36 / lh 32. Pane titles only.
+    /// 26 / semibold / −0.36 / lh 32. Hero numbers only — pane titles live in
+    /// the toolbar now (`.navigationTitle`).
     static let display = Font.system(size: 26, weight: .semibold)
     /// 17 / semibold / −0.20 / lh 22. Provider names, sheet titles, empty-state headlines.
     static let title = Font.system(size: 17, weight: .semibold)
-    /// 13 / semibold / lh 16. Every row title, model name, primary button label.
+    /// 13 / semibold / lh 16. Group headers and list-item titles (a recording,
+    /// a model, an action). NOT setting-row titles — those are `body`.
     static let headline = Font.system(size: 13, weight: .semibold)
-    /// 13 / regular / lh 17. Subtitles, body copy, field text.
+    /// 13 / regular / lh 17. Setting-row titles, subtitles, body copy, field text.
     static let body = Font.system(size: 13, weight: .regular)
     /// 11 / regular / +0.06 / lh 14. Row subtitles, metadata, footnotes.
     static let caption = Font.system(size: 11, weight: .regular)
@@ -42,15 +48,20 @@ nonisolated enum Typo {
     /// (or uppercase the string) at the call site; the size is only earned by caps.
     static let micro = Font.system(size: 10, weight: .semibold)
 
-    // Three special registers.
+    // Special registers.
 
-    /// SF Mono 11 / regular / +0.20. Key hints, percentages, counters, versions,
-    /// WER figures, API-key fields. Nothing else is monospaced.
-    static let mono = Font.system(size: 11, weight: .regular, design: .monospaced)
-    /// SF Mono 13 / medium / monospacedDigit. The HUD timer.
-    static let clock = Font.system(size: 13, weight: .medium, design: .monospaced).monospacedDigit()
-    /// SF Mono 22 / semibold / monospacedDigit. The Conversations recording clock.
-    static let clockLarge = Font.system(size: 22, weight: .semibold, design: .monospaced).monospacedDigit()
+    /// SF Pro 11 / regular / monospacedDigit. Numbers in metadata: durations,
+    /// sizes, percentages, counters, versions. The name is historical — this is
+    /// proportional SF Pro whose digits share one width, not a monospaced face.
+    static let mono = Font.system(size: 11, weight: .regular).monospacedDigit()
+    /// SF Mono 11 / regular / +0.20. Typed API-key characters and nothing else.
+    static let code = Font.system(size: 11, weight: .regular, design: .monospaced)
+    /// SF Pro 13 / medium / monospacedDigit. The HUD timer.
+    static let clock = Font.system(size: 13, weight: .medium).monospacedDigit()
+    /// SF Pro 22 / semibold / monospacedDigit. The Conversations recording clock.
+    static let clockLarge = Font.system(size: 22, weight: .semibold).monospacedDigit()
+    /// 11 / semibold. Small Title Case headers inside menus and popovers.
+    static let sidebarHeader = Font.system(size: 11, weight: .semibold)
     /// SF Pro 15 / regular / lh 21. The review editor, resume composed text and
     /// the History reading pane — the only 15pt in the app.
     static let transcript = Font.system(size: 15, weight: .regular)
@@ -59,7 +70,7 @@ nonisolated enum Typo {
     /// line-height in one modifier.
     enum Style: Sendable, CaseIterable {
         case display, title, headline, body, caption, captionMedium, micro
-        case mono, clock, clockLarge, transcript
+        case mono, code, clock, clockLarge, transcript
 
         var font: Font {
             switch self {
@@ -71,6 +82,7 @@ nonisolated enum Typo {
             case .captionMedium: return Typo.captionMedium
             case .micro: return Typo.micro
             case .mono: return Typo.mono
+            case .code: return Typo.code
             case .clock: return Typo.clock
             case .clockLarge: return Typo.clockLarge
             case .transcript: return Typo.transcript
@@ -81,10 +93,10 @@ nonisolated enum Typo {
             switch self {
             case .display: return -0.36
             case .title: return -0.20
-            case .headline, .body, .clock, .clockLarge, .transcript: return 0
+            case .headline, .body, .mono, .clock, .clockLarge, .transcript: return 0
             case .caption, .captionMedium: return 0.06
             case .micro: return 0.50
-            case .mono: return 0.20
+            case .code: return 0.20
             }
         }
 
@@ -99,7 +111,7 @@ nonisolated enum Typo {
             case .caption: return Typo.extraLeading(size: 11, weight: .regular, target: 14)
             case .captionMedium: return Typo.extraLeading(size: 11, weight: .medium, target: 14)
             case .micro: return Typo.extraLeading(size: 10, weight: .semibold, target: 12)
-            case .mono, .clock, .clockLarge: return 0
+            case .mono, .code, .clock, .clockLarge: return 0
             case .transcript: return Typo.extraLeading(size: 15, weight: .regular, target: 21)
             }
         }
@@ -142,6 +154,33 @@ nonisolated enum Space {
     static let s7: CGFloat = 24
     /// 32 — reserved for hero blocks.
     static let s8: CGFloat = 32
+    /// 20 — the one gap between top-level groups in a pane (`PaneScaffold`'s
+    /// default). Never hand-type another section gap.
+    static let section: CGFloat = 20
+}
+
+// MARK: - Layout metrics
+
+/// Fixed sizes shared by the grouped-form components. Read these rather than
+/// re-typing the numbers in a pane.
+nonisolated enum FormMetrics {
+    /// A `SettingsRow`'s minimum height.
+    static let rowMinHeight: CGFloat = 44
+    /// Vertical padding inside a row.
+    static let rowVerticalPadding: CGFloat = 12
+    /// Horizontal padding inside a row; also the leading inset of the hairline
+    /// between rows and of a group's header and footer.
+    static let rowHorizontalPadding: CGFloat = 16
+    /// Gap between a group's header (or footer) and its plate.
+    static let groupLabelGap: CGFloat = 6
+    /// `IconButton` hit area, both axes.
+    static let iconButton: CGFloat = 28
+    /// A `Keycap`'s minimum width and height.
+    static let keycapMin: CGFloat = 22
+    /// Minimum hit height of a tertiary (link) button.
+    static let linkHitHeight: CGFloat = 24
+    /// Single-line text field height; matches a regular-size button.
+    static let fieldHeight: CGFloat = 24
 }
 
 // MARK: - Radii
@@ -182,7 +221,7 @@ nonisolated enum Palette {
     // MARK: Surfaces
 
     /// Detail-pane background, permission gate, HUD opaque fallback base.
-    static let canvas = Palette.dynamic("canvas", light: 0xF6F6F7, dark: 0x18181A)
+    static let canvas = Palette.dynamic("canvas", light: 0xF4F4F6, dark: 0x18181A)
     /// The sidebar column — deliberately darker than `canvas` in both modes.
     static let sidebar = Palette.dynamic("sidebar", light: 0xEDEDEF, dark: 0x111113)
     /// The one content-surface fill. Opaque: content is never glass.
@@ -191,6 +230,22 @@ nonisolated enum Palette {
     static let plateHover = Palette.dynamic("plateHover", light: 0xF8F8F9, dark: 0x2B2B2F)
     /// `plateHover` with the delta doubled, for Increase Contrast.
     static let plateHoverContrast = Palette.dynamic("plateHoverContrast", light: 0xF1F1F3, dark: 0x333338)
+    /// The face of a `Keycap`: lifted off the plate in dark, white in light
+    /// (the hairline and bottom edge carry it there).
+    static let keycapFace = Palette.dynamic("keycapFace", light: 0xFFFFFF, dark: 0x2A2A2E)
+    /// A `Keycap`'s outline: firmer than the plate hairline so caps read as
+    /// keys, not as filled buttons.
+    static let keycapEdge = Palette.dynamic(
+        "keycapEdge",
+        light: 0x111113, lightAlpha: 0.16,
+        dark: 0xF5F5F7, darkAlpha: 0.24
+    )
+    /// The 1pt band under a `Keycap`.
+    static let keycapShadow = Palette.dynamic(
+        "keycapShadow",
+        light: 0x111113, lightAlpha: 0.22,
+        dark: 0x000000, darkAlpha: 0.6
+    )
     /// Fill for a `.well` nested inside a plate.
     static let wellFill = Palette.dynamic(
         "wellFill",
@@ -244,6 +299,46 @@ nonisolated enum Palette {
     /// before any colour does. 14.4:1 against the dark plate, 18.9:1 against
     /// the light.
     static let action = Palette.dynamic("action", light: 0x111113, dark: 0xF5F5F7)
+    /// The primary-button fill: the user's system accent, deepened slightly
+    /// so its white label clears 4.5:1 (blue: 5.0:1 light, 4.9:1 dark). A
+    /// custom fill rather than `.borderedProminent`, so it stays coloured
+    /// while the window is inactive.
+    static let primaryFill = Color(nsColor: primaryFillNS)
+    static let primaryFillNS = NSColor(name: NSColor.Name("vtt.primaryFill")) { appearance in
+        let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+        var accent = NSColor.systemBlue
+        appearance.performAsCurrentDrawingAppearance {
+            accent = NSColor.controlAccentColor.usingColorSpace(.sRGB) ?? .systemBlue
+        }
+        return accent.blended(withFraction: isDark ? 0.15 : 0.12, of: .black) ?? accent
+    }
+    /// Destructive button label (`.buttonTier(.destructive)`), measured on
+    /// ``borderedFill``: 4.8:1 light, 4.7:1 dark. Not ``signalLive`` — that
+    /// red means "recording".
+    static let destructive = Palette.dynamic("destructive", light: 0xC4262E, dark: 0xFF7369)
+    /// The fill of a bordered button drawn by hand, matched to AppKit's
+    /// `.bordered` bezel (#ECECEC / #333336 on the plate).
+    static let borderedFill = Palette.dynamic(
+        "borderedFill",
+        light: 0x000000, lightAlpha: 0.075,
+        dark: 0xFFFFFF, darkAlpha: 0.08
+    )
+    /// Text-field outline: ≥3:1 against both the field fill (canvas) and the
+    /// plate around it, in both appearances (3.3:1 / 3.4:1 at worst).
+    static let fieldStroke = Palette.dynamic("fieldStroke", light: 0x86868C, dark: 0x74747C)
+    /// The rim drawn around an app icon so its silhouette survives a plate of
+    /// the same darkness: a soft shadow in light, a faint light edge in dark.
+    static let iconEdge = Palette.dynamic(
+        "iconEdge",
+        light: 0x000000, lightAlpha: 0.22,
+        dark: 0xFFFFFF, darkAlpha: 0.35
+    )
+    /// The label on ``primaryFill``.
+    static let onPrimary = Color.white
+    /// Tertiary-tier link text: AppKit's own link colour, as `.buttonStyle(.link)`
+    /// draws it (≈5.2:1 light, 5.5:1 dark).
+    static let link = Color(nsColor: .linkColor)
+
     /// The label that sits on ``action`` — and on ``accent`` or ``signalLive``
     /// fills: white in light mode, ink in dark. 18.9:1 / 17.3:1 on `action`,
     /// 5.2:1 / 6.3:1 on `signalLive`.
@@ -261,9 +356,9 @@ nonisolated enum Palette {
     /// the tile's tinted wash, so light mode takes a deeper cut of it.
     /// #D9381E (4.6:1) / #FF6A4D (5.5:1 on the dark plate).
     static let providerGroq = Palette.dynamic("providerGroq", light: 0xD9381E, dark: 0xFF6A4D)
-    /// The favorited-recording star. Raw `.yellow` is 1.4:1 on a light plate,
-    /// which is why the star reads as a smudge today. #C99A00 / #FFD426.
-    static let favorite = Palette.dynamic("favorite", light: 0xC99A00, dark: 0xFFD426)
+    /// The favorited-recording star: a warm amber, 3.4:1 on white (the 3:1
+    /// non-text floor) without going olive. #C27C00 / #FFD426.
+    static let favorite = Palette.dynamic("favorite", light: 0xC27C00, dark: 0xFFD426)
 
     // MARK: Lines
 

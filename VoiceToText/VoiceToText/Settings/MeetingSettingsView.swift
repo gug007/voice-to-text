@@ -2,9 +2,10 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// Settings pane for meeting recording: capture a long conversation (mic +
+/// Settings pane for conversation recording: capture a long conversation (mic +
 /// system audio) in the background, then transcribe it on stop and save it to
-/// History. Minimal, state-driven chrome that matches the other panes.
+/// History. The recorder card on top, its options folded under it, then the
+/// recorded conversations under date headers.
 struct MeetingsPane: View {
     @Bindable private var controller = MeetingController.shared
     @Bindable private var store = RecordingHistoryStore.shared
@@ -12,28 +13,32 @@ struct MeetingsPane: View {
     @Bindable private var registry = ModelRegistry.shared
     @Bindable private var hotkeyStore = HotkeyStore.shared
     @State private var screenGranted = ScreenCapturePermission.isGranted
-    @State private var favoritesOnly = false
-    /// Which insight tab each conversation row is showing. Owned here rather
-    /// than by the row: the rows are laid out lazily, so a row's own `@State`
-    /// would not survive being scrolled out of view (see `RecordingsList`).
+    /// Which insight tab each conversation row is showing. Owned here: rows
+    /// are lazy, so a row's own `@State` would not survive scrolling.
     @State private var insightTabs: [UUID: InsightTab] = [:]
+    /// The one open conversation row.
+    @State private var expandedID: UUID?
     /// True while a drag from Finder is hovering over the pane. Only turns into a
     /// visible drop affordance when the controller is idle (see `isDropActive`).
     @State private var isDropTargeted = false
-    /// Whether the Recording options plate is open. Remembered: both settings
-    /// are set once and left, so the plate stays folded for whoever folded it.
+    /// Whether Recording Options is open. Remembered, folded by default: both
+    /// settings are set once and left.
     @AppStorage("conversation.optionsExpanded") private var optionsExpanded = false
-    /// Read only for the folded plate's summary; the HUD section owns the edit.
+    /// The same key `ConversationHUDPanel` watches, so a change lands at once —
+    /// on a recording already running too.
     @AppStorage(ConversationHUDSetting.defaultsKey)
     private var hudSetting: ConversationHUDSetting = ConversationHUDSetting.defaultValue
+    /// The microphone a conversation will record from, for the recorder's
+    /// inputs line. Re-read when the preference announces a change.
+    @State private var micPreference = MicrophonePreference.stored(in: .standard)
+    private let inputMonitor = InputDeviceMonitor.shared
     @Environment(\.motion) private var motion
 
     /// Types the drop is registered for. A Finder drag arrives as a plain
     /// `public.file-url` provider that does *not* conform to the media content
     /// types, so `.fileURL` must be present or the pane never becomes a drop
     /// target. The media types are kept so promised-content drags from other
-    /// apps still register. The file's actual kind is validated on drop, not
-    /// here — so the overlay can light up for any file (see `handleDrop`).
+    /// apps still register. The file's actual kind is validated on drop.
     private let acceptedDropTypes: [UTType] = [.fileURL] + MediaFileImport.acceptedContentTypes
 
     /// Show the "drop to transcribe" overlay only when a drag is hovering *and*
@@ -48,43 +53,32 @@ struct MeetingsPane: View {
         store.entries.filter { $0.source == .meeting }
     }
 
-    private var hasFavoriteConversations: Bool { conversations.contains { $0.isFavorited } }
-
-    /// Conversations to show: all, or just favorites when the filter is on. The
-    /// filter self-disables when nothing is favorited.
-    private var visibleConversations: [RecordingHistoryEntry] {
-        (favoritesOnly && hasFavoriteConversations) ? conversations.filter(\.isFavorited) : conversations
-    }
+    /// How many conversations the Recent group shows before handing off to
+    /// History.
+    private static let recentLimit = 10
 
     var body: some View {
         PaneScaffold {
-            PaneHeader(
-                title: "Conversations",
-                subtitle: "Your mic plus everything you hear, transcribed when you stop."
-            )
-
             if !screenGranted && !controller.isBusy {
                 permissionCard
             }
 
-            stateCard
+            VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
+                stateCard
+                SettingsGroupFooter("Records your microphone and everything playing on this Mac, then transcribes when you stop.")
+            }
 
-            recordingOptionsCard
+            recordingOptionsGroup
 
             if controller.state == .idle, let summary = controller.lastSavedSummary {
                 savedBanner(summary)
             }
 
             conversationsList
-
-            infoNote
         }
         .animation(motion.layout, value: controller.state)
         .animation(motion.layout, value: conversations)
         // The whole pane is a drop target for a single audio/video file.
-        // Because Finder drags register as `public.file-url`, the overlay flips
-        // for any file hover; a non-media file is silently rejected by the
-        // handler's revalidation rather than being filtered out up front.
         .onDrop(of: acceptedDropTypes, isTargeted: $isDropTargeted) { providers in
             handleDrop(providers)
         }
@@ -98,10 +92,15 @@ struct MeetingsPane: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             screenGranted = ScreenCapturePermission.isGranted
         }
-        // Clear the favorites filter once no conversation is favorited, so it
-        // can't sit stranded-on behind a hidden toggle.
-        .onChange(of: hasFavoriteConversations) { _, has in
-            if !has { favoritesOnly = false }
+        // Device listeners only while idle: during a recording they would
+        // contend with the capture's audio graph, and the line shows the
+        // last known name anyway.
+        .task(id: controller.isBusy) {
+            guard !controller.isBusy else { return }
+            await inputMonitor.observe()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: MicrophonePreference.didChangeNotification)) { _ in
+            micPreference = MicrophonePreference.stored(in: .standard)
         }
         // Don't strand a stale error message, or keep a clip playing, when the
         // user navigates away (dismissError is a no-op while busy).
@@ -109,20 +108,19 @@ struct MeetingsPane: View {
             controller.dismissError()
             player.stop()
         }
-        // Floating Undo toast for the few-seconds grace window after a delete.
         .overlay { UndoDeletionBar(store: store) }
     }
 
-    // Start Recording and Upload File… are not toolbar items. They live in the
-    // session card, which is on screen in every state — the card *is* the
-    // recorder, and both actions are disabled whenever it is busy. (They were
-    // toolbar items while the idle card vanished on state change; see the
-    // session card's note for why it no longer does.)
-
     // MARK: - Recorded conversations
 
+    /// The latest conversations in one group of compact rows that open on
+    /// click; "Show All" on its header opens History filtered to
+    /// conversations, where search and filters live.
     @ViewBuilder
     private var conversationsList: some View {
+        // One scan of History per pass: the pane re-renders at meter rate
+        // while recording.
+        let conversations = conversations
         if conversations.isEmpty {
             // While the first one records or transcribes, the session card's
             // progress is the state; "nothing yet" would contradict it.
@@ -135,54 +133,23 @@ struct MeetingsPane: View {
                 .transition(.opacity)
             }
         } else {
-            VStack(alignment: .leading, spacing: Space.s4) {
-                GroupCaption(text: conversationsCaption) {
-                    if hasFavoriteConversations {
-                        FavoritesFilterButton(isOn: $favoritesOnly)
-                    }
-                }
-                RecordingsList(
-                    entries: visibleConversations,
-                    showsTypeBadge: false,
-                    isPlaying: { player.playingID == $0.id },
-                    onPlay: { entry in
-                        player.toggle(url: store.audioURL(for: entry), id: entry.id)
-                    },
-                    onDelete: { entry in
-                        if player.playingID == entry.id { player.stop() }
-                        store.delete(id: entry.id)
-                    },
-                    onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) },
-                    onRemoveTranscript: { entry, variantID in
-                        store.removeTranscriptVariant(entryID: entry.id, variantID: variantID)
-                    },
-                    onRenameSpeakers: { entry, names in
-                        store.setSpeakerNames(entryID: entry.id, names: names)
-                    },
-                    insightTabs: $insightTabs,
-                    onToggleActionItem: { entry, itemID in
-                        store.toggleActionItem(entryID: entry.id, itemID: itemID)
-                    },
-                    onRemoveInsight: { entry, kind in
-                        store.removeInsight(entryID: entry.id, kind: kind)
-                        // Forget the tab that pointed at it — see
-                        // `HistorySettingsView` for what a stale one does when the
-                        // insight is generated again.
-                        if insightTabs[entry.id] == kind.tab { insightTabs[entry.id] = nil }
+            RecordingSectionsList(
+                sections: [HistorySection(id: "recent", title: "Recent", entries: Array(conversations.prefix(Self.recentLimit)))],
+                showsTypeBadge: false,
+                insightTabs: $insightTabs,
+                expandedID: $expandedID,
+                headerLink: .init(
+                    title: conversations.count > Self.recentLimit
+                        ? "Show All (\(conversations.count))"
+                        : "Open in History",
+                    help: "Open History showing every conversation, with search and filters",
+                    action: {
+                        HistoryPane.pendingFilter = .conversations
+                        SettingsRouter.shared.pendingSection = .history
                     }
                 )
-            }
+            )
         }
-    }
-
-    private var conversationsCaption: String {
-        if favoritesOnly && hasFavoriteConversations {
-            let count = visibleConversations.count
-            return count == 1 ? "1 favorite" : "\(count) favorites"
-        }
-        return conversations.count == 1
-            ? "1 recorded conversation"
-            : "\(conversations.count) recorded conversations"
     }
 
     // MARK: - Permission
@@ -216,102 +183,121 @@ struct MeetingsPane: View {
 
     // MARK: - Recording options
 
-    /// The transcription model and the Recording HUD in one plate that folds
-    /// to a single summary row. Both are set once and left alone, so folded
-    /// they cost one line and the recordings list sits right under the
-    /// recorder; the summary still says what a recording will use.
-    private var recordingOptionsCard: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: 0) {
-                recordingOptionsHeader
+    /// The transcription model and the Recording HUD, folded to one row that
+    /// says what the next recording will use. The summary shows only while
+    /// folded; open, the rows say it themselves.
+    private var recordingOptionsGroup: some View {
+        SettingsGroup {
+            recordingOptionsDisclosure
 
-                if optionsExpanded {
-                    VStack(alignment: .leading, spacing: Space.s6) {
-                        PlateDivider(leadingInset: 0)
-                        if !controller.isBusy {
-                            transcriptionModelRow
-                            PlateDivider(leadingInset: 0)
-                        }
-                        ConversationHUDSettingSection()
-                    }
-                    .padding(.top, Space.s5)
-                    .transition(.opacity)
+            if optionsExpanded {
+                if !controller.isBusy {
+                    transcriptionModelRow
                 }
+                hudRow
             }
         }
         .animation(motion.layout, value: optionsExpanded)
         .animation(motion.layout, value: controller.isBusy)
     }
 
-    /// The whole row is the disclosure button, like a Finder sidebar header —
-    /// a 24pt chevron alone is too small a target for the only way in.
-    private var recordingOptionsHeader: some View {
+    /// The whole row is the disclosure button, chevron on the leading side.
+    private var recordingOptionsDisclosure: some View {
         Button {
             optionsExpanded.toggle()
         } label: {
             HStack(spacing: Space.s4) {
-                Image(systemName: "slider.horizontal.3")
-                    .font(.system(size: 13, weight: .medium))
+                Image(systemName: "chevron.right")
+                    .font(Typo.captionMedium)
                     .foregroundStyle(Palette.inkMuted)
+                    .rotationEffect(.degrees(optionsExpanded ? 90 : 0))
+                    .frame(width: Space.s5)
                     .accessibilityHidden(true)
-                Text("Recording options")
-                    .typo(.headline)
+                Text("Recording Options")
+                    .typo(.body)
                     .foregroundStyle(Palette.ink)
                     .fixedSize()
                 Spacer(minLength: Space.s5)
-                Text(recordingOptionsSummary)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkMuted)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(Palette.inkFaint)
-                    .rotationEffect(.degrees(optionsExpanded ? 90 : 0))
-                    .accessibilityHidden(true)
+                if !optionsExpanded {
+                    recordingOptionsSummaryText
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
             }
-            .frame(minHeight: Space.s7)
+            .settingsRowPadding()
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(optionsExpanded ? "Hide recording options" : "Show recording options")
         .accessibilityLabel("Recording options")
-        .accessibilityValue(recordingOptionsSummary)
-        .accessibilityHint(optionsExpanded ? "Hides the options" : "Shows the options")
+        .accessibilityValue(optionsExpanded ? "Expanded" : "Collapsed, \(recordingOptionsSummary)")
     }
 
-    /// "GPT Transcribe · Small HUD" — what the next recording will use.
+    /// "☁ GPT Transcribe · OpenAI · Small HUD" — the one place the folded pane
+    /// names the model, with where it runs.
+    private var recordingOptionsSummaryText: Text {
+        guard let model = registry.conversationModel else { return Text(recordingOptionsSummary) }
+        let hud = hudSetting == .off ? "HUD off" : "\(hudSetting.title) HUD"
+        return Text(Image(systemName: model.sourceSymbol)) + Text(" \(model.nameWithSource) · \(hud)")
+    }
+
+    /// "GPT Transcribe · OpenAI · Small HUD" — what the next recording will use.
     private var recordingOptionsSummary: String {
-        let model = registry.conversationModel?.sectionedDisplayName ?? "No model"
+        let model = registry.conversationModel?.nameWithSource ?? "No model"
         let hud = hudSetting == .off ? "HUD off" : "\(hudSetting.title) HUD"
         return "\(model) · \(hud)"
     }
 
-    /// Lets the user pick a transcription model for conversations independently
-    /// of the dictation model. Only shown while idle — it has no bearing on an
-    /// in-flight recording/transcription. Streaming models are excluded: they're
-    /// built for live mic input, not archived-file transcription.
+    /// A transcription model for conversations, independent of dictation's.
+    /// Only while idle — it has no bearing on a recording in flight. Streaming
+    /// models are excluded: they're built for live mic input.
     private var transcriptionModelRow: some View {
-        SettingHeader(title: "Transcription model", subtitle: conversationModelLocation) {
+        SettingsRow("Transcription model", caption: conversationModelLocation) {
             MinimalDropdown(
                 selection: conversationModelBinding,
                 sections: conversationModelSections,
-                popupWidth: 300
+                title: "Transcription model",
+                tooltip: "The model that transcribes conversations and imported files"
             )
         }
     }
 
+    /// Off / Small / Medium / Large — the card that floats over every app while
+    /// a conversation records. One row, no preview: the HUD family is previewed
+    /// on General, and this plate should not push the recordings off screen.
+    private var hudRow: some View {
+        SettingsRow("Conversation HUD", caption: hudCaption) {
+            Picker("Conversation HUD", selection: $hudSetting) {
+                ForEach(ConversationHUDSetting.allCases) { setting in
+                    Text(setting.title).tag(setting)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
+    }
+
+    private var hudCaption: String {
+        switch hudSetting {
+        case .off: return "No floating card; the menu bar shows the recording."
+        case .small: return "Floats over every app: meter, clock and Stop."
+        case .medium: return "Floats over every app: one row with Stop & Transcribe."
+        case .large: return "Floats over every app: wide meter, clock and Stop & Transcribe."
+        }
+    }
+
     /// Where the audio goes, for the model a conversation will actually use —
-    /// a cloud model uploads an hour of someone's meeting, which the model's
-    /// name alone doesn't say.
+    /// a cloud model uploads an hour of someone's meeting.
     private var conversationModelLocation: String {
         guard let model = registry.conversationModel else {
             return "Used for recordings and uploaded files."
         }
         if let provider = model.backend.cloudProvider {
-            return "Cloud · \(provider.displayName). The audio is uploaded to transcribe it."
+            return "Audio is uploaded to \(provider.displayName) to transcribe it."
         }
-        return "On this Mac. Recordings are transcribed locally."
+        return "Transcribed on this Mac; audio never leaves it."
     }
 
     /// The catalog minus streaming/realtime engines, which don't apply to
@@ -320,11 +306,8 @@ struct MeetingsPane: View {
         ModelCatalog.all.filter { !$0.isRealtime }
     }
 
-    /// Rows for the transcription-model dropdown: a lead "Same as dictation"
-    /// option (the model it actually transcribes with shown as the quiet
-    /// secondary line), then the selectable models grouped "On this Mac" / by
-    /// cloud provider. Provider suffixes are stripped for presentation under
-    /// their headers.
+    /// A lead "Same as dictation" option (the model it actually transcribes
+    /// with as its detail), then the models grouped "On this Mac" / by provider.
     private var conversationModelSections: [DropdownSection<String?>] {
         var sections: [DropdownSection<String?>] = [
             DropdownSection(items: [
@@ -335,21 +318,13 @@ struct MeetingsPane: View {
                 )
             ])
         ]
-        for section in ModelGroup.sections(of: selectableConversationModels) {
-            sections.append(DropdownSection(
-                header: section.group.title,
-                items: section.models.map {
-                    DropdownItem<String?>(value: $0.id, title: $0.sectionedDisplayName)
-                }
-            ))
-        }
+        sections += DropdownSection.models(selectableConversationModels, value: { Optional($0.id) })
         return sections
     }
 
     /// Names the model "Same as dictation" really uses. A live dictation model
     /// never transcribes recordings — `ModelRegistry.conversationModel` swaps in
-    /// a batch one — so the line says which, and why it isn't the dictation
-    /// model, or that it has to download before the first conversation.
+    /// a batch one — so the line says which, and why.
     private var sameAsDictationDetail: String? {
         guard let used = registry.dictationModelForConversations else { return nil }
         let name = used.model.sectionedDisplayName
@@ -372,30 +347,29 @@ struct MeetingsPane: View {
 
     // MARK: - Session card
     //
-    // One plate for the whole record → transcribe cycle. Ready is the recording
-    // card at rest: a grey dot where the live one pulses, the clock at zero, a
-    // flat meter, and Start Recording in the slot Stop & Transcribe will take.
-    // Starting a recording changes the card's contents in place rather than
-    // swapping one card for another, so the geometry never jumps and the eye
-    // stays where it was. Stopping freezes the meter and hands the clock to the
-    // transcription chunk counter in the same row.
+    // One plate for the whole record → transcribe cycle. At rest it is two
+    // lines: what will be captured, and the two ways to start. Recording adds
+    // the clock and the live meter in place; stopping freezes the meter and
+    // hands the row to the transcription progress.
 
     private var isRecording: Bool { controller.state == .recording }
     private var isTranscribing: Bool { controller.state == .transcribing }
 
     private var sessionCard: some View {
         Plate {
-            VStack(alignment: .leading, spacing: Space.s6) {
+            VStack(alignment: .leading, spacing: Space.s5) {
                 sessionHeader
 
-                // Faint and flat until recording starts; desaturates in place
-                // when it stops. The same freeze the dictation HUD uses.
-                LevelBars(
-                    samples: controller.levelHistory,
-                    tint: Palette.ink,
-                    isFrozen: !isRecording
-                )
-                .frame(height: 56)
+                if isRecording || isTranscribing {
+                    LevelBars(
+                        samples: controller.levelHistory,
+                        tint: Palette.ink,
+                        isFrozen: !isRecording
+                    )
+                    .frame(height: 44)
+                    .transition(.opacity)
+                    .accessibilityHidden(true)
+                }
 
                 sessionActions
 
@@ -406,31 +380,53 @@ struct MeetingsPane: View {
         }
     }
 
+    /// "● Ready" on one baseline, the inputs and model under it — all on the
+    /// card's one leading edge, with the buttons and the shortcut below.
     private var sessionHeader: some View {
-        HStack(spacing: Space.s5) {
-            if isTranscribing {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                SessionDot(isLive: isRecording)
+        HStack(alignment: .top, spacing: Space.s4) {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                HStack(alignment: .center, spacing: Space.s3) {
+                    if isTranscribing {
+                        ProgressView()
+                            .controlSize(.mini)
+                    } else {
+                        SessionDot(isLive: isRecording, restingTone: restingTone)
+                    }
+                    Text(sessionTitle)
+                        .typo(.headline)
+                        .foregroundStyle(Palette.ink)
+                    if isTranscribing, controller.totalChunks > 1 {
+                        Text("\(controller.transcribedChunks)/\(controller.totalChunks)")
+                            .typo(.mono)
+                            .foregroundStyle(Palette.inkMuted)
+                            .contentTransition(.numericText())
+                    }
+                }
+                sessionDetail
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
             }
-            Text(sessionTitle)
-                .typo(.headline)
-                .foregroundStyle(Palette.ink)
-            if isTranscribing, controller.totalChunks > 1 {
-                Text("\(controller.transcribedChunks)/\(controller.totalChunks)")
-                    .typo(.mono)
-                    .foregroundStyle(Palette.inkFaint)
+            .accessibilityElement(children: .combine)
+
+            Spacer(minLength: Space.s4)
+
+            // Counts while recording, holds the length while it is transcribed.
+            if isRecording || isTranscribing {
+                Text(controller.elapsed.formattedClock)
+                    .font(Typo.clockLarge)
+                    .foregroundStyle(isRecording ? Palette.ink : Palette.inkMuted)
                     .contentTransition(.numericText())
+                    .accessibilityLabel("Elapsed \(controller.elapsed.formattedClock)")
             }
-            Spacer()
-            // The clock reads zero at rest, counts while recording, and holds
-            // the recording's length while it is transcribed.
-            Text(sessionClock)
-                .font(Typo.clockLarge)
-                .foregroundStyle(isRecording ? Palette.ink : Palette.inkFaint)
-                .contentTransition(.numericText())
         }
+    }
+
+    /// The app-wide ready green when a recording can start; attention when
+    /// something is in the way (no Screen Recording access, a failed start).
+    private var restingTone: AppStatus.Tone {
+        if case .error = controller.state { return .attention }
+        return screenGranted ? .ready : .attention
     }
 
     private var sessionTitle: String {
@@ -441,124 +437,137 @@ struct MeetingsPane: View {
         }
     }
 
-    private var sessionClock: String {
-        switch controller.state {
-        case .recording, .transcribing: return controller.elapsed.formattedClock
-        case .idle, .error, .importing: return TimeInterval(0).formattedClock
+    /// What will be captured: "MacBook Pro Microphone + system audio". The
+    /// model is named once, in Recording Options. While transcribing, what is
+    /// happening instead.
+    private var sessionDetail: Text {
+        if isTranscribing { return Text(transcribingDetail) }
+        let mic = microphoneName ?? "Microphone"
+        return Text(screenGranted
+            ? "\(mic) + system audio"
+            : "\(mic) · system audio needs Screen Recording access")
+    }
+
+    /// The pinned microphone while it is connected, otherwise the system
+    /// default the recorder will fall back to.
+    private var microphoneName: String? {
+        let menu = MicrophoneMenu(
+            storedUID: micPreference.uid,
+            lastKnownName: micPreference.lastKnownName,
+            snapshot: inputMonitor.snapshot
+        )
+        if let uid = menu.selection,
+           let row = menu.devices.first(where: { $0.value == uid }),
+           row.detail == nil {
+            return row.title
         }
+        return inputMonitor.snapshot?.defaultInputName ?? micPreference.lastKnownName
     }
 
     @ViewBuilder
     private var sessionActions: some View {
         switch controller.state {
         case .idle, .error:
-            HStack(spacing: Space.s5) {
-                CapsuleActionButton(
-                    title: "Start Recording",
-                    systemImage: "record.circle"
-                ) {
+            actionRow(verb: "in any app") {
+                Button {
                     Task { await controller.start() }
+                } label: {
+                    Label("Start Conversation", systemImage: "record.circle")
                 }
+                .buttonTier(.primary)
                 .help(startRecordingHelp)
 
-                CapsuleActionButton(
-                    title: "Upload File…",
-                    systemImage: "waveform.badge.plus",
-                    style: .secondary,
-                    tint: Palette.ink
-                ) {
+                Button {
                     MediaFileImport.chooseAndImport()
+                } label: {
+                    Label("Transcribe File…", systemImage: "waveform.badge.plus")
                 }
-                .help("Transcribe an audio or video file already on this Mac")
-
-                Spacer(minLength: Space.s5)
-                conversationShortcutHint(verb: "from any app")
+                .buttonTier(.secondary)
+                .help("Transcribe an audio or video file already on this Mac. You can also drop one on this pane.")
             }
         case .recording:
-            HStack(spacing: Space.s5) {
-                CapsuleActionButton(
-                    title: "Stop & Transcribe",
-                    systemImage: "stop.fill"
-                ) {
+            actionRow(verb: "to stop") {
+                Button {
                     Task { await controller.stop() }
+                } label: {
+                    Label("Stop & Transcribe", systemImage: "stop.fill")
                 }
+                .buttonTier(.primary)
 
-                CapsuleActionButton(
-                    title: "Cancel",
-                    style: .secondary,
-                    tint: Palette.ink
-                ) {
+                Button("Cancel") {
                     Task { await controller.cancel() }
                 }
-
-                Spacer(minLength: Space.s5)
-                conversationShortcutHint(verb: "to stop")
+                .buttonTier(.secondary)
             }
-        case .transcribing:
-            Text(transcribingDetail)
-                .typo(.caption)
-                .foregroundStyle(Palette.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
-                // Holds the capsule row's height so the card doesn't shrink
-                // for the few seconds this state lasts.
-                .frame(maxWidth: .infinity, minHeight: Space.s8, alignment: .leading)
-        case .importing:
+        case .transcribing, .importing:
             EmptyView()
         }
     }
 
+    /// The buttons, and under them the shortcut as one caption line.
+    private func actionRow<Buttons: View>(
+        verb: String,
+        @ViewBuilder buttons: () -> Buttons
+    ) -> some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            HStack(spacing: Space.s4) { buttons() }
+            conversationShortcutHint(verb: verb)
+        }
+    }
+
     private func sessionError(_ message: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(Typo.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .accessibilityHidden(true)
             Text(message)
                 .typo(.caption)
-                .foregroundStyle(Palette.signalWarn)
+                .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
             // Only when the recording reached History: after a failed start or
             // a too-short stop there is nothing there to show.
             if controller.erroredRecording != nil {
                 Button("Show in History") { WindowOpener.shared.showMain(section: .history) }
-                    .buttonStyle(.plain)
-                    .typo(.captionMedium)
-                    .foregroundStyle(Palette.accent)
+                    .buttonStyle(TextLinkButtonStyle(font: Typo.captionMedium))
                     .fixedSize()
             }
             Button("Dismiss") { controller.dismissError() }
-                .buttonStyle(.plain)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
+                .buttonTier(.secondary)
+                .controlSize(.small)
+                .fixedSize()
         }
     }
 
-    /// The shortcut, at the trailing end of the action row. Background
-    /// recording is meant to be started and then left alone, so the key that
-    /// does it from another app sits next to the button that does it here —
-    /// and when there isn't one, the way to set it.
+    /// The shortcut, printed as keycaps. Background recording is meant to be
+    /// started and left alone, so the key that does it from another app sits
+    /// next to the button that does it here — and when there isn't one, the
+    /// way to set it.
     @ViewBuilder
     private func conversationShortcutHint(verb: String) -> some View {
         if let binding = hotkeyStore.meetingBinding {
-            HStack(spacing: Space.s3) {
-                Text("or press")
-                KeyCap(keys: binding.displayKeys)
-                Text(verb)
+            HStack(spacing: Space.s2) {
+                Text("Or press")
+                Keycap(keys: binding.displayKeys, size: .small)
+                Text("\(verb).")
             }
             .typo(.caption)
             .foregroundStyle(Palette.inkMuted)
             .fixedSize()
         } else if !isRecording {
-            Button("Set a shortcut to start from any app") {
+            Button("Set a Shortcut…") {
                 SettingsRouter.shared.pendingSection = .hotkey
             }
-            .buttonStyle(.plain)
-            .typo(.caption)
-            .multilineTextAlignment(.trailing)
-            .foregroundStyle(Palette.accent)
+            .buttonStyle(TextLinkButtonStyle(font: Typo.caption))
+            .help("Set a shortcut to start a conversation from any app")
+            .fixedSize()
         }
     }
 
     private var startRecordingHelp: String {
         let base = "Record a conversation — your mic plus everything you hear"
         guard let binding = hotkeyStore.meetingBinding else { return base }
-        return "\(base) (\(binding.displayKeys.joined()) from any app)"
+        return "\(base) (\(Keycap.spokenName(for: binding.displayKeys)) from any app)"
     }
 
     // MARK: - Drag-and-drop import
@@ -804,15 +813,8 @@ struct MeetingsPane: View {
 
     private func savedBanner(_ summary: String) -> some View {
         StatusLabel(level: .ready, text: summary)
-            .padding(.horizontal, Space.s3)
+            .padding(.horizontal, FormMetrics.rowHorizontalPadding)
             .transition(.opacity)
-    }
-
-    private var infoNote: some View {
-        Text("Record a conversation or upload an existing audio or video file — either way the audio and transcript are saved on this Mac in History. Long recordings are transcribed in segments with the transcription model chosen above.")
-            .typo(.caption)
-            .foregroundStyle(Palette.inkFaint)
-            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -822,16 +824,23 @@ struct MeetingsPane: View {
 /// Under Reduce Motion the live dot holds at 0.85 opacity instead of looping.
 private struct SessionDot: View {
     let isLive: Bool
+    var restingTone: AppStatus.Tone = .ready
     @State private var on = false
     @Environment(\.motion) private var motion
 
     var body: some View {
-        Circle()
-            .fill(isLive ? Palette.signalLive : Palette.inkFaint)
-            .frame(width: 10, height: 10)
-            .opacity(liveOpacity)
-            .onAppear { syncPulse() }
-            .onChange(of: isLive) { _, _ in syncPulse() }
+        Group {
+            if isLive {
+                Circle()
+                    .fill(Palette.signalLive)
+                    .frame(width: 10, height: 10)
+                    .opacity(liveOpacity)
+            } else {
+                StatusDot(restingTone, size: 10)
+            }
+        }
+        .onAppear { syncPulse() }
+        .onChange(of: isLive) { _, _ in syncPulse() }
     }
 
     private var liveOpacity: Double {

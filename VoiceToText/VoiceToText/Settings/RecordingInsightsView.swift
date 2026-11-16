@@ -3,17 +3,15 @@ import SwiftUI
 
 /// Everything the AI-insight layer of a recording row draws: the
 /// Transcript | Summary | Action Items | … tab bar, the panes behind it, and
-/// the "Format with AI" popover that collects a custom instruction.
+/// the "Ask AI" popover that collects a custom instruction.
 ///
 /// The row itself (`RecordingRow`) owns the *jobs* — starting a generation,
 /// switching to the tab it lands in, showing a failure — while this file owns
-/// the *reading* of what came back, and the form that asks for it. Splitting it
-/// that way keeps the row's hover chrome and the insight chrome from growing
-/// into one 900-line view, and it means the panes take plain values (text,
-/// items) rather than reaching into the store themselves.
+/// the *reading* of what came back, and the form that asks for it. The panes
+/// take plain values rather than reaching into the store themselves.
 ///
-/// Nothing here holds state that must survive the row: `FlushPlate` is lazy, so
-/// a row scrolled out of view is torn down. Which tab is selected therefore
+/// Nothing here holds state that must survive the row: rows are lazy, so a
+/// row scrolled out of view is torn down. Which tab is selected therefore
 /// lives in the enclosing pane (see `RecordingsList`) and arrives as a binding.
 
 // MARK: - Tabs
@@ -39,18 +37,6 @@ nonisolated enum InsightTab: Hashable, Sendable {
         case .summary: return InsightKind.summary.displayName
         case .actionItems: return InsightKind.actionItems.displayName
         case .custom(let id): return entry.customInsight(id: id)?.title ?? "Working…"
-        }
-    }
-
-    var symbolName: String {
-        switch self {
-        // Deliberately not "text.alignleft" — that belongs to the Summary tab
-        // (it is `InsightKind.summary.symbolName`), and two identical glyphs
-        // side by side would make the bar unreadable at 10pt.
-        case .transcript: return "text.quote"
-        case .summary: return InsightKind.summary.symbolName
-        case .actionItems: return InsightKind.actionItems.symbolName
-        case .custom(let id): return InsightKind.custom(id).symbolName
         }
     }
 
@@ -87,14 +73,17 @@ nonisolated enum InsightTab: Hashable, Sendable {
     ///
     /// `@MainActor` because it asks the generator what is running; the enum
     /// itself stays `nonisolated` like every other pure value type here.
+    /// `includingBuiltIns` keeps Summary and Action Items on the bar before
+    /// they exist (a conversation's row), where their panes offer to generate.
     @MainActor
     static func visible(
         for entry: RecordingHistoryEntry,
-        generator: TranscriptInsightGenerator
+        generator: TranscriptInsightGenerator,
+        includingBuiltIns: Bool = false
     ) -> [InsightTab] {
         var tabs: [InsightTab] = [.transcript]
         for kind in InsightKind.builtIns
-        where entry.hasInsight(kind) || generator.isRunning(entryID: entry.id, kind: kind) {
+        where includingBuiltIns || entry.hasInsight(kind) || generator.isRunning(entryID: entry.id, kind: kind) {
             tabs.append(kind.tab)
         }
         // The jobs that have not landed anywhere yet come first, for the same
@@ -161,238 +150,65 @@ extension InsightKind {
         switch self {
         case .summary: return "Summarizing…"
         case .actionItems: return "Finding action items…"
-        case .custom: return "Formatting…"
+        case .custom: return "Working…"
         }
     }
 }
 
-// MARK: - Tab bar
+// MARK: - View picker
 
-/// A compact capsule segmented control over one recording's views. Sized to its
-/// labels rather than the row width — it is a switch between readings of the
-/// same content, not a toolbar, and a full-width bar would out-shout the
-/// transcript underneath it.
+/// A small native segmented control over one recording's views — Transcript,
+/// Summary, Action Items (with its count) and any custom results. When custom
+/// results make it wider than the row, it becomes a pop-up menu instead.
 struct InsightTabBar: View {
     let entry: RecordingHistoryEntry
     let tabs: [InsightTab]
     @Binding var selection: InsightTab
 
     @Bindable private var generator = TranscriptInsightGenerator.shared
-    @Environment(\.motion) private var motion
-    @Namespace private var namespace
 
-    /// How wide a custom tab's label may get. Three words fit comfortably; the
-    /// cap exists for the model that ignores the three-word rule, which would
-    /// otherwise push Transcript and Summary off the row it is sitting in.
-    private static let customLabelMaxWidth: CGFloat = 110
-
-    /// How much of the right edge fades when there are more tabs than fit. Wide
-    /// enough to read as "this continues", narrow enough to leave the label
-    /// under it recognisable.
-    private static let overflowFadeWidth: CGFloat = 24
-
-    @State private var barWidth: CGFloat = 0
-    @State private var viewportWidth: CGFloat = 0
-
-    /// Whether the assembled bar is wider than the space it has.
-    ///
-    /// It genuinely can be. A full bar is six tabs — Transcript, Summary, Action
-    /// Items and three custom results — which measures well past 600pt with
-    /// typical model-written titles, against a viewport the pane caps at 608pt
-    /// in the default window and around 400pt at the minimum one. Four tabs
-    /// already overflow at the minimum width. So this is not a backstop: the
-    /// clip is a normal state that has to be visible, or the user is left with
-    /// a tab bar that silently ends mid-label and no gesture suggesting more.
-    private var isOverflowing: Bool { barWidth - viewportWidth > 0.5 }
+    /// A model-named custom title can ignore the three-word rule; this keeps
+    /// one from crowding the built-in segments.
+    private static let customTitleLimit = 18
 
     var body: some View {
-        ScrollView(.horizontal) {
-            HStack(spacing: Space.s1) {
-                ForEach(tabs, id: \.self) { tab in
-                    InsightTabSegment(
-                        title: tab.title(in: entry),
-                        symbolName: tab.symbolName,
-                        help: tab.help(in: entry),
-                        maxTitleWidth: tab.isCustom ? Self.customLabelMaxWidth : nil,
-                        isSelected: tab == selection,
-                        isRunning: isRunning(tab),
-                        badge: badge(for: tab),
-                        namespace: namespace
-                    ) {
-                        selection = tab
-                    }
-                }
-            }
-            // Scoped to the bar rather than wrapped around the write: `selection`
-            // writes through to the pane's tab map, so a `withAnimation` there would
-            // animate everything the swap causes — the pane swap and the row's whole
-            // height reflow, springing every row below it. `select` is the token for
-            // a selection capsule; the container's own reflow is `layout`, applied by
-            // `RecordingRow.contentSection`.
-            .animation(motion.select, value: selection)
-            .padding(Space.s1)
-            .background(Capsule(style: .continuous).fill(Palette.wellFill))
-            // Hug the labels: the track is the content, not the scroll area.
-            .fixedSize()
-            // macOS 15 geometry observer, as in `MinimalDropdown` — MainActor
-            // friendly, where a preference-key closure is not.
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { barWidth = $0 }
+        ViewThatFits(in: .horizontal) {
+            picker
+                .pickerStyle(.segmented)
+                .fixedSize()
+            picker
+                .pickerStyle(.menu)
+                .fixedSize()
         }
-        .scrollBounceBehavior(.basedOnSize)
-        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { viewportWidth = $0 }
-        // The cue that there is more bar than window: without it the right-most
-        // label is simply cut, which reads as a rendering glitch rather than as
-        // something to scroll. A mouse-only user has no horizontal gesture, so
-        // the scroller above is the other half of this.
-        .mask(alignment: .leading) {
-            if isOverflowing {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: fadeStart),
-                        .init(color: .clear, location: 1),
-                    ],
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-            } else {
-                Rectangle()
+        .controlSize(.small)
+    }
+
+    private var picker: some View {
+        Picker("View", selection: $selection) {
+            ForEach(tabs, id: \.self) { tab in
+                Text(label(for: tab))
+                    .tag(tab)
+                    .help(tab.help(in: entry))
             }
         }
-        // A horizontal ScrollView is greedy in both axes. Pin its height to the
-        // bar's own so the row does not grow a scroll gutter, and keep it
-        // left-aligned inside the row's leading stack.
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Recording views")
+        .labelsHidden()
+        .accessibilityLabel("Recording view")
     }
 
-    /// Where the trailing fade begins, as a fraction of the viewport. Derived
-    /// rather than fixed so the fade stays `overflowFadeWidth` points wide
-    /// whatever the window is doing to the bar.
-    private var fadeStart: CGFloat {
-        guard viewportWidth > Self.overflowFadeWidth else { return 0 }
-        return 1 - Self.overflowFadeWidth / viewportWidth
-    }
-
-    private func isRunning(_ tab: InsightTab) -> Bool {
-        guard let kind = tab.kind else { return false }
-        return generator.isRunning(entryID: entry.id, kind: kind)
-    }
-
-    /// The Action Items tab carries its count, so the user can see there are
-    /// seven of them without opening the tab. Nothing else is badged.
-    private func badge(for tab: InsightTab) -> Int? {
-        guard tab == .actionItems else { return nil }
-        let count = entry.actionItems?.items.count ?? 0
-        return count > 0 ? count : nil
-    }
-}
-
-/// One segment of the bar. Its own view so the hover lift is per-segment state
-/// rather than a dictionary in the bar.
-///
-/// Takes its label as a plain string rather than the tab: a custom result's
-/// title lives on the recording, and resolving it here would mean handing every
-/// segment the whole entry to read one word out of.
-private struct InsightTabSegment: View {
-    let title: String
-    let symbolName: String
-    let help: String
-    /// Set only for a model-named label, which is the one this app cannot size
-    /// itself against; `nil` lets the app's own titles size naturally.
-    let maxTitleWidth: CGFloat?
-    let isSelected: Bool
-    let isRunning: Bool
-    let badge: Int?
-    let namespace: Namespace.ID
-    let action: () -> Void
-
-    @Environment(\.motion) private var motion
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Space.s2) {
-                leading
-                Text(title)
-                    .typo(.captionMedium)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .frame(maxWidth: maxTitleWidth, alignment: .leading)
-                if let badge {
-                    Text("\(badge)")
-                        .typo(.mono)
-                }
-            }
-            .foregroundStyle(labelInk)
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-            .background {
-                if isSelected {
-                    // ONE pill per bar: it slides between segments instead of
-                    // fading out here and in over there.
-                    //
-                    // Filled with the accent wash, like every other selection
-                    // capsule in the app (`SettingsSidebar`, `IOSGroupedList`).
-                    // `Palette.plate` is what `Palette.wellFill` is composited
-                    // *on*, so a plate pill on the bar's own track was a ~1.1:1
-                    // difference — under the 3:1 a state indicator needs, with no
-                    // Increase Contrast variant to rescue it, and indistinguishable
-                    // from the hover fill below.
-                    Capsule(style: .continuous)
-                        .fill(Palette.accent.opacity(0.16))
-                        .matchedGeometryEffect(id: "insights.tab.selection", in: namespace)
-                } else if isHovering {
-                    // Stacked on the track's own wellFill this composites to about
-                    // 9% ink: a visible step that still sits clearly below the
-                    // accent selection, so hover can never read as selected.
-                    Capsule(style: .continuous)
-                        .fill(Palette.wellFill)
-                }
-            }
-            .contentShape(Capsule(style: .continuous))
+    /// "Action Items 3", "Summarizing…" while its job runs, a custom title cut
+    /// to fit.
+    private func label(for tab: InsightTab) -> String {
+        if let kind = tab.kind, generator.isRunning(entryID: entry.id, kind: kind) {
+            return kind.runningLabel
         }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            withAnimation(motion.hover) { isHovering = hovering }
+        var title = tab.title(in: entry)
+        if tab.isCustom, title.count > Self.customTitleLimit {
+            title = String(title.prefix(Self.customTitleLimit - 1)) + "…"
         }
-        .help(help)
-        // The badge and the spinner are the two things this segment exists to
-        // carry, and both are visual-only — an `accessibilityLabel` alone would
-        // replace them with a bare title, announcing a seven-item checklist
-        // exactly like an empty one.
-        .accessibilityLabel(badge.map { "\(title), \($0) items" } ?? title)
-        .accessibilityValue(isRunning ? "Generating" : "")
-        .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-    }
-
-    /// The spinner replaces the symbol while that tab's job runs, so a running
-    /// generation is visible even from the tab the user is currently reading.
-    @ViewBuilder
-    private var leading: some View {
-        if isRunning {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.6)
-                // `scaleEffect` shrinks the drawing, not the layout slot, so
-                // the spinner is boxed to about the symbol's size — otherwise
-                // the whole bar jumps wider the moment a job starts.
-                .frame(width: Space.s5, height: Space.s5)
-        } else {
-            Image(systemName: symbolName)
-                .font(Typo.micro)
-                .frame(width: Space.s5, height: Space.s5)
+        if tab == .actionItems, let count = entry.actionItems?.items.count, count > 0 {
+            return "\(title) \(count)"
         }
-    }
-
-    /// Accent is the load-bearing cue for selection, so hover cannot mimic it:
-    /// a hovered unselected segment reads as plain ink under a quiet fill, never
-    /// as the selected treatment.
-    private var labelInk: Color {
-        if isSelected { return Palette.accent }
-        return isHovering ? Palette.ink : Palette.inkMuted
+        return title
     }
 }
 
@@ -401,8 +217,8 @@ private struct InsightTabSegment: View {
 /// The body behind the Summary, Action Items or a custom tab: a header strip
 /// (when it was generated — or, for a custom result, what was asked — plus
 /// copy, remove and for a custom result a re-run), a stale banner when the
-/// transcript has moved on since, and the insight itself — or, when nothing has
-/// been generated yet, the running state.
+/// transcript has moved on since, and the insight itself — or, before anything
+/// exists, the running state or a Generate button.
 ///
 /// Content the user is reading is never blanked out for a spinner: a
 /// regeneration over an existing insight keeps the old one on screen and puts
@@ -410,6 +226,8 @@ private struct InsightTabSegment: View {
 struct InsightPane: View {
     let entry: RecordingHistoryEntry
     let kind: InsightKind
+    /// "Sends the transcript to OpenAI (…)", printed beside Generate.
+    let sendsTranscriptNote: String
     /// Flips one action item's done state. Ignored by the summary pane.
     let onToggleActionItem: (UUID) -> Void
     /// Drops just this insight from the recording.
@@ -453,6 +271,8 @@ struct InsightPane: View {
                 content
             } else if isRunning {
                 runningRow
+            } else if !kind.isCustom {
+                generatePrompt
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -474,33 +294,20 @@ struct InsightPane: View {
                     .foregroundStyle(faintInk)
             }
             Spacer(minLength: Space.s4)
-            // Custom results are the only insight with no menu command of their
-            // own — the sparkles menu offers "Custom prompt…", not "Regenerate
-            // Meeting Minutes" — so the way to run one again lives here.
+            // Custom results have no menu command of their own (the ⋯ menu
+            // offers "Ask AI…", not "Regenerate Meeting Minutes"), so the way
+            // to run one again lives here.
             if kind.isCustom {
-                InsightIconButton(
-                    systemName: "arrow.clockwise",
-                    tint: Palette.inkMuted,
-                    help: regenerateHelp,
-                    action: onRegenerate
-                )
-                .disabled(isRunning)
-                .accessibilityLabel("Run this instruction again")
+                IconButton("arrow.clockwise", label: "Run this instruction again", action: onRegenerate)
+                    .disabled(isRunning)
             }
-            InsightIconButton(
-                systemName: copied ? "checkmark" : "doc.on.doc",
-                tint: copied ? Palette.signalReady : Palette.inkMuted,
-                help: copyHelp,
+            IconButton(
+                copied ? "checkmark" : "doc.on.doc",
+                label: copied ? "Copied" : copyHelp,
+                tint: copied ? Palette.signalReady : nil,
                 action: copy
             )
-            .accessibilityLabel(copyHelp)
-            InsightIconButton(
-                systemName: "trash",
-                tint: Palette.inkMuted,
-                help: "Remove this \(kind.commandNoun)",
-                action: onRemove
-            )
-            .accessibilityLabel("Remove this \(kind.commandNoun)")
+            IconButton("trash", label: "Remove this \(kind.commandNoun)", action: onRemove)
         }
     }
 
@@ -569,10 +376,9 @@ struct InsightPane: View {
                 .typo(.caption)
                 .foregroundStyle(Palette.signalWarn)
                 .fixedSize(horizontal: false, vertical: true)
-            Button(kind.isCustom ? "Run again" : "Regenerate", action: onRegenerate)
-                .buttonStyle(.plain)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
+            Button(kind.isCustom ? "Run Again" : "Regenerate", action: onRegenerate)
+                .buttonTier(.secondary)
+                .controlSize(.small)
                 .disabled(isRunning)
                 .help(regenerateHelp)
         }
@@ -586,6 +392,29 @@ struct InsightPane: View {
         kind.isCustom
             ? "Run this instruction again on the current transcript"
             : "Generate the \(kind.commandNoun) again from the current transcript"
+    }
+
+    /// Nothing generated yet: one button, and what pressing it sends where.
+    private var generatePrompt: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .firstTextBaseline, spacing: Space.s4) { generatePromptContent }
+            VStack(alignment: .leading, spacing: Space.s3) { generatePromptContent }
+        }
+        .padding(.vertical, Space.s1)
+    }
+
+    @ViewBuilder
+    private var generatePromptContent: some View {
+        Button(action: onRegenerate) {
+            Label(kind == .summary ? "Generate Summary" : "Find Action Items", systemImage: "sparkles")
+        }
+        .buttonTier(.secondary)
+        .fixedSize()
+        .help(sendsTranscriptNote)
+        Text(sendsTranscriptNote)
+            .typo(.caption)
+            .foregroundStyle(faintInk)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
     /// First-run state: nothing to read yet, so the pane *is* the progress.
@@ -669,7 +498,7 @@ struct InsightPane: View {
 
 // MARK: - Custom prompt
 
-/// The "Format with AI" form: one instruction, typed by the user, that the model
+/// The "Ask AI" form: one instruction, typed by the user, that the model
 /// applies to this recording's transcript. The result comes back as its own tab
 /// beside Summary and Action Items.
 ///
@@ -708,7 +537,7 @@ struct CustomPromptPopover: View {
 
     /// The popover's width. Wide enough for a sentence of instruction at three
     /// lines, narrow enough to still read as a popover rather than a sheet.
-    private static let width: CGFloat = 300
+    private static let width: CGFloat = 320
 
     private var trimmed: String {
         instruction.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -721,10 +550,10 @@ struct CustomPromptPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: Space.s5) {
             VStack(alignment: .leading, spacing: Space.s2) {
-                Text("Format with AI")
+                Text("Ask AI")
                     .typo(.headline)
                     .foregroundStyle(Palette.ink)
-                Text("Applies your instruction to this recording's transcript and keeps the result in its own tab.")
+                Text("Your instruction runs on this transcript and the answer opens in its own tab. Sends the transcript to OpenAI.")
                     .typo(.caption)
                     .foregroundStyle(Palette.inkMuted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -742,16 +571,14 @@ struct CustomPromptPopover: View {
 
             HStack(spacing: Space.s4) {
                 Spacer(minLength: Space.s4)
-                CapsuleActionButton(
-                    title: "Format",
-                    systemImage: "wand.and.sparkles",
-                    isDisabled: trimmed.isEmpty || isFull,
-                    action: submit
-                )
+                Keycap(keys: ["⌘", "↩"], size: .small)
                 // ⌘↩ rather than ↩: the field is multi-line, so Return belongs to
                 // the text being typed.
-                .keyboardShortcut(.return, modifiers: .command)
-                .help("Apply this instruction to the transcript (⌘↩)")
+                Button("Ask", action: submit)
+                    .buttonTier(.primary)
+                    .disabled(trimmed.isEmpty || isFull)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .help("Run this instruction on the transcript (⌘↩)")
             }
 
             if !promptStore.prompts.isEmpty {
@@ -811,9 +638,8 @@ struct CustomPromptPopover: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Button("Dismiss", action: onDismissFailure)
-                .buttonStyle(.plain)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
+                .buttonTier(.secondary)
+                .controlSize(.small)
                 .help("Hide this message")
         }
     }
@@ -825,7 +651,7 @@ struct CustomPromptPopover: View {
             Image(systemName: "exclamationmark.triangle")
                 .font(Typo.micro)
                 .foregroundStyle(Palette.signalWarn)
-            Text("This recording already has \(maxCount) formatted results. Remove one to add another.")
+            Text("This recording already has \(maxCount) AI results. Remove one to add another.")
                 .typo(.caption)
                 .foregroundStyle(Palette.signalWarn)
                 .fixedSize(horizontal: false, vertical: true)
@@ -840,9 +666,9 @@ struct CustomPromptPopover: View {
     private var recentSection: some View {
         VStack(alignment: .leading, spacing: Space.s3) {
             Text("Recent")
-                .typo(.micro)
-                .textCase(.uppercase)
-                .foregroundStyle(faintInk)
+                .typo(.captionMedium)
+                .foregroundStyle(Palette.inkMuted)
+                .accessibilityAddTraits(.isHeader)
             VStack(alignment: .leading, spacing: Space.s1) {
                 ForEach(promptStore.prompts) { prompt in
                     RecentPromptRow(
@@ -870,20 +696,18 @@ struct CustomPromptPopover: View {
     }
 }
 
-/// One remembered instruction: tap the text to load it into the field, the
-/// xmark to forget it. Its own view so the hover wash is per-row state.
+/// One remembered instruction: click the text to load it into the field, the
+/// xmark to forget it. Both always visible, so the keyboard reaches what it sees.
 private struct RecentPromptRow: View {
     let instruction: String
     let onUse: () -> Void
     let onForget: () -> Void
 
     @Environment(\.motion) private var motion
-    @Environment(\.increaseContrast) private var increaseContrast
     @State private var isHovering = false
-    @FocusState private var isForgetFocused: Bool
 
     var body: some View {
-        HStack(spacing: Space.s2) {
+        HStack(spacing: Space.s1) {
             Button(action: onUse) {
                 Text(instruction)
                     .typo(.caption)
@@ -897,29 +721,10 @@ private struct RecentPromptRow: View {
             .help("Use “\(instruction)”")
             .accessibilityLabel("Use instruction: \(instruction)")
 
-            Button(action: onForget) {
-                Image(systemName: "xmark")
-                    .font(Typo.micro)
-                    .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                    // The 22pt hit area of the insight header's icon buttons, so
-                    // a 10pt glyph is still a real target.
-                    .frame(width: 22, height: 22)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .focused($isForgetFocused)
-            // Revealed by hover *or* by focus. Keeping it in the tree made it
-            // reachable by keyboard, but at opacity 0 that meant Full Keyboard
-            // Access drawing a focus ring around blank space, and Space quietly
-            // forgetting an instruction the user was never shown a control for.
-            // Never hidden from VoiceOver either, for the same reason.
-            .opacity(isHovering || isForgetFocused ? 1 : 0)
-            .help("Forget this instruction")
-            .accessibilityLabel("Forget instruction: \(instruction)")
-            .accessibilityHidden(false)
+            IconButton("xmark", label: "Forget this instruction", action: onForget)
+                .accessibilityLabel("Forget instruction: \(instruction)")
         }
-        .padding(.horizontal, Space.s3)
-        .padding(.vertical, Space.s1)
+        .padding(.leading, Space.s3)
         .background(
             RoundedRectangle(cornerRadius: Radius.minimum, style: .continuous)
                 .fill(isHovering ? Palette.wellFill : Color.clear)
@@ -966,12 +771,9 @@ struct SummaryTabContent: View {
                 blockView(block, isFirst: block.id == 0)
             }
             if blocks.count > Self.collapsedBlockLimit {
-                Button(expanded ? "Show less" : "Show more") {
+                ShowMoreButton(expanded: expanded) {
                     withAnimation(motion.layout) { expanded.toggle() }
                 }
-                .buttonStyle(.plain)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.accent)
             }
         }
         .textSelection(.enabled)
@@ -984,7 +786,7 @@ struct SummaryTabContent: View {
         case .paragraph:
             Text(block.text)
                 .typo(.body)
-                .foregroundStyle(Palette.inkMuted)
+                .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
         case .bullet:
@@ -996,18 +798,15 @@ struct SummaryTabContent: View {
                     .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
                 Text(block.text)
                     .typo(.body)
-                    .foregroundStyle(Palette.inkMuted)
+                    .foregroundStyle(Palette.ink)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
         case .heading:
-            // A label above its points, not a shout: the body around it is
-            // `.body` in `Palette.inkMuted`, so one step smaller and one step
-            // darker is all it takes to read as a different kind of line. The
-            // air above separates this group from the previous one, which the
-            // very first block has nothing to separate from.
+            // Same size as the body, semibold. The air above separates this
+            // group from the previous one; the first block needs none.
             Text(block.text)
-                .typo(.captionMedium)
+                .typo(.headline)
                 .foregroundStyle(Palette.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -1102,28 +901,6 @@ struct ActionItemsTabContent: View {
 }
 
 // MARK: - Shared pieces
-
-/// The 22pt icon button of the insight header strip — the same size, weight and
-/// copy-confirmation behaviour as `TranscriptBlockView`'s per-version controls,
-/// so the two strips of chrome inside one recording read as one family.
-private struct InsightIconButton: View {
-    let systemName: String
-    let tint: Color
-    let help: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(Typo.captionMedium)
-                .foregroundStyle(tint)
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-    }
-}
 
 /// How fresh an insight is, in the header strip's tertiary line.
 nonisolated enum InsightTimestamp {

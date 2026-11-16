@@ -47,13 +47,11 @@ struct UndoDeletionToast: View {
                         UndoCountdownRing(countdown: countdown)
                     }
                     Text("Undo")
-                        .typo(.headline)
                 }
-                .foregroundStyle(Palette.accent)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonTier(.secondary)
             .keyboardShortcut("z", modifiers: .command)
+            .help("Undo (⌘Z)")
             .accessibilityLabel("Undo deletion")
         }
         .padding(.horizontal, Space.s6)

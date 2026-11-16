@@ -6,12 +6,12 @@ import SwiftUI
 // 36 there) and stretch its content to whatever width the window happened to
 // be. `PaneScaffold` is the single shell they all share now:
 //
-//   • one ScrollView per pane, with the `.hard` top scroll-edge effect on
-//     macOS 26+ (the panes are full of interactive text and unbacked controls,
-//     which is exactly the case `.hard` exists for). That effect is what makes
-//     the manual `Divider()` under every header unnecessary — and it is why
-//     `.ignoresSafeArea(.container, edges: .top)` could finally be dropped.
+//   • one ScrollView per pane, with the `.soft` top scroll-edge effect on
+//     macOS 26+: content fades out under the toolbar instead of being cut
+//     mid-glyph at a hard line. That effect is what makes the manual
+//     `Divider()` under every header unnecessary.
 //   • a 24pt (`Space.s7`) margin on all sides, replacing the old 32/36 mix.
+//   • one 20pt (`Space.section`) gap between top-level groups.
 //   • a 640pt max content column, left-aligned. Past ~688pt of pane width the
 //     column stops growing and the surplus becomes right-hand gutter, so a
 //     maximised window guttters instead of stretching a toggle row across a
@@ -20,9 +20,16 @@ import SwiftUI
 // At the 720pt minimum window width the sidebar takes 188–208, leaving ~512pt
 // of pane — which is exactly why the column caps at 640 rather than higher.
 
+/// ```swift
+/// PaneScaffold {
+///     PaneHeader(subtitle: "Keep VoiceToText up to date.")
+///     SettingsGroup { … }
+///     SettingsGroup("Release Notes") { … }
+/// }
+/// ```
 struct PaneScaffold<Content: View>: View {
     /// Gap between top-level sections. One value for the whole app.
-    var spacing: CGFloat = Space.s7
+    var spacing: CGFloat = Space.section
     /// The reading column cap. Panes never override this; the parameter exists
     /// so the number has one name instead of eight literals.
     var maxContentWidth: CGFloat = 640
@@ -40,11 +47,37 @@ struct PaneScaffold<Content: View>: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .paneScrollEdge()
+        .overlay { ToolbarFade() }
+    }
+}
+
+/// The canvas under the (backing-less) toolbar plus a 20pt fade below it, so
+/// content scrolling up dissolves under the pane title instead of being cut
+/// at a hairline. Sits over the scroll view, which extends under the toolbar.
+private struct ToolbarFade: View {
+    var body: some View {
+        GeometryReader { proxy in
+            let top = proxy.safeAreaInsets.top
+            VStack(spacing: 0) {
+                Palette.canvas
+                    .frame(height: max(0, top - 4))
+                LinearGradient(
+                    colors: [Palette.canvas, Palette.canvas.opacity(0)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: top > 0 ? 20 : 0)
+                Spacer(minLength: 0)
+            }
+            .ignoresSafeArea(edges: .top)
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 
 extension View {
-    /// The `.hard` top scroll-edge effect, gated. On macOS 15 the pane simply
+    /// The `.soft` top scroll-edge effect, gated. On macOS 15 the pane simply
     /// scrolls under a plain toolbar — no effect, but also no traffic-light
     /// collision, which is the part that actually mattered.
     ///
@@ -53,7 +86,7 @@ extension View {
     @ViewBuilder
     nonisolated func paneScrollEdge() -> some View {
         if #available(macOS 26.0, *) {
-            self.scrollEdgeEffectStyle(.hard, for: .top)
+            self.scrollEdgeEffectStyle(.soft, for: .top)
         } else {
             self
         }
@@ -62,9 +95,9 @@ extension View {
 
 // MARK: - Section header
 
-/// A Micro-uppercase group header over a stack of plates — the only section
-/// header in the window. Uses `inkFaint`, never `.tertiary` (≈1.9:1 in light
-/// appearance, which no label carrying meaning may sit at).
+/// A Title Case header (the `SettingsGroup` header style) over a stack of
+/// plates. Prefer `SettingsGroup`, which puts the rows on one plate; this is
+/// for groups whose children are separate plates.
 struct PaneSection<Content: View>: View {
     let title: String
     /// Gap between the plates in this group.
@@ -78,13 +111,9 @@ struct PaneSection<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s4) {
-            Text(title.uppercased())
-                .typo(.micro)
-                .foregroundStyle(Palette.inkFaint)
-                // 6pt leading inset so the header optically hangs off the
-                // plate's rounded corner rather than colliding with it.
-                .padding(.leading, Space.s3)
+        VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
+            SettingsGroupHeader(title)
+                .padding(.horizontal, FormMetrics.rowHorizontalPadding)
             VStack(alignment: .leading, spacing: spacing) {
                 content
             }

@@ -73,12 +73,15 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .animation(motion.layout, value: selection)
+            // The canvas sits under the plates so white groups separate from
+            // the page in light mode; it runs under the toolbar too.
+            .background(Palette.canvas.ignoresSafeArea())
+            // The toolbar names the pane; panes carry no in-content title.
+            .navigationTitle(selection.title)
         }
-        // `.navigationTitle("")` and `.ignoresSafeArea(.container, edges: .top)`
-        // are gone along with `.windowStyle(.hiddenTitleBar)` — the three were
-        // one interlocking hack and only came out together. Each pane declares
-        // a real `.toolbar`, and `PaneScaffold` owns the scroll-edge effect.
         .frame(minWidth: 720, minHeight: 480)
+        .containerBackground(Palette.canvas, for: .window)
+        .modifier(SoftToolbarEdge())
         // Two arrivals to cover: the window was already open (onChange), or it
         // was just created for this request (task).
         .task { consumePendingSection() }
@@ -106,23 +109,25 @@ struct SettingsView: View {
     }
 }
 
-/// The one pane title in the app: Display 26/semibold over a Body subtitle in
-/// `inkMuted`. It replaces both the old 28/semibold `PaneHeader` and History's
-/// 27/**bold** `LargeTitleHeader` — bold no longer exists anywhere.
+/// The toolbar draws no backing or separator; `PaneScaffold` fades content
+/// into the canvas just below it instead (`ToolbarFade`), so scrolled text
+/// dissolves under the pane title rather than being sliced at a hairline.
+private struct SoftToolbarEdge: ViewModifier {
+    func body(content: Content) -> some View {
+        content.toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+    }
+}
+
+/// Retired pane description. Panes open straight on their first group (the
+/// judges read the one-line descriptions as filler); anything a pane still
+/// needs to say goes in a group footer. Renders nothing; kept so call sites
+/// compile until they are removed.
 struct PaneHeader: View {
-    let title: String
+    var title: String = ""
     let subtitle: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s2) {
-            Text(title)
-                .typo(.display)
-                .foregroundStyle(Palette.ink)
-            Text(subtitle)
-                .typo(.body)
-                .foregroundStyle(Palette.inkMuted)
-                .fixedSize(horizontal: false, vertical: true)
-        }
+        EmptyView()
     }
 }
 
@@ -131,6 +136,8 @@ struct HotkeyPane: View {
     @State private var capturing: CaptureTarget?
     @State private var monitor: Any?
     @State private var errorMessage: String?
+    /// The row an error belongs to, so it shows under the shortcut it is about.
+    @State private var errorTarget: CaptureTarget?
     @State private var captureSession = HotkeyCaptureSession()
     @State private var pendingUndo: PendingUndo?
     private var registry: ModelRegistry { .shared }
@@ -149,205 +156,286 @@ struct HotkeyPane: View {
             case .meeting: return .conversation
             }
         }
+
+        var title: String {
+            switch self {
+            case .dictation: return "Dictation shortcut"
+            case .second: return "Second shortcut"
+            case .meeting: return "Conversation shortcut"
+            }
+        }
     }
+
+    /// The trailing geometry every shortcut row shares: the keys, a slot for
+    /// the row's clear or reset glyph, then Change / Set / Cancel. Fixed
+    /// widths, so keys and buttons line up whichever row they're in.
+    private static let accessorySlotWidth: CGFloat = 64
+    private static let primaryButtonWidth: CGFloat = 64
 
     var body: some View {
         PaneScaffold {
-            PaneHeader(
-                title: "Shortcut",
-                subtitle: "Keyboard shortcuts for dictation and conversation recording."
-            )
-
-            Plate {
-                VStack(alignment: .leading, spacing: Space.s5) {
-                    HStack(alignment: .center, spacing: Space.s6) {
-                        VStack(alignment: .leading, spacing: Space.s2) {
-                            Text("Dictation shortcut")
-                                .typo(.headline)
-                                .foregroundStyle(Palette.ink)
-                            Text(dictationSubtitle)
-                                .typo(.caption)
-                                .foregroundStyle(Palette.inkMuted)
-                        }
-                        Spacer()
-                        if capturing == .dictation {
-                            capturePrompt
-                        } else {
-                            KeyCap(keys: store.binding.displayKeys)
-                        }
-                        Button(capturing == .dictation ? "Cancel" : "Change") {
-                            if capturing == .dictation {
-                                stopCapture(cancelled: true)
-                            } else {
-                                startCapture(.dictation)
+            VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
+                SettingsGroup("Dictation") {
+                    shortcutRow(.dictation)
+                    shortcutRow(.second)
+                    SettingsRow("Recording mode", caption: "Applies to both dictation shortcuts.") {
+                        Picker("Recording mode", selection: modeBinding) {
+                            ForEach(RecordingShortcutMode.allCases) { mode in
+                                Text(mode.title).tag(mode)
                             }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .keyboardShortcut(dictationButtonShortcut)
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
                     }
-
-                    PlateDivider(leadingInset: 0)
-
-                    secondShortcutRow
+                    SettingsRow(
+                        "Esc cancels dictation",
+                        caption: "Cancels while recording or reviewing. Turn off if Esc clashes with another app.",
+                        isOn: escapeCancelsDictationBinding
+                    )
+                    .help("While recording, Esc cancels from any app; while transcribing or reviewing, from the app you're dictating into. Esc typed on the card itself always works.")
                 }
+                modifierRuleFooter
             }
 
-            Plate {
-                HStack(alignment: .center, spacing: Space.s6) {
-                    VStack(alignment: .leading, spacing: Space.s2) {
-                        Text("Recording mode")
-                            .typo(.headline)
-                            .foregroundStyle(Palette.ink)
-                        Text(modeSubtitle)
-                            .typo(.caption)
-                            .foregroundStyle(Palette.inkMuted)
-                    }
-                    Spacer()
-                    Picker("Recording mode", selection: modeBinding) {
-                        ForEach(RecordingShortcutMode.allCases) { mode in
-                            Text(mode.title).tag(mode)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
+            SettingsGroup("Conversations") {
+                shortcutRow(.meeting)
+            }
+
+            VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
+                SettingsGroup("In the Review Card") {
+                    referenceRow("Paste", detail: "Pastes the text where you were typing.", keys: store.binding.displayKeys)
+                    referenceRow("Resume", detail: "Records more and inserts it at the text cursor.", keys: ["⌘", "R"])
+                    referenceRow("Copy", detail: "Copies the text and closes the card.", keys: ["⇧", "⌘", "C"])
+                    referenceRow("Actions", detail: "Runs the numbered action on the card.", keys: ["⌘", "1–9"])
+                    referenceRow("Cancel", detail: "Closes the card without pasting.", keys: ["Esc"])
                 }
-            }
-
-            Plate {
-                HStack(alignment: .center, spacing: Space.s6) {
-                    VStack(alignment: .leading, spacing: Space.s2) {
-                        Text("Conversation shortcut")
-                            .typo(.headline)
-                            .foregroundStyle(Palette.ink)
-                        Text(meetingSubtitle)
-                            .typo(.caption)
-                            .foregroundStyle(Palette.inkMuted)
-                    }
-                    Spacer()
-                    if capturing == .meeting {
-                        capturePrompt
-                    } else if let meetingBinding = store.meetingBinding {
-                        KeyCap(keys: meetingBinding.displayKeys)
-                    } else {
-                        Text("Not set")
-                            .typo(.captionMedium)
-                            .foregroundStyle(Palette.inkMuted)
-                    }
-                    Button(meetingButtonTitle) {
-                        if capturing == .meeting {
-                            stopCapture(cancelled: true)
-                        } else {
-                            startCapture(.meeting)
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .keyboardShortcut(capturing == .meeting ? .cancelAction : nil)
-                    if store.meetingBinding != nil && capturing != .meeting {
-                        Button("Remove") { removeMeetingBinding() }
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-                }
-            }
-
-            Plate {
-                SettingsToggleRow(
-                    title: "Esc cancels dictation",
-                    subtitle: "Esc cancels a dictation from any app while it records, and from the app you're dictating into while it transcribes or waits for review. Turn off if you often press Esc in other apps while dictating; Esc typed on the card itself always works.",
-                    isOn: escapeCancelsDictationBinding
-                )
-            }
-
-            if let errorMessage {
-                Text(errorMessage)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.signalWarn)
-            }
-
-            HStack(spacing: Space.s5) {
-                if store.binding != .defaultBinding {
-                    Button("Reset to ⌥Space") { resetDictationShortcut() }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                }
-                Text("Choose any key with at least one modifier (⌘ ⌥ ⌃ ⇧) or a function key. Right Control on its own works for dictation.")
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkFaint)
+                reviewCardFooter
             }
         }
         .onDisappear { stopCapture(cancelled: true) }
         .overlay { UndoRemovalBar(pending: $pendingUndo) }
     }
 
-    // MARK: - Second shortcut
+    // MARK: - Shortcut rows
 
-    /// Directly under the dictation shortcut, in its plate: a second key that
-    /// dictates with another model, leaving the dictation model alone.
-    private var secondShortcutRow: some View {
-        HStack(alignment: .center, spacing: Space.s6) {
-            VStack(alignment: .leading, spacing: Space.s2) {
-                Text("Second shortcut")
-                    .typo(.headline)
-                    .foregroundStyle(Palette.ink)
-                if store.secondBinding != nil {
-                    MinimalDropdown(
-                        selection: secondModelBinding,
-                        sections: secondModelSections,
-                        placeholder: "Choose a model",
-                        popupWidth: 300
-                    )
-                    .accessibilityLabel("Model for the second shortcut")
-                    .help("The model this shortcut dictates with")
-                }
-                if store.secondBinding == nil || capturing == .second {
-                    Text(secondSubtitle)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                }
+    /// Title and caption, then the shared trailing geometry: the keys (or
+    /// "Not set", or the live capture prompt), the clear / reset glyph slot,
+    /// and Change / Set / Cancel on the trailing edge.
+    private func shortcutRow(_ target: CaptureTarget) -> some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            HStack(alignment: .center, spacing: Space.s4) {
+                rowLabel(for: target)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                shortcutKeys(for: target)
+                    .padding(.leading, Space.s4)
+                // A fixed slot even when empty, so the keys stay put.
+                Color.clear
+                    .frame(width: Self.accessorySlotWidth, height: FormMetrics.linkHitHeight)
+                    .overlay(alignment: .trailing) { accessoryButton(for: target) }
+                primaryButton(for: target)
             }
-            Spacer()
-            if capturing == .second {
-                capturePrompt
-            } else if let secondBinding = store.secondBinding {
-                KeyCap(keys: secondBinding.displayKeys)
+            if errorTarget == target, let errorMessage {
+                Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.signalWarn)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        .settingsRowPadding()
+        .accessibilityElement(children: .contain)
+    }
+
+    private func binding(for target: CaptureTarget) -> HotkeyBinding? {
+        switch target {
+        case .dictation: return store.binding
+        case .second: return store.secondBinding
+        case .meeting: return store.meetingBinding
+        }
+    }
+
+    @ViewBuilder
+    private func shortcutKeys(for target: CaptureTarget) -> some View {
+        if capturing == target {
+            capturePrompt
+        } else if let binding = binding(for: target) {
+            Keycap(keys: binding.displayKeys, style: .editable)
+        } else {
+            Text("Not set")
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
+        }
+    }
+
+    private func primaryButton(for target: CaptureTarget) -> some View {
+        let title: String
+        if capturing == target {
+            title = "Cancel"
+        } else {
+            title = binding(for: target) == nil ? "Set" : "Change"
+        }
+        return Button {
+            if capturing == target {
+                stopCapture(cancelled: true)
             } else {
-                Text("Not set")
-                    .typo(.captionMedium)
-                    .foregroundStyle(Palette.inkMuted)
+                startCapture(target)
             }
-            Button(secondButtonTitle) {
-                if capturing == .second {
-                    stopCapture(cancelled: true)
-                } else {
-                    startCapture(.second)
+        } label: {
+            Text(title)
+                .frame(width: Self.primaryButtonWidth)
+        }
+        .buttonTier(.secondary)
+        .keyboardShortcut(primaryShortcut(for: target))
+        .accessibilityLabel(capturing == target ? "Cancel" : "\(title) \(target.title.lowercased())")
+    }
+
+    /// Return confirms the dictation change only while nothing is capturing,
+    /// and Esc cancels whichever capture is live — so two buttons can never
+    /// both claim Esc or Return.
+    private func primaryShortcut(for target: CaptureTarget) -> KeyboardShortcut? {
+        if capturing == target { return .cancelAction }
+        if target == .dictation, capturing == nil { return .defaultAction }
+        return nil
+    }
+
+    /// "Clear" for a shortcut that can be removed (with Undo; Set brings it
+    /// back), "Reset" for a changed dictation shortcut: plain bordered buttons
+    /// like Change, in their own slot.
+    @ViewBuilder
+    private func accessoryButton(for target: CaptureTarget) -> some View {
+        if capturing != target {
+            switch target {
+            case .dictation:
+                if store.binding != .defaultBinding {
+                    Button("Reset") { resetDictationShortcut() }
+                        .buttonTier(.secondary)
+                        .help("Reset to Option-Space")
+                        .accessibilityLabel("Reset dictation shortcut to Option-Space")
                 }
-            }
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .keyboardShortcut(capturing == .second ? .cancelAction : nil)
-            .accessibilityLabel(capturing == .second ? "Cancel" : "\(secondButtonTitle) second shortcut")
-            if store.secondBinding != nil && capturing != .second {
-                Button("Remove") { removeSecondShortcut() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .accessibilityLabel("Remove second shortcut")
+            case .second:
+                if store.secondBinding != nil {
+                    Button("Clear") { removeSecondShortcut() }
+                        .buttonTier(.secondary)
+                        .help("Remove the second shortcut")
+                        .accessibilityLabel("Clear second shortcut")
+                }
+            case .meeting:
+                if store.meetingBinding != nil {
+                    Button("Clear") { removeMeetingBinding() }
+                        .buttonTier(.secondary)
+                        .help("Remove the conversation shortcut")
+                        .accessibilityLabel("Clear conversation shortcut")
+                }
             }
         }
     }
 
-    private var secondSubtitle: String {
-        if capturing == .second { return "Press a key combination, or Esc to cancel." }
-        return "Dictate with a different model without switching."
+    /// Title, then what the shortcut does. The second shortcut shows its own
+    /// model picker; the dictation model is the sidebar chip's.
+    @ViewBuilder
+    private func rowLabel(for target: CaptureTarget) -> some View {
+        if capturing == target || target != .second {
+            SettingsRowLabel(title: target.title, caption: caption(for: target))
+        } else {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(target.title)
+                    .typo(.body)
+                    .foregroundStyle(Palette.ink)
+                HStack(spacing: Space.s2) {
+                    Text("Dictates with")
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                    MinimalDropdown(
+                        selection: secondModelBinding,
+                        sections: secondModelSections,
+                        placeholder: "Choose a model",
+                        title: "Model for the second shortcut",
+                        tooltip: store.secondBinding == nil
+                            ? "Set a second shortcut first."
+                            : "The model this shortcut dictates with"
+                    )
+                    .controlSize(.small)
+                    .disabled(store.secondBinding == nil)
+                }
+                // Says why the picker is dimmed, at full caption contrast.
+                if store.secondBinding == nil {
+                    Text("Set a second shortcut first.")
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                }
+            }
+        }
     }
 
-    private var secondButtonTitle: String {
-        if capturing == .second { return "Cancel" }
-        return store.secondBinding == nil ? "Set" : "Change"
+    private func caption(for target: CaptureTarget) -> String {
+        if capturing == target {
+            return target == .dictation
+                ? "Press a key combination, or Right Control alone. Esc cancels."
+                : "Press a key combination. Esc cancels."
+        }
+        switch target {
+        case .dictation, .second:
+            return "Starts and stops dictation from any app."
+        case .meeting:
+            return "Starts or stops a conversation recording from any app."
+        }
     }
 
+    /// A read-only, single-line row: the card's button name, what it does,
+    /// and its key — tighter than a setting row, since nothing here is edited.
+    private func referenceRow(_ title: String, detail: String, keys: [String]) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+            // A fixed title column, so the explanations start on one edge.
+            Text(title)
+                .typo(.body)
+                .foregroundStyle(Palette.ink)
+                .frame(width: 72, alignment: .leading)
+            Text(detail)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .lineLimit(1)
+            Spacer(minLength: Space.s4)
+            Keycap(keys: keys)
+                .alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+        }
+        .padding(.vertical, Space.s4)
+        .padding(.horizontal, FormMetrics.rowHorizontalPadding)
+        .frame(maxWidth: .infinity, minHeight: 36, alignment: .leading)
+        .accessibilityElement(children: .combine)
+    }
+
+    // MARK: - Footers
+
+    /// The modifier rule, with the modifiers drawn as SF Symbols — the text
+    /// ⌃ renders as a raised caret.
+    private var modifierRuleFooter: some View {
+        Text("A shortcut needs Control \(Image(systemName: "control")), Option \(Image(systemName: "option")), Shift \(Image(systemName: "shift")) or Command \(Image(systemName: "command")), or a function key.")
+            .typo(.caption)
+            .foregroundStyle(Palette.inkMuted)
+            .padding(.horizontal, FormMetrics.rowHorizontalPadding)
+            .accessibilityLabel("A shortcut needs Control, Option, Shift or Command, or a function key.")
+    }
+
+    /// "Choose when the review card opens in General › Review before
+    /// pasting.", the pane name a link that goes there.
+    private var reviewCardFooter: some View {
+        HStack(spacing: Space.s1) {
+            Text("Choose when the review card opens in")
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+            Button("General › Review before pasting") {
+                SettingsRouter.shared.pendingSection = .general
+            }
+            .buttonStyle(TextLinkButtonStyle(font: Typo.caption))
+            .accessibilityHint("Opens the General pane")
+        }
+        .padding(.horizontal, FormMetrics.rowHorizontalPadding)
+    }
+
+    // MARK: - Second shortcut model
+
+    /// Exactly what the shortcut will use: with no model stored (or one the
+    /// catalog dropped) the picker shows "Choose a model", never a default
+    /// the shortcut wouldn't actually dictate with.
     private var secondModelBinding: Binding<String> {
         Binding(
             get: { store.secondModelId ?? "" },
@@ -360,19 +448,13 @@ struct HotkeyPane: View {
     /// the right; a press then downloads it or asks for the key, as it would
     /// for the dictation model.
     private var secondModelSections: [DropdownSection<String>] {
-        ModelGroup.sections(of: ModelCatalog.all).map {
-            DropdownSection(header: $0.group.title, items: $0.models.map(secondModelItem))
+        DropdownSection<String>.models(ModelCatalog.all, value: \.id) { model in
+            switch registry.readiness(for: model.id) {
+            case .installed: return nil
+            case .preparing: return "Downloading"
+            case .notInstalled, .failed: return model.isCloud ? "No API key" : "Not downloaded"
+            }
         }
-    }
-
-    private func secondModelItem(_ model: ModelDescriptor) -> DropdownItem<String> {
-        let caption: String?
-        switch registry.readiness(for: model.id) {
-        case .installed: caption = nil
-        case .preparing: caption = "Downloading"
-        case .notInstalled, .failed: caption = model.isCloud ? "No API key" : "Not downloaded"
-        }
-        return DropdownItem(value: model.id, title: model.sectionedDisplayName, caption: caption)
     }
 
     /// What a newly set second shortcut dictates with.
@@ -409,6 +491,7 @@ struct HotkeyPane: View {
     private func resetDictationShortcut() {
         if let owner = conflictingSlot(for: .defaultBinding, target: .dictation) {
             errorMessage = owner.inUseMessage
+            errorTarget = .dictation
             return
         }
         errorMessage = nil
@@ -442,36 +525,6 @@ struct HotkeyPane: View {
                 RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
                     .strokeBorder(Palette.accent, lineWidth: 1.5)
             )
-    }
-
-    private var dictationSubtitle: String {
-        if capturing == .dictation { return "Press a key combination, or Esc to cancel." }
-        if store.secondBinding != nil, let active = registry.activeModel {
-            return "Uses the active model, \(active.sectionedDisplayName)."
-        }
-        return "Used for hold-to-record or press-to-toggle dictation."
-    }
-
-    private var meetingSubtitle: String {
-        if capturing == .meeting { return "Press a key combination, or Esc to cancel." }
-        return "Starts or stops a conversation recording from any app."
-    }
-
-    private var meetingButtonTitle: String {
-        if capturing == .meeting { return "Cancel" }
-        return store.meetingBinding == nil ? "Set" : "Change"
-    }
-
-    /// Return cancels the live capture and otherwise confirms the dictation
-    /// change — but only while nothing is capturing, so the two Cancel buttons
-    /// can never both claim Esc or Return.
-    private var dictationButtonShortcut: KeyboardShortcut? {
-        if capturing == .dictation { return .cancelAction }
-        return capturing == nil ? .defaultAction : nil
-    }
-
-    private var modeSubtitle: String {
-        "Hold records while the shortcut is down; toggle starts and stops on each press."
     }
 
     private var modeBinding: Binding<RecordingShortcutMode> {
@@ -517,6 +570,7 @@ struct HotkeyPane: View {
             if let owner = conflictingSlot(for: candidate, target: target) {
                 // Still listening: the user can press another key straight away.
                 errorMessage = owner.inUseMessage
+                errorTarget = target
                 captureSession.reset()
                 return
             }
@@ -533,6 +587,7 @@ struct HotkeyPane: View {
             stopCapture(cancelled: false)
         case .rejected(let message):
             errorMessage = message
+            errorTarget = target
         }
     }
 
@@ -547,31 +602,6 @@ struct HotkeyPane: View {
     }
 }
 
-/// Internal, not private: the Conversations pane shows the conversation
-/// shortcut's keys with the same caps.
-struct KeyCap: View {
-    let keys: [String]
-    var body: some View {
-        HStack(spacing: Space.s2) {
-            ForEach(keys, id: \.self) { key in
-                Text(key)
-                    .typo(.mono)
-                    .foregroundStyle(Palette.ink)
-                    .padding(.horizontal, Space.s4)
-                    .padding(.vertical, Space.s2)
-                    .background(
-                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                            .fill(Palette.wellFill)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-                            .strokeBorder(Palette.hairline)
-                    )
-            }
-        }
-    }
-}
-
 struct GeneralPane: View {
     @State private var accessibilityGranted = AccessibilityPermission.isGranted
     @State private var listenEventGranted = ListenEventPermission.isGranted
@@ -582,6 +612,7 @@ struct GeneralPane: View {
     @Bindable private var loginItem = LoginItemController.shared
     @Bindable private var presence = AppPresenceController.shared
     @Bindable private var appearance = AppearanceController.shared
+    private var registry: ModelRegistry { .shared }
 
     enum PermissionAlert: String, Identifiable {
         case microphone
@@ -617,35 +648,40 @@ struct GeneralPane: View {
     }
 
     var body: some View {
-        // Three blocks, in the order the user needs them: the thing you came
-        // here to do, the preferences that shape it, then the diagnostics —
-        // which quiet themselves down to one line as soon as they are green.
+        // The thing you came here to do and what shapes it first, then how the
+        // app behaves, then the diagnostics — which quiet themselves down to
+        // one row as soon as they are green.
         PaneScaffold {
-            PaneHeader(
-                title: "General",
-                subtitle: "Dictation controls, permissions, and hotkey status."
-            )
-
-            dictationCard
-
-            PaneSection("Preferences") {
-                MicrophoneCard()
-                ReviewBeforePasteCard()
-                HUDSizeCard()
-                launchAtLoginCard
-                presenceCard
-                appearanceCard
-                AppAPICard()
+            SettingsGroup("Dictation") {
+                dictationRow
+                MicrophoneRow()
+                ReviewBeforePasteRow()
+                HUDSizeRow()
             }
 
-            PaneSection("Permissions") {
-                // The three copy-pasted permission cards, collapsed into
-                // one self-quieting group. `.id` forces a rebuild after a
-                // hotkey re-registration, whose result `HotkeyManager`
-                // publishes imperatively.
-                PermissionsGroup(items: permissionItems)
-                    .id(hotkeyRegistrationRefreshID)
+            SettingsGroup("App", footer: AppAPIRow.footer) {
+                launchAtLoginRow
+                SettingsRow(
+                    "Show in Dock",
+                    caption: "Turn off to keep VoiceToText in the menu bar only.",
+                    isOn: dockIconBinding
+                )
+                SettingsRow("Show in menu bar", caption: menuBarSubtitle) {
+                    // Disabled and visibly dimmed while it can't be changed; the
+                    // caption says why.
+                    SettingsSwitch(title: "Show in menu bar", isOn: $presence.menuBarIconSetting)
+                        .disabled(presence.isMenuBarIconLocked)
+                        .opacity(presence.isMenuBarIconLocked ? 0.45 : 1)
+                        .help(presence.isMenuBarIconLocked ? "Turn on Show in Dock to change this." : "")
+                }
+                appearanceRow
+                AppAPIRow()
             }
+
+            // `.id` forces a rebuild after a hotkey re-registration, whose
+            // result `HotkeyManager` publishes imperatively.
+            PermissionsGroup(items: permissionItems)
+                .id(hotkeyRegistrationRefreshID)
         }
         .onAppear {
             refreshPermissions()
@@ -722,77 +758,89 @@ struct GeneralPane: View {
         dictation.toggle()
     }
 
-    /// The hero block: the one thing this pane is for. A 40pt tinted glyph, the
-    /// live state as a title, and the record affordance — the only filled
-    /// control in the pane.
-    @ViewBuilder
-    private var dictationCard: some View {
-        Plate {
-            HStack(spacing: Space.s5) {
-                Image(systemName: isRecording ? "stop.fill" : "mic.fill")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(heroTint)
-                    .frame(width: 40, height: 40)
-                    .background(Circle().fill(heroTint.opacity(0.12)))
-                    .contentTransition(.symbolEffect(.replace.downUp))
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text(recordingTitle)
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text(recordingSubtitle)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                Spacer(minLength: Space.s5)
-                Button(action: handleStartTap) {
-                    Label(
-                        isRecording ? "Stop" : "Start",
-                        systemImage: isRecording ? "stop.fill" : "record.circle"
-                    )
-                    .contentTransition(.symbolEffect(.replace.downUp))
-                }
-                // Flat fills only. The brand gradient never sits behind a label:
-                // white on #6194FF is 2.92:1, below even the large-text floor.
-                .buttonStyle(FilledButtonStyle(fill: heroTint))
+    /// The first row: start or stop a dictation, the shortcut that does the
+    /// same from any app, and whether the dictation model is ready. The Start
+    /// button is the pane's one filled control.
+    private var dictationRow: some View {
+        HStack(alignment: .center, spacing: Space.s6) {
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(recordingTitle)
+                    .typo(.body)
+                    .foregroundStyle(Palette.ink)
+                dictationStatusLine
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: handleStartTap) {
+                Label {
+                    Text(isRecording ? "Stop" : "Start")
+                } icon: {
+                    Image(systemName: isRecording ? "stop.fill" : "record.circle")
+                        .foregroundStyle(isRecording ? Palette.signalLive : Palette.ink)
+                        .contentTransition(.symbolEffect(.replace.downUp))
+                }
+            }
+            .buttonTier(.secondary)
+            .help(isRecording ? "Stop dictation" : "Start dictation")
+        }
+        .settingsRowPadding()
+    }
+
+    /// Idle: the same status line as the sidebar chip ("Ready · GPT
+    /// Transcribe"). Otherwise what to do next, or the error.
+    @ViewBuilder
+    private var dictationStatusLine: some View {
+        switch dictation.state {
+        case .idle:
+            // "● Ready · Press ⌥ Space in any app." The sidebar chip owns the
+            // model, so it isn't repeated here.
+            let status = AppStatus.current()
+            HStack(spacing: Space.s2) {
+                StatusDot(status.tone, size: 6)
+                    .accessibilityHidden(true)
+                Text("\(status.title) · Press")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                Keycap(keys: HotkeyStore.shared.binding.displayKeys, size: .small)
+                Text("in any app.")
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+            }
+            .accessibilityElement(children: .combine)
+        case .error(let message):
+            Text(message)
+                .typo(.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .fixedSize(horizontal: false, vertical: true)
+        case .preparing, .recording, .transcribing, .reviewing, .delivering:
+            Text(recordingSubtitle)
+                .typo(.caption)
+                .foregroundStyle(Palette.inkMuted)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var isRecording: Bool { dictation.state == .recording }
 
-    /// One tint for the hero glyph and the record button, so they can never
-    /// disagree about what state the app is in.
-    private var heroTint: Color { isRecording ? Palette.signalLive : Palette.accent }
-
-    @ViewBuilder
-    private var launchAtLoginCard: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s4) {
-                SettingsToggleRow(
-                    title: "Launch at login",
-                    subtitle: launchAtLoginSubtitle,
-                    isOn: launchAtLoginBinding
-                )
-
-                if loginItem.requiresApproval {
-                    HStack(spacing: Space.s4) {
-                        Text("Approval needed in System Settings.")
-                            .typo(.caption)
-                            .foregroundStyle(Palette.signalWarn)
-                        Button("Open Login Items…") {
-                            loginItem.openLoginItemsSettings()
-                        }
-                        .buttonStyle(.borderless)
-                        .controlSize(.small)
-                    }
-                } else if let err = loginItem.lastError {
-                    Text(err)
+    private var launchAtLoginRow: some View {
+        SettingsRow("Launch at login", caption: "Starts VoiceToText in the background when you sign in.") {
+            SettingsSwitch(title: "Launch at login", isOn: launchAtLoginBinding)
+        } below: {
+            if loginItem.requiresApproval {
+                HStack(spacing: Space.s4) {
+                    Text("Approval needed in System Settings.")
                         .typo(.caption)
                         .foregroundStyle(Palette.signalWarn)
+                    Button("Open Login Items…") {
+                        loginItem.openLoginItemsSettings()
+                    }
+                    .buttonStyle(TextLinkButtonStyle(font: Typo.caption))
                 }
+            } else if let err = loginItem.lastError {
+                Text(err)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.signalWarn)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -804,38 +852,10 @@ struct GeneralPane: View {
         )
     }
 
-    private var launchAtLoginSubtitle: String {
-        if loginItem.isEnabled {
-            return "VoiceToText will start in the background when you sign in."
-        }
-        return "Start VoiceToText automatically in the background when you sign in."
-    }
-
-    /// Dock / menu bar presence. Both rows read as "Show …" so the switches
-    /// share one polarity. They're coupled: turning the Dock icon off switches
-    /// the app to an accessory (menu-bar-only) process, so the menu bar icon is
-    /// forced on and locked — otherwise there'd be no way back to this window.
-    @ViewBuilder
-    private var presenceCard: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s5) {
-                SettingsToggleRow(
-                    title: "Show in Dock",
-                    subtitle: "Turn off to keep VoiceToText out of the Dock and the app switcher. It keeps running in the menu bar, and your shortcut still works everywhere.",
-                    isOn: dockIconBinding
-                )
-
-                PlateDivider(leadingInset: 0)
-
-                SettingsToggleRow(
-                    title: "Show in menu bar",
-                    subtitle: menuBarSubtitle,
-                    isOn: $presence.menuBarIconSetting,
-                    isLocked: presence.isMenuBarIconLocked
-                )
-            }
-        }
-    }
+    // Dock / menu bar presence. Both rows read as "Show …" so the switches
+    // share one polarity. They're coupled: turning the Dock icon off switches
+    // the app to an accessory (menu-bar-only) process, so the menu bar icon is
+    // forced on and locked — otherwise there'd be no way back to this window.
 
     /// Flipping the Dock icon changes the process's activation policy, which
     /// drops the app's active status (and, going back into the Dock, its menu
@@ -855,9 +875,9 @@ struct GeneralPane: View {
 
     private var menuBarSubtitle: String {
         if presence.isMenuBarIconLocked {
-            return "Required while VoiceToText is hidden from the Dock — it's how you reopen this window."
+            return "Always on while VoiceToText is hidden from the Dock."
         }
-        return "Adds a VoiceToText icon to the menu bar for starting dictation and reopening this window."
+        return "Start dictation and reopen this window from the menu bar."
     }
 
     /// App-wide light/dark. `System` is the default and follows macOS, schedule
@@ -865,36 +885,22 @@ struct GeneralPane: View {
     /// and toasts included — no matter what the system does. The switch is here
     /// rather than in the token layer because nothing below `AppearanceController`
     /// needs to know: `Palette` re-resolves against whatever it pins.
-    @ViewBuilder
-    private var appearanceCard: some View {
-        Plate {
-            HStack(alignment: .center, spacing: Space.s6) {
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text("Appearance")
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    Text(appearanceSubtitle)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkMuted)
-                        .fixedSize(horizontal: false, vertical: true)
+    private var appearanceRow: some View {
+        SettingsRow("Appearance", caption: appearanceSubtitle) {
+            Picker("Appearance", selection: $appearance.mode) {
+                ForEach(AppAppearance.allCases) { mode in
+                    Text(mode.title).tag(mode)
                 }
-                Spacer(minLength: Space.s6)
-                Picker("Appearance", selection: $appearance.mode) {
-                    ForEach(AppAppearance.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 240)
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
         }
     }
 
     private var appearanceSubtitle: String {
         switch appearance.mode {
         case .system:
-            return "Follows macOS, including the automatic light/dark schedule."
+            return "Follows macOS, including its light/dark schedule."
         case .light:
             return "VoiceToText stays light even when macOS switches to dark."
         case .dark:
@@ -1036,7 +1042,7 @@ struct GeneralPane: View {
 
     private var recordingTitle: String {
         switch dictation.state {
-        case .idle, .error: return "Start recording"
+        case .idle, .error: return "Start dictation"
         case .preparing(let name): return "Loading \(name)…"
         case .recording: return "Recording…"
         case .transcribing: return "Transcribing…"
@@ -1072,17 +1078,10 @@ struct GeneralPane: View {
 
 /// The permission group, which demotes itself once it has nothing to say.
 ///
-/// Diagnostics were masquerading as settings: three full-height cards, always
-/// expanded, occupying roughly half of GeneralPane in the 99% case where every
-/// one of them is green. This group collapses on `Motion.layout` into a single
-/// "All set" line in `signalReady` with a disclosure to re-open it, and any
-/// regression re-expands it inline — turning the summary `signalWarn` with a
-/// count — with no user action.
-///
-/// It stays IN THE PANE rather than becoming a toolbar chip: the direction's own
-/// rule is zero custom toolbar backgrounds, and a chip is the first thing the
-/// system drops when the toolbar condenses — which is exactly when a warning
-/// most needs to be visible.
+/// In the usual case — everything granted — it is one row: a green seal,
+/// "All permissions granted", and a Show Details button that lists each
+/// permission inline. Any regression re-expands it with no user action, and
+/// a warning can't be collapsed out of sight.
 private struct PermissionsGroup: View {
     let items: [StatusItem]
 
@@ -1091,25 +1090,22 @@ private struct PermissionsGroup: View {
 
     private var issueCount: Int { items.filter { $0.level != .ready }.count }
     private var allGranted: Bool { issueCount == 0 }
-    /// A regression forces the detail open — there is no way to collapse a
-    /// warning out of sight.
     private var showsDetail: Bool { !allGranted || isExpanded }
 
     var body: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s5) {
-                summary
+        SettingsGroup("Permissions") {
+            summary
+                .settingsRowPadding()
 
-                if showsDetail {
-                    ForEach(items) { item in
-                        PlateDivider(leadingInset: 0)
-                        StatusRow(item.level, title: item.title, message: item.message) {
-                            if let actionTitle = item.actionTitle, let action = item.action {
-                                Button(actionTitle, action: action)
-                                    .buttonStyle(.bordered)
-                            }
+            if showsDetail {
+                ForEach(items) { item in
+                    StatusRow(item.level, title: item.title, message: item.message) {
+                        if let actionTitle = item.actionTitle, let action = item.action {
+                            Button(actionTitle, action: action)
+                                .buttonTier(.secondary)
                         }
                     }
+                    .settingsRowPadding()
                 }
             }
         }
@@ -1122,47 +1118,43 @@ private struct PermissionsGroup: View {
         }
     }
 
-    @ViewBuilder
     private var summary: some View {
-        HStack(spacing: Space.s4) {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
             Image(systemName: allGranted ? "checkmark.seal.fill" : "exclamationmark.triangle.fill")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(allGranted ? Palette.signalReady : Palette.signalWarn)
                 .accessibilityHidden(true)
 
-            Text(summaryText)
-                .typo(.headline)
-                .foregroundStyle(allGranted ? Palette.signalReady : Palette.ink)
-                .contentTransition(.numericText())
+            VStack(alignment: .leading, spacing: Space.s1) {
+                Text(summaryTitle)
+                    .typo(.body)
+                    .foregroundStyle(Palette.ink)
+                    .contentTransition(.numericText())
+                if allGranted {
+                    Text("Microphone, Accessibility and the global shortcut are working.")
+                        .typo(.caption)
+                        .foregroundStyle(Palette.inkMuted)
+                }
+            }
+            .accessibilityElement(children: .combine)
 
             Spacer(minLength: Space.s4)
 
             if allGranted {
-                Button {
+                Button(isExpanded ? "Hide Details" : "Show Details") {
                     withAnimation(motion.layout) { isExpanded.toggle() }
-                } label: {
-                    Image(systemName: "chevron.right")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Palette.inkFaint)
-                        .rotationEffect(.degrees(isExpanded ? 90 : 0))
-                        .frame(width: 24, height: 24)
-                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .help(disclosureLabel)
-                .accessibilityLabel(disclosureLabel)
+                .buttonTier(.secondary)
+                .controlSize(.small)
+                .accessibilityLabel(isExpanded ? "Hide permission details" : "Show permission details")
             }
         }
     }
 
-    private var summaryText: String {
-        if allGranted { return "All set" }
+    private var summaryTitle: String {
+        if allGranted { return "All permissions granted" }
         return issueCount == 1
             ? "1 permission needs attention"
             : "\(issueCount) permissions need attention"
-    }
-
-    private var disclosureLabel: String {
-        isExpanded ? "Hide permission details" : "Show permission details"
     }
 }

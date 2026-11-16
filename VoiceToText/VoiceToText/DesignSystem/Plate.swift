@@ -228,14 +228,17 @@ struct Plate<Content: View>: View {
 // MARK: - Flush list plumbing
 
 /// The 1px separator between rows of a `Plate(.flush)`, inset 14pt from the
-/// leading edge so it reads as a list rather than a table.
+/// leading edge so it reads as a list rather than a table. `SettingsGroup`
+/// inserts its own (`RowHairline`, inset 16).
 struct PlateDivider: View {
     var leadingInset: CGFloat = 14
+
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Rectangle()
             .fill(Palette.divider)
-            .frame(height: 1)
+            .frame(height: 1 / max(displayScale, 1))
             .padding(.leading, leadingInset)
     }
 }

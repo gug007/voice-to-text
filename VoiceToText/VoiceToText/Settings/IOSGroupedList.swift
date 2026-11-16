@@ -2,71 +2,104 @@ import AppKit
 import SwiftUI
 
 /// Shared building blocks for the History and Conversations panes: the
-/// recordings list, quiet section captions/footers, and the capsule buttons the
-/// record card uses. These two screens read as the app's "library" (browsing
-/// saved content); they aim for a calm, minimal look — hairlines and whitespace
-/// over heavy chrome.
-///
-/// The pane title lives in `PaneHeader` (SettingsView.swift) — the 27pt bold
-/// `LargeTitleHeader` that used to live here is gone, along with the app's only
-/// use of bold.
-///
-/// The surface these panes sit on is `Plate`; the old `InsetCard` (radius 12,
-/// primary @ 0.035, no stroke) is gone too.
+/// date-grouped recordings list, the list plate itself, and the empty state.
 
-// MARK: - Section captions
+// MARK: - Date-grouped list
 
-/// Small gray caption above a grouped section (an iOS list header). The
-/// optional trailing slot carries section controls like "Clear All" or a
-/// disk-usage figure.
-struct GroupCaption<Trailing: View>: View {
-    let text: String
-    @ViewBuilder var trailing: Trailing
+/// Recordings under Title Case date headers ("Today", "This Week",
+/// "October 2026"), one plate per section. Rows under a dated header show only
+/// what the header doesn't: the time, the weekday, or the day.
+///
+/// Owns the store and player wiring both panes share, so each pane only says
+/// what to show.
+struct RecordingSectionsList: View {
+    let sections: [HistorySection]
+    /// Hidden in Conversations, where every row is the same type.
+    var showsTypeBadge: Bool = true
+    /// History's live search query, so rows mark their matches.
+    var highlight: String = ""
+    /// History's selection hooks per row; nil in Conversations.
+    var selection: ((RecordingHistoryEntry) -> RecordingRowSelection)? = nil
+    /// Which tab each row shows, keyed by recording id — see `RecordingsList`.
+    @Binding var insightTabs: [UUID: InsightTab]
+    /// The one open row, if any.
+    @Binding var expandedID: UUID?
+    /// A link on the first section's header line ("Show All (14)" on
+    /// Conversations' Recent).
+    var headerLink: HeaderLink? = nil
+
+    struct HeaderLink {
+        let title: String
+        let help: String
+        let action: () -> Void
+    }
+
+    @Bindable private var store = RecordingHistoryStore.shared
+    @Bindable private var player = HistoryAudioPlayer.shared
 
     var body: some View {
-        HStack(spacing: Space.s4) {
-            Text(text)
-                .typo(.captionMedium)
-                .foregroundStyle(Palette.inkMuted)
-            Spacer(minLength: Space.s4)
-            trailing
+        ForEach(sections) { section in
+            VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
+                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+                    SettingsGroupHeader(section.title)
+                    Spacer(minLength: Space.s4)
+                    if let headerLink, section.id == sections.first?.id {
+                        Button(headerLink.title, action: headerLink.action)
+                            .buttonTier(.tertiary)
+                            .help(headerLink.help)
+                    }
+                }
+                .padding(.horizontal, FormMetrics.rowHorizontalPadding)
+
+                RecordingsList(
+                    entries: section.entries,
+                    showsTypeBadge: showsTypeBadge,
+                    dateStyle: .forSection(id: section.id),
+                    highlight: highlight,
+                    selection: selection,
+                    isPlaying: { player.playingID == $0.id },
+                    onPlay: { entry in
+                        player.toggle(url: store.audioURL(for: entry), id: entry.id)
+                    },
+                    onDelete: { entry in
+                        if player.playingID == entry.id { player.stop() }
+                        store.delete(id: entry.id)
+                    },
+                    onToggleFavorite: { entry in store.toggleFavorite(id: entry.id) },
+                    onRemoveTranscript: { entry, variantID in
+                        store.removeTranscriptVariant(entryID: entry.id, variantID: variantID)
+                    },
+                    onRenameSpeakers: { entry, names in
+                        store.setSpeakerNames(entryID: entry.id, names: names)
+                    },
+                    insightTabs: $insightTabs,
+                    expandedID: $expandedID,
+                    onToggleActionItem: { entry, itemID in
+                        store.toggleActionItem(entryID: entry.id, itemID: itemID)
+                    },
+                    onRemoveInsight: { entry, kind in
+                        store.removeInsight(entryID: entry.id, kind: kind)
+                        // Forget the tab that pointed at it: a remembered
+                        // `.summary` would re-activate the moment a later
+                        // generation *starts*, pulling the user off the
+                        // transcript onto a spinner.
+                        if insightTabs[entry.id] == kind.tab { insightTabs[entry.id] = nil }
+                    }
+                )
+            }
         }
-        .padding(.horizontal, Space.s3)
-    }
-}
-
-extension GroupCaption where Trailing == EmptyView {
-    init(_ text: String) {
-        self.init(text: text) { EmptyView() }
-    }
-}
-
-/// Small gray explanatory text below a grouped section (an iOS list footer).
-struct GroupFooter: View {
-    let text: String
-
-    var body: some View {
-        Text(text)
-            .typo(.caption)
-            .foregroundStyle(Palette.inkFaint)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.horizontal, Space.s3)
     }
 }
 
 // MARK: - Recordings list
 
-/// An inset-grouped list of saved recordings: one flush `Plate`, rows divided
-/// by hairlines inset 14pt from the leading edge. Shared by History (all
-/// recordings, with type badges) and Conversations (conversations only, badge
-/// hidden).
+/// One plate of recordings, rows divided by hairlines that start at the rows'
+/// text column. Lazy, so a long History only lays out the rows on screen.
 struct RecordingsList: View {
     let entries: [RecordingHistoryEntry]
     var showsTypeBadge: Bool = true
-    /// History's live search query, forwarded so each row can mark its matched
-    /// substrings. Empty in Conversations, which has no search field.
+    var dateStyle: RecordingRowDateStyle = .full
     var highlight: String = ""
-    /// History's selection hooks per row; nil in Conversations.
     var selection: ((RecordingHistoryEntry) -> RecordingRowSelection)? = nil
     let isPlaying: (RecordingHistoryEntry) -> Bool
     let onPlay: (RecordingHistoryEntry) -> Void
@@ -74,29 +107,28 @@ struct RecordingsList: View {
     let onToggleFavorite: (RecordingHistoryEntry) -> Void
     let onRemoveTranscript: (RecordingHistoryEntry, UUID) -> Void
     let onRenameSpeakers: (RecordingHistoryEntry, [String: String]) -> Void
-    /// Which insight tab each row is showing, keyed by recording id.
-    ///
-    /// The map lives in the *pane*, not in `RecordingRow`, because `FlushPlate`
-    /// is lazy: a row scrolled out of view is torn down and any `@State` on it
-    /// dies with it. A per-row `@State` tab would therefore snap silently back
-    /// to Transcript every time the user scrolled past a summary they were
-    /// reading. An absent key means Transcript, so an empty map is the correct
-    /// initial state and nothing has to be seeded.
+    /// Which insight tab each row is showing, keyed by recording id. Lives in
+    /// the pane because rows are lazy: a row scrolled out of view is torn down
+    /// with its `@State`. An absent key means Transcript.
     @Binding var insightTabs: [UUID: InsightTab]
+    /// The one open row. Pane-owned for the same reason as `insightTabs`.
+    @Binding var expandedID: UUID?
     let onToggleActionItem: (RecordingHistoryEntry, UUID) -> Void
     let onRemoveInsight: (RecordingHistoryEntry, InsightKind) -> Void
 
     var body: some View {
-        // `FlushPlate` is lazy, so opening a long History doesn't lay out every
-        // row's transcript and its two hidden measuring probes up front; only
-        // rows scrolled into view are measured. It also owns the dividers.
-        FlushPlate(data: entries) { entry in
+        FlushPlate(
+            data: entries,
+            leadingInset: FormMetrics.rowHorizontalPadding + RecordingRow.textColumnInset
+        ) { entry in
             RecordingRow(
                 entry: entry,
                 isPlaying: isPlaying(entry),
                 showsTypeBadge: showsTypeBadge,
+                dateStyle: dateStyle,
                 highlight: highlight,
                 selection: selection?(entry),
+                isExpanded: expandedBinding(for: entry),
                 selectedTab: tabBinding(for: entry),
                 onPlay: { onPlay(entry) },
                 onDelete: { onDelete(entry) },
@@ -109,7 +141,19 @@ struct RecordingsList: View {
         }
     }
 
-    /// One row's slot in the pane-owned map, as a binding the row can write to.
+    private func expandedBinding(for entry: RecordingHistoryEntry) -> Binding<Bool> {
+        Binding(
+            get: { expandedID == entry.id },
+            set: { open in
+                if open {
+                    expandedID = entry.id
+                } else if expandedID == entry.id {
+                    expandedID = nil
+                }
+            }
+        )
+    }
+
     private func tabBinding(for entry: RecordingHistoryEntry) -> Binding<InsightTab> {
         Binding(
             get: { insightTabs[entry.id] ?? .transcript },
@@ -120,127 +164,67 @@ struct RecordingsList: View {
 
 // MARK: - Empty library
 
-/// The plain, centred "nothing here yet" state of a library pane: History
-/// before the first recording, Conversations before the first conversation.
-struct LibraryEmptyState: View {
+/// The centred "nothing here" state of a library pane, with an optional way
+/// out (Clear Search, Show All).
+struct LibraryEmptyState<Action: View>: View {
     let systemImage: String
     let title: String
-    let message: String
+    let message: String?
+    @ViewBuilder var action: Action
+
+    init(
+        systemImage: String,
+        title: String,
+        message: String? = nil,
+        @ViewBuilder action: () -> Action
+    ) {
+        self.systemImage = systemImage
+        self.title = title
+        self.message = message
+        self.action = action()
+    }
 
     var body: some View {
-        VStack(spacing: Space.s5) {
+        VStack(spacing: Space.s4) {
             Image(systemName: systemImage)
-                .font(.system(size: 32, weight: .regular))
+                .font(.system(size: 28, weight: .regular))
                 .foregroundStyle(Palette.inkFaint)
                 .accessibilityHidden(true)
             Text(title)
                 .typo(.title)
                 .foregroundStyle(Palette.ink)
-            Text(message)
-                .typo(.body)
-                .foregroundStyle(Palette.inkMuted)
                 .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
+            if let message {
+                Text(message)
+                    .typo(.body)
+                    .foregroundStyle(Palette.inkMuted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            action
+                .padding(.top, Space.s2)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 72)
-        .accessibilityElement(children: .combine)
+        .padding(.vertical, 56)
+        .accessibilityElement(children: .contain)
     }
 }
 
-// MARK: - Favorites filter
-
-/// A small star pill that toggles a "favorites only" filter — sits in a section
-/// caption next to the count. Subtle when off, amber-tinted when on.
-struct FavoritesFilterButton: View {
-    @Binding var isOn: Bool
-
-    /// The favourite amber, as a light/dark pair — `Color.yellow` is unreadable
-    /// on a white plate in light appearance.
-    static let tint = Palette.dynamic("favorite", light: 0xC99A00, dark: 0xFFD426)
-
-    var body: some View {
-        Button { isOn.toggle() } label: {
-            HStack(spacing: Space.s2) {
-                Image(systemName: isOn ? "star.fill" : "star")
-                    .font(Typo.micro)
-                Text("Favorites")
-                    .typo(.captionMedium)
-            }
-            .foregroundStyle(isOn ? Self.tint : Palette.inkMuted)
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-            .background(
-                Capsule().fill(isOn ? Self.tint.opacity(0.16) : Palette.wellFill)
-            )
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .help(isOn ? "Show all recordings" : "Show favorites only")
+extension LibraryEmptyState where Action == EmptyView {
+    init(systemImage: String, title: String, message: String? = nil) {
+        self.init(systemImage: systemImage, title: title, message: message) { EmptyView() }
     }
 }
 
-// MARK: - Capsule buttons
+// MARK: - History folder
 
-// `SplitCapsuleButton` (a filled capsule split into Start Recording + a chevron
-// menu holding Upload File…) is gone. Both of its actions are toolbar items on
-// the Conversations pane now — Start Recording as a prominent item, Upload File…
-// in the system overflow — so the control had zero call sites left.
-
-/// Filled or tinted capsule button in the iOS style — the primary affordance on
-/// the Conversations record card (Start, Stop & Transcribe, Cancel).
-///
-/// `.primary` is the ink capsule: `Palette.action` fill with `Palette.onAction`
-/// label, so it reads as the one solid object on the card. Hover steps the fill
-/// back a notch — darker in light mode, dimmer in dark — and the step is what
-/// the "lift" is; there is no shadow or scale.
-struct CapsuleActionButton: View {
-    enum Style { case primary, secondary }
-
-    let title: String
-    var systemImage: String? = nil
-    var style: Style = .primary
-    var tint: Color = Palette.action
-    var isDisabled: Bool = false
-    let action: () -> Void
-
-    @Environment(\.motion) private var motion
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: Space.s3) {
-                if let systemImage {
-                    Image(systemName: systemImage)
-                        .font(Typo.headline)
-                }
-                Text(title)
-                    .typo(.headline)
-                    .lineLimit(1)
-            }
-            // A capsule never wraps: at the window's minimum width the
-            // Conversations row used to fold "Start Recording" onto two lines.
-            .fixedSize()
-            .padding(.horizontal, Space.s6)
-            .padding(.vertical, Space.s4)
-            .foregroundStyle(style == .primary ? AnyShapeStyle(Palette.onAction) : AnyShapeStyle(tint))
-            .background(Capsule().fill(fillColor))
-            .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-        .disabled(isDisabled)
-        .opacity(isDisabled ? 0.5 : 1)
-        .onHover { hovering in
-            guard !isDisabled else { return }
-            isHovering = hovering
-        }
-        .animation(motion.hover, value: isHovering)
-    }
-
-    private var fillColor: Color {
-        switch style {
-        case .primary: return tint.opacity(isHovering ? 0.86 : 1)
-        case .secondary: return tint.opacity(isHovering ? 0.20 : 0.14)
-        }
+enum HistoryFolder {
+    /// Opens the History folder in Finder. On a fresh install nothing has been
+    /// saved yet and the folder doesn't exist, so it is created first rather
+    /// than the click doing nothing.
+    static func reveal() {
+        let directory = RecordingHistoryStore.directory
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        NSWorkspace.shared.open(directory)
     }
 }

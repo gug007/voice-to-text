@@ -2,54 +2,56 @@ import SwiftUI
 
 // MARK: - Dictation
 
-/// Picker + still preview for the size of the dictation card. Backed by the
+/// The Dictation HUD row of General's Dictation group: size picker and a
+/// compact inset with a still preview and the card's shortcuts. Backed by the
 /// `hud.size` UserDefault, which `LiveHUDPanel` snapshots when a take's card
 /// first appears — a change here applies from the next dictation, never to
 /// one already on screen.
-struct HUDSizeCard: View {
+struct HUDSizeRow: View {
     @AppStorage(HUDSize.defaultsKey) private var size: HUDSize = HUDSize.defaultValue
     @Environment(\.motion) private var motion
-    @Environment(\.increaseContrast) private var increaseContrast
+    private var store: HotkeyStore { .shared }
 
     var body: some View {
-        Plate {
-            VStack(alignment: .leading, spacing: Space.s6) {
-                SettingHeader(title: "Recording HUD", subtitle: subtitle) {
-                    Picker("Recording HUD", selection: $size) {
-                        ForEach(HUDSize.allCases) { size in
-                            Text(size.title).tag(size)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
-                    .frame(width: 240)
+        SettingsRow("Dictation HUD", caption: caption) {
+            Picker("Dictation HUD", selection: $size) {
+                ForEach(HUDSize.allCases) { size in
+                    Text(size.title).tag(size)
                 }
-
-                VStack(alignment: .leading, spacing: Space.s4) {
-                    HUDPreviewWell(
-                        layout: HUDLayout(recordingAt: size),
-                        accessibilityLabel: "Preview of the \(size.title.lowercased()) recording HUD"
-                    ) { layout in
-                        DictationRecordingPreview(layout: layout)
-                    }
-                    Text("Applies to dictation. Conversations have their own setting in the Conversations pane.")
-                        .typo(.caption)
-                        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        } below: {
+            HUDPreviewInset(layout: HUDLayout(recordingAt: size), hints: hints) { layout in
+                DictationRecordingPreview(layout: layout)
             }
         }
         .animation(motion.layout, value: size)
     }
 
-    private var subtitle: String {
+    private var caption: String {
         switch size {
-        case .small:
-            return "A pill with the timer and meter. Hover a button to see its shortcut."
-        case .medium:
-            return "One slim row with Cancel and Finish. Hover a button to see its shortcut."
-        case .large:
-            return "The full card, with key hints and live text from streaming models."
+        case .small: return "Floats while you dictate: a pill with the timer and meter."
+        case .medium: return "Floats while you dictate: one slim row with Cancel and Finish."
+        case .large: return "Floats while you dictate: the full card, with live text."
         }
+    }
+
+    /// The card's buttons answer to these keys; printed so nobody has to hover
+    /// to find out. Esc only while it really cancels, and the finish key as the
+    /// recording mode uses it.
+    private var hints: [HUDHint] {
+        var hints: [HUDHint] = []
+        if store.escapeCancelsDictation {
+            hints.append(HUDHint(keys: ["Esc"], label: "Cancel"))
+        }
+        switch store.mode {
+        case .toggle:
+            hints.append(HUDHint(keys: store.binding.displayKeys, label: "Finish"))
+        case .hold:
+            hints.append(HUDHint(keys: store.binding.displayKeys, label: "Release to finish"))
+        }
+        return hints
     }
 }
 
@@ -91,155 +93,66 @@ private struct DictationRecordingPreview: View {
     private static let elapsedSeconds: Double = 3
 }
 
-// MARK: - Conversations
+// MARK: - Preview
 
-/// Off / Small / Medium / Large for the conversation card. A section, not a
-/// card: it sits under the model row in the Conversations pane's Recording
-/// options plate, which owns the surface and the disclosure. Backed by the
-/// `conversation.hud` UserDefault, which `ConversationHUDPanel` watches: unlike
-/// dictation's, a change here lands at once — on a recording already running
-/// too, which morphs or goes away.
-struct ConversationHUDSettingSection: View {
-    @AppStorage(ConversationHUDSetting.defaultsKey)
-    private var setting: ConversationHUDSetting = ConversationHUDSetting.defaultValue
-    @Environment(\.motion) private var motion
-    @Environment(\.increaseContrast) private var increaseContrast
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: Space.s5) {
-            SettingHeader(
-                title: "Recording HUD",
-                subtitle: "Floats over every app while a conversation records."
-            ) {
-                Picker("Recording HUD", selection: $setting) {
-                    ForEach(ConversationHUDSetting.allCases) { setting in
-                        Text(setting.title).tag(setting)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                // Four segments: room for "Medium" in each, and still a
-                // column for the subtitle at the narrowest window.
-                .frame(width: 280)
-            }
-
-            if let size = setting.size {
-                HUDPreviewWell(
-                    layout: HUDLayout(recordingAt: size),
-                    accessibilityLabel: "Preview of the \(size.title.lowercased()) conversation HUD"
-                ) { layout in
-                    ConversationHUDContent(
-                        layout: layout,
-                        isTranscribing: false,
-                        samples: HUDPreviewSample.levels,
-                        clock: Self.elapsed.formattedClock,
-                        stopHint: HUDKeyHints.stopConversation
-                    )
-                }
-                .transition(.opacity)
-            }
-
-            // Says what the chosen size holds — and, for Off, stands in for
-            // the preview, so the section never ends on an empty well.
-            Text(caption)
-                .typo(.caption)
-                .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .animation(motion.layout, value: setting)
-    }
-
-    private var caption: String {
-        switch setting {
-        case .off:
-            return "No floating card. A recording shows in the menu bar instead."
-        case .small:
-            return "A pill with the meter, clock and Stop. Hover Stop to see its shortcut."
-        case .medium:
-            return "One slim row with Stop & Transcribe spelled out."
-        case .large:
-            return "The full card: the wide meter over the clock and Stop & Transcribe."
-        }
-    }
-
-    /// "24:18" — conversations run long, and the preview should look like one.
-    private static let elapsed: TimeInterval = 24 * 60 + 18
-}
-
-// MARK: - Shared
-
-/// Title and subtitle on the left, the control on the right — the composition
-/// of the General pane's Appearance card. Shared with the Conversations pane's
-/// Recording options rows, so the model row and the HUD row read as one set.
-struct SettingHeader<Control: View>: View {
-    let title: String
-    let subtitle: String
-    @ViewBuilder let control: Control
-
-    var body: some View {
-        HStack(alignment: .center, spacing: Space.s6) {
-            VStack(alignment: .leading, spacing: Space.s2) {
-                Text(title)
-                    .typo(.headline)
-                    .foregroundStyle(Palette.ink)
-                Text(subtitle)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkMuted)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer(minLength: Space.s6)
-            control
-        }
-    }
-}
-
-/// A HUD card, still, at 1:1 wherever the pane is wide enough for it, laid out
-/// by the same `HUDLayout` as the live card and filled by the same views — so a
-/// metric changed there changes here too. Only the microphone is swapped for a
-/// fixed phrase.
+/// A compact inset: the HUD card as a still, at 1:1, beside the keys its
+/// buttons answer to (below them for Large, which needs the width). Laid out
+/// by the same `HUDLayout` as the live card and filled by the same views — so
+/// a metric changed there changes here too.
 ///
-/// It never goes near the HUD panels: each live card
-/// is one panel bound to its own state, and its shadow gutter, drag surface and
-/// click guard have no business in a settings pane. Nor is the card glass —
-/// glass is legal on four surfaces (`GlassSurface.swift`) — so it is an opaque
-/// plate raised off the well, the shape the HUD takes under Reduce
-/// Transparency.
-private struct HUDPreviewWell<Content: View>: View {
+/// It never goes near the HUD panels, and it isn't glass (glass is legal on
+/// four surfaces, `GlassSurface.swift`): an opaque plate raised off the well,
+/// the shape the HUD takes under Reduce Transparency. The card is inert —
+/// dimmed, no hover, no hits, hidden from VoiceOver — so its ✕ and ✓ never
+/// pass for live buttons; the legend beside it stays readable.
+private struct HUDPreviewInset<Content: View>: View {
     let layout: HUDLayout
-    let accessibilityLabel: String
+    let hints: [HUDHint]
     @ViewBuilder let content: (HUDLayout) -> Content
 
     var body: some View {
-        Plate(.well, padding: Space.s5) {
-            ZStack {
-                card
-                    .id(layout.size)
-                    .transition(.opacity)
+        Plate(.well, padding: Space.s4) {
+            Group {
+                if layout.size == .large {
+                    VStack(alignment: .leading, spacing: Space.s4) {
+                        card
+                        HUDHintLine(hints: hints)
+                    }
+                } else {
+                    HStack(spacing: Space.s6) {
+                        card
+                        Spacer(minLength: 0)
+                        HUDHintLine(hints: hints)
+                    }
+                }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        // A still, not a demo: the dot rests instead of pulsing — a blinking
-        // red dot in a settings pane reads as "recording now" — and the bars
-        // hold their shape. These are the views' own Reduce Motion frames.
-        .environment(\.motion, MotionValues(reduceMotion: true))
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLabel)
     }
 
     private var card: some View {
         let shape = RoundedRectangle(cornerRadius: layout.cornerRadius, style: .continuous)
         return content(layout)
             .padding(layout.contentInsets)
-            // A ceiling rather than a width: the 420pt Large card is wider than
-            // the pane's column at the narrowest window, and a meter that gives
-            // up a few bars' width beats a card clipped by its well.
+            // Small and Medium at their own width, so the meter keeps its
+            // bars beside the legend; Large as a ceiling, since the 420pt card
+            // can be wider than the column at the narrowest window.
+            .frame(width: layout.size == .large ? nil : layout.width)
             .frame(maxWidth: layout.width)
             .fixedSize(horizontal: false, vertical: true)
             .frame(minHeight: layout.minHeight)
             .background(Palette.plate, in: shape)
             .overlay { shape.strokeBorder(Palette.hairline, lineWidth: 0.5) }
             .environment(\.plateRadius, layout.cornerRadius)
+            .opacity(0.8)
+            .id(layout.size)
+            .transition(.opacity)
+            // A still, not a demo: the dot rests instead of pulsing — a
+            // blinking red dot in a settings pane reads as "recording now" —
+            // and the bars hold their shape (the views' Reduce Motion frames).
+            .environment(\.motion, MotionValues(reduceMotion: true))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
     }
 }
 
@@ -254,5 +167,35 @@ private enum HUDPreviewSample {
         let stress = 0.55 + 0.45 * abs(sin(t / 17))
         let syllable = abs(sin(t / 1.6))
         return 0.04 + 0.86 * word * stress * (0.45 + 0.55 * syllable)
+    }
+}
+
+/// One printed shortcut under a HUD preview: keys, then what they do.
+private struct HUDHint: Identifiable {
+    let keys: [String]
+    let label: String
+    var id: String { label }
+}
+
+/// "Esc Cancel   ⌥ Space Finish" — the preview's buttons, with their keys
+/// printed instead of waiting behind a hover.
+private struct HUDHintLine: View {
+    let hints: [HUDHint]
+
+    var body: some View {
+        if !hints.isEmpty {
+            HStack(spacing: Space.s6) {
+                ForEach(hints) { hint in
+                    HStack(spacing: Space.s3) {
+                        Keycap(keys: hint.keys, size: .small)
+                        Text(hint.label)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("\(hint.label): \(Keycap.spokenName(for: hint.keys))")
+                }
+            }
+        }
     }
 }

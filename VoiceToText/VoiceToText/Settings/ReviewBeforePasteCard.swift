@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Picker for the "review before paste" setting (`ReviewPolicy`). Until
 /// `review.mode` is written the mode follows the old `review.beforePaste` Bool.
-struct ReviewBeforePasteCard: View {
+struct ReviewBeforePasteRow: View {
     @AppStorage(ReviewPolicy.modeKey) private var storedMode: String?
     @AppStorage(ReviewPolicy.legacyKey) private var legacyBeforePaste: Bool = true
 
@@ -18,28 +18,22 @@ struct ReviewBeforePasteCard: View {
     }
 
     var body: some View {
-        Plate {
-            SettingHeader(title: "Review before pasting", subtitle: Self.subtitle(for: mode.wrappedValue)) {
-                Picker("Review before pasting", selection: mode) {
-                    ForEach(ReviewMode.allCases) { mode in
-                        Text(mode.title).tag(mode)
-                    }
+        SettingsRow("Review before pasting", caption: Self.caption) {
+            Picker("Review before pasting", selection: mode) {
+                ForEach(ReviewMode.allCases) { mode in
+                    Text(mode.title).tag(mode)
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: 280)
             }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .help("Long takes: over \(Self.longTakeSeconds) seconds.")
         }
     }
 
-    static func subtitle(for mode: ReviewMode) -> String {
-        switch mode {
-        case .always:
-            return "Edit, paste, or cancel — nothing types until you confirm."
-        case .longTakes:
-            return "Takes longer than \(Int(ReviewPolicy.defaultLongTakeSeconds)) seconds open for review. Shorter ones paste straight away."
-        case .never:
-            return "Text is pasted as soon as it's transcribed."
-        }
+    private static var longTakeSeconds: Int { Int(ReviewPolicy.longTakeSeconds(in: .standard).rounded()) }
+
+    /// The one fact the segment labels don't carry: what counts as long.
+    private static var caption: String {
+        "Long takes are those over \(longTakeSeconds) seconds."
     }
 }

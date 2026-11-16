@@ -45,8 +45,9 @@ nonisolated enum StatusLevel: Sendable, CaseIterable {
     }
 }
 
-/// A filled status glyph + Headline title + Caption message, with an optional
+/// A filled status glyph + Body title + Caption message, with an optional
 /// trailing control. Sits inside a `Plate`; supplies no surface of its own.
+/// Inside a `SettingsGroup`, add `.settingsRowPadding()`.
 struct StatusRow<Action: View>: View {
     let icon: String
     let tint: Color
@@ -76,9 +77,9 @@ struct StatusRow<Action: View>: View {
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: Space.s2) {
+            VStack(alignment: .leading, spacing: Space.s1) {
                 Text(title)
-                    .typo(.headline)
+                    .typo(.body)
                     .foregroundStyle(Palette.ink)
                 if let message {
                     Text(message)

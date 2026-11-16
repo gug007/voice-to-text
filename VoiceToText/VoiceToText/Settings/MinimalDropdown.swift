@@ -1,94 +1,245 @@
+import AppKit
 import SwiftUI
 
-/// A modern, minimal replacement for `Picker(.menu)` whose stock NSMenu can't be
-/// restyled to match the calm settings chrome. A compact rounded-rect control
-/// opens a `.popover` panel of custom rows — optional section headers, a
-/// secondary detail line and trailing caption per row, hover highlight, and an
-/// accent checkmark on the current selection. The popover gives outside-click
-/// and Esc dismissal for free and, unlike an in-view overlay, is never clipped by
-/// an enclosing ScrollView.
-///
-/// `MinimalDropdown` is the two-way-bound select control. Callers that need a
-/// different trigger (an icon button, an action list) can host `DropdownPopup`
-/// from their own `.popover` for the same visual language — see the regenerate
-/// control in `RecordingRow`.
+// MARK: - The one in-row picker
+//
+// `MinimalDropdown` is the app's single in-row choice control: a native
+// `NSPopUpButton` (bordered pop-up, system up/down chevron), so the
+// microphone, model and every other in-row picker look the same and match
+// the native menus in the toolbars. AppKit rather than `Picker(.menu)` for one
+// reason: a menu item's `detail` / `caption` go in its subtitle, so the open
+// menu explains each choice while the closed control shows just the title.
+//
+// `DropdownPopup` (below) is a separate custom action list hosted from a
+// caller's own `.popover` — see the regenerate control in `RecordingRow`.
 
 // MARK: - Data model
 
-/// One selectable row. `detail` is a quieter secondary line under the title;
-/// `caption` is a trailing right-aligned note. `value` doubles as identity.
+/// One selectable item. `title` (and `systemImage`) show on the closed
+/// control and in the menu; `detail` and `caption` appear only in the open
+/// menu, as the item's subtitle ("Currently MacBook Pro Microphone",
+/// "Not downloaded"). `value` doubles as identity.
 struct DropdownItem<Value: Hashable> {
     let value: Value
     let title: String
     var detail: String? = nil
     var caption: String? = nil
+    var systemImage: String? = nil
+
+    /// The open menu's second line for this item, if any.
+    var subtitle: String? {
+        let parts = [detail, caption].compactMap { $0 }.filter { !$0.isEmpty }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
 }
 
-/// A group of rows under an optional small uppercase header (e.g. "On this Mac",
-/// "OpenAI"). A `nil` header renders the rows with no heading.
+/// A group of items under an optional Title Case header (e.g. "On this Mac",
+/// "OpenAI"). Sections without a header are separated by a divider.
 struct DropdownSection<Value: Hashable> {
     var header: String? = nil
     let items: [DropdownItem<Value>]
 }
 
+extension DropdownSection {
+    /// Models as picker sections: one per group (On this Mac, then each
+    /// provider) with no headers, each item "Name · Provider" with its
+    /// cloud / laptop glyph. `caption` adds a note such as "Not downloaded".
+    ///
+    /// ```swift
+    /// MinimalDropdown(
+    ///     selection: $modelID,
+    ///     sections: .models(ModelCatalog.all, value: \.id) { readinessNote($0) }
+    /// )
+    /// ```
+    static func models(
+        _ models: [ModelDescriptor],
+        value: (ModelDescriptor) -> Value,
+        caption: (ModelDescriptor) -> String? = { _ in nil }
+    ) -> [DropdownSection<Value>] {
+        ModelGroup.sections(of: models).map { section in
+            DropdownSection(items: section.models.map { model in
+                DropdownItem(
+                    value: value(model),
+                    title: model.nameWithSource,
+                    caption: caption(model),
+                    systemImage: model.sourceSymbol
+                )
+            })
+        }
+    }
+}
+
 // MARK: - Bound select control
 
+/// The native pop-up over `sections`, at most `maxWidth` wide (longer titles
+/// truncate on the closed control only). Pass `title` — the row title — so
+/// VoiceOver names the pop-up, and `tooltip` for its help text; SwiftUI's own
+/// `.accessibilityLabel` / `.help` don't reach the AppKit control. `.disabled`
+/// and `.controlSize` do.
+///
+/// ```swift
+/// SettingsRow("Microphone", caption: caption) {
+///     MinimalDropdown(selection: $uid, sections: sections, title: "Microphone")
+/// }
+/// ```
 struct MinimalDropdown<Value: Hashable>: View {
     @Binding var selection: Value
     let sections: [DropdownSection<Value>]
-    /// Shown on the collapsed control only if the selection matches no item.
+    /// Shown only if the selection matches no item.
     var placeholder: String = "Select"
+    /// Kept for source compatibility; the native menu sizes itself.
     var popupWidth: CGFloat = 280
+    /// Kept for source compatibility; the native menu sizes itself.
     var maxPopupHeight: CGFloat = 360
+    /// The pop-up's accessibility label (usually the row title).
+    var title: String? = nil
+    /// The pop-up's tooltip.
+    var tooltip: String? = nil
 
-    @Environment(\.motion) private var motion
-
-    @State private var isOpen = false
-    @State private var isHovering = false
-
-    private var selectedTitle: String {
-        for section in sections {
-            if let item = section.items.first(where: { $0.value == selection }) {
-                return item.title
-            }
-        }
-        return placeholder
-    }
+    /// Widest a closed in-row picker gets.
+    static var maxWidth: CGFloat { 240 }
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-
-        Button {
-            isOpen.toggle()
-        } label: {
-            HStack(spacing: Space.s3) {
-                Text(selectedTitle)
-                    .typo(.body)
-                    .foregroundStyle(Palette.ink)
-                    .lineLimit(1)
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(Typo.micro)
-                    .foregroundStyle(Palette.inkMuted)
-            }
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-            .background(shape.fill(Palette.ink.opacity(isHovering ? 0.09 : 0.05)))
-            .contentShape(shape)
+        NativePopUp(
+            selection: AnyHashable(selection),
+            sections: sections.map { section in
+                NativePopUp.Section(
+                    header: section.header,
+                    items: section.items.map {
+                        NativePopUp.Item(
+                            value: AnyHashable($0.value),
+                            title: $0.title,
+                            subtitle: $0.subtitle,
+                            systemImage: $0.systemImage
+                        )
+                    }
+                )
+            },
+            placeholder: placeholder,
+            maxWidth: Self.maxWidth,
+            title: title,
+            tooltip: tooltip
+        ) { picked in
+            if let value = picked.base as? Value { selection = value }
         }
-        .buttonStyle(.plain)
-        .fixedSize()
-        .onHover { isHovering = $0 }
-        .animation(motion.hover, value: isHovering)
-        .popover(isPresented: $isOpen, arrowEdge: .bottom) {
-            DropdownPopup(
-                sections: sections,
-                selected: selection,
-                width: popupWidth,
-                maxHeight: maxPopupHeight
-            ) { value in
-                selection = value
-                isOpen = false
+    }
+}
+
+/// `NSPopUpButton`, rebuilt only when its items change. Each item carries its
+/// value boxed in `representedObject` (`DropdownValueBox`), so a pick from a
+/// menu that was open across a rebuild still resolves to the item the user saw.
+private struct NativePopUp: NSViewRepresentable {
+    struct Item: Equatable {
+        let value: AnyHashable
+        let title: String
+        let subtitle: String?
+        let systemImage: String?
+    }
+
+    struct Section: Equatable {
+        let header: String?
+        let items: [Item]
+    }
+
+    let selection: AnyHashable
+    let sections: [Section]
+    let placeholder: String
+    let maxWidth: CGFloat
+    let title: String?
+    let tooltip: String?
+    let onPick: (AnyHashable) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> NSPopUpButton {
+        let button = NSPopUpButton(frame: .zero, pullsDown: false)
+        button.target = context.coordinator
+        button.action = #selector(Coordinator.picked(_:))
+        button.lineBreakMode = .byTruncatingTail
+        return button
+    }
+
+    func updateNSView(_ button: NSPopUpButton, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.onPick = onPick
+
+        // SwiftUI's environment doesn't flow into an AppKit control by itself.
+        button.isEnabled = context.environment.isEnabled
+        let size = Self.controlSize(context.environment.controlSize)
+        if button.controlSize != size {
+            button.controlSize = size
+            button.font = .systemFont(ofSize: NSFont.systemFontSize(for: size))
+        }
+        button.setAccessibilityLabel(title)
+        button.toolTip = tooltip
+
+        let isListed = sections.contains { $0.items.contains { $0.value == selection } }
+        if coordinator.sections != sections || coordinator.showsPlaceholder != !isListed {
+            coordinator.sections = sections
+            coordinator.showsPlaceholder = !isListed
+            button.menu = makeMenu(showsPlaceholder: !isListed)
+        }
+        coordinator.selection = selection
+        // The placeholder (when shown) is item 0.
+        button.selectItem(at: button.indexOfItem(withBoxedValue: selection) ?? 0)
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSPopUpButton, context: Context) -> CGSize? {
+        let ideal = nsView.intrinsicContentSize
+        let available = proposal.width ?? .infinity
+        let width = max(min(ideal.width, maxWidth, available), min(ideal.width, 80))
+        return CGSize(width: width, height: ideal.height)
+    }
+
+    private static func controlSize(_ size: ControlSize) -> NSControl.ControlSize {
+        switch size {
+        case .mini: return .mini
+        case .small: return .small
+        case .large, .extraLarge: return .large
+        default: return .regular
+        }
+    }
+
+    private func makeMenu(showsPlaceholder: Bool) -> NSMenu {
+        let menu = NSMenu()
+        menu.autoenablesItems = false
+        if showsPlaceholder {
+            let item = NSMenuItem(title: placeholder, action: nil, keyEquivalent: "")
+            item.isEnabled = false
+            menu.addItem(item)
+        }
+        for (index, section) in sections.enumerated() {
+            if index > 0 || showsPlaceholder { menu.addItem(.separator()) }
+            if let header = section.header {
+                menu.addItem(.sectionHeader(title: header))
             }
+            for entry in section.items {
+                let item = NSMenuItem(title: entry.title, action: nil, keyEquivalent: "")
+                item.subtitle = entry.subtitle
+                if let symbol = entry.systemImage {
+                    item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+                }
+                item.representedObject = DropdownValueBox(entry.value)
+                menu.addItem(item)
+            }
+        }
+        return menu
+    }
+
+    final class Coordinator: NSObject {
+        var sections: [Section] = []
+        var showsPlaceholder = false
+        var selection: AnyHashable?
+        var onPick: (AnyHashable) -> Void = { _ in }
+
+        @objc func picked(_ sender: NSPopUpButton) {
+            // A menu opened before the control was locked must not slip a
+            // pick through; put the shown item back instead.
+            guard sender.isEnabled, let value = sender.selectedBoxedValue else {
+                if let selection { sender.selectItem(at: sender.indexOfItem(withBoxedValue: selection) ?? 0) }
+                return
+            }
+            onPick(value)
         }
     }
 }
@@ -124,8 +275,7 @@ struct DropdownPopup<Value: Hashable>: View {
                 ForEach(Array(sections.enumerated()), id: \.offset) { index, section in
                     if let header = section.header {
                         Text(header)
-                            .typo(.micro)
-                            .textCase(.uppercase)
+                            .font(Typo.sidebarHeader)
                             .foregroundStyle(Palette.inkFaint)
                             .padding(.horizontal, Space.s4)
                             .padding(.top, index == 0 ? Space.s1 : Space.s4)
@@ -192,7 +342,7 @@ private struct DropdownRow: View {
                 Spacer(minLength: Space.s4)
                 if let caption, !caption.isEmpty {
                     Text(caption)
-                        .typo(.mono)
+                        .typo(.caption)
                         .foregroundStyle(Palette.inkFaint)
                 }
                 Image(systemName: "checkmark")

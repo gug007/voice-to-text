@@ -26,6 +26,26 @@ final class AppUpdater {
 
     private(set) var status: Status = .idle
 
+    /// When GitHub last answered a check (up to date or an update found),
+    /// for the Updates pane's "Last checked 5 minutes ago". Persisted.
+    private(set) var lastCheckedAt: Date?
+
+    /// Whether the background check (at launch, then daily) runs. On by
+    /// default; turning it back on checks right away only if the last check
+    /// is a day old or more. Manual "Check Now" works either way.
+    var automaticallyChecksForUpdates: Bool {
+        didSet {
+            guard automaticallyChecksForUpdates != oldValue else { return }
+            UserDefaults.standard.set(automaticallyChecksForUpdates, forKey: Self.automaticChecksKey)
+            if automaticallyChecksForUpdates, lastCheckIsStale { pendingSleep?.cancel() }
+        }
+    }
+
+    private var lastCheckIsStale: Bool {
+        guard let lastCheckedAt else { return true }
+        return Date().timeIntervalSince(lastCheckedAt) >= UpdateCheckPolicy.checkInterval
+    }
+
     /// True from the moment the verified update is swapped in until the app
     /// quits (or the quit is cancelled). A conversation mustn't start then:
     /// the quit would cut it off, and the bundle on disk is already the new one.
@@ -42,6 +62,8 @@ final class AppUpdater {
     /// release's page, to download the DMG and install it by hand.
     nonisolated static let releasesPageURL = URL(string: "https://github.com/\(repo)/releases/latest")!
     private static let skippedVersionKey = "updater.skippedVersion"
+    private static let lastCheckedKey = "updater.lastCheckedAt"
+    private static let automaticChecksKey = "updater.automaticChecks"
 
     /// The newest release the last answered check found, while it's newer
     /// than this build. Kept apart from `status` so an install that fails, or
@@ -80,12 +102,16 @@ final class AppUpdater {
     @ObservationIgnored private var pathMonitor: NWPathMonitor?
 
     private init() {
-        skippedVersion = UserDefaults.standard.string(forKey: Self.skippedVersionKey)
+        let defaults = UserDefaults.standard
+        skippedVersion = defaults.string(forKey: Self.skippedVersionKey)
+        lastCheckedAt = defaults.object(forKey: Self.lastCheckedKey) as? Date
+        automaticallyChecksForUpdates = defaults.object(forKey: Self.automaticChecksKey) as? Bool ?? true
     }
 
     /// Background auto-check loop. Checks once on start, then on the cadence
     /// `UpdateCheckPolicy` sets: a short backoff after a failure, every 24h
-    /// otherwise, and early when the network returns after a failure.
+    /// otherwise, and early when the network returns after a failure. While
+    /// `automaticallyChecksForUpdates` is off it only waits.
     /// No-op in Debug builds so local runs don't thrash the GitHub API.
     func autoCheckLoop() async {
         // A crash or a failure mid-install can leave a staging copy or the old
@@ -96,6 +122,10 @@ final class AppUpdater {
         #else
         startNetworkMonitor()
         while !Task.isCancelled {
+            guard automaticallyChecksForUpdates else {
+                await sleepUntilNextCheck(UpdateCheckPolicy.checkInterval)
+                continue
+            }
             let isFirstAnsweredCheck = !hasAnsweredCheck
             if await checkForUpdate(silent: true) == .answered {
                 await offerAvailableUpdate(isFirstAnsweredCheck: isFirstAnsweredCheck)
@@ -142,7 +172,8 @@ final class AppUpdater {
     /// A check that failed for want of a connection shouldn't wait out its
     /// backoff (up to a day) once there is one again.
     private func networkBecameAvailable() {
-        guard let pendingSleep,
+        guard automaticallyChecksForUpdates,
+              let pendingSleep,
               UpdateCheckPolicy.shouldCheckWhenNetworkReturns(
                   lastFailure: lastFailure,
                   notBefore: notBefore,
@@ -333,6 +364,9 @@ final class AppUpdater {
 
     private func recordAnswer() {
         hasAnsweredCheck = true
+        let now = Date()
+        lastCheckedAt = now
+        UserDefaults.standard.set(now, forKey: Self.lastCheckedKey)
         lastFailure = nil
         consecutiveFailures = 0
         notBefore = nil
@@ -369,7 +403,7 @@ final class AppUpdater {
         do {
             status = .downloading(fraction: 0)
             let dmgURL = try await downloadDMG(from: url) { [weak self] pct in
-                Task { @MainActor in
+                Task { @MainActor [weak self] in
                     self?.status = .downloading(fraction: pct)
                 }
             }

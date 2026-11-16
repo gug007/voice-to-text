@@ -1,19 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// One command in the row's sparkles menu. The two built-in insights are named
-/// by the kind they generate; "Custom prompt…" opens a form instead of starting
-/// anything, which is exactly why it cannot be an `InsightKind` — there is no
-/// id to name until the user has typed an instruction and the model has answered.
-///
-/// `nonisolated` because it is a `DropdownItem`'s value: its `Hashable`
-/// witnesses are called by the dropdown's `ForEach` and comparisons, which a
-/// MainActor-isolated type could not satisfy under Swift 6.
-private nonisolated enum InsightMenuCommand: Hashable {
-    case generate(InsightKind)
-    case customPrompt
-}
-
 /// History's multi-select hooks for one row. Nil in Conversations, which has
 /// no selection mode, so its rows keep every click they always had.
 struct RecordingRowSelection {
@@ -25,32 +12,94 @@ struct RecordingRowSelection {
     let onExtend: () -> Void
 }
 
-/// A single saved-recording row: leading play tile, timestamp + metadata, copy
-/// and delete controls, and the transcript(s) below. After a regeneration a
-/// recording can hold more than one transcript; each version is then shown in
-/// its own labeled block with per-version copy and remove. Chrome-less — the
-/// enclosing `RecordingsList` draws the grouped card and the hairline separators
-/// between rows. Shared by the History pane (all recordings) and the
-/// Conversations pane (conversations only).
+// MARK: - Row date
+
+/// How much of the date a row's title spells out. The section header above a
+/// row already carries the day, so a row under "Today" shows only the time.
+enum RecordingRowDateStyle {
+    /// "19:08" — under Today / Yesterday.
+    case time
+    /// "Thursday 17:20" — under This Week.
+    case weekdayTime
+    /// "Thu 13 Nov, 17:20" — under a month header, which carries the year.
+    case dayTime
+    /// "Today at 19:08", "Thu 13 Nov, 17:20", "13 Nov 2025, 17:20" — a flat
+    /// list (search results) with no date header.
+    case full
+
+    /// The style for rows under one of `HistoryDateGrouping`'s sections.
+    static func forSection(id: String) -> RecordingRowDateStyle {
+        switch id {
+        case "today", "yesterday": return .time
+        case "thisWeek": return .weekdayTime
+        case _ where id.hasPrefix("month."): return .dayTime
+        default: return .full
+        }
+    }
+
+    func label(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
+        switch self {
+        case .time:
+            return Self.timeFormatter.string(from: date)
+        case .weekdayTime:
+            return Self.weekdayTimeFormatter.string(from: date)
+        case .dayTime:
+            return Self.dayTimeFormatter.string(from: date)
+        case .full:
+            if calendar.isDateInToday(date) || calendar.isDateInYesterday(date) {
+                return RecordingDateFormat.rowLabel(date)
+            }
+            if calendar.isDate(date, equalTo: now, toGranularity: .year) {
+                return Self.dayTimeFormatter.string(from: date)
+            }
+            return Self.dayYearTimeFormatter.string(from: date)
+        }
+    }
+
+    private static func formatter(template: String) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.setLocalizedDateFormatFromTemplate(template)
+        return formatter
+    }
+
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    private static let weekdayTimeFormatter = formatter(template: "EEEEjmm")
+    private static let dayTimeFormatter = formatter(template: "EEEdMMMjmm")
+    private static let dayYearTimeFormatter = formatter(template: "dMMMyjmm")
+}
+
+// MARK: - Row
+
+/// One saved recording, compact by default: play (or a selection checkbox),
+/// then two lines — the time with its metadata, and a one-line preview of the
+/// transcript — then an always-visible Copy · Favorite · ⋯ · disclosure
+/// cluster. Clicking the text or the chevron opens the row: the full
+/// transcript, and for a conversation the Transcript / Summary / Action Items
+/// picker. One row is open at a time; the pane owns which.
 ///
-/// Once a recording has an AI summary, a checklist or a custom result — or one
-/// is being generated — the content area grows a tab bar and the transcript
-/// becomes one of several readings of the same recording. All of that chrome
-/// lives in `RecordingInsightsView.swift`; this row owns the *jobs*: starting
-/// one from the sparkles menu, the custom-prompt popover or the inline strip,
-/// following it to its tab, and showing what went wrong when it fails.
+/// A failed take is never folded away: its explanation and recovery buttons
+/// always show. Shared by History and Conversations; `RecordingsList` draws the
+/// plate and hairlines.
 struct RecordingRow: View {
     let entry: RecordingHistoryEntry
     let isPlaying: Bool
     /// Hidden in the Conversations list, where every row is the same type.
     var showsTypeBadge: Bool = true
+    var dateStyle: RecordingRowDateStyle = .full
     /// The live History search query, so matched substrings can be marked in
     /// the transcript. Empty everywhere else.
     var highlight: String = ""
     var selection: RecordingRowSelection? = nil
-    /// Which of Transcript / Summary / Action Items this row is showing. Owned
-    /// by the pane, not by this view — see `RecordingsList` for why a row that
-    /// scrolls out of view must not take its selection with it.
+    /// Whether this row is open. Owned by the pane (rows are lazy, and only
+    /// one is open at a time).
+    @Binding var isExpanded: Bool
+    /// Which view an open conversation shows. Owned by the pane for the same
+    /// reason.
     @Binding var selectedTab: InsightTab
     let onPlay: () -> Void
     let onDelete: () -> Void
@@ -72,109 +121,110 @@ struct RecordingRow: View {
     @State private var copied = false
     @State private var copyResetTask: Task<Void, Never>?
     @State private var showRegenerateMenu = false
-    /// The model picker inside a failed row's notice — the same list as the
-    /// hover menu, but on an anchor that is always on screen.
+    /// The failed row's model list; built only while it is open.
     @State private var showOtherModelMenu = false
-    @State private var showInsightMenu = false
-    /// The "Format with AI" popover, anchored to the same sparkles button as the
-    /// menu that offers it.
+    /// The custom-prompt form, from the open row's Ask AI… button.
     @State private var showCustomPrompt = false
-    /// True only during the menu-to-form handoff, where neither popover flag is
-    /// set and the pointer is off the row. Without it the sparkles button — the
-    /// anchor the form is about to be presented from — unmounts for those two
-    /// frames and the popover is asked to present on a brand-new view.
-    @State private var isOpeningCustomPrompt = false
+    /// The same form, from the ⋯ menu (anchored to it).
+    @State private var showCustomPromptFromMenu = false
     @State private var showRenameSpeakers = false
     /// Draft names shown in the rename popover, seeded from the entry on open and
     /// committed to the store when the popover closes.
     @State private var speakerNameDrafts: [String: String] = [:]
-    /// Row action icons stay hidden until the pointer is over the row — the list
-    /// reads calm at rest and reveals its controls on demand.
+    /// The pointer is over the row, or keyboard focus is on one of its
+    /// secondary controls: either reveals the empty star and ⋯.
     @State private var isHovering = false
+    @FocusState private var focusedControl: RowControl?
+
+    private enum RowControl: Hashable { case star, more }
+
+    /// Width of the leading play / checkbox column. The text column — and
+    /// `RecordingsList`'s hairlines — start after it and its gap.
+    static let leadingColumn: CGFloat = 28
+    static let textColumnInset: CGFloat = leadingColumn + Space.s5
+    /// Lines of a conversation transcript shown in an open row before Show More.
+    private static let openTranscriptLineLimit = 8
 
     private var isRegenerating: Bool { regenerator.activeID == entry.id }
 
     private var isSelecting: Bool { selection?.isSelecting ?? false }
 
-    /// The dictation that saved this row is still transcribing it. Its stored
-    /// status is what the row would say if that never finished; until then
+    /// The dictation that saved this row is still transcribing it. Until then
     /// the row says it is working, and offers nothing that would race it.
     private var isInFlight: Bool {
         RecordingHistoryStore.shared.inFlightIDs.contains(entry.id)
     }
 
-    /// Tertiary ink for this row's metadata, collapsed into `inkMuted` under
-    /// Increase Contrast. The row is the surface History's search highlight
-    /// lands on, so its whole ramp has to be the same one the highlight uses.
+    private var isConversation: Bool { entry.source == .meeting }
+
+    /// Conversations get the full Transcript · Summary · Action Items picker.
+    /// A failed one has only a placeholder to send, so it gets none.
+    private var offersInsightTabs: Bool {
+        isConversation && !entry.transcriptIsPlaceholder
+    }
+
+    /// Every row with a transcript opens — to the full, selectable text, and
+    /// for a conversation its views — so the disclosure column is the same on
+    /// every row. A failed take shows its recovery without opening.
+    private var canExpand: Bool { !entry.transcriptIsPlaceholder }
+
+    /// ⋯ shows on hover, keyboard focus or an open row, and while one of its
+    /// menu's popovers is up.
+    private var revealsSecondaryActions: Bool {
+        isHovering || focusedControl != nil || isExpanded
+            || showRegenerateMenu || showRenameSpeakers || showCustomPromptFromMenu
+    }
+
+    private var showsOpenContent: Bool { isExpanded && canExpand && !isSelecting }
+
     private var faintInk: Color {
         Palette.inkFaint(increaseContrast: increaseContrast)
     }
 
-    /// Canonical speaker labels present in the stored transcript. The rename
-    /// control only appears when this is non-empty (i.e. a diarized recording).
+    /// Canonical speaker labels present in the stored transcript; non-empty
+    /// only for a diarized recording.
     private var speakerLabels: [String] { SpeakerRelabeler.speakerLabels(in: entry.transcript) }
 
-    /// Applies the entry's speaker-name mapping to any transcript variant for
-    /// display and copy — the stored string keeps its canonical "Speaker N" labels.
+    /// Whether to offer Name Speakers. Every label starts "Speaker ", so a
+    /// plain substring check spares the line-by-line parse on most rows.
+    private var hasSpeakerLabels: Bool {
+        entry.transcript.contains("Speaker ") && !speakerLabels.isEmpty
+    }
+
+    /// Applies the entry's speaker-name mapping for display and copy — the
+    /// stored string keeps its canonical "Speaker N" labels.
     private func displayText(_ text: String) -> String {
         SpeakerRelabeler.apply(names: entry.speakerNames ?? [:], to: text)
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: Space.s5) {
+        // Parsed once per pass: the ⋯ menu and the context menu both need it.
+        let hasSpeakers = hasSpeakerLabels
+        VStack(alignment: .leading, spacing: Space.s4) {
             HStack(alignment: .center, spacing: Space.s5) {
                 if let selection, selection.isSelecting {
                     selectionCheckbox(selection)
                 } else {
-                    PlayTile(isPlaying: isPlaying, action: onPlay)
+                    IconButton(
+                        isPlaying ? "stop.fill" : "play.fill",
+                        label: isPlaying
+                            ? "Stop playback"
+                            : "Play recording from \(RecordingDateFormat.rowLabel(entry.createdAt))",
+                        tint: isPlaying ? Palette.ink : nil,
+                        action: onPlay
+                    )
                 }
 
-                VStack(alignment: .leading, spacing: Space.s2) {
-                    Text(RecordingDateFormat.rowLabel(entry.createdAt))
-                        .typo(.headline)
-                        .foregroundStyle(Palette.ink)
-                    HStack(spacing: Space.s3) {
-                        if showsTypeBadge {
-                            RecordingTypeBadge(source: entry.source)
-                            Text("·")
-                                .typo(.caption)
-                                .foregroundStyle(faintInk)
-                        }
-                        Text(metaLine)
-                            .typo(.mono)
-                            .foregroundStyle(faintInk)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                    }
-                }
+                summaryColumn
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
-                Spacer(minLength: Space.s5)
-
-                actionButtons
+                trailingActions(hasSpeakers: hasSpeakers)
             }
 
-            contentSection
-
-            if isRegenerating, let modelId = regenerator.downloadingModelID {
-                modelDownloadNotice(modelId)
-            }
-
-            insightFailures
-
-            if let failure = regenerator.failure, failure.id == entry.id {
-                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
-                    Text(failure.message)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.signalWarn)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Button("Dismiss") { regenerator.dismissFailure() }
-                        .buttonStyle(.plain)
-                        .typo(.captionMedium)
-                        .foregroundStyle(Palette.accent)
-                }
-            }
+            detailSection
         }
-        .padding(Space.s6)
+        .padding(.vertical, Space.s4 + Space.s1)
+        .padding(.horizontal, Space.s6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background {
             if selection?.isSelected == true, isSelecting {
@@ -184,8 +234,7 @@ struct RecordingRow: View {
         }
         .contentShape(Rectangle())
         // Selecting, the whole row is one target and nothing under it plays,
-        // expands or selects text. Kept mounted either way so entering the
-        // mode doesn't rebuild the row and fold every expanded transcript.
+        // opens or selects text.
         .overlay {
             Color.clear
                 .contentShape(Rectangle())
@@ -207,9 +256,197 @@ struct RecordingRow: View {
             TapGesture().modifiers(.shift).onEnded { selection?.onExtend() },
             including: selection != nil && !isSelecting ? .all : .subviews
         )
+        .contextMenu {
+            if !isSelecting { rowMenu(hasSpeakers: hasSpeakers) }
+        }
         .onHover { isHovering = $0 }
-        .animation(motion.hover, value: isHovering)
+        .animation(motion.hover, value: revealsSecondaryActions)
+        // The row's controls as VoiceOver actions, so none needs hunting for.
+        .accessibilityActions {
+            if !isSelecting {
+                Button(isPlaying ? "Stop playback" : "Play recording", action: onPlay)
+                if !entry.transcriptIsPlaceholder {
+                    Button("Copy transcript", action: copyActiveTranscript)
+                    Button(isExpanded ? "Close recording" : "Open recording", action: toggleExpanded)
+                }
+                Button(entry.isFavorited ? "Remove from Favorites" : "Add to Favorites", action: onToggleFavorite)
+                if !isInFlight {
+                    Button("Delete recording", role: .destructive, action: onDelete)
+                }
+            }
+        }
         .onDisappear { copyResetTask?.cancel() }
+    }
+
+    // MARK: - Summary (the closed row)
+
+    /// The two lines every row shows. When the row can open, they are the
+    /// button that opens it.
+    @ViewBuilder
+    private var summaryColumn: some View {
+        let lines = VStack(alignment: .leading, spacing: Space.s1) {
+            titleLine
+            secondLine
+        }
+        if canExpand && !isSelecting {
+            Button(action: summaryClicked) {
+                lines.contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(isExpanded ? "Closes this recording" : expandHint)
+        } else {
+            lines
+        }
+    }
+
+    private var expandHint: String {
+        offersInsightTabs ? "Shows the transcript, summary and action items" : "Shows the full transcript"
+    }
+
+    private func toggleExpanded() {
+        withAnimation(motion.layout) { isExpanded.toggle() }
+    }
+
+    /// A plain click opens the row; ⌘- and ⇧-click keep selecting it, as they
+    /// do anywhere else on the row (the text is a button, so the row's own
+    /// modifier taps never see them).
+    private func summaryClicked() {
+        let flags = NSEvent.modifierFlags
+        if let selection, flags.contains(.command) {
+            selection.onToggle()
+        } else if let selection, flags.contains(.shift) {
+            selection.onExtend()
+        } else {
+            toggleExpanded()
+        }
+    }
+
+    /// "19:08  🎙 6 sec · GPT Transcribe · OpenAI  [☑ 3 action items]".
+    /// VoiceOver reads the full date, since the visible time leans on the
+    /// section header for the day.
+    private var titleLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
+            Text(dateStyle.label(entry.createdAt))
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+                .fixedSize()
+                .accessibilityLabel(RecordingDateFormat.rowLabel(entry.createdAt))
+
+            HStack(alignment: .firstTextBaseline, spacing: Space.s2) {
+                if showsTypeBadge {
+                    Image(systemName: (entry.source ?? .dictation).symbolName)
+                        .font(Typo.micro)
+                        .accessibilityLabel((entry.source ?? .dictation).displayName)
+                }
+                Text(metaLine)
+                    .typo(.caption)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .foregroundStyle(faintInk)
+            .help(metaLine)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// "31 min · 3 action items · GPT Transcribe · OpenAI", most useful first so
+    /// a narrow row loses the provider, not the count; the kind is the glyph
+    /// (VoiceOver names it) and the whole line is the tooltip. A row without
+    /// a transcript leaves its model out — the notice names it where it can
+    /// be acted on.
+    private var metaLine: String {
+        var parts = [Self.durationLabel(entry.durationSeconds)]
+        if let count = entry.actionItems?.items.count, count > 0 {
+            parts.append(count == 1 ? "1 action item" : "\(count) action items")
+        }
+        if !entry.transcriptIsPlaceholder, let model = modelLabel {
+            parts.append(model)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// "6 sec", "31 min", "1 h 05 min" — words, so a length never reads as
+    /// a clock time beside the row's own time.
+    static func durationLabel(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        if total < 60 { return "\(total) sec" }
+        if total < 3600 { return "\(max(1, Int((Double(total) / 60).rounded()))) min" }
+        let minutes = (total % 3600) / 60
+        return "\(total / 3600) h \(minutes < 10 ? "0" : "")\(minutes) min"
+    }
+
+    /// "GPT Transcribe · OpenAI" or "Parakeet TDT v3 · On this Mac" — the
+    /// Models pane's spelling, so a cloud model always says where audio went.
+    private var modelLabel: String? {
+        if let id = entry.modelId, let model = ModelCatalog.model(for: id) {
+            return model.nameWithSource
+        }
+        let stored = entry.modelName ?? entry.modelId
+        return stored?.isEmpty == false ? stored : nil
+    }
+
+    /// The closed row's second line: the transcript's first line, or what the
+    /// row is waiting on. Hidden while open — the transcript is right below.
+    @ViewBuilder
+    private var secondLine: some View {
+        if entry.transcriptIsPlaceholder {
+            if isInFlight {
+                transcribingNotice
+            } else if let status = HistorySearch.untranscribedStatus(of: entry) {
+                failureSentence(status)
+            }
+        } else if !showsOpenContent {
+            previewLine
+        }
+    }
+
+    /// One line: the summary's first sentence when a conversation has one (the
+    /// best handle on which meeting it was), otherwise the transcript. While
+    /// searching it is the transcript, starting near the first match.
+    private var previewLine: some View {
+        Text(HistorySearch.highlighted(previewText, query: highlight))
+            .typo(.body)
+            .foregroundStyle(Palette.ink)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// Works on a window of a few hundred characters, never the whole
+    /// transcript: an hour-long conversation is one line here.
+    private var previewText: String {
+        let isSearching = HistorySearch.isActive(highlight)
+        if isConversation, !isSearching, let summary = entry.summary?.text,
+           let sentence = Self.firstSentence(of: String(summary.prefix(Self.previewWindow))) {
+            return sentence
+        }
+        let transcript = entry.transcript
+        var start = transcript.startIndex
+        if isSearching,
+           let hit = HistorySearch.terms(in: highlight)
+            .compactMap({ transcript.range(of: $0, options: HistorySearch.options)?.lowerBound })
+            .min(),
+           transcript.distance(from: transcript.startIndex, to: hit) > 60 {
+            let lead = transcript.index(hit, offsetBy: -24, limitedBy: transcript.startIndex) ?? transcript.startIndex
+            start = transcript[lead...].firstIndex(of: " ").map { transcript.index(after: $0) } ?? lead
+        }
+        let end = transcript.index(start, offsetBy: Self.previewWindow, limitedBy: transcript.endIndex) ?? transcript.endIndex
+        let window = displayText(String(transcript[start..<end]))
+            .replacingOccurrences(of: "\n", with: " ")
+        return start == transcript.startIndex ? window : "…" + window
+    }
+
+    /// Characters the preview reads; far more than one line ever shows.
+    private static let previewWindow = 300
+
+    /// The text up to and including its first ". ", or nil for an empty one.
+    static func firstSentence(of text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\n", with: " ")
+        guard !trimmed.isEmpty else { return nil }
+        guard let end = trimmed.range(of: ". ") else { return trimmed }
+        return String(trimmed[..<end.lowerBound]) + "."
     }
 
     /// Stands in for the play tile while selecting, at the same size so the
@@ -224,73 +461,233 @@ struct RecordingRow: View {
         .toggleStyle(.checkbox)
         .labelsHidden()
         .accessibilityLabel(label)
-        .frame(width: 28, height: 28)
+        .frame(width: Self.leadingColumn, height: Self.leadingColumn)
     }
 
-    /// Favorite / regenerate / copy / delete. Quiet by default: only the star
-    /// shows when a recording is favorited; the full set appears on hover (and
-    /// the regenerate spinner stays put while a regeneration is in flight).
-    ///
-    /// A row still in flight offers neither regenerate nor delete: its
-    /// dictation files the transcript into it when it lands, and a row deleted
-    /// under it is re-recorded as a second one — which an Undo then turns
-    /// into a duplicate claiming the app closed before transcribing it.
+    // MARK: - Actions
+
+    /// ⋯ · star · Copy · disclosure. The star (outline or filled), Copy and the
+    /// disclosure are always shown; ⋯ appears on hover, keyboard focus or an
+    /// open row (its slot is kept, so columns line up down the list).
+    /// Everything is also in the context menu and the VoiceOver actions. A row
+    /// still in flight offers neither re-transcription nor delete.
     @ViewBuilder
-    private var actionButtons: some View {
-        HStack(spacing: Space.s3) {
-            if entry.isFavorited || (isHovering && !isSelecting) {
-                iconButton(
-                    systemName: entry.isFavorited ? "star.fill" : "star",
-                    help: entry.isFavorited ? "Remove from Favorites" : "Add to Favorites",
-                    tint: entry.isFavorited ? Palette.favorite : Palette.inkMuted,
-                    action: onToggleFavorite
-                )
+    private func trailingActions(hasSpeakers: Bool) -> some View {
+        if isSelecting {
+            if entry.isFavorited {
+                Image(systemName: "star.fill")
+                    .font(Typo.body)
+                    .foregroundStyle(Palette.favorite)
+                    .frame(width: FormMetrics.iconButton, height: FormMetrics.iconButton)
+                    .accessibilityLabel("Favorite")
             }
-            // Popover-open states keep the anchor buttons mounted after the
-            // pointer leaves the row — an anchor that unmounts (hover ends when
-            // the cursor enters the popover) tears its popover down with it.
-            if (isHovering && !isSelecting) || isRegenerating || showRenameSpeakers || showRegenerateMenu
-                || showInsightMenu || showCustomPrompt || isOpeningCustomPrompt {
-                if !speakerLabels.isEmpty {
-                    renameSpeakersControl
+        } else {
+            HStack(spacing: Space.s1) {
+                if isRegenerating {
+                    regenerateProgress
                 }
-                if !isInFlight {
-                    regenerateControl
-                }
-                // A placeholder is nothing to summarize or copy.
-                if !entry.transcriptIsPlaceholder {
-                    insightControl
-                    iconButton(
-                        systemName: copied ? "checkmark" : "doc.on.doc",
-                        help: "Copy transcript",
-                        tint: copied ? Palette.signalReady : Palette.inkMuted,
+                IconMenu(label: "More actions for this recording") { rowMenu(hasSpeakers: hasSpeakers) }
+                    .focused($focusedControl, equals: .more)
+                    .opacity(revealsSecondaryActions ? 1 : 0)
+                    .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
+                        regeneratePopup
+                    }
+                    .popover(isPresented: $showRenameSpeakers, arrowEdge: .bottom) {
+                        speakerNamePopover
+                            .onDisappear { onRenameSpeakers(speakerNameDrafts) }
+                    }
+                    .popover(isPresented: $showCustomPromptFromMenu, arrowEdge: .bottom) {
+                        customPromptPopover { showCustomPromptFromMenu = false }
+                    }
+                IconToggle(
+                    isOn: Binding(get: { entry.isFavorited }, set: { _ in onToggleFavorite() }),
+                    on: ("star.fill", "Remove from Favorites"),
+                    off: ("star", "Add to Favorites"),
+                    onTint: Palette.favorite
+                )
+                .focused($focusedControl, equals: .star)
+                if entry.transcriptIsPlaceholder {
+                    actionSlot
+                } else {
+                    IconButton(
+                        copied ? "checkmark" : "doc.on.doc",
+                        label: copied ? "Copied" : "Copy transcript",
+                        tint: copied ? Palette.signalReady : nil,
                         action: copyActiveTranscript
                     )
                 }
-                if !isInFlight {
-                    iconButton(
-                        systemName: "trash",
-                        help: "Delete recording",
-                        tint: Palette.inkMuted,
-                        action: onDelete
+                if canExpand {
+                    IconButton(
+                        isExpanded ? "chevron.up" : "chevron.down",
+                        label: isExpanded ? "Close recording" : (offersInsightTabs ? "Open conversation" : "Show full transcript"),
+                        action: toggleExpanded
                     )
+                } else {
+                    actionSlot
                 }
             }
         }
     }
 
-    // MARK: - Content
+    /// An empty 28pt slot, so a row without a control there keeps the column.
+    private var actionSlot: some View {
+        Color.clear
+            .frame(width: FormMetrics.iconButton, height: FormMetrics.iconButton)
+            .accessibilityHidden(true)
+    }
 
-    /// The row's content area. With no insights this is exactly the transcript
-    /// the row has always shown, so nothing regresses for a plain recording.
-    /// Once a summary or checklist exists — or one is in flight — a tab bar
-    /// appears above it and the transcript becomes the first of three tabs.
+    /// The ⋯ menu, mirrored as the row's context menu.
     @ViewBuilder
-    private var contentSection: some View {
-        let tabs = InsightTab.visible(for: entry, generator: insights)
-        VStack(alignment: .leading, spacing: Space.s5) {
+    private func rowMenu(hasSpeakers: Bool) -> some View {
+        Button("Copy Transcript", action: copyActiveTranscript)
+            .disabled(entry.transcriptIsPlaceholder)
+        Button(entry.isFavorited ? "Remove from Favorites" : "Add to Favorites", action: onToggleFavorite)
+
+        Divider()
+
+        if !isInFlight {
+            Button(entry.transcriptIsPlaceholder ? "Transcribe With…" : "Transcribe Again With…") {
+                presentAfterMenu { showRegenerateMenu = true }
+            }
+            .disabled(regenerator.isRunning)
+        }
+        if hasSpeakers {
+            Button("Name Speakers…") {
+                speakerNameDrafts = entry.speakerNames ?? [:]
+                presentAfterMenu { showRenameSpeakers = true }
+            }
+        }
+
+        if !entry.transcriptIsPlaceholder {
+            Section("AI · sends the transcript to OpenAI") {
+                Button(entry.hasInsight(.summary) ? "Regenerate Summary" : "Summarize") {
+                    generate(.summary)
+                }
+                .disabled(insights.isRunning(entryID: entry.id, kind: .summary))
+                Button(entry.hasInsight(.actionItems) ? "Regenerate Action Items" : "Find Action Items") {
+                    generate(.actionItems)
+                }
+                .disabled(insights.isRunning(entryID: entry.id, kind: .actionItems))
+                Button("Ask AI…") {
+                    presentAfterMenu { showCustomPromptFromMenu = true }
+                }
+            }
+        }
+
+        Divider()
+
+        Button("Show in Finder", action: revealAudio)
+
+        if !isInFlight {
+            Divider()
+            Button("Delete", role: .destructive, action: onDelete)
+        }
+    }
+
+    /// A popover asked for while its menu is still closing is dropped, so the
+    /// flag is set a beat after the menu goes away.
+    private func presentAfterMenu(_ present: @escaping () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(80))
+            present()
+        }
+    }
+
+    private func revealAudio() {
+        let url = RecordingHistoryStore.shared.audioURL(for: entry)
+        if FileManager.default.fileExists(atPath: url.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            HistoryFolder.reveal()
+        }
+    }
+
+    private func copyActiveTranscript() {
+        guard !entry.transcriptIsPlaceholder else { return }
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(displayText(entry.transcript), forType: .string)
+        copied = true
+        AccessibilityNotification.Announcement("Copied").post()
+        copyResetTask?.cancel()
+        copyResetTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            copied = false
+        }
+    }
+
+    /// Spinner, plus "3/8" for a long recording, while this row re-transcribes.
+    private var regenerateProgress: some View {
+        HStack(spacing: Space.s2) {
+            ProgressView()
+                .controlSize(.small)
+                .scaleEffect(0.7)
+                .frame(width: Space.s6, height: Space.s6)
+            if regenerator.totalChunks > 1 {
+                Text("\(regenerator.transcribedChunks)/\(regenerator.totalChunks)")
+                    .typo(.mono)
+                    .contentTransition(.numericText())
+                    .foregroundStyle(faintInk)
+            }
+        }
+        .frame(minHeight: FormMetrics.iconButton)
+        .padding(.horizontal, Space.s2)
+        .help("Transcribing again…")
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Transcribing again")
+    }
+
+    // MARK: - Detail (under the closed row)
+
+    /// What sits under the two lines: the open row's content, a failed take's
+    /// recovery buttons (always), and any job's progress or failure.
+    @ViewBuilder
+    private var detailSection: some View {
+        let downloading = isRegenerating ? regenerator.downloadingModelID : nil
+        let regenFailure = regenerator.failure.flatMap { $0.id == entry.id ? $0.message : nil }
+        let showsRecovery = entry.transcriptIsPlaceholder && !isInFlight && !isRegenerating
+        if showsOpenContent || showsRecovery || downloading != nil || regenFailure != nil || !failedKinds.isEmpty {
+            VStack(alignment: .leading, spacing: Space.s4) {
+                if showsOpenContent {
+                    openContent
+                }
+                if showsRecovery {
+                    recoveryButtons
+                        .disabled(regenerator.isRunning)
+                }
+                if let downloading {
+                    modelDownloadNotice(downloading)
+                }
+                insightFailures
+                if let regenFailure {
+                    failureNote(regenFailure) {
+                        Button("Dismiss") { regenerator.dismissFailure() }
+                            .buttonTier(.secondary)
+                            .controlSize(.small)
+                    }
+                }
+            }
+            .padding(.leading, Self.textColumnInset)
+            .transition(.opacity)
+        }
+    }
+
+    /// The open row: the full transcript, or — for a conversation, or a
+    /// dictation that has an insight — a segmented picker over Transcript /
+    /// Summary / Action Items / results, with Ask AI… beside it.
+    @ViewBuilder
+    private var openContent: some View {
+        let tabs = InsightTab.visible(for: entry, generator: insights, includingBuiltIns: offersInsightTabs)
+        VStack(alignment: .leading, spacing: Space.s4) {
             if tabs.count > 1 {
-                InsightTabBar(entry: entry, tabs: tabs, selection: tabBinding(in: tabs))
+                HStack(alignment: .center, spacing: Space.s4) {
+                    InsightTabBar(entry: entry, tabs: tabs, selection: tabBinding(in: tabs))
+                    Spacer(minLength: Space.s4)
+                    if offersInsightTabs {
+                        askAIButton
+                    }
+                }
             }
             switch shownTab(in: tabs) {
             case .transcript:
@@ -302,25 +699,32 @@ struct RecordingRow: View {
             case .custom(let id):
                 insightPane(.custom(id))
             }
-            generateStrip
         }
-        // The pane swap and the row-height change it causes are a list mutation,
-        // not a selection: `layout` is smooth, where the tab bar's own `select`
-        // carries a bounce that would spring every row below this one. The bar
-        // applies `select` inside its own subtree, so the capsule still springs.
         .animation(motion.layout, value: shownTab(in: tabs))
     }
 
-    /// `.id(kind)` because two custom results share this branch of
-    /// `contentSection`'s switch: without it SwiftUI keeps one pane across the
-    /// swap from one custom tab to another, and with it the pane's own state —
-    /// the copy confirmation and the task that clears it — so copying one result
-    /// and then switching tabs shows a checkmark on a result nothing was copied
-    /// from. The built-in tabs get this for free from the switch's structure.
+    private var askAIButton: some View {
+        Button {
+            showCustomPrompt = true
+        } label: {
+            Label("Ask AI…", systemImage: "sparkles")
+        }
+        .buttonTier(.secondary)
+        .controlSize(.small)
+        .fixedSize()
+        .help("Run your own instruction on this transcript. \(Self.sendsTranscript)")
+        .popover(isPresented: $showCustomPrompt, arrowEdge: .bottom) {
+            customPromptPopover { showCustomPrompt = false }
+        }
+    }
+
+    /// `.id(kind)` so two custom results don't share one pane's state (its
+    /// copy confirmation) across a tab swap.
     private func insightPane(_ kind: InsightKind) -> some View {
         InsightPane(
             entry: entry,
             kind: kind,
+            sendsTranscriptNote: Self.sendsTranscript,
             onToggleActionItem: onToggleActionItem,
             onRemove: { onRemoveInsight(kind) },
             onRegenerate: { generate(kind) }
@@ -328,10 +732,8 @@ struct RecordingRow: View {
         .id(kind)
     }
 
-    /// The tab actually drawn. The pane remembers one choice per recording id,
-    /// and that choice can outlive what it points at — the user removes the
-    /// summary while reading it — so a tab that is no longer on offer falls back
-    /// to the transcript instead of rendering an empty pane.
+    /// The tab actually drawn. A remembered choice can outlive what it points
+    /// at, so a tab that is no longer on offer falls back to the transcript.
     private func shownTab(in tabs: [InsightTab]) -> InsightTab {
         tabs.contains(selectedTab) ? selectedTab : .transcript
     }
@@ -343,103 +745,17 @@ struct RecordingRow: View {
         )
     }
 
-    /// One-tap chips for the insights a conversation does not have yet.
-    ///
-    /// Each chip retires on its own: Summary once a summary exists or is being
-    /// generated (its tab and spinner take over), likewise Action items, and
-    /// Custom once every custom slot is spoken for. The strip used to vanish as
-    /// soon as anything had been generated, which left the other two reachable
-    /// only through the hover-only sparkles menu — and read as the buttons
-    /// having broken.
-    ///
-    /// Conversations only. A five-second dictation has nothing to summarize and
-    /// commits nobody to anything, so on a History full of dictations this strip
-    /// would be pure noise under every row — and the sparkles menu is still
-    /// there for the rare dictation that is worth summarizing. A conversation
-    /// whose transcription failed has only a placeholder to send, so it gets
-    /// no strip until it has a transcript.
-    /// Every insight leaves the Mac, even for a conversation transcribed by a
-    /// local model — say so wherever one can be started.
+    /// Every insight leaves the Mac, even for a recording transcribed locally.
     private static let sendsTranscript = "Sends the transcript to OpenAI (\(ActionRunner.modelId))."
 
-    @ViewBuilder
-    private var generateStrip: some View {
-        if entry.source == .meeting, !entry.transcriptIsPlaceholder {
-            let offersSummary = offersChip(for: .summary)
-            let offersActionItems = offersChip(for: .actionItems)
-            let offersCustom = insights.usedCustomSlots(for: entry) < RecordingHistoryEntry.maxCustomInsights
-            if offersSummary || offersActionItems || offersCustom {
-                HStack(spacing: Space.s4) {
-                    if offersSummary {
-                        insightChip(title: "Summary", symbolName: "sparkles",
-                                    help: "Generate \(InsightKind.summary.commandNoun) from this conversation. \(Self.sendsTranscript)") {
-                            generate(.summary)
-                        }
-                    }
-                    if offersActionItems {
-                        insightChip(title: "Action items", symbolName: "checklist",
-                                    help: "Generate \(InsightKind.actionItems.commandNoun) from this conversation. \(Self.sendsTranscript)") {
-                            generate(.actionItems)
-                        }
-                    }
-                    // The third way in: the user's own instruction, opening the same
-                    // popover the sparkles menu opens. The glyph is spelled out like
-                    // its two neighbours, and is the one `InsightKind.custom` wears.
-                    if offersCustom {
-                        insightChip(title: "Custom", symbolName: "wand.and.sparkles",
-                                    help: "Format this transcript with your own instruction. \(Self.sendsTranscript)") {
-                            showCustomPrompt = true
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    /// A built-in insight is offered inline until it exists or is being made;
-    /// after that its tab is the way to it, and the sparkles menu regenerates it.
-    private func offersChip(for kind: InsightKind) -> Bool {
-        !entry.hasInsight(kind) && !insights.isRunning(entryID: entry.id, kind: kind)
-    }
-
-    private func insightChip(
-        title: String,
-        symbolName: String,
-        help: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: Space.s3) {
-                Image(systemName: symbolName)
-                    .font(Typo.micro)
-                Text(title)
-                    .typo(.captionMedium)
-            }
-            .foregroundStyle(Palette.accent)
-            .padding(.horizontal, Space.s4)
-            .padding(.vertical, Space.s2)
-            .background(Capsule(style: .continuous).fill(Palette.wellFill))
-            .contentShape(Capsule(style: .continuous))
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
-
-    /// Starts a generation and, on success, brings its tab forward — the user
-    /// asked for the thing, so show them the thing. A failure leaves the current
-    /// tab alone and surfaces in `insightFailures`.
-    ///
-    /// The `Task` is started from the button action rather than from a `.task`
-    /// modifier on the row on purpose: `FlushPlate` is lazy, so scrolling this
-    /// row out of view tears it down, and a `.task` would be cancelled with it —
-    /// killing a paid-for request mid-flight because the user scrolled. A Task
-    /// created here is not tied to the view's lifetime.
-    ///
-    /// A custom tab's "Run again" comes through here unchanged: the generator
-    /// replays the instruction stored with that result, in place, so a re-run
-    /// keeps its tab and does not spend another of the three slots.
+    /// Starts a generation and opens the row on its view right away, where
+    /// the running tab shows progress. Finishing only selects the result: by
+    /// then the user may have closed this row or opened another. Started from
+    /// the action rather than a `.task`: rows are lazy, and scrolling this one
+    /// away must not cancel a paid-for request.
     private func generate(_ kind: InsightKind) {
+        selectedTab = kind.tab
+        withAnimation(motion.layout) { isExpanded = true }
         Task {
             if await insights.generate(entry: entry, kind: kind) {
                 selectedTab = kind.tab
@@ -447,19 +763,10 @@ struct RecordingRow: View {
         }
     }
 
-    /// Runs a newly typed instruction over this recording's transcript — the one
-    /// path `generate(_:)` cannot serve, because there is no kind to name with
-    /// until the result exists.
-    ///
-    /// On success the row selects the tab it landed in, using the id the
-    /// generator hands back. Not "whichever result is newest in History": that
-    /// is only the right answer by accident today, and it is already the wrong
-    /// one for a recording sitting in its undo window, whose results are written
-    /// into the pending batch rather than into `entries`.
-    ///
-    /// The instruction itself is not remembered here: the generator does that,
-    /// as soon as the request is actually spent.
+    /// Runs a newly typed instruction and opens the row on the view it landed
+    /// in, by the id the generator hands back.
     private func runCustom(instruction: String) {
+        withAnimation(motion.layout) { isExpanded = true }
         Task {
             guard let id = await insights.generateCustom(
                 entry: entry,
@@ -470,31 +777,34 @@ struct RecordingRow: View {
         }
     }
 
-    /// One row per failing job, in the same language as the regenerate failure
-    /// underneath it: what went wrong, and the way out of it.
+    private func customPromptPopover(close: @escaping () -> Void) -> some View {
+        CustomPromptPopover(
+            usedCount: insights.usedCustomSlots(for: entry),
+            maxCount: RecordingHistoryEntry.maxCustomInsights,
+            failureMessage: insights.customFailure(entryID: entry.id),
+            onDismissFailure: { insights.dismissCustomFailure(entryID: entry.id) }
+        ) { instruction in
+            close()
+            runCustom(instruction: instruction)
+        }
+    }
+
+    // MARK: - Failures
+
+    /// One note per failing job: what went wrong, and the way out of it.
     @ViewBuilder
     private var insightFailures: some View {
         ForEach(failedKinds, id: \.self) { kind in
             if let message = insights.failure(entryID: entry.id, kind: kind) {
-                HStack(alignment: .firstTextBaseline, spacing: Space.s4) {
-                    Text(message)
-                        .typo(.caption)
-                        .foregroundStyle(Palette.signalWarn)
-                        .fixedSize(horizontal: false, vertical: true)
+                failureNote(message) {
                     Button("Dismiss") { dismissFailure(kind) }
-                        .buttonStyle(.plain)
-                        .typo(.captionMedium)
-                        .foregroundStyle(Palette.accent)
+                        .buttonTier(.secondary)
+                        .controlSize(.small)
                         .help("Hide this message")
-                    // The one failure the user cannot fix from this row is a
-                    // missing API key, so that one gets a door to the pane that
-                    // fixes it. Asked of the generator rather than matched
-                    // against the message text, which is copy, not an API.
+                    // A missing API key is the one failure this row cannot fix.
                     if !insights.hasAPIKey {
                         Button("Open Cloud") { SettingsRouter.shared.pendingSection = .cloud }
-                            .buttonStyle(.plain)
-                            .typo(.captionMedium)
-                            .foregroundStyle(Palette.accent)
+                            .buttonStyle(TextLinkButtonStyle(font: Typo.captionMedium))
                             .help("Open Cloud settings to add an OpenAI API key")
                     }
                 }
@@ -502,15 +812,26 @@ struct RecordingRow: View {
         }
     }
 
-    /// Which jobs this row currently has a failure for, in a stable order: the
-    /// built-ins first, then the custom results in tab order, then whatever is
-    /// left.
-    ///
-    /// That last group is the point of asking the generator instead of walking
-    /// the recording: a *new* custom result that was refused — the cap, a
-    /// missing key, a request that failed — is not stored anywhere and is no
-    /// longer running, so the one failure the user most needs to read would be
-    /// the only one with no row to appear in.
+    private func failureNote<Actions: View>(
+        _ message: String,
+        @ViewBuilder actions: () -> Actions
+    ) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(Typo.caption)
+                .foregroundStyle(Palette.signalWarn)
+                .accessibilityHidden(true)
+            Text(message)
+                .typo(.caption)
+                .foregroundStyle(Palette.ink)
+                .fixedSize(horizontal: false, vertical: true)
+            actions()
+        }
+    }
+
+    /// Which jobs this row has a failure for, in a stable order: built-ins,
+    /// then custom results in tab order, then refused new results (stored
+    /// nowhere, so this is the only place they can be read).
     private var failedKinds: [InsightKind] {
         var ordered = InsightKind.builtIns.filter {
             insights.failure(entryID: entry.id, kind: $0) != nil
@@ -522,9 +843,6 @@ struct RecordingRow: View {
         ordered += storedIDs
             .filter { customFailures[$0] != nil }
             .map(InsightKind.custom)
-        // Sorted only so the rows cannot reshuffle between redraws: a
-        // dictionary's key order is not stable, and there is no meaningful
-        // order to give ids the recording has never seen.
         ordered += customFailures.keys
             .filter { !storedIDs.contains($0) }
             .sorted { $0.uuidString < $1.uuidString }
@@ -532,14 +850,8 @@ struct RecordingRow: View {
         return ordered
     }
 
-    /// Hides one failure message.
-    ///
-    /// A custom failure is parked twice — once on its job, once on the
-    /// recording, where the instruction field reads it — so dismissing it here
-    /// has to clear both, or the same sentence greets the user the next time
-    /// they open the form. Clearing the recording's copy clears every custom
-    /// job's message with it, which is right: they are the same note, and the
-    /// user has just said they have read it.
+    /// A custom failure is parked on its job and on the recording (where the
+    /// form reads it), so dismissing it clears both.
     private func dismissFailure(_ kind: InsightKind) {
         insights.dismissFailure(entryID: entry.id, kind: kind)
         if kind.isCustom {
@@ -547,23 +859,20 @@ struct RecordingRow: View {
         }
     }
 
-    /// One plain transcript, or — when the recording has alternate versions — a
-    /// labeled, removable block per version (newest/active first). A recording
-    /// saved without a transcript says why instead, with the way to fix it.
+    // MARK: - Transcript
+
+    /// The open row's transcript: all of a dictation; a conversation's first
+    /// lines with Show More. With alternate versions, one labelled block each.
     @ViewBuilder
     private var transcriptSection: some View {
-        if let status = HistorySearch.untranscribedStatus(of: entry) {
-            if isInFlight {
-                transcribingNotice
-            } else {
-                untranscribedNotice(status)
-            }
-        } else if entry.hasAlternateTranscripts {
-            VStack(alignment: .leading, spacing: Space.s5) {
+        let lineLimit = isConversation ? Self.openTranscriptLineLimit : nil
+        if entry.hasAlternateTranscripts {
+            VStack(alignment: .leading, spacing: Space.s4) {
                 ForEach(entry.transcriptVariants) { variant in
                     TranscriptBlockView(
                         text: displayText(variant.text),
                         highlight: highlight,
+                        collapsedLineLimit: lineLimit,
                         header: TranscriptBlockView.Header(
                             label: modelLabel(for: variant),
                             isActive: variant.id == entry.id,
@@ -576,34 +885,27 @@ struct RecordingRow: View {
             TranscriptBlockView(
                 text: displayText(entry.transcript),
                 highlight: highlight,
+                collapsedLineLimit: lineLimit,
                 header: nil
             )
         }
     }
 
-    /// A take saved the moment recording stopped, while its dictation is
-    /// still transcribing it.
     private var transcribingNotice: some View {
         HStack(spacing: Space.s3) {
             ProgressView()
                 .controlSize(.small)
-                .scaleEffect(0.7)
-                .frame(width: 16, height: 16)
+                .scaleEffect(0.6)
+                .frame(width: Space.s5, height: Space.s5)
             Text("Transcribing…")
-                .typo(.captionMedium)
+                .typo(.body)
                 .foregroundStyle(Palette.inkMuted)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .combine)
     }
 
-    /// "Downloading Parakeet TDT v3 · 42%" while this row's regeneration waits
-    /// on a model that isn't on this Mac yet — a first download runs for
-    /// minutes, and a bare spinner would read as stuck. The registry's
-    /// readiness drives it: no percentage until the first progress arrives,
-    /// then "Loading" for the compile tail and for the load once the files
-    /// are here (`.installed`, with the engine still being prepared). Text
-    /// only: the header's regenerate control already spins for this row.
+    /// "Downloading Parakeet TDT v3 · 42%" while this row's re-transcription
+    /// waits on a model that isn't on this Mac yet.
     private func modelDownloadNotice(_ modelId: String) -> some View {
         let name = ModelCatalog.model(for: modelId)?.displayName ?? modelId
         let readiness = ModelRegistry.shared.readiness(for: modelId)
@@ -617,127 +919,206 @@ struct RecordingRow: View {
             text = FailureCardCopy.historyDownloading(modelName: name, fraction: nil)
         }
         return Text(text)
-            .typo(.captionMedium)
+            .typo(.caption)
+            .monospacedDigit()
             .foregroundStyle(Palette.inkMuted)
             .contentTransition(.numericText())
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    /// What went wrong, in the failure card's own words, and the two ways on:
-    /// the model the take was meant for, named — the fix for a key or a
-    /// balance that has since been sorted out — and any other model, right
-    /// here rather than behind the hover menu. An empty balance applies to
-    /// every model of that provider, which is why the picker leads with the
-    /// ones on this Mac. Either way the transcript replaces this notice.
-    ///
-    /// While that provider is known to be out of credit (`CloudCreditStatus`),
-    /// retrying it first would only be refused again, so the notice leads
-    /// with the model on this Mac the dictation card would offer — downloading
-    /// it first if need be — and keeps the retry second, for a balance topped
-    /// up since.
-    private func untranscribedNotice(_ status: RecordingHistoryEntry.Status) -> some View {
-        VStack(alignment: .leading, spacing: Space.s3) {
-            Text("Not transcribed")
-                .typo(.captionMedium)
+    // MARK: - Not transcribed
+
+    /// "⚠ Not transcribed. You're offline…", in the failure card's own words.
+    /// "⚠ Not transcribed. You're offline." — the reason's first sentence;
+    /// the buttons below say the rest. The whole message is the tooltip and
+    /// what VoiceOver reads.
+    private func failureSentence(_ status: RecordingHistoryEntry.Status) -> some View {
+        let reason = Self.firstSentence(of: status.message) ?? status.message
+        return HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(Typo.caption)
                 .foregroundStyle(Palette.signalWarn)
-            Text(HistorySearch.highlighted(status.message, query: highlight))
+                .accessibilityHidden(true)
+            (Text("\(HistorySearch.notTranscribedLabel). ").foregroundStyle(Palette.ink)
+                + Text(HistorySearch.highlighted(reason, query: highlight)).foregroundStyle(Palette.inkMuted))
                 .typo(.body)
-                .foregroundStyle(Palette.inkMuted)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
-            if !isRegenerating {
-                untranscribedLinks
-                    .disabled(regenerator.isRunning)
-            }
+                .lineLimit(1)
+                .truncationMode(.tail)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .help(status.message)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(HistorySearch.notTranscribedLabel). \(status.message)")
     }
 
-    /// The notice's ways on. With a provider out of credit the model on this
-    /// Mac leads on a line of its own — "Download & transcribe with … (470 MB)"
-    /// would crowd the other two off a narrow pane — and the retry and the
-    /// picker follow beneath it, in that order.
-    @ViewBuilder
-    private var untranscribedLinks: some View {
-        let model = transcribeAgainModel
-        if let model, let local = outOfCreditFallback(replacing: model) {
-            VStack(alignment: .leading, spacing: Space.s3) {
-                noticeLink(
-                    FailureCardCopy.historyLocalTitle(local.fallback, modelName: local.model.displayName),
-                    help: "\(local.model.displayName) runs on this Mac — free and private",
-                    modelId: local.model.id
-                )
-                // Groq's Whisper shares its name with the local one it falls
-                // back to, so the retry keeps "(Groq)" when the two would read alike.
-                let retryName = model.sectionedDisplayName == local.model.displayName
-                    ? model.displayName
-                    : model.sectionedDisplayName
-                HStack(spacing: Space.s5) {
-                    noticeLink(
-                        FailureCardCopy.historyRetryTitle(cloudModelName: retryName),
-                        help: "Try \(model.displayName) again once your balance is topped up",
-                        modelId: model.id
-                    )
+    /// One recommended way out, prominent, then a quieter second choice and
+    /// every other model in a menu. Worked out once per pass and handed to
+    /// each candidate layout.
+    private var recoveryButtons: some View {
+        let plan = recoveryPlan
+        return VStack(alignment: .leading, spacing: Space.s3) {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: Space.s4) {
+                    recoveryLead(plan)
+                    recoverySecondary(plan)
                     otherModelButton
                 }
-            }
-        } else {
-            HStack(spacing: Space.s5) {
-                if let model {
-                    noticeLink(
-                        "Transcribe with \(model.displayName)",
-                        help: "Transcribe this recording with \(model.displayName)",
-                        modelId: model.id
-                    )
+                VStack(alignment: .leading, spacing: Space.s3) {
+                    recoveryLead(plan)
+                    HStack(spacing: Space.s4) {
+                        recoverySecondary(plan)
+                        otherModelButton
+                    }
                 }
-                otherModelButton
             }
-        }
-    }
-
-    /// One of the notice's text links, re-transcribing with the model it names.
-    private func noticeLink(_ title: String, help: String, modelId: String) -> some View {
-        Button(title) {
-            Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
-        }
-        .buttonStyle(.plain)
-        .typo(.captionMedium)
-        .foregroundStyle(Palette.accent)
-        .help(help)
-    }
-
-    /// The model on this Mac to lead with when `model`'s provider is flagged
-    /// out of credit — the same choice, for the same spoken languages, as the
-    /// dictation card's. A row's audio is already saved, so a model that
-    /// still has to be downloaded is offered too. Reads only cached state
-    /// (`ModelRegistry.localFallback`), so it is safe in the body.
-    private func outOfCreditFallback(
-        replacing model: ModelDescriptor
-    ) -> (fallback: DictationTakePolicy.LocalFallback, model: ModelDescriptor)? {
-        guard let provider = model.backend.cloudProvider,
-              CloudCreditStatus.shared.isOutOfCredit(provider),
-              let fallback = ModelRegistry.shared.localFallback(replacing: model.id, canDownload: true),
-              let local = ModelCatalog.model(for: fallback.modelID)
-        else { return nil }
-        return (fallback, local)
-    }
-
-    private var otherModelButton: some View {
-        Button("Other model…") { showOtherModelMenu.toggle() }
-            .buttonStyle(.plain)
-            .typo(.captionMedium)
-            .foregroundStyle(Palette.accent)
-            .help("Transcribe with another model. Models on this Mac work offline and cost nothing.")
-            .popover(isPresented: $showOtherModelMenu, arrowEdge: .bottom) {
+            .controlSize(.regular)
+            // Attached once, outside the candidate layouts that each hold a
+            // copy of the button; anchored at the trailing end, where Other
+            // Model sits in either layout.
+            .popover(isPresented: $showOtherModelMenu, attachmentAnchor: .point(.bottomTrailing), arrowEdge: .bottom) {
                 DropdownPopup(
                     sections: regenerateModelSections,
                     selected: nil,
                     width: 280
                 ) { modelId in
                     showOtherModelMenu = false
-                    Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
+                    regenerate(with: modelId)
                 }
             }
+            if let note = plan.note {
+                Text(note)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func recoveryLead(_ plan: RecoveryPlan) -> some View {
+        if let lead = plan.lead {
+            recoveryButton(lead).buttonTier(.primary)
+        }
+    }
+
+    @ViewBuilder
+    private func recoverySecondary(_ plan: RecoveryPlan) -> some View {
+        if let secondary = plan.secondary {
+            recoveryButton(secondary).buttonTier(.secondary)
+        }
+    }
+
+    private func recoveryButton(_ choice: RecoveryChoice) -> some View {
+        Button {
+            regenerate(with: choice.modelId)
+        } label: {
+            if let systemImage = choice.systemImage {
+                Label(choice.title, systemImage: systemImage)
+            } else {
+                Text(choice.title)
+            }
+        }
+        .fixedSize()
+        .help(choice.help)
+    }
+
+    private struct RecoveryChoice {
+        let title: String
+        var systemImage: String?
+        let help: String
+        let modelId: String
+    }
+
+    private struct RecoveryPlan {
+        var lead: RecoveryChoice?
+        var secondary: RecoveryChoice?
+        /// Said under the buttons, e.g. that the model on this Mac may not
+        /// know every language the user speaks.
+        var note: String?
+    }
+
+    /// Which model leads. The one on this Mac leads when it knows the user's
+    /// languages, or when the provider is out of credit (a retry would only be
+    /// refused again) — the dictation card's rule. A local model that doesn't
+    /// know every language the user speaks is offered second, and says so.
+    private var recoveryPlan: RecoveryPlan {
+        guard let model = transcribeAgainModel else { return RecoveryPlan() }
+        let retry = RecoveryChoice(
+            title: model.isCloud
+                ? FailureCardCopy.historyRetryTitle(cloudModelName: model.sectionedDisplayName)
+                : "Transcribe with \(model.displayName)",
+            help: "Try \(model.displayName) again",
+            modelId: model.id
+        )
+        guard let provider = model.backend.cloudProvider,
+              let local = localAlternative(to: model)
+        else { return RecoveryPlan(lead: retry) }
+
+        let outOfCredit = CloudCreditStatus.shared.isOutOfCredit(provider)
+        var coversLanguages = true
+        if case .ready(_, let covers) = local.fallback { coversLanguages = covers }
+        let localChoice = RecoveryChoice(
+            title: FailureCardCopy.historyLocalTitle(local.fallback, modelName: local.model.displayName),
+            help: coversLanguages
+                ? "\(local.model.displayName) runs on this Mac — free, private and works offline"
+                : "\(local.model.displayName) runs on this Mac, but may not know every language you speak",
+            modelId: local.model.id
+        )
+        // Groq's Whisper shares its name with the local one, so the retry
+        // keeps "(Groq)" when the two would read alike.
+        let retryName = model.sectionedDisplayName == local.model.displayName
+            ? model.displayName
+            : model.sectionedDisplayName
+        let namedRetry = RecoveryChoice(
+            title: FailureCardCopy.historyRetryTitle(cloudModelName: retryName),
+            help: outOfCredit ? "Try \(model.displayName) again once your balance is topped up" : "Try \(model.displayName) again",
+            modelId: model.id
+        )
+        let note = coversLanguages
+            ? nil
+            : "\(local.model.displayName) may not know every language you speak."
+        return coversLanguages || outOfCredit
+            ? RecoveryPlan(lead: localChoice, secondary: namedRetry, note: note)
+            : RecoveryPlan(lead: namedRetry, secondary: localChoice, note: note)
+    }
+
+    /// Every other model, in the same list as Transcribe Again With…: "On
+    /// this Mac" first, then each provider, saying what picking one takes
+    /// first (a download, a key). The list is built only while the popover
+    /// (on `recoveryButtons`) is open — it reads the disk, and a failed row
+    /// re-renders on every download tick.
+    private var otherModelButton: some View {
+        Button {
+            showOtherModelMenu = true
+        } label: {
+            HStack(spacing: Space.s2) {
+                Text("Other Model")
+                Image(systemName: "chevron.down")
+                    .font(Typo.micro)
+                    .accessibilityHidden(true)
+            }
+        }
+        .buttonTier(.secondary)
+        .fixedSize()
+        .help("Transcribe with another model. Models on this Mac work offline and cost nothing.")
+    }
+
+    private func regenerate(with modelId: String) {
+        Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
+    }
+
+    /// The model on this Mac to lead with when the take was meant for a cloud
+    /// model: one already downloaded, or — while that provider is out of
+    /// credit — one to download first, the same choice the dictation card
+    /// makes. Reads only cached state, so it is safe in the body.
+    private func localAlternative(
+        to model: ModelDescriptor
+    ) -> (fallback: DictationTakePolicy.LocalFallback, model: ModelDescriptor)? {
+        guard let provider = model.backend.cloudProvider else { return nil }
+        let canDownload = CloudCreditStatus.shared.isOutOfCredit(provider)
+        guard let fallback = ModelRegistry.shared.localFallback(replacing: model.id, canDownload: canDownload),
+              let local = ModelCatalog.model(for: fallback.modelID)
+        else { return nil }
+        return (fallback, local)
     }
 
     /// The model the take was meant for while it still exists, otherwise
@@ -751,166 +1132,26 @@ struct RecordingRow: View {
         variant.modelName ?? variant.modelId ?? "Transcript"
     }
 
-    /// A row without a transcript leaves its model out: the line would read
-    /// as that model's output, when the model is the one that failed. The
-    /// notice below names it where it can be acted on.
-    private var metaLine: String {
-        var parts = [entry.durationSeconds.formattedClock]
-        if entry.transcriptIsPlaceholder {
-            parts.insert(isInFlight ? "Transcribing" : "Not transcribed", at: 0)
-            return parts.joined(separator: " · ")
-        }
-        if let model = entry.modelName ?? entry.modelId, !model.isEmpty {
-            parts.append(model)
-        }
-        return parts.joined(separator: " · ")
-    }
+    // MARK: - Popovers
 
-    private func copyActiveTranscript() {
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(displayText(entry.transcript), forType: .string)
-        copied = true
-        copyResetTask?.cancel()
-        copyResetTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(1.5))
-            guard !Task.isCancelled else { return }
-            copied = false
+    /// "Transcribe again with…": every model except the live ones, grouped
+    /// "On this Mac" / by provider. No checkmark on a row without a transcript:
+    /// its model is the one that failed.
+    private var regeneratePopup: some View {
+        DropdownPopup(
+            sections: regenerateModelSections,
+            selected: entry.transcriptIsPlaceholder ? nil : entry.modelId,
+            width: 280
+        ) { modelId in
+            showRegenerateMenu = false
+            regenerate(with: modelId)
         }
     }
 
-    /// Hover control that opens the "Name speakers" popover for a diarized
-    /// recording. Names are drafted locally and committed to the store when the
-    /// popover content disappears, so typing never persists mid-edit. The commit
-    /// lives on the popover *content* (not an `onChange` on this button): closing
-    /// the popover can unmount this hover-gated button in the same transaction,
-    /// and a modifier on a view being removed never fires.
-    private var renameSpeakersControl: some View {
-        Button {
-            speakerNameDrafts = entry.speakerNames ?? [:]
-            showRenameSpeakers.toggle()
-        } label: {
-            Image(systemName: "person.crop.circle")
-                .font(Typo.body)
-                .foregroundStyle(Palette.inkMuted)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Name speakers")
-        .popover(isPresented: $showRenameSpeakers, arrowEdge: .bottom) {
-            speakerNamePopover
-                .onDisappear { onRenameSpeakers(speakerNameDrafts) }
-        }
-    }
-
-    /// One labeled text field per canonical speaker. Clearing a field reverts that
-    /// speaker to its "Speaker N" label; giving two the same name merges them.
-    ///
-    /// Glass surface #4 of the inventory in `GlassSurface.swift` — the last of
-    /// the three popovers. Filled with a `Rectangle` for the same reason as
-    /// `DropdownPopup`: the popover already owns the corner radius.
-    private var speakerNamePopover: some View {
-        VStack(alignment: .leading, spacing: Space.s5) {
-            Text("Name speakers")
-                .typo(.headline)
-                .foregroundStyle(Palette.ink)
-            VStack(alignment: .leading, spacing: Space.s5) {
-                ForEach(speakerLabels, id: \.self) { label in
-                    VStack(alignment: .leading, spacing: Space.s2) {
-                        Text(label)
-                            .typo(.caption)
-                            .foregroundStyle(Palette.inkMuted)
-                        TextField(label, text: speakerNameBinding(for: label))
-                            .textFieldStyle(.roundedBorder)
-                            .typo(.body)
-                    }
-                }
-            }
-            HStack {
-                Spacer()
-                Button("Done") { showRenameSpeakers = false }
-                    .buttonStyle(.plain)
-                    .typo(.captionMedium)
-                    .foregroundStyle(Palette.accent)
-            }
-        }
-        .padding(Space.s6)
-        .frame(width: 220)
-        .glassSurface(in: Rectangle())
-    }
-
-    private func speakerNameBinding(for label: String) -> Binding<String> {
-        Binding(
-            get: { speakerNameDrafts[label] ?? "" },
-            set: { speakerNameDrafts[label] = $0 }
-        )
-    }
-
-    /// Either a spinner+chunk count while this row is regenerating, or a model
-    /// picker menu ("Regenerate with …") that re-transcribes the stored audio.
-    @ViewBuilder
-    private var regenerateControl: some View {
-        if isRegenerating {
-            HStack(spacing: Space.s3) {
-                ProgressView()
-                    .controlSize(.small)
-                    .scaleEffect(0.7)
-                if regenerator.totalChunks > 1 {
-                    Text("\(regenerator.transcribedChunks)/\(regenerator.totalChunks)")
-                        .typo(.mono)
-                        .contentTransition(.numericText())
-                        .foregroundStyle(faintInk)
-                }
-            }
-            .frame(minWidth: 24, minHeight: 24)
-            .help("Regenerating transcript…")
-        } else {
-            Button {
-                showRegenerateMenu.toggle()
-            } label: {
-                Image(systemName: "arrow.triangle.2.circlepath")
-                    .font(Typo.body)
-                    .foregroundStyle(Palette.inkMuted)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .disabled(regenerator.isRunning)
-            .help(entry.transcriptIsPlaceholder ? "Transcribe with another model" : "Regenerate transcript with another model")
-            .accessibilityLabel(entry.transcriptIsPlaceholder ? "Transcribe with another model" : "Regenerate transcript with another model")
-            .popover(isPresented: $showRegenerateMenu, arrowEdge: .bottom) {
-                // No checkmark on a row without a transcript: its model is the
-                // one that failed, not the one the text came from.
-                DropdownPopup(
-                    sections: regenerateModelSections,
-                    selected: entry.transcriptIsPlaceholder ? nil : entry.modelId,
-                    width: 280
-                ) { modelId in
-                    showRegenerateMenu = false
-                    Task { await regenerator.regenerate(entry: entry, modelId: modelId) }
-                }
-            }
-        }
-    }
-
-    /// Every catalog model except the live ones, grouped "On this Mac" / by
-    /// cloud provider — the "Regenerate with" list restyled to the shared
-    /// dropdown language. A live model would only re-feed the stored audio
-    /// through its one-shot fallback, which isn't built for a whole recording.
-    ///
-    /// The models on this Mac come first, the downloaded ones ahead of the
-    /// rest: they work offline and cost nothing, which makes them the way
-    /// out when a provider has refused the take. What picking one will take
-    /// first — a download, an API key — is said on its row rather than
-    /// discovered after.
-    ///
-    /// Downloaded is asked of the disk first: the registry's readiness is
-    /// `.preparing` while a model on disk loads and `.failed` after a load
-    /// that didn't, and either would label a model already here "Download".
-    /// But a download in progress writes into that same folder, so a model
-    /// still being fetched — or a Whisper folder a cancelled download left
-    /// half full — keeps its "Download" label (`ModelStorage.isDownloaded`).
+    /// The models on this Mac come first, downloaded ones ahead of the rest;
+    /// what picking one will take first (a download, an API key) is said on
+    /// its row. Downloaded is asked of the disk (`ModelStorage.isDownloaded`),
+    /// not of readiness, which reads `.preparing` while a model on disk loads.
     private var regenerateModelSections: [DropdownSection<String>] {
         let registry = ModelRegistry.shared
         return ModelGroup.sections(of: ModelCatalog.all.filter { !$0.isRealtime }).map { section in
@@ -942,150 +1183,59 @@ struct RecordingRow: View {
         return "Download · ~\(model.approxSizeBytes.formattedDiskSize)"
     }
 
-    /// Hover control opening the Generate / Regenerate menu, and — from that
-    /// menu or from the inline "Custom" chip — the custom-prompt form. A
-    /// `.popover` over `DropdownPopup` rather than a `Menu`, for the same reason
-    /// the regenerate picker is one: the stock NSMenu can't be restyled to this
-    /// chrome, and the two menus on a row must not look like they come from
-    /// different apps.
-    private var insightControl: some View {
-        Button {
-            showInsightMenu.toggle()
-        } label: {
-            Image(systemName: "sparkles")
-                .font(Typo.body)
-                .foregroundStyle(Palette.inkMuted)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help("Summarize, list action items, or format with your own instruction. \(Self.sendsTranscript)")
-        .accessibilityLabel("AI insights")
-        .popover(isPresented: $showInsightMenu, arrowEdge: .bottom) {
-            DropdownPopup(
-                sections: insightMenuSections,
-                selected: nil,
-                width: 240
-            ) { command in
-                switch command {
-                case .generate(let kind):
-                    showInsightMenu = false
-                    generate(kind)
-                case .customPrompt:
-                    openCustomPrompt()
+    /// One field per canonical speaker. Clearing a field reverts that speaker
+    /// to "Speaker N"; giving two the same name merges them. Names commit when
+    /// the popover closes.
+    private var speakerNamePopover: some View {
+        VStack(alignment: .leading, spacing: Space.s5) {
+            Text("Name Speakers")
+                .typo(.headline)
+                .foregroundStyle(Palette.ink)
+            VStack(alignment: .leading, spacing: Space.s4) {
+                ForEach(speakerLabels, id: \.self) { label in
+                    VStack(alignment: .leading, spacing: Space.s2) {
+                        Text(label)
+                            .typo(.caption)
+                            .foregroundStyle(Palette.inkMuted)
+                        TextField(label, text: speakerNameBinding(for: label), prompt: Text("Name"))
+                            .textFieldStyle(.roundedBorder)
+                            .labelsHidden()
+                            .accessibilityLabel("Name for \(label)")
+                    }
                 }
             }
-        }
-        // A second popover on the same anchor rather than a second anchor: the
-        // form belongs to the sparkles button, which is where the menu that
-        // offers it lives, and where the inline "Custom" chip points too.
-        .popover(isPresented: $showCustomPrompt, arrowEdge: .bottom) {
-            CustomPromptPopover(
-                usedCount: insights.usedCustomSlots(for: entry),
-                maxCount: RecordingHistoryEntry.maxCustomInsights,
-                failureMessage: insights.customFailure(entryID: entry.id),
-                onDismissFailure: { insights.dismissCustomFailure(entryID: entry.id) }
-            ) { instruction in
-                showCustomPrompt = false
-                runCustom(instruction: instruction)
+            HStack {
+                Spacer()
+                Button("Done") { showRenameSpeakers = false }
+                    .buttonTier(.primary)
+                    .keyboardShortcut(.defaultAction)
             }
         }
+        .padding(Space.s6)
+        .frame(width: 240)
+        .glassSurface(in: Rectangle())
     }
 
-    /// Hands the anchor over from the menu to the form.
-    ///
-    /// A popover presented in the same turn as another is dismissed never
-    /// appears — AppKit is still tearing the first one down on the anchor view —
-    /// so the form waits out the menu's dismissal.
-    ///
-    /// `isOpeningCustomPrompt` is what keeps the anchor alive across that wait.
-    /// During it the pointer is inside the menu's own window (so the row is not
-    /// hovered), the menu flag has just been cleared and the form's is not set
-    /// yet — every term of the mount condition in `actionButtons` is false at
-    /// once, and the sparkles button the form is anchored to would be destroyed
-    /// and rebuilt a frame later. `showCustomPrompt` holds the condition from the
-    /// moment it is set, so the handoff flag can be dropped immediately after,
-    /// including when the sleep is cancelled.
-    private func openCustomPrompt() {
-        isOpeningCustomPrompt = true
-        showInsightMenu = false
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
-            showCustomPrompt = true
-            isOpeningCustomPrompt = false
-        }
-    }
-
-    /// "Generate summary" until one exists, "Regenerate summary" after — one
-    /// command, named for what it will actually do to this recording. Nothing is
-    /// checkmarked: these are actions, not a selection.
-    ///
-    /// "Custom prompt…" is always offered, cap or no cap. `DropdownItem` has no
-    /// disabled state to give it (the dropdown is a shared control, and growing
-    /// one for a single call site would be a change to every menu in the app),
-    /// so the cap is said twice instead: as this row's detail line, and — in the
-    /// only place that can also stop the request — inside the form itself, where
-    /// the message sits next to a dead Format button.
-    private var insightMenuSections: [DropdownSection<InsightMenuCommand>] {
-        var items = InsightKind.builtIns.map { kind in
-            DropdownItem<InsightMenuCommand>(
-                value: .generate(kind),
-                title: entry.hasInsight(kind)
-                    ? "Regenerate \(kind.commandNoun)"
-                    : "Generate \(kind.commandNoun)"
-            )
-        }
-        items.append(DropdownItem(
-            value: .customPrompt,
-            title: "Custom prompt…",
-            detail: isCustomInsightFull
-                ? "Remove one of the \(RecordingHistoryEntry.maxCustomInsights) results first"
-                : "Format this transcript your way"
-        ))
-        return [DropdownSection(items: items)]
-    }
-
-    /// True when the recording has as many custom results as it may — counting
-    /// the ones still being generated, so the menu's detail line agrees with the
-    /// form's dead Format button rather than inviting a request that would be
-    /// refused after it had been paid for.
-    private var isCustomInsightFull: Bool {
-        insights.usedCustomSlots(for: entry) >= RecordingHistoryEntry.maxCustomInsights
-    }
-
-    private func iconButton(
-        systemName: String,
-        help: String,
-        tint: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(Typo.body)
-                .foregroundStyle(tint)
-                .frame(width: 24, height: 24)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
+    private func speakerNameBinding(for label: String) -> Binding<String> {
+        Binding(
+            get: { speakerNameDrafts[label] ?? "" },
+            set: { speakerNameDrafts[label] = $0 }
+        )
     }
 }
 
-/// Renders one transcript: a selectable, expandable body that clamps to a few
-/// lines with "Show more". With a `header` (used when a recording has more than
-/// one version) it draws a labeled, lightly-tinted card with per-version copy
-/// and remove; without one it's the bare text, as a single-transcript row shows.
+// MARK: - Transcript block
+
+/// One transcript: selectable text, clamped to `collapsedLineLimit` lines with
+/// Show More (nil shows it all). With a `header` (a recording with more than
+/// one version) it is a labeled well with per-version copy and remove.
 struct TranscriptBlockView: View {
     let text: String
-    /// History's live search query. Non-empty means the matched substrings are
-    /// washed in `accent` @ 0.22 with `ink` on top — an `AttributedString` on
-    /// the same `Text`, so selection, the line clamp and "Show more" all keep
-    /// working exactly as they do unsearched.
+    /// History's live search query; matches are washed in the accent.
     var highlight: String = ""
+    var collapsedLineLimit: Int? = 3
     let header: Header?
 
-    /// Per-version chrome shown when comparing multiple transcripts.
     struct Header {
         let label: String
         let isActive: Bool
@@ -1100,21 +1250,12 @@ struct TranscriptBlockView: View {
 
     @Environment(\.motion) private var motion
 
-    /// Lines shown before the transcript is clamped and a "Show more" appears.
-    /// Kept short so a collapsed row scans as a preview, not a wall of text.
-    private static let collapsedLineLimit = 3
-
-    /// One source of truth for the transcript type, shared by the visible body
-    /// and the hidden measuring probes so truncation is measured against exactly
-    /// what's drawn — including the step's line-height, which the probes have to
-    /// carry or they measure a shorter block than the row draws.
+    /// Shared by the visible body and the measuring probes, so truncation is
+    /// measured against exactly what's drawn.
     private static let transcriptStyle: Typo.Style = .body
 
-    /// Truncated when one extra line would make the transcript taller — i.e. it
-    /// overflows the collapsed clamp. Derived from stable, expand-independent
-    /// measurements (below), so toggling "Show more" never re-measures and
-    /// flickers the layout.
-    private var isTruncated: Bool { overflowHeight > clampedHeight + 1 }
+    /// Truncated when one extra line would make the transcript taller.
+    private var isTruncated: Bool { collapsedLineLimit != nil && overflowHeight > clampedHeight + 1 }
 
     var body: some View {
         content
@@ -1124,23 +1265,18 @@ struct TranscriptBlockView: View {
     @ViewBuilder
     private var content: some View {
         if let header {
-            // A version block is a well inside the row's plate, so its radius is
-            // derived from the enclosing plate rather than typed.
             ConcentricRectangle(inset: Space.s3) { shape in
-                VStack(alignment: .leading, spacing: Space.s4) {
+                VStack(alignment: .leading, spacing: Space.s2) {
                     headerRow(header)
                     transcriptBody
                 }
-                .padding(Space.s5)
+                .padding(.leading, Space.s5)
+                .padding(.trailing, Space.s2)
+                .padding(.vertical, Space.s3)
                 .background(shape.fill(Palette.wellFill))
-                .overlay(
-                    shape.strokeBorder(
-                        header.isActive ? Palette.accent.opacity(0.35) : Color.clear
-                    )
-                )
             }
         } else {
-            VStack(alignment: .leading, spacing: Space.s4) {
+            VStack(alignment: .leading, spacing: Space.s2) {
                 transcriptBody
             }
         }
@@ -1148,43 +1284,24 @@ struct TranscriptBlockView: View {
 
     private func headerRow(_ header: Header) -> some View {
         HStack(spacing: Space.s4) {
-            if header.isActive {
-                Circle()
-                    .fill(Palette.accent)
-                    .frame(width: 5, height: 5)
-            }
             Text(header.label)
                 .typo(.captionMedium)
                 .foregroundStyle(header.isActive ? Palette.ink : Palette.inkMuted)
             if header.isActive {
-                Text("Current")
-                    .typo(.micro)
-                    .textCase(.uppercase)
-                    .foregroundStyle(Palette.accent)
-                    .padding(.horizontal, Space.s3)
-                    .padding(.vertical, Space.s1)
-                    .background(Capsule().fill(Palette.accent.opacity(0.14)))
+                BadgeLabel("Current")
             }
             Spacer(minLength: Space.s4)
-            smallIcon(
+            IconButton(
                 copied ? "checkmark" : "doc.on.doc",
-                tint: copied ? Palette.signalReady : Palette.inkMuted,
-                help: "Copy this version"
+                label: copied ? "Copied" : "Copy this version",
+                tint: copied ? Palette.signalReady : nil
             ) {
                 copyText()
             }
-            smallIcon(
-                "trash",
-                tint: Palette.inkMuted,
-                help: "Remove this version",
-                action: header.onRemove
-            )
+            IconButton("trash", label: "Remove this version", action: header.onRemove)
         }
     }
 
-    /// The body text, with any search hits marked. Unsearched this is a plain
-    /// `AttributedString` carrying no attributes, so the `.secondary`
-    /// foreground style below still owns every glyph.
     private var attributedText: AttributedString {
         HistorySearch.highlighted(text, query: highlight)
     }
@@ -1193,37 +1310,32 @@ struct TranscriptBlockView: View {
     private var transcriptBody: some View {
         Text(attributedText)
             .typo(Self.transcriptStyle)
-            .foregroundStyle(Palette.inkMuted)
+            .foregroundStyle(Palette.ink)
             .textSelection(.enabled)
-            .lineLimit(expanded ? nil : Self.collapsedLineLimit)
+            .lineLimit(expanded ? nil : collapsedLineLimit)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            // A selectable Text on macOS paints its full content height when
-            // clicked, even while layout still reserves only the line-limit
-            // clamp — without this it spills over "Show more". Clip it to its
-            // laid-out bounds; expanded (line-limit nil) is a no-op here.
+            // A selectable Text paints its full height when clicked, even while
+            // layout reserves only the clamp — clip it to its laid-out bounds.
             .clipped()
-            .background(truncationProbe)
+            .background {
+                if let collapsedLineLimit { truncationProbe(collapsedLineLimit) }
+            }
 
         if isTruncated || expanded {
-            Button(expanded ? "Show less" : "Show more") {
+            ShowMoreButton(expanded: expanded) {
                 withAnimation(motion.layout) { expanded.toggle() }
             }
-            .buttonStyle(.plain)
-            .typo(.captionMedium)
-            .foregroundStyle(Palette.accent)
         }
     }
 
-    /// Measures truncation from real glyph layout (correct for any script and
-    /// window width) using two hidden copies clamped to N+1 and N lines. The
-    /// extra line only adds height when the transcript overflows, so we detect
-    /// truncation without ever laying out a full hour-long transcript. Both are
-    /// independent of `expanded`, so expanding can't churn the measurement.
-    private var truncationProbe: some View {
+    /// Two hidden copies clamped to N+1 and N lines: the extra line only adds
+    /// height when the transcript overflows, so truncation is detected without
+    /// laying out a whole hour-long transcript.
+    private func truncationProbe(_ limit: Int) -> some View {
         ZStack {
-            measuringText(lineLimit: Self.collapsedLineLimit + 1) { overflowHeight = $0 }
-            measuringText(lineLimit: Self.collapsedLineLimit) { clampedHeight = $0 }
+            measuringText(lineLimit: limit + 1) { overflowHeight = $0 }
+            measuringText(lineLimit: limit) { clampedHeight = $0 }
         }
         .hidden()
         .accessibilityHidden(true)
@@ -1249,6 +1361,7 @@ struct TranscriptBlockView: View {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         copied = true
+        AccessibilityNotification.Announcement("Copied").post()
         copyResetTask?.cancel()
         copyResetTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(1.5))
@@ -1256,65 +1369,24 @@ struct TranscriptBlockView: View {
             copied = false
         }
     }
-
-    private func smallIcon(
-        _ systemName: String,
-        tint: Color,
-        help: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemName)
-                .font(Typo.captionMedium)
-                .foregroundStyle(tint)
-                .frame(width: 22, height: 22)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .accessibilityLabel(help)
-    }
 }
 
-/// Quiet inline tag marking how a recording was made — "Dictation" (hotkey flow)
-/// or "Conversation" (long mic+system capture). A small icon + label in tertiary
-/// ink; no fill, so it sits in the metadata line rather than shouting as a chip.
-struct RecordingTypeBadge: View {
-    let source: RecordingHistoryEntry.Source?
-
-    @Environment(\.increaseContrast) private var increaseContrast
-
-    var body: some View {
-        let resolved = source ?? .dictation
-        HStack(spacing: Space.s1) {
-            Image(systemName: resolved.symbolName)
-                .font(Typo.micro)
-            Text(resolved.displayName)
-                .typo(.caption)
-        }
-        .foregroundStyle(Palette.inkFaint(increaseContrast: increaseContrast))
-    }
-}
-
-/// Compact 28-pt circular play/stop control. Filled accent while playing, a
-/// subtle neutral wash at rest so it stays quiet until the row is in use.
-struct PlayTile: View {
-    let isPlaying: Bool
+/// "Show More ⌄" / "Show Less ⌃" — an in-place action, so a small bordered
+/// button rather than a link (links are for going somewhere).
+struct ShowMoreButton: View {
+    let expanded: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                Circle()
-                    .fill(isPlaying ? Palette.action : Palette.ink.opacity(0.06))
-                Image(systemName: isPlaying ? "stop.fill" : "play.fill")
+            HStack(spacing: Space.s1) {
+                Text(expanded ? "Show Less" : "Show More")
+                Image(systemName: expanded ? "chevron.up" : "chevron.down")
                     .font(Typo.micro)
-                    .foregroundStyle(isPlaying ? Palette.onAction : Palette.inkMuted)
+                    .accessibilityHidden(true)
             }
-            .frame(width: 28, height: 28)
-            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .help(isPlaying ? "Stop" : "Play recording")
+        .buttonTier(.secondary)
+        .controlSize(.small)
     }
 }

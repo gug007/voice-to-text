@@ -122,6 +122,11 @@ final class RecordingHistoryStore {
         Self.directory.appendingPathComponent(entry.audioFileName, isDirectory: false)
     }
 
+    /// The untouched recording kept beside a silence-trimmed one, if any.
+    func originalAudioURL(for entry: RecordingHistoryEntry) -> URL? {
+        entry.originalAudio.map { Self.directory.appendingPathComponent($0.fileName, isDirectory: false) }
+    }
+
     // MARK: - Recording
 
     /// Saves one finished dictation. `samples` is the mono 16 kHz Float buffer
@@ -207,7 +212,8 @@ final class RecordingHistoryStore {
         }
     }
 
-    /// Builds a new entry with a fresh id and matching `<id>.wav` file name.
+    /// Builds a new entry with a fresh id and matching `<id>.wav` file name —
+    /// and `<id>-original.wav` for a kept original of `originalDurationSeconds`.
     private func makeEntry(
         transcript: String,
         durationSeconds: Double,
@@ -215,7 +221,8 @@ final class RecordingHistoryStore {
         model: ModelDescriptor?,
         source: RecordingHistoryEntry.Source,
         createdAt: Date = Date(),
-        status: RecordingHistoryEntry.Status? = nil
+        status: RecordingHistoryEntry.Status? = nil,
+        originalDurationSeconds: Double? = nil
     ) -> RecordingHistoryEntry {
         let id = UUID()
         return RecordingHistoryEntry(
@@ -228,7 +235,10 @@ final class RecordingHistoryStore {
             modelId: model?.id,
             modelName: model?.displayName,
             source: source,
-            status: status
+            status: status,
+            originalAudio: originalDurationSeconds.map {
+                RecordingHistoryEntry.OriginalAudio(fileName: "\(id.uuidString)-original.wav", durationSeconds: $0)
+            }
         )
     }
 
@@ -246,7 +256,7 @@ final class RecordingHistoryStore {
             pinned: entriesInUse
         )
         entries = outcome.kept
-        let prunedFiles = outcome.removed.map(\.audioFileName)
+        let prunedFiles = outcome.removed.flatMap(\.audioFileNames)
         let fileName = entry.audioFileName
         enqueueIO { dir in
             Self.ensureDirectoryExists(dir)
@@ -407,7 +417,7 @@ final class RecordingHistoryStore {
     /// without these entries. Idempotent — an already-missing file is success.
     private func commitRemoval(_ removed: [RecordingHistoryEntry]) {
         guard !removed.isEmpty else { return }
-        removeAudioFiles(removed.map(\.audioFileName))
+        removeAudioFiles(removed.flatMap(\.audioFileNames))
         // Nothing can be written back to a recording that is gone for good, so
         // whatever the insight generator is still holding for it — half-finished
         // chunk results, failure notes, progress — is dead weight that would
@@ -708,6 +718,8 @@ final class RecordingHistoryStore {
     /// defaults to now; launch recovery passes when the recording was made.
     /// `status` marks a recording saved without a real transcript — its
     /// transcription failed — exactly as `recordFailed` does for a dictation.
+    /// `original` is the untouched recording "Remove silence" kept beside a
+    /// trimmed `fileURL`; it is filed with the same row.
     @discardableResult
     func ingest(
         fileURL: URL,
@@ -716,11 +728,13 @@ final class RecordingHistoryStore {
         model: ModelDescriptor?,
         source: RecordingHistoryEntry.Source,
         createdAt: Date = Date(),
-        status: RecordingHistoryEntry.Status? = nil
+        status: RecordingHistoryEntry.Status? = nil,
+        original: (fileURL: URL, durationSeconds: Double)? = nil
     ) -> UUID? {
         let trimmed = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               FileManager.default.fileExists(atPath: fileURL.path) else { return nil }
+        let original = original.flatMap { FileManager.default.fileExists(atPath: $0.fileURL.path) ? $0 : nil }
 
         let entry = makeEntry(
             transcript: trimmed,
@@ -729,27 +743,61 @@ final class RecordingHistoryStore {
             model: model,
             source: source,
             createdAt: createdAt,
-            status: status
+            status: status,
+            originalDurationSeconds: original?.durationSeconds
         )
+        let originalName = entry.originalAudio?.fileName
+        let originalSource = original?.fileURL
         return insert(entry) { dest in
-            try? FileManager.default.removeItem(at: dest)
+            // The row's own audio first. If it can't land, the original stays
+            // where it is: in MeetingsTemp launch recovery files it, whole, as
+            // the one row this conversation gets.
+            guard Self.landFile(from: fileURL, to: dest),
+                  let originalName, let originalSource else { return }
+            Self.landFile(
+                from: originalSource,
+                to: dest.deletingLastPathComponent().appendingPathComponent(originalName, isDirectory: false)
+            )
+        }
+    }
+
+    /// Moves `source` to `dest`, falling back to copy-then-remove for a
+    /// cross-volume or busy source. The source goes only once the copy has
+    /// landed: on a full disk the copy fails too, and the file left in
+    /// MeetingsTemp is what launch recovery re-ingests. A partial copy is
+    /// removed so that recovery doesn't leave a truncated duplicate beside it.
+    @discardableResult
+    private nonisolated static func landFile(from source: URL, to dest: URL) -> Bool {
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try FileManager.default.moveItem(at: source, to: dest)
+            return true
+        } catch {
             do {
-                try FileManager.default.moveItem(at: fileURL, to: dest)
+                try FileManager.default.copyItem(at: source, to: dest)
+                try? FileManager.default.removeItem(at: source)
+                return true
             } catch {
-                // Cross-volume or busy source: fall back to copy-then-remove.
-                // The source goes only once the copy has landed: on a full disk
-                // the copy fails too, and the file left in MeetingsTemp is what
-                // launch recovery re-ingests. A partial copy is removed so that
-                // recovery doesn't leave a truncated duplicate beside it.
-                do {
-                    try FileManager.default.copyItem(at: fileURL, to: dest)
-                    try? FileManager.default.removeItem(at: fileURL)
-                } catch {
-                    try? FileManager.default.removeItem(at: dest)
-                    AppLog.history.error("Couldn't move recording into History: \(error.localizedDescription)")
-                }
+                try? FileManager.default.removeItem(at: dest)
+                AppLog.history.error("Couldn't move recording into History: \(error.localizedDescription)")
+                return false
             }
         }
+    }
+
+    /// Deletes the original kept beside a silence-trimmed recording, freeing
+    /// its space; the row and its trimmed audio stay. The index stops naming
+    /// the file before the file goes, so a crash in between leaves an orphan
+    /// the launch sweep reaps rather than a row pointing at nothing.
+    func removeOriginalAudio(entryID: UUID) {
+        var fileName: String?
+        mutateEntry(entryID) { entry in
+            fileName = entry.originalAudio?.fileName
+            return fileName == nil ? nil : entry.removingOriginalAudio()
+        }
+        guard let fileName else { return }
+        removeAudioFiles([fileName])
+        refreshDiskUsage()
     }
 
     // MARK: - Persistence
@@ -847,11 +895,17 @@ final class RecordingHistoryStore {
         // write) so a dangling, unplayable row self-heals instead of lingering
         // forever; the on-disk index is rewritten on the next mutation. Also
         // re-sort to the newest-first invariant the rest of the store relies on.
+        // A kept original that is gone only loses the original, not the row.
         let dir = directory
-        let present = decoded.entries.filter {
-            FileManager.default.fileExists(
-                atPath: dir.appendingPathComponent($0.audioFileName, isDirectory: false).path
-            )
+        let exists = { (name: String) in
+            FileManager.default.fileExists(atPath: dir.appendingPathComponent(name, isDirectory: false).path)
+        }
+        let present = decoded.entries.compactMap { entry -> RecordingHistoryEntry? in
+            guard exists(entry.audioFileName) else { return nil }
+            if let original = entry.originalAudio, !exists(original.fileName) {
+                return entry.removingOriginalAudio()
+            }
+            return entry
         }
         return LoadedIndex(
             // Nothing can be running before the store exists, so nothing is pinned.

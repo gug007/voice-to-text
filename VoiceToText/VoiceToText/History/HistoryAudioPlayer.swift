@@ -28,7 +28,9 @@ final class HistoryAudioPlayer: NSObject, AVAudioPlayerDelegate {
         }
     }
 
-    private func play(url: URL, id: UUID) {
+    /// Plays `url` for `id`, replacing whatever is playing — for a row's
+    /// second file (a kept original), which `toggle` would stop instead.
+    func play(url: URL, id: UUID) {
         stop()
         guard let newPlayer = try? AVAudioPlayer(contentsOf: url) else {
             AppLog.audio.error("History playback failed to open \(url.lastPathComponent, privacy: .public)")

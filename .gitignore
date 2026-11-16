@@ -67,6 +67,8 @@ playground.xcworkspace
 VoiceToText/Vendor/transcribe.cpp/
 # whisper.cpp, which it replaced; a checkout that built it before keeps it
 VoiceToText/Vendor/whisper.cpp/
+# libtailscale + TailscaleKit for both apps — built by scripts/build-tailscale.sh
+VoiceToText/Vendor/TailscaleKit/
 
 # Secrets / local config
 *.env

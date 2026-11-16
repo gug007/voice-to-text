@@ -52,6 +52,9 @@ final class MeetingController {
     static let levelHistoryCount = 140
     private(set) var transcribedChunks = 0
     private(set) var totalChunks = 0
+    /// True while "Remove silence" cuts the recording, before transcription
+    /// starts reporting chunks.
+    private(set) var isRemovingSilence = false
     /// Set briefly after a successful save so the pane can confirm where it went.
     private(set) var lastSavedSummary: String?
 
@@ -160,18 +163,22 @@ final class MeetingController {
 
     // MARK: - Start
 
-    func start() async {
+    /// `promptForPermissions` false fails with the same error card instead of
+    /// asking: the iPhone's Start can't answer a dialog on the Mac, and an
+    /// unanswered microphone prompt would leave the request hanging.
+    func start(promptForPermissions: Bool = true) async {
         // An update is being swapped in and the app is about to quit into it.
         guard !isBusy, !AppUpdater.shared.isFinishingInstall else { return }
         transitioning = true
         defer { transitioning = false }
         lastSavedSummary = nil
 
-        guard await MicPermission.request() else {
+        let micGranted = promptForPermissions ? await MicPermission.request() : MicPermission.isGranted
+        guard micGranted else {
             state = .error("Microphone access is required. Enable it in System Settings → Privacy & Security → Microphone.")
             return
         }
-        guard ScreenCapturePermission.isGranted || ScreenCapturePermission.request() else {
+        guard ScreenCapturePermission.isGranted || (promptForPermissions && ScreenCapturePermission.request()) else {
             state = .error("Screen Recording permission is required to capture other participants' audio. Enable VoiceToText in System Settings → Privacy & Security → Screen Recording, then try again.")
             return
         }
@@ -353,7 +360,9 @@ final class MeetingController {
     /// transcribed again from History. `sourceLabel` names the uploaded file
     /// when this came from an import, so the confirmation says which file
     /// landed rather than just how long it was. Drives `transcribedChunks` /
-    /// `totalChunks` as it goes.
+    /// `totalChunks` as it goes. With "Remove silence" on, the file is cut
+    /// first, and both the transcript and the History row get the cut audio;
+    /// with "Keep original" too, the untouched file is filed with the row.
     private func transcribeAndArchive(
         url: URL,
         duration: Double,
@@ -361,6 +370,24 @@ final class MeetingController {
     ) async -> Archived {
         transcribedChunks = 0
         totalChunks = 0
+
+        var url = url
+        var duration = duration
+        var untrimmedDuration: Double?
+        var original: (fileURL: URL, durationSeconds: Double)?
+        if ConversationSilenceTrimmer.isEnabled {
+            isRemovingSilence = true
+            if let trim = await ConversationSilenceTrimmer.trim(
+                url: url,
+                keepingOriginal: ConversationSilenceTrimmer.keepsOriginal
+            ) {
+                if trim.keptOriginal { original = (url, trim.originalSeconds) }
+                url = trim.trimmedURL
+                duration = trim.keptSeconds
+                untrimmedDuration = trim.originalSeconds
+            }
+            isRemovingSilence = false
+        }
 
         let transcript: String
         // Recorded on the row whether or not it could be used, so the row
@@ -401,13 +428,28 @@ final class MeetingController {
             durationSeconds: duration,
             model: model,
             source: .meeting,
-            status: status
+            status: status,
+            original: original
         )
+        // Not filed: the original stays in MeetingsTemp for launch recovery,
+        // as an unfiled recording always has; the trimmed copy is redundant.
+        if id == nil, original != nil {
+            try? FileManager.default.removeItem(at: url)
+        }
         let saved = id.map { SavedRecording(historyID: $0, untranscribedReason: status?.message) }
         guard issue == nil else { return Archived(issue: issue, summary: nil, saved: saved) }
-        let summary = sourceLabel.map {
-            "Transcribed “\($0)” (\(duration.formattedClock)) — saved to History."
-        } ?? "Saved a \(duration.formattedClock) recording to History."
+        let summary: String
+        let originalNote = original == nil ? "" : ", original kept"
+        switch (sourceLabel, untrimmedDuration) {
+        case let (name?, untrimmed?):
+            summary = "Transcribed “\(name)” (\(duration.formattedClock), silence removed from \(untrimmed.formattedClock)\(originalNote)) — saved to History."
+        case let (name?, nil):
+            summary = "Transcribed “\(name)” (\(duration.formattedClock)) — saved to History."
+        case let (nil, untrimmed?):
+            summary = "Saved a \(duration.formattedClock) recording to History (silence removed from \(untrimmed.formattedClock)\(originalNote))."
+        case (nil, nil):
+            summary = "Saved a \(duration.formattedClock) recording to History."
+        }
         return Archived(issue: nil, summary: summary, saved: saved)
     }
 
@@ -590,6 +632,12 @@ final class MeetingController {
             at: meetingsTempDirectory,
             includingPropertiesForKeys: [.fileSizeKey, .creationDateKey]
         ) else { return }
+        // Silence-removal copies, never recordings of their own: the original
+        // each was cut from is still here as a `.wav`, whole.
+        try? fm.removeItem(at: meetingsTempDirectory.appendingPathComponent(
+            ConversationSilenceTrimmer.scratchFolderName,
+            isDirectory: true
+        ))
         for url in files where url.pathExtension == "wav" {
             let recordedAt = (try? url.resourceValues(forKeys: [.creationDateKey]).creationDate) ?? Date()
             let repaired = StreamingWAVWriter.repairHeaderInPlace(at: url)

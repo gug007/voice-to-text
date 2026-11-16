@@ -96,6 +96,18 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// optional, like the fields above, so older indexes decode (absent ⇒ nil).
     let unprotectedAt: Date?
 
+    /// The untouched recording, kept beside the silence-trimmed one in
+    /// `audioFileName` when "Remove silence" ran with "Keep original" on. Nil
+    /// when there is none — absent from every older index, or removed by the
+    /// user to free its space.
+    let originalAudio: OriginalAudio?
+
+    struct OriginalAudio: Codable, Hashable, Sendable {
+        /// File name (not a path) inside the history directory, like `audioFileName`.
+        let fileName: String
+        let durationSeconds: Double
+    }
+
     /// How many custom results one recording may hold at once. The cap exists
     /// for the tab bar, not for storage: four or five model-named tabs beside
     /// Transcript, Summary and Action Items stop being scannable and start
@@ -106,6 +118,12 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
 
     /// Non-optional view of `isFavorite` for call sites.
     var isFavorited: Bool { isFavorite ?? false }
+
+    /// Every file this entry owns in the history directory: the audio, and
+    /// the original beside it when one was kept.
+    var audioFileNames: [String] {
+        [audioFileName] + (originalAudio.map { [$0.fileName] } ?? [])
+    }
 
     /// Non-optional view of `customInsights`, newest first.
     var customInsightList: [CustomInsight] { customInsights ?? [] }
@@ -232,7 +250,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         actionItems: TranscriptActionItems? = nil,
         customInsights: [CustomInsight]? = nil,
         status: Status? = nil,
-        unprotectedAt: Date? = nil
+        unprotectedAt: Date? = nil,
+        originalAudio: OriginalAudio? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -251,6 +270,7 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         self.customInsights = customInsights
         self.status = status
         self.unprotectedAt = unprotectedAt
+        self.originalAudio = originalAudio
     }
 
     // MARK: - Copies
@@ -277,7 +297,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
         actionItems: TranscriptActionItems?,
         customInsights: [CustomInsight]?,
         status: Status?,
-        unprotectedAt: Date?
+        unprotectedAt: Date?,
+        originalAudio: OriginalAudio?
     ) -> RecordingHistoryEntry {
         RecordingHistoryEntry(
             id: id,
@@ -296,7 +317,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -324,7 +346,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -342,7 +365,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -359,7 +383,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -377,7 +402,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -398,7 +424,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -426,7 +453,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: nil,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -448,7 +476,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 
@@ -465,7 +494,27 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
+        )
+    }
+
+    /// Returns a copy without its original recording — the user deleted it to
+    /// free the space, or it was missing on load; everything else is kept.
+    func removingOriginalAudio() -> RecordingHistoryEntry {
+        replacing(
+            transcript: transcript,
+            modelId: modelId,
+            modelName: modelName,
+            alternates: alternates,
+            speakerNames: speakerNames,
+            isFavorite: isFavorite,
+            summary: summary,
+            actionItems: actionItems,
+            customInsights: customInsights,
+            status: status,
+            unprotectedAt: unprotectedAt,
+            originalAudio: nil
         )
     }
 
@@ -485,7 +534,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
             actionItems: actionItems,
             customInsights: customInsights,
             status: status,
-            unprotectedAt: unprotectedAt
+            unprotectedAt: unprotectedAt,
+            originalAudio: originalAudio
         )
     }
 }

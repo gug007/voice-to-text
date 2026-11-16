@@ -53,6 +53,11 @@ actor VoiceActivityGate {
         return fallback.passesSpeechGate(samples[...], sampleRate: Int(AudioConfig.targetSampleRate))
     }
 
+    /// Samples behind each of `speechProbabilities`' results. Each call starts
+    /// Silero from a fresh state and pads only its own last chunk, so callers
+    /// feeding a long file in blocks keep every block a multiple of this.
+    nonisolated static let unitSamples = VadManager.chunkSize
+
     /// Silero's speech probability for each `VadManager.chunkSize` samples of
     /// `samples`; nil while the model isn't available.
     func speechProbabilities(_ samples: [Float]) async -> [Float]? {

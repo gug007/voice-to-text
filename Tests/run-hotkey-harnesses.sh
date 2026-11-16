@@ -44,6 +44,12 @@ swiftc -parse-as-library \
 "$TMPDIR/speech-gate-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Audio/SilenceTrimPlan.swift \
+  Tests/SilenceTrimPlanHarness.swift \
+  -o "$TMPDIR/silence-trim-plan-harness"
+"$TMPDIR/silence-trim-plan-harness"
+
+swiftc -parse-as-library \
   VoiceToText/VoiceToText/Support/AppConstants.swift \
   VoiceToText/VoiceToText/Audio/AudioPreprocessor.swift \
   Tests/AudioPreprocessorHarness.swift \
@@ -402,3 +408,14 @@ swiftc -parse-as-library \
   Tests/ProviderKeyNeedHarness.swift \
   -o "$TMPDIR/provider-key-need-harness"
 "$TMPDIR/provider-key-need-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/History/TranscriptInsight.swift \
+  VoiceToText/VoiceToText/History/RecordingHistoryEntry.swift \
+  VoiceToText/VoiceToText/History/HistoryIndexCodec.swift \
+  VoiceToText/VoiceToText/Remote/RemoteProtocol.swift \
+  VoiceToText/VoiceToText/Remote/TailnetStatus.swift \
+  VoiceToText/VoiceToText/Remote/RemoteHTTP.swift \
+  Tests/RemoteProtocolHarness.swift \
+  -o "$TMPDIR/remote-protocol-harness"
+"$TMPDIR/remote-protocol-harness"

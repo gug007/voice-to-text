@@ -8,6 +8,9 @@ BUILD_PRODUCT="$PROJECT_DIR/build-dev/Build/Products/Debug/VoiceToText.app"
 INSTALL_PATH="/Applications/VoiceToText-Dev.app"
 DEV_BUNDLE_ID="voice-to-text-ai.VoiceToText.dev"
 
+echo "→ building libtailscale (Control from iPhone)"
+"$SCRIPT_DIR/build-tailscale.sh"
+
 cd "$PROJECT_DIR"
 
 echo "→ killing any running dev instance"

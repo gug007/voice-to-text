@@ -137,6 +137,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Reclaim any meeting recording stranded by a crash/force-quit/power loss.
         MeetingController.recoverOrphanedTempFiles()
         ExternalAPIController.shared.apply()
+        // Brings the Tailscale node back up only if "Control from iPhone" was
+        // left on; off (the default), nothing Tailscale runs.
+        RemoteControlController.shared.applyAtLaunch()
         Self.wasLaunchedAtLogin = LaunchContext.shouldHideMainWindowOnLaunch(
             appleEvent: NSAppleEventManager.shared().currentAppleEvent,
             launchUserInfo: notification.userInfo
@@ -163,6 +166,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillTerminate(_ notification: Notification) {
         RecordingHistoryStore.shared.flush()
         ExternalAPIController.shared.stopServing()
+        RemoteControlController.shared.stopServing()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

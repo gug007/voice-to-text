@@ -11,6 +11,9 @@ INSTALL_PATH="/Applications/$APP_NAME"
 echo "→ building transcribe.cpp for the Intel slice"
 "$SCRIPT_DIR/build-transcribe-cpp.sh"
 
+echo "→ building libtailscale (Control from iPhone)"
+"$SCRIPT_DIR/build-tailscale.sh"
+
 cd "$PROJECT_DIR"
 
 echo "→ killing any running instance"

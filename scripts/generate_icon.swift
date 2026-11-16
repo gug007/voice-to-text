@@ -39,63 +39,28 @@ func drawIcon(pixelSize: CGFloat) -> NSBitmapImageRep {
     let gradient = NSGradient(colors: [gradientTop, gradientBottom])!
     gradient.draw(in: backgroundPath, angle: 270)
 
-    // Microphone silhouette (drawn as primitive shapes, scaled to pixelSize)
+    // Voice bars: five level bars centred on the icon
     let s = pixelSize
     NSColor.white.setFill()
 
-    // Mic body (pill)
-    let bodyWidth: CGFloat = s * 0.22
-    let bodyHeight: CGFloat = s * 0.34
-    let bodyX = (s - bodyWidth) / 2
-    let bodyY = s * 0.39
-    let bodyRect = CGRect(x: bodyX, y: bodyY, width: bodyWidth, height: bodyHeight)
-    let bodyPath = NSBezierPath(
-        roundedRect: bodyRect,
-        xRadius: bodyWidth / 2,
-        yRadius: bodyWidth / 2
-    )
-    bodyPath.fill()
-
-    // Mic stand (arc under the body)
-    let arcRadius: CGFloat = s * 0.17
-    let arcCenter = CGPoint(x: s / 2, y: bodyY + bodyHeight * 0.25)
-    let arcPath = NSBezierPath()
-    arcPath.lineWidth = s * 0.032
-    NSColor.white.setStroke()
-    arcPath.appendArc(
-        withCenter: arcCenter,
-        radius: arcRadius,
-        startAngle: 195,
-        endAngle: 345,
-        clockwise: false
-    )
-    arcPath.stroke()
-
-    // Mic stem
-    let stemWidth: CGFloat = s * 0.032
-    let stemHeight: CGFloat = s * 0.05
-    let stemRect = CGRect(
-        x: (s - stemWidth) / 2,
-        y: arcCenter.y - arcRadius - stemHeight,
-        width: stemWidth,
-        height: stemHeight
-    )
-    NSBezierPath(rect: stemRect).fill()
-
-    // Mic base (horizontal pill)
-    let baseWidth: CGFloat = s * 0.20
-    let baseHeight: CGFloat = s * 0.028
-    let baseRect = CGRect(
-        x: (s - baseWidth) / 2,
-        y: stemRect.minY - baseHeight,
-        width: baseWidth,
-        height: baseHeight
-    )
-    NSBezierPath(
-        roundedRect: baseRect,
-        xRadius: baseHeight / 2,
-        yRadius: baseHeight / 2
-    ).fill()
+    let barWidth = s * 10 / 120
+    let bars: [(center: CGFloat, height: CGFloat)] = [
+        (28, 20), (44, 46), (60, 66), (76, 38), (92, 24),
+    ]
+    for bar in bars {
+        let height = s * bar.height / 120
+        let barRect = CGRect(
+            x: s * bar.center / 120 - barWidth / 2,
+            y: (s - height) / 2,
+            width: barWidth,
+            height: height
+        )
+        NSBezierPath(
+            roundedRect: barRect,
+            xRadius: barWidth / 2,
+            yRadius: barWidth / 2
+        ).fill()
+    }
 
     NSGraphicsContext.restoreGraphicsState()
     return bitmap

@@ -72,6 +72,18 @@ jobs:
           cmake --version | head -1
           ./scripts/build-transcribe-cpp.sh
 
+      # Both slices link libtailscale ("Control from iPhone"); the package
+      # it builds is what the Xcode project's local package reference names.
+      - name: Build libtailscale
+        shell: bash
+        run: |
+          if ! command -v go >/dev/null 2>&1; then
+            echo "::error::Go is not on this runner; scripts/build-tailscale.sh needs it"
+            exit 1
+          fi
+          go version
+          ./scripts/build-tailscale.sh
+
       - name: Build Release
         working-directory: VoiceToText
         shell: bash

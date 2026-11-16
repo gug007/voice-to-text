@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		AA030001000000000000000A /* WhisperKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA020001000000000000000A /* WhisperKit */; };
 		AA030002000000000000000A /* FluidAudio in Frameworks */ = {isa = PBXBuildFile; productRef = AA020002000000000000000A /* FluidAudio */; };
+		AA030003000000000000000A /* TailscaleKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA020003000000000000000A /* TailscaleKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -30,6 +31,7 @@
 			files = (
 				AA030001000000000000000A /* WhisperKit in Frameworks */,
 				AA030002000000000000000A /* FluidAudio in Frameworks */,
+				AA030003000000000000000A /* TailscaleKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -74,6 +76,7 @@
 			packageProductDependencies = (
 				AA020001000000000000000A /* WhisperKit */,
 				AA020002000000000000000A /* FluidAudio */,
+				AA020003000000000000000A /* TailscaleKit */,
 			);
 			productName = VoiceToText;
 			productReference = 08B9BDFE2F8E676B003B28FC /* VoiceToText.app */;
@@ -106,6 +109,7 @@
 			packageReferences = (
 				AA010001000000000000000A /* XCRemoteSwiftPackageReference "WhisperKit" */,
 				AA010002000000000000000A /* XCRemoteSwiftPackageReference "FluidAudio" */,
+				AA010003000000000000000A /* XCLocalSwiftPackageReference "Vendor/TailscaleKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 08B9BDFF2F8E676B003B28FC /* Products */;
@@ -271,6 +275,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "With Control from iPhone on, VoiceToText connects straight to your iPhone over Tailscale when both are on the same network.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText records your voice for dictation and conversations. With a local model it is transcribed on your Mac; if you choose a cloud model, the audio is sent to that provider.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -327,6 +332,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = Info.plist;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "With Control from iPhone on, VoiceToText connects straight to your iPhone over Tailscale when both are on the same network.";
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "VoiceToText records your voice for dictation and conversations. With a local model it is transcribed on your Mac; if you choose a cloud model, the audio is sent to that provider.";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -391,6 +397,13 @@
 		};
 /* End XCConfigurationList section */
 
+/* Begin XCLocalSwiftPackageReference section */
+		AA010003000000000000000A /* XCLocalSwiftPackageReference "Vendor/TailscaleKit" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = Vendor/TailscaleKit;
+		};
+/* End XCLocalSwiftPackageReference section */
+
 /* Begin XCRemoteSwiftPackageReference section */
 		AA010001000000000000000A /* XCRemoteSwiftPackageReference "WhisperKit" */ = {
 			isa = XCRemoteSwiftPackageReference;
@@ -420,6 +433,10 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA010002000000000000000A /* XCRemoteSwiftPackageReference "FluidAudio" */;
 			productName = FluidAudio;
+		};
+		AA020003000000000000000A /* TailscaleKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = TailscaleKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

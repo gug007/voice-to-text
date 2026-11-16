@@ -131,6 +131,7 @@ struct RecordingRow: View {
     /// Draft names shown in the rename popover, seeded from the entry on open and
     /// committed to the store when the popover closes.
     @State private var speakerNameDrafts: [String: String] = [:]
+    @State private var confirmingDeleteOriginal = false
     /// The pointer is over the row, or keyboard focus is on one of its
     /// secondary controls: either reveals the empty star and ⋯.
     @State private var isHovering = false
@@ -274,6 +275,14 @@ struct RecordingRow: View {
                     Button("Delete recording", role: .destructive, action: onDelete)
                 }
             }
+        }
+        .confirmationDialog(
+            "Delete the original recording?",
+            isPresented: $confirmingDeleteOriginal
+        ) {
+            Button("Delete Original", role: .destructive, action: deleteOriginal)
+        } message: {
+            Text("The recording with silence removed and its transcript stay. This can't be undone.")
         }
         .onDisappear { copyResetTask?.cancel() }
     }
@@ -578,6 +587,16 @@ struct RecordingRow: View {
 
         Button("Show in Finder", action: revealAudio)
 
+        if let original = entry.originalAudio {
+            Section("Original · \(Self.durationLabel(original.durationSeconds))") {
+                Button("Play Original", action: playOriginal)
+                Button("Show Original in Finder", action: revealOriginal)
+                Button("Delete Original…", role: .destructive) {
+                    presentAfterMenu { confirmingDeleteOriginal = true }
+                }
+            }
+        }
+
         if !isInFlight {
             Divider()
             Button("Delete", role: .destructive, action: onDelete)
@@ -600,6 +619,28 @@ struct RecordingRow: View {
         } else {
             HistoryFolder.reveal()
         }
+    }
+
+    /// The untouched recording "Remove silence" kept beside this one. Played
+    /// under the row's id, so the row's play button stops it.
+    private func playOriginal() {
+        guard let url = RecordingHistoryStore.shared.originalAudioURL(for: entry) else { return }
+        HistoryAudioPlayer.shared.play(url: url, id: entry.id)
+    }
+
+    private func revealOriginal() {
+        guard let url = RecordingHistoryStore.shared.originalAudioURL(for: entry),
+              FileManager.default.fileExists(atPath: url.path) else {
+            HistoryFolder.reveal()
+            return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    private func deleteOriginal() {
+        let player = HistoryAudioPlayer.shared
+        if player.playingID == entry.id { player.stop() }
+        RecordingHistoryStore.shared.removeOriginalAudio(entryID: entry.id)
     }
 
     private func copyActiveTranscript() {

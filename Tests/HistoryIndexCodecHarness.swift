@@ -74,6 +74,8 @@ struct HistoryIndexCodecHarness {
         try passthroughKeepsJSONTypes()
         try nonArrayOrGarbageIsUnclean()
         try referencedAudioIncludesPassthroughRows()
+        try keptOriginalsRoundTripAndStayReferenced()
+        try indexWithoutOriginalsDecodesWithNone()
         try emptyArrayIsClean()
         try quarantineBlocksReaping()
         try onlyWAVsOlderThanTheIndexAreReaped()
@@ -154,6 +156,52 @@ struct HistoryIndexCodecHarness {
         let decoded = try HistoryIndexCodec.decode(index(entries: [entry], rawRows: [futureRow, "null"]))
         let referenced = HistoryIndexCodec.referencedAudio(entries: decoded.entries, passthrough: decoded.passthrough)
         try expect(referenced == [entry.audioFileName, "future.wav"], "entries' and passthrough rows' WAVs are referenced")
+    }
+
+    private static func keptOriginalsRoundTripAndStayReferenced() throws {
+        let id = UUID()
+        let trimmed = RecordingHistoryEntry(
+            id: id,
+            createdAt: Date(timeIntervalSinceReferenceDate: 5),
+            transcript: "trimmed",
+            audioFileName: "\(id.uuidString).wav",
+            durationSeconds: 750,
+            sampleRate: 16_000,
+            modelId: nil,
+            modelName: nil,
+            source: .meeting,
+            originalAudio: .init(fileName: "\(id.uuidString)-original.wav", durationSeconds: 3_730)
+        )
+        let plain = makeEntry(offset: 1)
+        let written = try HistoryIndexCodec.encode(entries: [trimmed, plain], passthrough: [])
+        let decoded = try HistoryIndexCodec.decode(written)
+        try expect(decoded.entries == [trimmed, plain], "a kept original round-trips")
+        try expect(decoded.entries[0].originalAudio?.durationSeconds == 3_730, "with its duration")
+        try expect(decoded.entries[1].originalAudio == nil, "and a row without one stays without")
+
+        // A newer build's row (unknown source) that kept an original: both files stay referenced.
+        let futureWithOriginal = futureRow.replacingOccurrences(
+            of: "\"note\": null",
+            with: "\"note\": null, \"originalAudio\": {\"fileName\": \"future-original.wav\", \"durationSeconds\": 99}"
+        )
+        let mixed = try HistoryIndexCodec.decode(index(entries: [trimmed], rawRows: [futureWithOriginal]))
+        try expect(mixed.passthrough.count == 1, "the future row passes through")
+        try expect(mixed.passthrough[0].audioFileNames == ["future.wav", "future-original.wav"], "naming both its files")
+        let referenced = HistoryIndexCodec.referencedAudio(entries: mixed.entries, passthrough: mixed.passthrough)
+        try expect(
+            referenced == [trimmed.audioFileName, "\(id.uuidString)-original.wav", "future.wav", "future-original.wav"],
+            "every kept original is referenced, so the launch sweep never reaps one (\(referenced))"
+        )
+    }
+
+    private static func indexWithoutOriginalsDecodesWithNone() throws {
+        let legacy = #"[{"id":"0D9C8B7A-6F5E-4D3C-8B2A-190817161514","createdAt":"2026-01-01T00:00:00Z","transcript":"t","audioFileName":"a.wav","durationSeconds":1,"sampleRate":16000,"source":"meeting"}]"#
+        let decoded = try HistoryIndexCodec.decode(Data(legacy.utf8))
+        try expect(decoded.entries.count == 1 && decoded.passthrough.isEmpty, "an index from before kept originals decodes")
+        try expect(decoded.entries[0].originalAudio == nil, "with no original")
+        try expect(decoded.entries[0].audioFileNames == ["a.wav"], "and owns only its audio")
+        let rewritten = String(decoding: try HistoryIndexCodec.encode(entries: decoded.entries, passthrough: []), as: UTF8.self)
+        try expect(!rewritten.contains("originalAudio"), "writing it back adds no originalAudio key")
     }
 
     private static func emptyArrayIsClean() throws {

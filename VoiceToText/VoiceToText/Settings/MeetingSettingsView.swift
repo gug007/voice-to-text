@@ -21,13 +21,15 @@ struct MeetingsPane: View {
     /// True while a drag from Finder is hovering over the pane. Only turns into a
     /// visible drop affordance when the controller is idle (see `isDropActive`).
     @State private var isDropTargeted = false
-    /// Whether Recording Options is open. Remembered, folded by default: both
+    /// Whether Recording Options is open. Remembered, folded by default: its
     /// settings are set once and left.
     @AppStorage("conversation.optionsExpanded") private var optionsExpanded = false
     /// The same key `ConversationHUDPanel` watches, so a change lands at once —
     /// on a recording already running too.
     @AppStorage(ConversationHUDSetting.defaultsKey)
     private var hudSetting: ConversationHUDSetting = ConversationHUDSetting.defaultValue
+    @AppStorage(ConversationSilenceTrimmer.defaultsKey) private var removeSilence = false
+    @AppStorage(ConversationSilenceTrimmer.keepOriginalDefaultsKey) private var keepOriginal = false
     /// The microphone a conversation will record from, for the recorder's
     /// inputs line. Re-read when the preference announces a change.
     @State private var micPreference = MicrophonePreference.stored(in: .standard)
@@ -69,6 +71,8 @@ struct MeetingsPane: View {
             }
 
             recordingOptionsGroup
+
+            RemoteControlGroup()
 
             if controller.state == .idle, let summary = controller.lastSavedSummary {
                 savedBanner(summary)
@@ -183,9 +187,9 @@ struct MeetingsPane: View {
 
     // MARK: - Recording options
 
-    /// The transcription model and the Recording HUD, folded to one row that
-    /// says what the next recording will use. The summary shows only while
-    /// folded; open, the rows say it themselves.
+    /// The transcription model, Remove silence and the Recording HUD, folded
+    /// to one row that says what the next recording will use. The summary
+    /// shows only while folded; open, the rows say it themselves.
     private var recordingOptionsGroup: some View {
         SettingsGroup {
             recordingOptionsDisclosure
@@ -194,11 +198,24 @@ struct MeetingsPane: View {
                 if !controller.isBusy {
                     transcriptionModelRow
                 }
+                SettingsRow(
+                    "Remove silence",
+                    caption: "Cuts stretches with no speech out of the saved audio before transcribing.",
+                    isOn: $removeSilence
+                )
+                if removeSilence {
+                    SettingsRow(
+                        "Keep original",
+                        caption: "Also saves the full recording next to the trimmed one.",
+                        isOn: $keepOriginal
+                    )
+                }
                 hudRow
             }
         }
         .animation(motion.layout, value: optionsExpanded)
         .animation(motion.layout, value: controller.isBusy)
+        .animation(motion.layout, value: removeSilence)
     }
 
     /// The whole row is the disclosure button, chevron on the leading side.
@@ -239,15 +256,19 @@ struct MeetingsPane: View {
     /// names the model, with where it runs.
     private var recordingOptionsSummaryText: Text {
         guard let model = registry.conversationModel else { return Text(recordingOptionsSummary) }
-        let hud = hudSetting == .off ? "HUD off" : "\(hudSetting.title) HUD"
-        return Text(Image(systemName: model.sourceSymbol)) + Text(" \(model.nameWithSource) · \(hud)")
+        return Text(Image(systemName: model.sourceSymbol)) + Text(" \(model.nameWithSource) · \(optionsSummaryTail)")
     }
 
     /// "GPT Transcribe · OpenAI · Small HUD" — what the next recording will use.
     private var recordingOptionsSummary: String {
         let model = registry.conversationModel?.nameWithSource ?? "No model"
+        return "\(model) · \(optionsSummaryTail)"
+    }
+
+    /// "Small HUD", or "Small HUD · Silence removed".
+    private var optionsSummaryTail: String {
         let hud = hudSetting == .off ? "HUD off" : "\(hudSetting.title) HUD"
-        return "\(model) · \(hud)"
+        return removeSilence ? "\(hud) · Silence removed" : hud
     }
 
     /// A transcription model for conversations, independent of dictation's.
@@ -432,7 +453,7 @@ struct MeetingsPane: View {
     private var sessionTitle: String {
         switch controller.state {
         case .recording: return "Recording"
-        case .transcribing: return "Transcribing…"
+        case .transcribing: return controller.isRemovingSilence ? "Removing silence…" : "Transcribing…"
         case .idle, .error, .importing: return "Ready"
         }
     }
@@ -732,6 +753,9 @@ struct MeetingsPane: View {
     }
 
     private var transcribingDetail: String {
+        if controller.isRemovingSilence {
+            return "Cutting the stretches with no speech out of the recording."
+        }
         if controller.totalChunks > 1 {
             return "Processing a long recording in segments — this can take a moment."
         }
@@ -782,7 +806,7 @@ struct MeetingsPane: View {
     private var importTitle: String {
         switch controller.importStage {
         case .extracting: return "Extracting audio…"
-        case .transcribing: return "Transcribing…"
+        case .transcribing: return controller.isRemovingSilence ? "Removing silence…" : "Transcribing…"
         }
     }
 

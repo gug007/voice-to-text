@@ -1,0 +1,79 @@
+name: VoiceToTextMobile
+options:
+  bundleIdPrefix: voice-to-text-ai
+  deploymentTarget:
+    iOS: "18.0"
+packages:
+  FluidAudio:
+    url: https://github.com/FluidInference/FluidAudio
+    revision: 4ef33f0b64837c2943e8cd0f66940d5861176d6a
+  TailscaleKit:
+    path: ../VoiceToText/Vendor/TailscaleKit
+targets:
+  VoiceToTextMobile:
+    type: application
+    platform: iOS
+    sources:
+      - path: VoiceToTextMobile
+      - path: ../VoiceToText/VoiceToText
+        name: Shared
+        includes:
+          - Engine/TranscriptionEngine.swift
+          - Engine/FluidAudioEngine.swift
+          - Engine/ParakeetSupport.swift
+          - Meetings/MeetingTranscriber.swift
+          - Meetings/MeetingChunkRecovery.swift
+          - Meetings/MeetingTranscriptJoiner.swift
+          - Audio/AudioChunkReader.swift
+          - Audio/AudioChunker.swift
+          - Audio/AudioFileExtractor.swift
+          - Audio/SpeechEnergy.swift
+          - Audio/VAD.swift
+          - Audio/VadTuning.swift
+          - Audio/SpeechGate.swift
+          - Audio/StreamingWAVWriter.swift
+          - Audio/WAVEncoder.swift
+          - Output/TranscriptPostProcessor.swift
+          - Support/AppLogger.swift
+          - Support/AppConstants.swift
+          - History/RecordingHistoryEntry.swift
+          - History/HistoryIndexCodec.swift
+          - History/HistorySearch.swift
+          - History/TranscriptInsight.swift
+          - History/TranscriptInsightRequest.swift
+          - Remote/RemoteProtocol.swift
+          - Remote/TailnetStatus.swift
+          - Remote/TailnetController.swift
+    dependencies:
+      - package: FluidAudio
+      - package: TailscaleKit
+    info:
+      path: VoiceToTextMobile/Info.plist
+      properties:
+        CFBundleDisplayName: Voice to Text
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSMicrophoneUsageDescription: Voice to Text records your voice so it can be transcribed on this iPhone.
+        NSLocalNetworkUsageDescription: Voice to Text connects straight to your Mac over Tailscale when both are on the same network.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+        UIBackgroundModes: [audio]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        ITSAppUsesNonExemptEncryption: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: voice-to-text-ai.VoiceToText.iOS
+        PRODUCT_NAME: VoiceToText
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.0"
+        SWIFT_APPROACHABLE_CONCURRENCY: YES
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY: YES
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_PREVIEWS: YES

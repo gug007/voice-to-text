@@ -26,6 +26,17 @@ nonisolated enum HistoryIndexCodec {
             guard case .object(let fields) = json, case .string(let name)? = fields["audioFileName"] else { return nil }
             return name
         }
+
+        /// Its audio plus the original kept beside it, when it names either.
+        var audioFileNames: [String] {
+            guard case .object(let fields) = json else { return [] }
+            var names = audioFileName.map { [$0] } ?? []
+            if case .object(let original)? = fields["originalAudio"],
+               case .string(let name)? = original["fileName"] {
+                names.append(name)
+            }
+            return names
+        }
     }
 
     struct Decoded: Sendable, Equatable {
@@ -55,9 +66,10 @@ nonisolated enum HistoryIndexCodec {
         return try encoder().encode(rows)
     }
 
-    /// Every WAV the index still points at, passthrough rows included.
+    /// Every WAV the index still points at — kept originals and passthrough
+    /// rows included.
     static func referencedAudio(entries: [RecordingHistoryEntry], passthrough: [PassthroughRow]) -> Set<String> {
-        Set(entries.map(\.audioFileName)).union(passthrough.compactMap(\.audioFileName))
+        Set(entries.flatMap(\.audioFileNames)).union(passthrough.flatMap(\.audioFileNames))
     }
 
     // MARK: - Quarantine

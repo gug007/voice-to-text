@@ -20,7 +20,8 @@ private func makeEntry(
     summary: TranscriptSummary? = nil,
     actionItems: TranscriptActionItems? = nil,
     customInsights: [CustomInsight]? = nil,
-    status: RecordingHistoryEntry.Status? = nil
+    status: RecordingHistoryEntry.Status? = nil,
+    originalAudio: RecordingHistoryEntry.OriginalAudio? = nil
 ) -> RecordingHistoryEntry {
     RecordingHistoryEntry(
         id: id,
@@ -37,7 +38,8 @@ private func makeEntry(
         summary: summary,
         actionItems: actionItems,
         customInsights: customInsights,
-        status: status
+        status: status,
+        originalAudio: originalAudio
     )
 }
 
@@ -138,9 +140,74 @@ struct RecordingHistoryHarness {
         try removingAlternateDropsItOnly()
         try removingOnlyTranscriptIsNoOp()
         try decodesIndexMissingOptionalModelFields()
+        try keptOriginalSurvivesEveryEdit()
+        try removingTheOriginalKeepsEverythingElse()
+        try prunedEntryTakesItsOriginalWithIt()
         try joinsMeetingPiecesDroppingEmpties()
         try joinTrimsEachPiece()
         print("Recording history harness passed")
+    }
+
+    private static let original = RecordingHistoryEntry.OriginalAudio(fileName: "x-original.wav", durationSeconds: 3_730)
+
+    /// A dropped field here strands a 100 MB+ file the launch sweep then deletes.
+    private static func keptOriginalSurvivesEveryEdit() throws {
+        let entry = makeEntry(offset: 1, source: .meeting, originalAudio: original)
+        let failed = makeEntry(
+            id: entry.id,
+            offset: 2,
+            transcript: RecordingHistoryEntry.placeholderTranscript,
+            source: .meeting,
+            status: .init(kind: .failed, message: "no key"),
+            originalAudio: original
+        )
+        let regenerated = TranscriptEditor.addingRegeneration(
+            to: entry, transcript: "again", modelId: "m", modelName: "M", newAlternateID: UUID()
+        )
+        let edits: [(String, RecordingHistoryEntry?)] = [
+            ("updatingTranscripts", entry.updatingTranscripts(transcript: "t2", modelId: nil, modelName: nil, alternates: nil)),
+            ("updatingSpeakerNames", entry.updatingSpeakerNames(["Speaker 1": "Kara"])),
+            ("updatingFavorite", entry.updatingFavorite(true)),
+            ("updatingSummary", entry.updatingSummary(sampleSummary)),
+            ("updatingActionItems", entry.updatingActionItems(sampleActionItems)),
+            ("updatingCustomInsights", entry.updatingCustomInsights([sampleCustomInsight])),
+            ("updatingUnprotectedAt", entry.updatingUnprotectedAt(Date())),
+            ("resolvingPlaceholder", failed.resolvingPlaceholder(transcript: "real", modelId: nil, modelName: nil)),
+            ("updatingStatus", failed.updatingStatus(.init(kind: .failed, message: "other"))),
+            ("addingRegeneration", regenerated),
+            ("removing active variant", TranscriptEditor.removing(variantID: regenerated.id, from: regenerated)),
+            ("stampingLostProtection", RecordingHistoryPruner.stampingLostProtection(
+                from: entry.updatingFavorite(true), to: entry.updatingFavorite(false), at: Date()
+            )),
+        ]
+        for (name, edited) in edits {
+            try expect(edited != nil, "\(name) applies")
+            try expect(edited?.originalAudio == original, "\(name) keeps the original")
+            try expect(edited?.audioFileName == entry.audioFileName, "\(name) keeps the audio")
+        }
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let round = try decoder.decode([RecordingHistoryEntry].self, from: encoder.encode([entry])).first
+        try expect(round == entry, "an entry with an original round-trips through Codable")
+    }
+
+    private static func removingTheOriginalKeepsEverythingElse() throws {
+        let entry = makeEntry(offset: 1, source: .meeting, isFavorite: true, summary: sampleSummary, originalAudio: original)
+        try expect(entry.audioFileNames == [entry.audioFileName, "x-original.wav"], "an entry owns both files")
+        let removed = entry.removingOriginalAudio()
+        try expect(removed.originalAudio == nil, "the original goes")
+        try expect(removed.audioFileNames == [entry.audioFileName], "leaving only the audio")
+        try expect(removed == entry.updatingFavorite(true).removingOriginalAudio(), "and nothing else changes")
+        try expect(removed.summary == sampleSummary && removed.isFavorited, "summary and star kept")
+    }
+
+    private static func prunedEntryTakesItsOriginalWithIt() throws {
+        let old = makeEntry(offset: 1, originalAudio: original)
+        let outcome = RecordingHistoryPruner.prune([old, makeEntry(offset: 2)], maxUnprotected: 1, pinned: [])
+        try expect(outcome.removed == [old], "the oldest plain entry is pruned")
+        try expect(outcome.removed.flatMap(\.audioFileNames).contains("x-original.wav"), "and its original's file with it")
     }
 
     private static func joinsMeetingPiecesDroppingEmpties() throws {

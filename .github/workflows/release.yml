@@ -74,6 +74,12 @@ jobs:
 
       # Both slices link libtailscale ("Control from iPhone"); the package
       # it builds is what the Xcode project's local package reference names.
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
       - name: Build libtailscale
         shell: bash
         run: |

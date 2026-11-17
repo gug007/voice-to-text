@@ -72,8 +72,6 @@ struct MeetingsPane: View {
 
             recordingOptionsGroup
 
-            RemoteControlGroup()
-
             if controller.state == .idle, let summary = controller.lastSavedSummary {
                 savedBanner(summary)
             }

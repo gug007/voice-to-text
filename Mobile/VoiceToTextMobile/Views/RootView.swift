@@ -17,7 +17,13 @@ struct RootView: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            LibraryList(query: query, openSettings: { showSettings = true })
+            Group {
+                if let destination {
+                    MacHomeList(link: destination, query: query)
+                } else {
+                    LibraryList(query: query)
+                }
+            }
                 .navigationTitle("Recordings")
                 .navigationDestination(for: UUID.self) { id in
                     DetailView(id: id, openSettings: { showSettings = true })
@@ -28,7 +34,7 @@ struct RootView: View {
                     case .conversation(let macID, let id): MacConversationView(macID: macID, id: id)
                     }
                 }
-                .searchable(text: $query, prompt: "Search transcripts")
+                .searchable(text: $query, prompt: searchPrompt)
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Settings", systemImage: "gearshape") { showSettings = true }
@@ -57,6 +63,10 @@ struct RootView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(alert ?? importer.failure ?? "")
+        }
+        .onChange(of: destination?.id) {
+            guard let destination, destination.conversationsLoaded else { return }
+            Task { await destination.refreshConversations() }
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
@@ -100,18 +110,29 @@ struct RootView: View {
         return remote.homeLinks.first { $0.id == destinationID }
     }
 
+    private var deviceName: String {
+        destination?.shortName ?? "This iPhone"
+    }
+
+    private var searchPrompt: String {
+        remote.homeLinks.isEmpty ? "Search transcripts" : "Search \(deviceName)"
+    }
+
     @ViewBuilder
     private var destinationMenu: some View {
         let links = remote.homeLinks
         if !links.isEmpty {
             Menu {
-                Picker("Record on", selection: Binding(get: { destination?.id ?? "" }, set: { destinationID = $0 })) {
+                Picker("Show and record on", selection: Binding(get: { destination?.id ?? "" }, set: { destinationID = $0 })) {
                     Label("This iPhone", systemImage: "iphone").tag("")
                     ForEach(links) { Label($0.shortName, systemImage: "laptopcomputer").tag($0.id) }
                 }
             } label: {
                 HStack(spacing: 5) {
-                    Text(destination?.shortName ?? "This iPhone")
+                    Image(systemName: destination == nil ? "iphone" : "laptopcomputer")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(deviceName)
                         .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     Image(systemName: "chevron.down")
@@ -121,8 +142,8 @@ struct RootView: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 6)
             }
-            .accessibilityLabel("Record on")
-            .accessibilityValue(destination?.shortName ?? "This iPhone")
+            .accessibilityLabel("Showing and recording on")
+            .accessibilityValue(deviceName)
         }
     }
 
@@ -251,7 +272,6 @@ struct MacRecordCapsule: View {
 
 struct LibraryList: View {
     let query: String
-    let openSettings: () -> Void
 
     private var library: Library { Library.shared }
 
@@ -259,25 +279,17 @@ struct LibraryList: View {
         let searching = HistorySearch.isActive(query)
         let shown = searching ? HistorySearch.filter(library.entries, query: query) : library.entries
 
-        let showsMacs = !searching && !MacRemote.shared.homeLinks.isEmpty
-
         List {
             ModelBanner()
 
-            if showsMacs {
-                MacHomeSections(footer: library.entries.isEmpty ? "Nothing recorded on this iPhone yet." : nil)
-            }
-
             if library.entries.isEmpty {
-                if !showsMacs {
-                    ContentUnavailableView(
-                        "No recordings yet",
-                        systemImage: "waveform",
-                        description: Text("Tap Record at a meeting, a lecture or on the go. The transcript is made on this iPhone.")
-                    )
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(Color.clear)
-                }
+                ContentUnavailableView(
+                    "No recordings yet",
+                    systemImage: "waveform",
+                    description: Text("Tap Record at a meeting, a lecture or on the go. The transcript is made on this iPhone.")
+                )
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
             } else if searching {
                 Section("Results · \(shown.count)") {
                     ForEach(shown) { RecordingRowLink(entry: $0, query: query) }

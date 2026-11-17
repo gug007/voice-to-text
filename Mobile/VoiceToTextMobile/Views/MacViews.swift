@@ -6,63 +6,101 @@ enum MacRoute: Hashable {
     case conversation(String, UUID)
 }
 
-struct MacHomeSections: View {
-    let footer: String?
+struct MacHomeList: View {
+    let link: MacLink
+    let query: String
 
     var body: some View {
-        let links = MacRemote.shared.homeLinks
-        ForEach(links) { link in
-            MacHomeSection(link: link, footer: link === links.last ? footer : nil)
+        let searching = HistorySearch.isActive(query)
+        List {
+            if !searching {
+                Section { MacStatusRow(link: link) }
+            }
+            if link.conversations.isEmpty {
+                if link.conversationsLoaded || link.connection != .unreachable {
+                    MacConversationsEmpty(link: link)
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                }
+            } else if searching {
+                results
+            } else {
+                if let error = link.conversationsError {
+                    MacConversationsErrorLabel(error: error)
+                }
+                let sections = MacConversationGrouping.sections(of: link.conversations)
+                ForEach(sections) { section in
+                    Section {
+                        ForEach(section.rows) { MacConversationRow(macID: link.id, row: $0) }
+                    } header: {
+                        Text(section.title)
+                    } footer: {
+                        if section.id == sections.last?.id { MacConversationsFooter(link: link) }
+                    }
+                }
+            }
+        }
+        .listStyle(.insetGrouped)
+        .refreshable { await link.refreshConversations() }
+    }
+
+    private var results: some View {
+        let shown = MacConversationGrouping.filter(link.conversations, query: query)
+        return Section {
+            if shown.isEmpty {
+                ContentUnavailableView.search(text: query)
+                    .listRowBackground(Color.clear)
+            } else {
+                ForEach(shown) { MacConversationRow(macID: link.id, row: $0, query: query) }
+            }
+        } header: {
+            Text("Results · \(shown.count)")
+        } footer: {
+            Text("Searches the opening lines of each conversation on \(link.macName).")
         }
     }
 }
 
-struct MacHomeSection: View {
-    let link: MacLink
-    let footer: String?
+struct MacConversationSection: Identifiable {
+    let id: String
+    let title: String
+    let rows: [RemoteConversationRow]
+}
 
-    private static let previewCount = 2
-
-    var body: some View {
-        Section {
-            NavigationLink(value: MacRoute.conversations(link.id)) {
-                header
-            }
-            ForEach(link.conversations.prefix(Self.previewCount)) { MacConversationRow(macID: link.id, row: $0) }
-            if link.conversations.count > Self.previewCount {
-                NavigationLink(value: MacRoute.conversations(link.id)) {
-                    Text("See all \(link.conversations.count)")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(Palette.ready)
-                }
-                .accessibilityLabel("See all \(link.conversations.count) conversations on \(link.shortName)")
-            }
-        } footer: {
-            if let footer { Text(footer) }
+enum MacConversationGrouping {
+    static func sections(of rows: [RemoteConversationRow], now: Date = Date(), calendar: Calendar = .current) -> [MacConversationSection] {
+        var order: [(id: String, title: String)] = []
+        var buckets: [String: [RemoteConversationRow]] = [:]
+        for row in rows.sorted(by: { $0.createdAt > $1.createdAt }) {
+            let bucket = HistoryDateGrouping.bucket(for: row.createdAt, now: now, calendar: calendar)
+            if buckets[bucket.id] == nil { order.append(bucket) }
+            buckets[bucket.id, default: []].append(row)
         }
+        return order.map { MacConversationSection(id: $0.id, title: $0.title, rows: buckets[$0.id] ?? []) }
     }
 
-    private var header: some View {
+    static func filter(_ rows: [RemoteConversationRow], query: String) -> [RemoteConversationRow] {
+        let terms = HistorySearch.terms(in: query)
+        return rows
+            .filter { row in terms.allSatisfy { row.preview.range(of: $0, options: HistorySearch.options) != nil } }
+            .sorted { $0.createdAt > $1.createdAt }
+    }
+}
+
+struct MacStatusRow: View {
+    let link: MacLink
+
+    var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: "laptopcomputer")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-                .frame(width: 30)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(link.shortName)
-                    .font(.body.weight(.semibold))
-                    .lineLimit(1)
-                status
-                    .font(.footnote)
-                    .lineLimit(3)
-            }
-            .accessibilityElement(children: .combine)
-            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
+            status
+                .font(.subheadline)
+                .lineLimit(3)
+                .accessibilityElement(children: .combine)
             Spacer(minLength: 8)
             action
         }
-        .padding(.vertical, 4)
+        .frame(minHeight: 44)
+        .padding(.vertical, 2)
     }
 
     private var listening: LiveListener.State {
@@ -82,26 +120,23 @@ struct MacHomeSection: View {
     private func recordingLine(_ clock: String) -> some View {
         if let word = listeningWord {
             ViewThatFits(in: .horizontal) {
-                StatusLine(text: "Recording · \(clock) · \(word)", dot: Palette.live)
-                StatusLine(text: "\(clock) · \(word)", dot: Palette.live)
-                StatusLine(text: word, dot: Palette.live)
+                StatusLine(text: "Recording · \(clock) · \(word)", dot: Palette.live, emphasized: true)
+                StatusLine(text: "\(clock) · \(word)", dot: Palette.live, emphasized: true)
+                StatusLine(text: word, dot: Palette.live, emphasized: true)
                     .lineLimit(1)
             }
             .monospacedDigit()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Recording · \(clock) · \(word)")
-        } else if link.status?.liveListen == true {
+        } else {
             ViewThatFits(in: .horizontal) {
-                StatusLine(text: "Recording · \(clock)", dot: Palette.live)
-                StatusLine(text: clock, dot: Palette.live)
+                StatusLine(text: "Recording · \(clock)", dot: Palette.live, emphasized: true)
+                StatusLine(text: clock, dot: Palette.live, emphasized: true)
                     .lineLimit(1)
             }
             .monospacedDigit()
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Recording · \(clock)")
-        } else {
-            StatusLine(text: "Recording · \(clock)", dot: Palette.live)
-                .monospacedDigit()
         }
     }
 
@@ -159,21 +194,9 @@ struct MacHomeSection: View {
         case .connected:
             switch link.status?.state {
             case .recording:
-                HStack(spacing: 12) {
-                    if link.status?.liveListen == true {
-                        ListenButton(link: link, state: listening)
-                    }
-                    Button {
-                        Task { await link.stopRecording() }
-                    } label: {
-                        RowPill(title: "Stop", systemImage: "stop.fill", fill: Palette.live, ink: .white)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(link.isSending)
-                    .opacity(link.isSending ? 0.4 : 1)
-                    .accessibilityLabel("Stop recording on \(link.shortName)")
+                if link.status?.liveListen == true {
+                    ListenButton(link: link, state: listening)
                 }
-                .fixedSize()
             case .transcribing, .importing:
                 ProgressView().accessibilityLabel("Transcribing on \(link.shortName)")
             case .idle, .error, nil:
@@ -207,6 +230,7 @@ private struct StatusLine: View {
     let text: String
     let dot: Color
     var alert = false
+    var emphasized = false
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -215,7 +239,8 @@ private struct StatusLine: View {
                 .frame(width: 7, height: 7)
                 .alignmentGuide(.firstTextBaseline) { $0[.bottom] }
             Text(text)
-                .foregroundStyle(alert ? Palette.live : .secondary)
+                .fontWeight(emphasized ? .semibold : nil)
+                .foregroundStyle(alert ? Palette.live : emphasized ? Color.primary : Color.secondary)
         }
     }
 }
@@ -230,19 +255,23 @@ struct ListenButton: View {
         Button {
             MacRemote.shared.toggleListening(link)
         } label: {
-            ZStack {
-                Circle().fill(on ? Color(.label) : Color(.tertiarySystemFill))
+            HStack(spacing: 6) {
                 if busy {
                     ProgressView().controlSize(.small)
                 } else {
                     Image(systemName: "headphones")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(on ? Color(.systemBackground) : Color(.label))
+                        .font(.caption.weight(.bold))
                 }
+                Text(on ? "Listening" : "Listen")
             }
-            .frame(width: 34, height: 34)
-            .frame(width: 44, height: 44)
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(on ? Color(.systemBackground) : Color(.label))
+            .padding(.horizontal, 14)
+            .frame(height: 34)
+            .background(on ? Color(.label) : Color(.tertiarySystemFill), in: Capsule())
+            .frame(minHeight: 44)
             .contentShape(Rectangle())
+            .fixedSize()
         }
         .buttonStyle(.plain)
         .disabled(Recorder.shared.isActive)
@@ -279,19 +308,17 @@ struct MacConversationsList: View {
     var body: some View {
         List {
             if link.conversations.isEmpty {
-                empty
+                MacConversationsEmpty(link: link)
                     .listRowSeparator(.hidden)
                     .listRowBackground(Color.clear)
             } else {
                 if let error = link.conversationsError {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.footnote)
-                        .foregroundStyle(Palette.live)
+                    MacConversationsErrorLabel(error: error)
                 }
                 Section {
                     ForEach(link.conversations) { MacConversationRow(macID: link.id, row: $0) }
                 } footer: {
-                    Text("These stay on \(link.macName). Audio you play is downloaded to this iPhone.")
+                    MacConversationsFooter(link: link)
                 }
             }
         }
@@ -301,9 +328,30 @@ struct MacConversationsList: View {
         .refreshable { await link.refreshConversations() }
         .task(id: ObjectIdentifier(link)) { await link.refreshConversations() }
     }
+}
 
-    @ViewBuilder
-    private var empty: some View {
+struct MacConversationsFooter: View {
+    let link: MacLink
+
+    var body: some View {
+        Text("These stay on \(link.macName). Audio you play is downloaded to this iPhone.")
+    }
+}
+
+struct MacConversationsErrorLabel: View {
+    let error: String
+
+    var body: some View {
+        Label(error, systemImage: "exclamationmark.triangle")
+            .font(.footnote)
+            .foregroundStyle(Palette.live)
+    }
+}
+
+struct MacConversationsEmpty: View {
+    let link: MacLink
+
+    var body: some View {
         if !link.conversationsLoaded {
             HStack {
                 Spacer()
@@ -333,6 +381,7 @@ struct MacConversationsList: View {
 struct MacConversationRow: View {
     let macID: String
     let row: RemoteConversationRow
+    var query = ""
 
     var body: some View {
         NavigationLink(value: MacRoute.conversation(macID, row.id)) {
@@ -341,7 +390,7 @@ struct MacConversationRow: View {
                     Label(HistorySearch.notTranscribedLabel, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text(row.preview.isEmpty ? "No speech" : row.preview)
+                    Text(row.preview.isEmpty ? AttributedString("No speech") : HistorySearch.highlighted(row.preview, query: query))
                         .font(.body)
                         .lineLimit(2)
                 }
@@ -588,7 +637,7 @@ struct MacSettingsSection: View {
         } header: {
             Text(remote.links.count > 1 ? "Macs" : "Mac")
         } footer: {
-            Text("Control conversation recording on each of your Macs and play back their conversations. Each Mac must be signed in to the same Tailscale account, with Control from iPhone turned on (Mac app → Conversations).")
+            Text("Control conversation recording on each of your Macs and play back their conversations. Each Mac must be signed in to the same Tailscale account, with Control from iPhone turned on (Mac app → iPhone).")
         }
     }
 
@@ -596,7 +645,7 @@ struct MacSettingsSection: View {
     private var macRows: some View {
         let links = remote.links
         if links.isEmpty {
-            Text("No Mac found on this account yet. Turn on Control from iPhone in the Mac app and sign in there.")
+            Text("No Mac found on this account yet. In the Mac app, open iPhone in the sidebar, turn on Control from iPhone and sign in there.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
         } else {

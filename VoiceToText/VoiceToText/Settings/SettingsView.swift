@@ -14,11 +14,11 @@ struct SettingsView: View {
     /// free to be in whatever order the routing wants.
     static let sidebarGroups: [SidebarGroup] = [
         SidebarGroup(title: "Dictate", sections: [.general, .meetings, .history]),
-        SidebarGroup(title: "Configure", sections: [.hotkey, .models, .actions, .cloud, .updates])
+        SidebarGroup(title: "Configure", sections: [.hotkey, .models, .actions, .cloud, .iphone, .updates])
     ]
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, meetings, history, hotkey, models, actions, cloud, updates
+        case general, meetings, history, hotkey, models, actions, cloud, iphone, updates
         var id: String { rawValue }
         var title: String {
             switch self {
@@ -28,6 +28,7 @@ struct SettingsView: View {
             case .meetings: return "Conversations"
             case .history: return "History"
             case .cloud: return "Cloud"
+            case .iphone: return "iPhone"
             case .general: return "General"
             case .updates: return "Updates"
             }
@@ -40,17 +41,21 @@ struct SettingsView: View {
             case .meetings: return "person.2.wave.2"
             case .history: return "clock.arrow.circlepath"
             case .cloud: return "cloud"
+            case .iphone: return "iphone"
             case .general: return "slider.horizontal.3"
             case .updates: return "arrow.down.circle"
             }
         }
         /// What a dot beside the row's title stands for, or nil for no dot.
-        /// Only Updates has one: an update found by a background check doesn't
-        /// prompt, so this and the menu bar item are where it waits.
+        /// Updates has one because an update found by a background check
+        /// doesn't prompt, so this and the menu bar item are where it waits.
+        /// iPhone has one while a phone is hearing the conversation live.
         var badge: String? {
             switch self {
             case .updates:
                 return AppUpdater.shared.indicatedVersion.map { "Version \($0) available" }
+            case .iphone:
+                return RemoteControlController.shared.liveListeners > 0 ? "iPhone listening" : nil
             case .general, .meetings, .history, .hotkey, .models, .actions, .cloud:
                 return nil
             }
@@ -103,6 +108,7 @@ struct SettingsView: View {
         case .meetings: MeetingsPane()
         case .history: HistoryPane()
         case .cloud: CloudPane()
+        case .iphone: IPhonePane()
         case .general: GeneralPane()
         case .updates: UpdatesPane()
         }

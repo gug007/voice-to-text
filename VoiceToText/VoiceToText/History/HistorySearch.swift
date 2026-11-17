@@ -284,7 +284,7 @@ enum HistoryDateGrouping {
         }
     }
 
-    private static func bucket(
+    static func bucket(
         for date: Date,
         now: Date,
         calendar: Calendar

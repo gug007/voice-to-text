@@ -1,6 +1,23 @@
 import SwiftUI
 
-/// The Conversations pane's "iPhone" group: the switch for
+struct IPhonePane: View {
+    var body: some View {
+        PaneScaffold {
+            SettingsGroup {
+                StatusRow(
+                    icon: "iphone",
+                    tint: Palette.inkMuted,
+                    title: "iPhone app coming soon",
+                    message: "Voice to Text for iPhone will be available soon."
+                )
+                .settingsRowPadding()
+            }
+            RemoteControlGroup()
+        }
+    }
+}
+
+/// The iPhone pane's settings: the switch for
 /// `RemoteControlController`, the Tailscale account it signs in with, and
 /// whether the phone has been here. The rows below the switch only exist
 /// while it is on, because nothing below it runs while it is off.
@@ -9,7 +26,7 @@ struct RemoteControlGroup: View {
     @Environment(\.motion) private var motion
 
     var body: some View {
-        SettingsGroup("iPhone", footer: footer) {
+        SettingsGroup(footer: footer) {
             SettingsRow(
                 "Control from iPhone",
                 caption: "Start and stop conversations, read them and play them back from the iPhone app.",

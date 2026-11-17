@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum RateFormat {
     static func label(_ rate: Double) -> String {
@@ -119,7 +120,6 @@ struct WaveformScrubber: View {
     let player: RecordingPlayer
     @Binding var scrubLabel: String?
 
-    @GestureState private var touching = false
     @State private var lastX: CGFloat?
     @State private var target: Double = 0
 
@@ -150,17 +150,14 @@ struct WaveformScrubber: View {
                     .position(x: min(max(progress * width, 1), max(width - 1, 1)), y: Self.height / 2)
             }
             .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($touching) { _, state, _ in state = true }
-                    .onChanged { changed($0, width: width) }
-                    .onEnded { _ in finish() }
-            )
+            .gesture(LocatedTap { jump(to: $0, width: width) })
+            .gesture(HorizontalPan(
+                began: { start, location in begin(at: start, then: location, width: width) },
+                changed: { move(to: $0, width: width) },
+                ended: finish
+            ))
         }
         .frame(height: Self.height)
-        .onChange(of: touching) { _, now in
-            if !now { finish() }
-        }
         .accessibilityElement()
         .accessibilityLabel("Playback position")
         .accessibilityValue("\(DurationFormat.clock(player.position)) of \(DurationFormat.clock(player.duration))")
@@ -173,20 +170,26 @@ struct WaveformScrubber: View {
         }
     }
 
-    private func changed(_ value: DragGesture.Value, width: CGFloat) {
+    private func jump(to location: CGPoint, width: CGFloat) {
+        guard player.duration > 0, width > 0 else { return }
+        player.seek(to: Double(min(max(location.x / width, 0), 1)) * player.duration)
+    }
+
+    private func begin(at start: CGPoint, then location: CGPoint, width: CGFloat) {
+        guard player.duration > 0, width > 0 else { return }
+        player.beginScrub()
+        target = Double(min(max(start.x / width, 0), 1)) * player.duration
+        lastX = start.x
+        move(to: location, width: width)
+    }
+
+    private func move(to location: CGPoint, width: CGFloat) {
         let duration = player.duration
-        guard duration > 0, width > 0 else { return }
-        let x = value.location.x
-        if let lastX {
-            let speed = Self.speed(below: value.location.y - Self.height)
-            target = min(max(target + Double((x - lastX) / width) * duration * speed.factor, 0), duration)
-            self.lastX = x
-            if scrubLabel != speed.label { scrubLabel = speed.label }
-        } else {
-            player.beginScrub()
-            target = Double(min(max(x / width, 0), 1)) * duration
-            lastX = x
-        }
+        guard let lastX, duration > 0, width > 0 else { return }
+        let speed = Self.speed(below: location.y - Self.height)
+        target = min(max(target + Double((location.x - lastX) / width) * duration * speed.factor, 0), duration)
+        self.lastX = location.x
+        if scrubLabel != speed.label { scrubLabel = speed.label }
         player.scrub(to: target)
     }
 
@@ -306,11 +309,8 @@ struct SkipButton: View {
     var symbolSize: CGFloat = 26
     var hitSize: CGFloat = 48
 
-    @GestureState private var pressing = false
-    @State private var down = false
-    @State private var travel: CGFloat = 0
-    @State private var hold: Task<Void, Never>?
-    @State private var scanning = false
+    @State private var holding = false
+    @State private var holdEnded = Date.distantPast
     @State private var nudges = 0
 
     private var isBack: Bool { direction == .backward }
@@ -326,63 +326,35 @@ struct SkipButton: View {
             .foregroundStyle(.primary)
             .frame(width: hitSize, height: hitSize)
             .contentShape(Rectangle())
-            .scaleEffect(pressing ? 0.88 : 1)
-            .opacity(pressing ? 0.6 : 1)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: pressing)
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .updating($pressing) { _, state, _ in state = true }
-                    .onChanged { value in
-                        if !down {
-                            down = true
-                            began()
-                        }
-                        travel = max(travel, hypot(value.translation.width, value.translation.height))
-                    }
-                    .onEnded { _ in
-                        guard down else { return }
-                        down = false
-                        ended(cancelled: false)
-                    }
-            )
-            .onChange(of: pressing) { _, now in
-                guard !now, down else { return }
-                down = false
-                ended(cancelled: true)
-            }
+            .scaleEffect(holding ? 0.88 : 1)
+            .opacity(holding ? 0.6 : 1)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: holding)
+            .gesture(LocatedTap { _ in tapped() })
+            .gesture(PressAndHold(minimumDuration: 0.35, began: beginHold, ended: endHold))
             .sensoryFeedback(.impact(weight: .light), trigger: nudges)
             .accessibilityElement()
             .accessibilityLabel(isBack ? "Back 15 seconds" : "Forward 30 seconds")
             .accessibilityHint(isBack ? "Hold to rewind" : "Hold to fast-forward")
             .accessibilityAddTraits(.isButton)
-            .accessibilityAction { skip() }
+            .accessibilityAction { tapped() }
     }
 
-    private func began() {
-        travel = 0
-        hold?.cancel()
-        hold = Task {
-            try? await Task.sleep(for: .milliseconds(350))
-            guard !Task.isCancelled, travel < 24 else { return }
-            scanning = true
-            player.beginScan(direction)
-        }
-    }
-
-    private func ended(cancelled: Bool) {
-        hold?.cancel()
-        hold = nil
-        if scanning {
-            scanning = false
-            player.endScan()
-        } else if !cancelled, travel < 24 {
-            skip()
-        }
-    }
-
-    private func skip() {
+    private func tapped() {
+        guard !holding, Date().timeIntervalSince(holdEnded) > 0.3 else { return }
         player.skip(by: isBack ? -RecordingPlayer.backInterval : RecordingPlayer.forwardInterval)
         nudges += 1
+    }
+
+    private func beginHold() {
+        holding = true
+        player.beginScan(direction)
+    }
+
+    private func endHold() {
+        guard holding else { return }
+        holding = false
+        holdEnded = Date()
+        player.endScan()
     }
 }
 
@@ -640,5 +612,84 @@ struct SpeedSheet: View {
         .buttonStyle(PressScaleStyle())
         .accessibilityLabel(RateFormat.label(preset))
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+private struct LocatedTap: UIGestureRecognizerRepresentable {
+    let tapped: (CGPoint) -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UITapGestureRecognizer {
+        UITapGestureRecognizer()
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UITapGestureRecognizer, context: Context) {
+        guard recognizer.state == .ended else { return }
+        tapped(context.converter.localLocation)
+    }
+}
+
+private struct HorizontalPan: UIGestureRecognizerRepresentable {
+    let began: (_ start: CGPoint, _ location: CGPoint) -> Void
+    let changed: (CGPoint) -> Void
+    let ended: () -> Void
+
+    func makeCoordinator(converter: CoordinateSpaceConverter) -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIGestureRecognizer(context: Context) -> UIPanGestureRecognizer {
+        let pan = UIPanGestureRecognizer()
+        pan.maximumNumberOfTouches = 1
+        pan.delegate = context.coordinator
+        return pan
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UIPanGestureRecognizer, context: Context) {
+        let location = context.converter.localLocation
+        switch recognizer.state {
+        case .began:
+            let moved = context.converter.localTranslation ?? .zero
+            began(CGPoint(x: location.x - moved.x, y: location.y - moved.y), location)
+        case .changed:
+            changed(location)
+        case .ended, .cancelled, .failed:
+            ended()
+        default:
+            break
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+            guard let pan = recognizer as? UIPanGestureRecognizer else { return true }
+            let moved = pan.translation(in: pan.view)
+            if moved != .zero { return abs(moved.x) > abs(moved.y) }
+            let velocity = pan.velocity(in: pan.view)
+            return abs(velocity.x) > abs(velocity.y)
+        }
+    }
+}
+
+private struct PressAndHold: UIGestureRecognizerRepresentable {
+    let minimumDuration: TimeInterval
+    let began: () -> Void
+    let ended: () -> Void
+
+    func makeUIGestureRecognizer(context: Context) -> UILongPressGestureRecognizer {
+        let press = UILongPressGestureRecognizer()
+        press.minimumPressDuration = minimumDuration
+        press.allowableMovement = 10
+        return press
+    }
+
+    func handleUIGestureRecognizerAction(_ recognizer: UILongPressGestureRecognizer, context: Context) {
+        switch recognizer.state {
+        case .began:
+            began()
+        case .ended, .cancelled, .failed:
+            ended()
+        default:
+            break
+        }
     }
 }

@@ -26,6 +26,7 @@ final class LiveListener {
     @ObservationIgnored private var sessionActive = false
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var commands: [(MPRemoteCommand, Any)] = []
+    @ObservationIgnored private var ownsNowPlaying = false
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var connection = 0
 
@@ -43,6 +44,7 @@ final class LiveListener {
     }
 
     func start(_ link: MacLink) {
+        NotificationCenter.default.post(name: .liveListenWillStart, object: nil)
         end(.off)
         generation += 1
         let current = generation
@@ -204,6 +206,7 @@ final class LiveListener {
     }
 
     private func installSystemHooks(macName: String) {
+        ownsNowPlaying = true
         MPNowPlayingInfoCenter.default().nowPlayingInfo = [
             MPMediaItemPropertyTitle: "\(macName), live",
             MPNowPlayingInfoPropertyIsLiveStream: true,
@@ -244,6 +247,8 @@ final class LiveListener {
         commands = []
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
+        guard ownsNowPlaying else { return }
+        ownsNowPlaying = false
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 }

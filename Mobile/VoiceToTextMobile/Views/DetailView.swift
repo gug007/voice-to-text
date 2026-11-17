@@ -1,4 +1,3 @@
-import AVFoundation
 import SwiftUI
 
 enum DetailTab: String, CaseIterable, Identifiable {
@@ -15,7 +14,7 @@ struct DetailView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var tab: DetailTab = .transcript
     @State private var confirmDelete = false
-    @State private var player = AudioPlayer()
+    @State private var player = RecordingPlayer()
 
     private var library: Library { Library.shared }
 
@@ -28,7 +27,7 @@ struct DetailView: View {
     }
 
     private func content(_ entry: RecordingHistoryEntry) -> some View {
-        ScrollView {
+        PlayerScrollView(player: player) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(RecordingDateFormat.rowLabel(entry.createdAt))
@@ -38,7 +37,7 @@ struct DetailView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                PlayerBar(player: player, url: library.audioURL(for: entry), duration: entry.durationSeconds)
+                PlayerCard(player: player, source: .init(entry, url: library.audioURL(for: entry)))
 
                 Picker("Section", selection: $tab) {
                     ForEach(DetailTab.allCases) { Text($0.rawValue).tag($0) }
@@ -74,6 +73,7 @@ struct DetailView: View {
         .confirmationDialog("Delete this recording?", isPresented: $confirmDelete, titleVisibility: .visible) {
             Button("Delete recording", role: .destructive) {
                 player.stop()
+                PlaybackMemory.forget(id)
                 Transcriber.shared.forget(id)
                 library.delete(id: id)
             }
@@ -373,91 +373,6 @@ struct ActionItemRow: View {
                 }
             }
             Spacer(minLength: 0)
-        }
-    }
-}
-
-@Observable
-final class AudioPlayer {
-    private(set) var isPlaying = false
-    private(set) var position: Double = 0
-    private var player: AVAudioPlayer?
-    private var ticker: Timer?
-
-    func toggle(url: URL) {
-        if isPlaying {
-            pause()
-            return
-        }
-        if player == nil {
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .spokenAudio)
-            try? AVAudioSession.sharedInstance().setActive(true)
-            player = try? AVAudioPlayer(contentsOf: url)
-            player?.currentTime = position
-        }
-        guard let player, player.play() else { return }
-        isPlaying = true
-        ticker = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.tick() }
-        }
-    }
-
-    func seek(to seconds: Double) {
-        position = seconds
-        player?.currentTime = seconds
-    }
-
-    func pause() {
-        player?.pause()
-        isPlaying = false
-        ticker?.invalidate()
-        ticker = nil
-    }
-
-    func stop() {
-        pause()
-        player = nil
-    }
-
-    private func tick() {
-        guard let player else { return }
-        if player.isPlaying {
-            position = player.currentTime
-        } else {
-            position = 0
-            pause()
-        }
-    }
-}
-
-struct PlayerBar: View {
-    let player: AudioPlayer
-    let url: URL
-    let duration: Double
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button {
-                player.toggle(url: url)
-            } label: {
-                Image(systemName: player.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .frame(width: 44, height: 44)
-                    .background(Color(.secondarySystemBackground), in: Circle())
-            }
-            .accessibilityLabel(player.isPlaying ? "Pause" : "Play")
-
-            Slider(
-                value: Binding(get: { min(player.position, duration) }, set: { player.seek(to: $0) }),
-                in: 0...max(duration, 0.1)
-            )
-            .accessibilityLabel("Playback position")
-
-            Text(DurationFormat.clock(player.isPlaying || player.position > 0 ? player.position : duration))
-                .font(.footnote)
-                .monospacedDigit()
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 40, alignment: .trailing)
         }
     }
 }

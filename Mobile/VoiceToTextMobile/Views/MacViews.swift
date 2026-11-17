@@ -420,7 +420,7 @@ struct MacConversationView: View {
     @State private var entry: RecordingHistoryEntry?
     @State private var failure: String?
     @State private var tab: DetailTab = .transcript
-    @State private var player = AudioPlayer()
+    @State private var player = RecordingPlayer()
 
     private var remote: MacRemote { MacRemote.shared }
     private var link: MacLink? { remote.link(id: macID) }
@@ -451,7 +451,10 @@ struct MacConversationView: View {
             if let raw = DebugLaunch.tab, let wanted = DetailTab(rawValue: raw), tabs.contains(wanted) { tab = wanted }
             if UserDefaults.standard.bool(forKey: "debugRemotePlay"), entry != nil, let link {
                 await link.downloadAudio(id)
-                if remote.hasAudio(id) { player.toggle(url: remote.audioURL(id)) }
+                if remote.hasAudio(id), let entry {
+                    player.load(.init(entry, url: remote.audioURL(id)))
+                    player.play()
+                }
             }
             #endif
         }
@@ -477,7 +480,7 @@ struct MacConversationView: View {
     }
 
     private func content(_ entry: RecordingHistoryEntry) -> some View {
-        ScrollView {
+        PlayerScrollView(player: player, docks: remote.hasAudio(id)) {
             VStack(alignment: .leading, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(RecordingDateFormat.rowLabel(entry.createdAt))
@@ -528,7 +531,7 @@ struct MacConversationView: View {
     @ViewBuilder
     private func audio(_ entry: RecordingHistoryEntry) -> some View {
         if remote.hasAudio(id) {
-            PlayerBar(player: player, url: remote.audioURL(id), duration: entry.durationSeconds)
+            PlayerCard(player: player, source: .init(entry, url: remote.audioURL(id)))
         } else if let progress = link?.downloadProgress[id] {
             VStack(alignment: .leading, spacing: 6) {
                 ProgressView(value: progress)

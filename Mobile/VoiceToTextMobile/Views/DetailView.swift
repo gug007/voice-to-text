@@ -161,6 +161,12 @@ struct TranscriptPane: View {
                     Text("Waiting to be transcribed").font(.headline)
                     ProgressView()
                 }
+            } else if entry.isSavedForLater {
+                Text(HistorySearch.notTranscribedYetLabel).font(.headline)
+                Text("This recording was saved without a transcript. Transcribe it whenever you're ready, right on this iPhone.")
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Button("Transcribe") { transcriber.enqueue(entry.id) }.buttonStyle(.borderedProminent)
             } else {
                 Text(HistorySearch.notTranscribedLabel).font(.headline)
                 Text(entry.status?.message ?? HistorySearch.savedWithoutTranscriptReason)

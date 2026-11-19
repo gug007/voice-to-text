@@ -49,7 +49,11 @@ struct RootView: View {
         }
         .sheet(isPresented: $showSettings) { SettingsView() }
         .fullScreenCover(isPresented: $showRecorder) {
-            RecordingView(onFinish: finishRecording, onDiscard: { showRecorder = false })
+            RecordingView(
+                onFinish: { finishRecording() },
+                onSave: { finishRecording(transcribe: false) },
+                onDiscard: { showRecorder = false }
+            )
         }
         .fileImporter(isPresented: $showFilePicker, allowedContentTypes: [.audio, .movie]) { result in
             switch result {
@@ -186,10 +190,14 @@ struct RootView: View {
         }
     }
 
-    private func finishRecording() {
+    private func finishRecording(transcribe: Bool = true) {
         showRecorder = false
         guard let finished = Recorder.shared.stop() else {
             alert = "Nothing was recorded."
+            return
+        }
+        guard transcribe else {
+            library.addPending(id: finished.id, durationSeconds: finished.duration, status: .savedForLater)
             return
         }
         library.addPending(id: finished.id, durationSeconds: finished.duration)
@@ -245,16 +253,46 @@ struct MacRecordCapsule: View {
         case .connected:
             switch link.status?.state {
             case .recording:
-                TimelineView(.periodic(from: .now, by: 1)) { context in
-                    RecordCapsule(
-                        title: "Stop · \(DurationFormat.clock(link.elapsed(at: context.date)))",
-                        stops: true,
-                        enabled: !link.isSending,
-                        accessibility: "Stop recording on \(name)"
-                    ) {
-                        Task { await link.stopRecording() }
+                let canSave = link.canStopAndSave
+                VStack(spacing: 10) {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        let clock = DurationFormat.clock(link.elapsed(at: context.date))
+                        RecordCapsule(
+                            title: canSave ? "Stop & Transcribe · \(clock)" : "Stop · \(clock)",
+                            stops: true,
+                            enabled: !link.isSending,
+                            accessibility: canSave ? "Stop and transcribe on \(name)" : "Stop recording on \(name)"
+                        ) {
+                            Task { await link.stopRecording() }
+                        }
+                    }
+                    if canSave {
+                        Button {
+                            Task { await link.stopRecording(transcribe: false) }
+                        } label: {
+                            Label("Stop & Save", systemImage: "square.and.arrow.down")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 50)
+                                .foregroundStyle(Color.primary)
+                                .background(Color(.tertiarySystemFill), in: Capsule())
+                                .opacity(link.isSending ? 0.4 : 1)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(link.isSending)
+                        .accessibilityLabel("Stop and save on \(name)")
+                        .accessibilityHint("Saves the audio on \(name) without transcribing it")
+                        .padding(.horizontal, 20)
+
+                        Text("Stop & Save keeps the audio on \(name) to transcribe later.")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 20)
                     }
                 }
+            case .transcribing where link.status?.saving == true:
+                RecordCapsule(title: "Saving on \(name)…", enabled: false, accessibility: "Saving on \(name)") {}
             case .transcribing, .importing:
                 RecordCapsule(title: "Transcribing on \(name)…", enabled: false, accessibility: "Transcribing on \(name)") {}
             case .idle, .error, nil:
@@ -322,27 +360,39 @@ struct RecordingRowLink: View {
 
     var body: some View {
         NavigationLink(value: entry.id) {
-            VStack(alignment: .leading, spacing: 6) {
-                if entry.transcriptIsPlaceholder {
-                    PendingLabel(entry: entry)
-                } else {
-                    Text(HistorySearch.highlighted(entry.transcript, query: query))
-                        .font(.body)
-                        .lineLimit(2)
-                }
-                HStack(spacing: 6) {
-                    Text(RecordingDateFormat.rowLabel(entry.createdAt))
-                    Text("·")
-                    Text(DurationFormat.clock(entry.durationSeconds))
-                    if entry.summary != nil {
-                        Image(systemName: "text.alignleft").accessibilityLabel("Has summary")
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 6) {
+                    if entry.transcriptIsPlaceholder {
+                        PendingLabel(entry: entry)
+                    } else {
+                        Text(HistorySearch.highlighted(entry.transcript, query: query))
+                            .font(.body)
+                            .lineLimit(2)
                     }
-                    if let items = entry.actionItems, !items.items.isEmpty {
-                        Image(systemName: "checklist").accessibilityLabel("Has action items")
+                    HStack(spacing: 6) {
+                        Text(RecordingDateFormat.rowLabel(entry.createdAt))
+                        Text("·")
+                        Text(DurationFormat.clock(entry.durationSeconds))
+                        if entry.summary != nil {
+                            Image(systemName: "text.alignleft").accessibilityLabel("Has summary")
+                        }
+                        if let items = entry.actionItems, !items.items.isEmpty {
+                            Image(systemName: "checklist").accessibilityLabel("Has action items")
+                        }
                     }
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
                 }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if entry.isSavedForLater, !Transcriber.shared.isWaiting(entry.id) {
+                    Button("Transcribe") { Transcriber.shared.enqueue(entry.id) }
+                        .font(.subheadline.weight(.semibold))
+                        .buttonStyle(.bordered)
+                        .buttonBorderShape(.capsule)
+                        .tint(Color.primary)
+                        .accessibilityLabel("Transcribe recording from \(RecordingDateFormat.rowLabel(entry.createdAt))")
+                }
             }
             .padding(.vertical, 4)
         }
@@ -361,6 +411,9 @@ struct PendingLabel: View {
             } else if transcriber.queue.contains(entry.id) {
                 Image(systemName: "clock")
                 Text(waitingText(transcriber.modelState))
+            } else if entry.isSavedForLater {
+                Image(systemName: "waveform")
+                Text(HistorySearch.notTranscribedYetLabel)
             } else {
                 Image(systemName: "exclamationmark.triangle")
                 Text(HistorySearch.notTranscribedLabel)

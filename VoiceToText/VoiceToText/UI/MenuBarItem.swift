@@ -53,6 +53,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
     /// fire during menu tracking — but a recording started earlier keeps
     /// running, and its transcription can finish, while the menu is up.
     private var conversationMenuItem: NSMenuItem?
+    /// Stop & Save Conversation, shown only while a conversation records.
+    private var saveConversationMenuItem: NSMenuItem?
     /// Transcribe File…, enabled only while Upload File… would be: the import
     /// shares the conversation recorder, which can start or finish underneath.
     private var transcribeFileMenuItem: NSMenuItem?
@@ -112,6 +114,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         statusFixMenuItem = nil
         dictationMenuItem = nil
         conversationMenuItem = nil
+        saveConversationMenuItem = nil
         transcribeFileMenuItem = nil
         copyLastMenuItem = nil
         modelMenuRow = nil
@@ -371,6 +374,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         statusFixMenuItem = nil
         dictationMenuItem = nil
         conversationMenuItem = nil
+        saveConversationMenuItem = nil
         transcribeFileMenuItem = nil
         copyLastMenuItem = nil
         modelMenuRow = nil
@@ -414,6 +418,18 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         conversation.toolTip = HotkeyStore.shared.meetingBinding.map(Self.shortcutTip)
         menu.addItem(conversation)
         conversationMenuItem = conversation
+
+        // The other way to end a recording that keeps it. Only there while
+        // one records: at rest it would be a row that can never do anything.
+        let saveConversation = item(
+            title: "Stop & Save Conversation",
+            symbol: "square.and.arrow.down",
+            action: #selector(stopAndSaveConversation)
+        )
+        saveConversation.isHidden = MeetingController.shared.state != .recording
+        saveConversation.toolTip = "Stop and keep the audio without transcribing it. Transcribe it later from History."
+        menu.addItem(saveConversation)
+        saveConversationMenuItem = saveConversation
 
         let transcribeFile = item(
             title: "Transcribe File…",
@@ -803,6 +819,8 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         switch MeetingController.shared.state {
         case .idle, .error: return ("Start Conversation", "record.circle", true)
         case .recording: return ("Stop & Transcribe Conversation", "stop.circle.fill", true)
+        case .transcribing where MeetingController.shared.isSavingWithoutTranscript:
+            return ("Saving Conversation…", "square.and.arrow.down", false)
         case .transcribing: return ("Transcribing Conversation…", "waveform.badge.magnifyingglass", false)
         case .importing: return ("Transcribing File…", "waveform.badge.magnifyingglass", false)
         }
@@ -825,6 +843,7 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
         conversationMenuItem.title = spec.title
         conversationMenuItem.image = Self.menuIcon(spec.symbol)
         conversationMenuItem.isEnabled = spec.isEnabled
+        saveConversationMenuItem?.isHidden = MeetingController.shared.state != .recording
         transcribeFileMenuItem?.isEnabled = MediaFileImport.isAvailable
     }
 
@@ -918,6 +937,18 @@ final class MenuBarItem: NSObject, NSMenuDelegate {
 
     @objc private func toggleConversation() {
         MeetingController.shared.handleHotkeyPress()
+    }
+
+    /// Stop & Save. Like the shortcut's stop, an ending that failed opens the
+    /// pane: the menu is closed by then and nothing else would say so.
+    @objc private func stopAndSaveConversation() {
+        Task { @MainActor in
+            let meeting = MeetingController.shared
+            await meeting.stopAndSave()
+            if case .error = meeting.state {
+                WindowOpener.shared.showMain(section: .meetings)
+            }
+        }
     }
 
     @objc private func transcribeFile() {

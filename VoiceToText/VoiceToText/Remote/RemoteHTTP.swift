@@ -199,6 +199,7 @@ nonisolated enum RemoteRoute: Equatable, Sendable {
     case status
     case startConversation
     case stopConversation
+    case saveConversation
     case liveAudio
     case conversations
     case conversation(UUID)
@@ -219,6 +220,8 @@ nonisolated enum RemoteRoute: Equatable, Sendable {
             (route, expected) = (.startConversation, "POST")
         case RemoteProtocol.Path.stopConversation:
             (route, expected) = (.stopConversation, "POST")
+        case RemoteProtocol.Path.saveConversation:
+            (route, expected) = (.saveConversation, "POST")
         case RemoteProtocol.Path.liveAudio:
             (route, expected) = (.liveAudio, "GET")
         case RemoteProtocol.Path.conversations:

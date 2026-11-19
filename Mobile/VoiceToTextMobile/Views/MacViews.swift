@@ -169,6 +169,8 @@ struct MacStatusRow: View {
                             recordingLine(DurationFormat.clock(link.elapsed(at: context.date)))
                         }
                     }
+                case .transcribing where link.status?.saving == true:
+                    StatusLine(text: "Saving on Mac…", dot: Color(.systemGray3))
                 case .transcribing, .importing:
                     StatusLine(text: "Transcribing on Mac…", dot: Color(.systemGray3))
                 case .error:
@@ -386,7 +388,10 @@ struct MacConversationRow: View {
     var body: some View {
         NavigationLink(value: MacRoute.conversation(macID, row.id)) {
             VStack(alignment: .leading, spacing: 6) {
-                if row.isUntranscribed {
+                if row.isUntranscribed, row.isSavedForLater == true {
+                    Label(HistorySearch.notTranscribedYetLabel, systemImage: "waveform")
+                        .foregroundStyle(.secondary)
+                } else if row.isUntranscribed {
                     Label(HistorySearch.notTranscribedLabel, systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
                 } else {
@@ -567,7 +572,8 @@ struct MacConversationView: View {
     private func transcript(_ entry: RecordingHistoryEntry) -> some View {
         if entry.transcriptIsPlaceholder {
             VStack(alignment: .leading, spacing: 8) {
-                Text(HistorySearch.notTranscribedLabel).font(.headline)
+                Text(entry.isSavedForLater ? HistorySearch.notTranscribedYetLabel : HistorySearch.notTranscribedLabel)
+                    .font(.headline)
                 Text(entry.status?.message ?? HistorySearch.savedWithoutTranscriptReason)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)

@@ -972,15 +972,18 @@ struct RecordingRow: View {
     /// "⚠ Not transcribed. You're offline…", in the failure card's own words.
     /// "⚠ Not transcribed. You're offline." — the reason's first sentence;
     /// the buttons below say the rest. The whole message is the tooltip and
-    /// what VoiceOver reads.
+    /// what VoiceOver reads. A recording saved for later (Stop & Save) says
+    /// "Not transcribed yet" beside a plain waveform: nothing went wrong.
     private func failureSentence(_ status: RecordingHistoryEntry.Status) -> some View {
         let reason = Self.firstSentence(of: status.message) ?? status.message
+        let isDeferred = status.kind == .deferred
+        let label = HistorySearch.label(for: status)
         return HStack(alignment: .firstTextBaseline, spacing: Space.s3) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: isDeferred ? "waveform" : "exclamationmark.triangle.fill")
                 .font(Typo.caption)
-                .foregroundStyle(Palette.signalWarn)
+                .foregroundStyle(isDeferred ? Palette.inkMuted : Palette.signalWarn)
                 .accessibilityHidden(true)
-            (Text("\(HistorySearch.notTranscribedLabel). ").foregroundStyle(Palette.ink)
+            (Text("\(label). ").foregroundStyle(Palette.ink)
                 + Text(HistorySearch.highlighted(reason, query: highlight)).foregroundStyle(Palette.inkMuted))
                 .typo(.body)
                 .lineLimit(1)
@@ -988,7 +991,7 @@ struct RecordingRow: View {
         }
         .help(status.message)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(HistorySearch.notTranscribedLabel). \(status.message)")
+        .accessibilityLabel("\(label). \(status.message)")
     }
 
     /// One recommended way out, prominent, then a quieter second choice and
@@ -1034,10 +1037,13 @@ struct RecordingRow: View {
         }
     }
 
+    /// Prominent for a failed take, where it is the way out. Quiet for one
+    /// saved for later: the user chose not to transcribe it, and a list of
+    /// such rows must not be a column of primary buttons.
     @ViewBuilder
     private func recoveryLead(_ plan: RecoveryPlan) -> some View {
         if let lead = plan.lead {
-            recoveryButton(lead).buttonTier(.primary)
+            recoveryButton(lead).buttonTier(entry.isSavedForLater ? .secondary : .primary)
         }
     }
 
@@ -1083,6 +1089,15 @@ struct RecordingRow: View {
     /// know every language the user speaks is offered second, and says so.
     private var recoveryPlan: RecoveryPlan {
         guard let model = transcribeAgainModel else { return RecoveryPlan() }
+        // Saved for later: nothing failed, so there is nothing to retry or
+        // route around — just the model the recording was meant for.
+        if entry.isSavedForLater {
+            return RecoveryPlan(lead: RecoveryChoice(
+                title: "Transcribe with \(model.sectionedDisplayName)",
+                help: "Transcribe this recording with \(model.displayName)",
+                modelId: model.id
+            ))
+        }
         let retry = RecoveryChoice(
             title: model.isCloud
                 ? FailureCardCopy.historyRetryTitle(cloudModelName: model.sectionedDisplayName)

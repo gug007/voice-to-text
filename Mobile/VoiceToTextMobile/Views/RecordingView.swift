@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RecordingView: View {
     let onFinish: () -> Void
+    let onSave: () -> Void
     let onDiscard: () -> Void
 
     @State private var confirmDiscard = false
@@ -50,26 +51,50 @@ struct RecordingView: View {
                 }
                 .padding(.horizontal, 36)
                 .padding(.top, 20)
+            } else {
+                Text("Keeps recording when the screen is locked")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
+                    .padding(.top, 20)
             }
 
             Spacer()
 
             Button(action: onFinish) {
-                ZStack {
-                    Circle()
-                        .strokeBorder(Color.primary.opacity(0.18), lineWidth: 4)
-                        .frame(width: 92, height: 92)
-                    RoundedRectangle(cornerRadius: 9)
-                        .fill(Palette.live)
-                        .frame(width: 36, height: 36)
+                VStack(spacing: 10) {
+                    ZStack {
+                        Circle()
+                            .strokeBorder(Color.primary.opacity(0.18), lineWidth: 4)
+                            .frame(width: 92, height: 92)
+                        RoundedRectangle(cornerRadius: 9)
+                            .fill(Palette.live)
+                            .frame(width: 36, height: 36)
+                    }
+                    Text("Stop & Transcribe")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.primary)
                 }
             }
+            .buttonStyle(.plain)
             .accessibilityLabel("Stop and transcribe")
 
-            Text("Keeps recording when the screen is locked")
+            Button(action: onSave) {
+                Label("Stop & Save", systemImage: "square.and.arrow.down")
+                    .font(.headline)
+                    .padding(.horizontal, 24)
+                    .frame(height: 50)
+                    .foregroundStyle(Color.primary)
+                    .background(Color(.tertiarySystemFill), in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Stop and save")
+            .accessibilityHint("Saves the audio without transcribing it")
+            .padding(.top, 26)
+
+            Text("Saves the audio. Transcribe it later.")
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-                .padding(.top, 14)
+                .padding(.top, 10)
                 .padding(.bottom, 28)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

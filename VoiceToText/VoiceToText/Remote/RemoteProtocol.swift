@@ -19,6 +19,10 @@ nonisolated enum RemoteProtocol {
         static let status = "/v1/status"
         static let startConversation = "/v1/conversation/start"
         static let stopConversation = "/v1/conversation/stop"
+        /// Stop & Save: stops like `stopConversation` but files the audio
+        /// without transcribing it. Only on a Mac whose status says
+        /// `stopAndSave`; an older one answers 404.
+        static let saveConversation = "/v1/conversation/save"
         static let liveAudio = "/v1/conversation/live"
         static let conversations = "/v1/conversations"
 
@@ -71,6 +75,12 @@ nonisolated struct RemoteStatus: Codable, Equatable, Sendable {
     var `protocol`: Int
     var liveListen: Bool? = nil
     var listeners: Int? = nil
+    /// True when this Mac answers `Path.saveConversation`. Absent from a Mac
+    /// that predates Stop & Save, so the phone offers it only where it works.
+    var stopAndSave: Bool? = nil
+    /// True while `.transcribing` is only filing a recording stopped with
+    /// Stop & Save, so the phone says Saving rather than Transcribing.
+    var saving: Bool? = nil
 }
 
 /// One conversation in `GET /v1/conversations`: enough for a list row, so
@@ -85,6 +95,9 @@ nonisolated struct RemoteConversationRow: Codable, Identifiable, Hashable, Senda
     let hasActionItems: Bool
     let isUntranscribed: Bool
     let modelName: String?
+    /// True when it is untranscribed by choice (Stop & Save) rather than by
+    /// a failure. Optional, and absent unless true: older Macs never send it.
+    let isSavedForLater: Bool?
 
     /// Long enough for the two lines a row shows at the largest phone width.
     static let previewLength = 160
@@ -97,7 +110,8 @@ nonisolated struct RemoteConversationRow: Codable, Identifiable, Hashable, Senda
         hasSummary: Bool,
         hasActionItems: Bool,
         isUntranscribed: Bool,
-        modelName: String?
+        modelName: String?,
+        isSavedForLater: Bool? = nil
     ) {
         self.id = id
         self.createdAt = createdAt
@@ -107,6 +121,7 @@ nonisolated struct RemoteConversationRow: Codable, Identifiable, Hashable, Senda
         self.hasActionItems = hasActionItems
         self.isUntranscribed = isUntranscribed
         self.modelName = modelName
+        self.isSavedForLater = isSavedForLater
     }
 
     init(entry: RecordingHistoryEntry) {
@@ -119,7 +134,8 @@ nonisolated struct RemoteConversationRow: Codable, Identifiable, Hashable, Senda
             hasSummary: entry.summary != nil,
             hasActionItems: !(entry.actionItems?.items.isEmpty ?? true),
             isUntranscribed: untranscribed,
-            modelName: entry.modelName
+            modelName: entry.modelName,
+            isSavedForLater: entry.isSavedForLater ? true : nil
         )
     }
 

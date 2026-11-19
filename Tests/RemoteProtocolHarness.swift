@@ -56,6 +56,14 @@ struct RemoteProtocolHarness {
         let older = Data(#"{"state":"idle","elapsed":0,"mac":"Studio","appVersion":"0.3.9","protocol":1}"#.utf8)
         let olderBack = try RemoteProtocol.makeDecoder().decode(RemoteStatus.self, from: older)
         try expect(olderBack.liveListen == nil && olderBack.listeners == nil, "a Mac without live listening still decodes")
+        try expect(olderBack.stopAndSave == nil && olderBack.saving == nil, "nor does it claim Stop & Save")
+
+        let saving = RemoteStatus(state: .transcribing, elapsed: 0, message: nil, mac: "Studio", appVersion: "0.5.0", protocol: 1, stopAndSave: true, saving: true)
+        let savingData = try RemoteProtocol.makeEncoder().encode(saving)
+        try expect(try RemoteProtocol.makeDecoder().decode(RemoteStatus.self, from: savingData) == saving, "Stop & Save fields round-trip")
+        let savingObject = try JSONSerialization.jsonObject(with: savingData) as? [String: Any]
+        try expect(savingObject?["stopAndSave"] as? Bool == true, "stopAndSave on the wire")
+        try expect(savingObject?["saving"] as? Bool == true, "saving on the wire")
     }
 
     private static func entry(
@@ -122,6 +130,16 @@ struct RemoteProtocolHarness {
             status: .init(kind: .failed, message: "No key")
         ))
         try expect(failed.isUntranscribed && failed.preview.isEmpty, "an untranscribed row has no preview")
+        try expect(failed.isSavedForLater == nil, "a failed row isn't saved for later")
+        let saved = RemoteConversationRow(entry: entry(
+            at: 0,
+            transcript: RecordingHistoryEntry.placeholderTranscript,
+            status: .savedForLater
+        ))
+        try expect(saved.isUntranscribed && saved.isSavedForLater == true, "a Stop & Save row says it is untranscribed by choice")
+        let olderRow = Data(#"{"id":"5E1A2B3C-4D5E-4F60-8A1B-2C3D4E5F6071","createdAt":0,"durationSeconds":5,"preview":"","hasSummary":false,"hasActionItems":false,"isUntranscribed":true}"#.utf8)
+        let olderRowBack = try RemoteProtocol.makeDecoder().decode(RemoteConversationRow.self, from: olderRow)
+        try expect(olderRowBack.isUntranscribed && olderRowBack.isSavedForLater == nil, "a row from a Mac without Stop & Save still decodes")
         let legacy = RemoteConversationRow(entry: entry(at: 0, transcript: RecordingHistoryEntry.legacyRecoveredTranscript))
         try expect(legacy.isUntranscribed, "an older build's placeholder is untranscribed too")
         try expect(row.modelName == "Parakeet TDT v3", "the model name is carried")
@@ -234,6 +252,9 @@ struct RemoteProtocolHarness {
         try expect(RemoteRoute.match(method: "GET", path: "/v1/status") == .success(.status), "status")
         try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/start") == .success(.startConversation), "start")
         try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/stop") == .success(.stopConversation), "stop")
+        try expect(RemoteRoute.match(method: "POST", path: "/v1/conversation/save") == .success(.saveConversation), "stop and save")
+        try expect(RemoteRoute.match(method: "POST", path: RemoteProtocol.Path.saveConversation) == .success(.saveConversation), "stop and save by constant")
+        try expect(RemoteRoute.match(method: "GET", path: "/v1/conversation/save") == .failure(.methodNotAllowed), "stop and save is POST only")
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversations") == .success(.conversations), "list")
         try expect(RemoteRoute.match(method: "GET", path: "/v1/conversation/live") == .success(.liveAudio), "live audio")
         try expect(RemoteRoute.match(method: "GET", path: RemoteProtocol.Path.liveAudio) == .success(.liveAudio), "live audio by constant")

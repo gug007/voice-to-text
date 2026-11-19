@@ -49,6 +49,7 @@ struct HistorySearchHarness {
         try anEmptyBalanceAnswersToItsUsualNames()
         try transcribedRowsDontMatchFailureWords()
         try legacyPlaceholderRowsReadAsNotTranscribed()
+        try savedForLaterRowsAreFoundByWhatTheySay()
         print("History search harness passed")
     }
 
@@ -107,6 +108,21 @@ struct HistorySearchHarness {
                    "a row with its own status keeps its reason")
         try expect(HistorySearch.untranscribedStatus(of: entry(transcript: "Send the invoice.")) == nil,
                    "a transcribed row has no status to show")
+    }
+
+    /// A recording stopped with Stop & Save: found by the words a failed one
+    /// answers to, and by its own, but not by "failed" — nothing did.
+    private static func savedForLaterRowsAreFoundByWhatTheySay() throws {
+        let saved = entry(transcript: placeholder, status: .savedForLater)
+        try expect(HistorySearch.label(for: .savedForLater) == HistorySearch.notTranscribedYetLabel,
+                   "a saved-for-later row is labelled as not transcribed yet")
+        try expect(HistorySearch.label(for: .init(kind: .failed, message: "You're offline.")) == HistorySearch.notTranscribedLabel,
+                   "a failed row keeps the plain label")
+        try expect(HistorySearch.untranscribedStatus(of: saved) == .savedForLater, "its status is its own")
+        for query in ["not transcribed", "not transcribed yet", "saved", "later"] {
+            try expect(!HistorySearch.filter([saved], query: query).isEmpty, "\"\(query)\" finds a saved-for-later row")
+        }
+        try expect(HistorySearch.filter([saved], query: "failed").isEmpty, "nothing failed, so \"failed\" doesn't find it")
     }
 
     private static func transcribedRowsDontMatchFailureWords() throws {

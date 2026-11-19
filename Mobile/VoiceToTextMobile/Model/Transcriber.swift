@@ -44,13 +44,14 @@ final class Transcriber {
     }
 
     func resumePendingWork() {
-        for entry in Library.shared.entries.reversed() where entry.needsTranscript {
+        for entry in Library.shared.entries.reversed() where entry.needsTranscript && !entry.isSavedForLater {
             enqueue(entry.id)
         }
     }
 
     func enqueue(_ id: UUID) {
         guard !isWaiting(id) else { return }
+        Library.shared.update(id: id) { $0.isSavedForLater ? $0.updatingStatus(Library.waitingStatus) : nil }
         queue.append(id)
         if modelState == .ready {
             drain()

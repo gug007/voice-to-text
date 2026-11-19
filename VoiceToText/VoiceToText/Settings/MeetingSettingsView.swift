@@ -67,7 +67,7 @@ struct MeetingsPane: View {
 
             VStack(alignment: .leading, spacing: FormMetrics.groupLabelGap) {
                 stateCard
-                SettingsGroupFooter("Records your microphone and everything playing on this Mac, then transcribes when you stop.")
+                SettingsGroupFooter("Records your microphone and everything playing on this Mac. Stop & Save keeps the audio so you can transcribe it later.")
             }
 
             recordingOptionsGroup
@@ -301,9 +301,9 @@ struct MeetingsPane: View {
     private var hudCaption: String {
         switch hudSetting {
         case .off: return "No floating card; the menu bar shows the recording."
-        case .small: return "Floats over every app: meter, clock and Stop."
-        case .medium: return "Floats over every app: one row with Stop & Transcribe."
-        case .large: return "Floats over every app: wide meter, clock and Stop & Transcribe."
+        case .small: return "Floats over every app: meter, clock and the two Stop buttons."
+        case .medium: return "Floats over every app: one row with Stop & Save and Stop & Transcribe."
+        case .large: return "Floats over every app: wide meter, clock, Stop & Save and Stop & Transcribe."
         }
     }
 
@@ -451,7 +451,9 @@ struct MeetingsPane: View {
     private var sessionTitle: String {
         switch controller.state {
         case .recording: return "Recording"
-        case .transcribing: return controller.isRemovingSilence ? "Removing silence…" : "Transcribing…"
+        case .transcribing:
+            if controller.isRemovingSilence { return "Removing silence…" }
+            return controller.isSavingWithoutTranscript ? "Saving…" : "Transcribing…"
         case .idle, .error, .importing: return "Ready"
         }
     }
@@ -505,7 +507,7 @@ struct MeetingsPane: View {
                 .help("Transcribe an audio or video file already on this Mac. You can also drop one on this pane.")
             }
         case .recording:
-            actionRow(verb: "to stop") {
+            actionRow(verb: "to stop and transcribe") {
                 Button {
                     Task { await controller.stop() }
                 } label: {
@@ -513,10 +515,23 @@ struct MeetingsPane: View {
                 }
                 .buttonTier(.primary)
 
+                Button {
+                    Task { await controller.stopAndSave() }
+                } label: {
+                    Label("Stop & Save", systemImage: "square.and.arrow.down")
+                }
+                .buttonTier(.secondary)
+                .help("Stop and keep the audio without transcribing it. Transcribe it later from this list or from History.")
+
+                // Apart from the two that keep the recording: this one
+                // throws it away.
+                Spacer(minLength: Space.s4)
+
                 Button("Cancel") {
                     Task { await controller.cancel() }
                 }
                 .buttonTier(.secondary)
+                .help("Stop and discard this recording")
             }
         case .transcribing, .importing:
             EmptyView()
@@ -753,6 +768,9 @@ struct MeetingsPane: View {
     private var transcribingDetail: String {
         if controller.isRemovingSilence {
             return "Cutting the stretches with no speech out of the recording."
+        }
+        if controller.isSavingWithoutTranscript {
+            return "Filing the recording in History, without a transcript."
         }
         if controller.totalChunks > 1 {
             return "Processing a long recording in segments — this can take a moment."

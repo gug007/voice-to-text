@@ -93,8 +93,12 @@ final class MacLink: Identifiable {
         await send(RemoteProtocol.Path.startConversation)
     }
 
-    func stopRecording() async {
-        await send(RemoteProtocol.Path.stopConversation)
+    var canStopAndSave: Bool {
+        status?.stopAndSave == true
+    }
+
+    func stopRecording(transcribe: Bool = true) async {
+        await send(transcribe ? RemoteProtocol.Path.stopConversation : RemoteProtocol.Path.saveConversation)
     }
 
     func refreshConversations() async {
@@ -198,7 +202,9 @@ final class MacLink: Identifiable {
         statusReceivedAt = Date()
         connection = .connected
         if stoppedRecording { remote.recordingEnded(on: self) }
-        if finishedTranscribing { Task { await refreshConversations() } }
+        if finishedTranscribing || (stoppedRecording && latest.state == .idle) {
+            Task { await refreshConversations() }
+        }
     }
 
     private func send(_ path: String) async {

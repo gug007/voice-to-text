@@ -43,7 +43,12 @@ final class Library {
     }
 
     @discardableResult
-    func addPending(id: UUID, durationSeconds: Double, createdAt: Date = Date()) -> RecordingHistoryEntry {
+    func addPending(
+        id: UUID,
+        durationSeconds: Double,
+        createdAt: Date = Date(),
+        status: RecordingHistoryEntry.Status = Library.waitingStatus
+    ) -> RecordingHistoryEntry {
         let entry = RecordingHistoryEntry(
             id: id,
             createdAt: createdAt,
@@ -54,7 +59,7 @@ final class Library {
             modelId: nil,
             modelName: nil,
             source: .meeting,
-            status: Self.waitingStatus
+            status: status
         )
         entries.insert(entry, at: 0)
         entries.sort { $0.createdAt > $1.createdAt }

@@ -69,6 +69,8 @@ struct AppStatus: Equatable {
         switch MeetingController.shared.state {
         case .recording:
             return AppStatus(tone: .live, title: "Recording conversation…", detail: nil)
+        case .transcribing where MeetingController.shared.isSavingWithoutTranscript:
+            return AppStatus(tone: .busy, title: "Saving conversation…", detail: nil)
         case .transcribing, .importing:
             return AppStatus(tone: .busy, title: "Transcribing…", detail: registry.conversationModel?.nameWithSource)
         case .idle, .error: break

@@ -71,6 +71,14 @@ enum HistorySearch {
     /// what a search for one should match.
     static let notTranscribedLabel = "Not transcribed"
 
+    /// The same for a recording saved without one on purpose (Stop & Save).
+    /// It still contains "Not transcribed", so one search finds both.
+    static let notTranscribedYetLabel = "Not transcribed yet"
+
+    static func label(for status: RecordingHistoryEntry.Status) -> String {
+        status.kind == .deferred ? notTranscribedYetLabel : notTranscribedLabel
+    }
+
     /// The reason shown for a row an older build saved with only a
     /// placeholder and no `status`: nothing recorded why, so the row can't
     /// say more than this.
@@ -179,7 +187,7 @@ enum HistorySearch {
     /// for one by — "quota", "billing" — are added for a reason that names any
     /// of them.
     static func statusFields(of status: RecordingHistoryEntry.Status) -> [String] {
-        var fields = [status.message, notTranscribedLabel, status.kind.rawValue]
+        var fields = [status.message, label(for: status), status.kind.rawValue]
         if balanceTerms.contains(where: { status.message.range(of: $0, options: options) != nil }) {
             fields.append(balanceTerms.joined(separator: " "))
         }

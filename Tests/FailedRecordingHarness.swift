@@ -61,6 +61,7 @@ struct FailedRecordingHarness {
         try indexesWithoutStatusStillDecode()
         try statusRoundTripsThroughTheIndex()
         try unknownStatusKindIsKeptNotDropped()
+        try savedForLaterWaitsWithoutAFailure()
         try resolvingReplacesThePlaceholder()
         try resolvingNeedsAFailedEntry()
         try aRetryCanRestateTheFailure()
@@ -176,6 +177,33 @@ struct FailedRecordingHarness {
         try expect(decoded.entries.isEmpty, true, "this build can't read the unknown kind")
         try expect(decoded.passthrough.count, 1, "so the row is passed through")
         try expect(decoded.passthrough[0].audioFileName, "\(failedID.uuidString).wav", "and its audio stays referenced")
+    }
+
+    /// Stop & Save files a recording the same way, but by choice: it waits
+    /// for a transcript without claiming a failure.
+    private static func savedForLaterWaitsWithoutAFailure() throws {
+        let saved = makeFailed(status: .savedForLater)
+        try expect(saved.needsTranscript, true, "it still waits for a transcript")
+        try expect(saved.transcriptIsPlaceholder, true, "and holds only the placeholder")
+        try expect(saved.isSavedForLater, true, "but by choice")
+        try expect(makeFailed().isSavedForLater, false, "a failed take isn't saved for later")
+        try expect(makeFailed(status: nil).isSavedForLater, false, "nor is a row with no status")
+
+        let data = try HistoryIndexCodec.encode(entries: [saved], passthrough: [])
+        try expect(String(decoding: data, as: UTF8.self).contains("\"deferred\""), true, "the kind is written by name")
+        let decoded = try HistoryIndexCodec.decode(data)
+        try expect(decoded.entries, [saved], "and survives a write and a read")
+        try expect(decoded.passthrough.isEmpty, true, "as an entry, not a passthrough row")
+
+        guard let failedLater = saved.updatingStatus(.init(kind: .failed, message: "You're offline.")) else {
+            throw FailedRecordingHarnessFailure(description: "a saved-for-later entry can take a failure")
+        }
+        try expect(failedLater.isSavedForLater, false, "a transcription that then fails makes it a failed take")
+        guard let resolved = saved.resolvingPlaceholder(transcript: "Hello.", modelId: "parakeet", modelName: "Parakeet") else {
+            throw FailedRecordingHarnessFailure(description: "a saved-for-later entry resolves")
+        }
+        try expect(resolved.status, nil, "transcribing it clears the status")
+        try expect(resolved.transcript, "Hello.", "and the transcript replaces the placeholder")
     }
 
     private static func resolvingReplacesThePlaceholder() throws {

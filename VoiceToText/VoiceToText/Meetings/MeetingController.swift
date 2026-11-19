@@ -55,6 +55,10 @@ final class MeetingController {
     /// True while "Remove silence" cuts the recording, before transcription
     /// starts reporting chunks.
     private(set) var isRemovingSilence = false
+    /// True while a Stop & Save files its recording. `state` is
+    /// `.transcribing` then — the recording is over and the controller is
+    /// busy — but nothing is being transcribed, so the cards say Saving.
+    private(set) var isSavingWithoutTranscript = false
     /// Set briefly after a successful save so the pane can confirm where it went.
     private(set) var lastSavedSummary: String?
 
@@ -211,11 +215,19 @@ final class MeetingController {
         await finishStopping(interruption: nil)
     }
 
+    /// Stop & Save: ends the recording and files its audio in History without
+    /// transcribing it. The row waits there marked saved for later, with the
+    /// Transcribe buttons a failed one gets and none of its warning.
+    func stopAndSave() async {
+        guard beginStopping(savingOnly: true) else { return }
+        await finishStopping(interruption: nil, transcribe: false)
+    }
+
     /// The synchronous half of a stop, shared by the user's Stop and an
     /// interruption. Flips out of `.recording` before any await so whichever
     /// comes second — a Stop/Cancel racing a stream error, or the reverse —
     /// sees a non-`.recording` state and bails. Returns false if not recording.
-    private func beginStopping() -> Bool {
+    private func beginStopping(savingOnly: Bool = false) -> Bool {
         guard case .recording = state, !transitioning else { return false }
         transitioning = true
         stopElapsedTicker()
@@ -224,6 +236,8 @@ final class MeetingController {
         // card, so the brief stopCapture teardown can't flash a stale "3/3".
         transcribedChunks = 0
         totalChunks = 0
+        // Before the state, so the card that appears already says Saving.
+        isSavingWithoutTranscript = savingOnly
         state = .transcribing
         return true
     }
@@ -231,8 +245,12 @@ final class MeetingController {
     /// Finalizes, transcribes and archives what was captured. `interruption` is
     /// the error that ended the recording when the user didn't; the card then
     /// says why it stopped and that the audio up to that point was kept.
-    private func finishStopping(interruption: Error?) async {
-        defer { transitioning = false }
+    /// `transcribe` false (Stop & Save) archives it untranscribed.
+    private func finishStopping(interruption: Error?, transcribe: Bool = true) async {
+        defer {
+            transitioning = false
+            isSavingWithoutTranscript = false
+        }
         let result = await recorder.stop()
         guard let result, MeetingInterruption.shouldSalvage(capturedSeconds: result.duration) else {
             // nil also means finalize and the header repair both failed (the disk
@@ -258,7 +276,7 @@ final class MeetingController {
             return
         }
         // The recorder finalized the file at the same working URL.
-        let archived = await transcribeAndArchive(url: result.url, duration: result.duration)
+        let archived = await archive(url: result.url, duration: result.duration, transcribe: transcribe)
         workingURL = nil
         guard let interruption else {
             finish(archived)
@@ -323,7 +341,7 @@ final class MeetingController {
         }
 
         importStage = .transcribing
-        let archived = await transcribeAndArchive(
+        let archived = await archive(
             url: working,
             duration: duration,
             sourceLabel: name
@@ -342,11 +360,10 @@ final class MeetingController {
         state = .error(message)
     }
 
-    // MARK: - Transcribe & archive (shared by stop & import)
+    // MARK: - Transcribe & archive (shared by stop, Stop & Save and import)
 
-    /// What `transcribeAndArchive` did: the transcription `issue` (nil =
-    /// clean), a success `summary`, and the History row it filed, if the
-    /// store took it.
+    /// What `archive` did: the transcription `issue` (nil = clean), a success
+    /// `summary`, and the History row it filed, if the store took it.
     private struct Archived {
         let issue: MeetingTranscriptionIssue?
         let summary: String?
@@ -363,10 +380,15 @@ final class MeetingController {
     /// `totalChunks` as it goes. With "Remove silence" on, the file is cut
     /// first, and both the transcript and the History row get the cut audio;
     /// with "Keep original" too, the untouched file is filed with the row.
-    private func transcribeAndArchive(
+    ///
+    /// `transcribe` false is Stop & Save: no engine is loaded and nothing is
+    /// uploaded; the audio (silence still removed, when that is on) is filed
+    /// as a row saved for later, which is a success, not an issue.
+    private func archive(
         url: URL,
         duration: Double,
-        sourceLabel: String? = nil
+        sourceLabel: String? = nil,
+        transcribe: Bool = true
     ) async -> Archived {
         transcribedChunks = 0
         totalChunks = 0
@@ -394,7 +416,9 @@ final class MeetingController {
         // names the model the conversation was meant for.
         let model = ModelRegistry.shared.conversationModel
         var issue: MeetingTranscriptionIssue?
-        if let model,
+        if !transcribe {
+            transcript = RecordingHistoryEntry.placeholderTranscript
+        } else if let model,
            let engine = await ModelRegistry.shared.prepareBackgroundEngine(id: model.id) {
             do {
                 let text = try await MeetingTranscriber.transcribe(
@@ -421,7 +445,9 @@ final class MeetingController {
             issue = Self.unavailableModelIssue(model)
         }
 
-        let status = issue?.historyReason.map { RecordingHistoryEntry.Status(kind: .failed, message: $0) }
+        let status: RecordingHistoryEntry.Status? = transcribe
+            ? issue?.historyReason.map { .init(kind: .failed, message: $0) }
+            : .savedForLater
         let id = RecordingHistoryStore.shared.ingest(
             fileURL: url,
             transcript: transcript,
@@ -450,7 +476,11 @@ final class MeetingController {
         case (nil, nil):
             summary = "Saved a \(duration.formattedClock) recording to History."
         }
-        return Archived(issue: nil, summary: summary, saved: saved)
+        return Archived(
+            issue: nil,
+            summary: transcribe ? summary : "\(summary) Not transcribed yet.",
+            saved: saved
+        )
     }
 
     /// Why no engine came back for `model`, as specifically as the registry

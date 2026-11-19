@@ -258,7 +258,9 @@ enum RemoteRequestRouter {
         case .startConversation:
             return .json(await startConversation())
         case .stopConversation:
-            return .json(await stopConversation())
+            return .json(await stopConversation(transcribe: true))
+        case .saveConversation:
+            return .json(await stopConversation(transcribe: false))
         case .liveAudio:
             return liveAudio(client: request.queryValue("client"))
         case .conversations:
@@ -297,7 +299,9 @@ enum RemoteRequestRouter {
             appVersion: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "",
             protocol: RemoteProtocol.version,
             liveListen: RemoteControlController.shared.isLiveListenAllowed,
-            listeners: LiveAudioHub.shared.listenerCount
+            listeners: LiveAudioHub.shared.listenerCount,
+            stopAndSave: true,
+            saving: controller.isSavingWithoutTranscript ? true : nil
         )
     }
 
@@ -314,10 +318,11 @@ enum RemoteRequestRouter {
         return status()
     }
 
-    private static func stopConversation() async -> RemoteStatus {
+    /// `transcribe` false is Stop & Save: the audio is filed untranscribed.
+    private static func stopConversation(transcribe: Bool) async -> RemoteStatus {
         let controller = MeetingController.shared
         guard controller.state == .recording else { return status() }
-        AppLog.remote.notice("iPhone asked to stop the conversation")
+        AppLog.remote.notice("iPhone asked to stop the conversation (transcribe: \(transcribe, privacy: .public))")
         #if DEBUG
         // Lets the scripted end-to-end check record for a few seconds and
         // still leave History untouched.
@@ -326,7 +331,13 @@ enum RemoteRequestRouter {
             return status()
         }
         #endif
-        Task { await controller.stop() }
+        Task {
+            if transcribe {
+                await controller.stop()
+            } else {
+                await controller.stopAndSave()
+            }
+        }
         await waitUntil { controller.state != .recording }
         return status()
     }

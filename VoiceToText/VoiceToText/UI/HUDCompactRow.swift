@@ -10,8 +10,8 @@ import SwiftUI
 //
 // The row takes plain values, never a HUD's state object, which is what lets
 // both cards share it — the dictation HUD (Cancel + Finish) and the
-// conversation HUD (Stop & Transcribe alone) — and lets Settings preview the
-// very view the live card draws by feeding it a sample phrase.
+// conversation HUD (Stop & Save + Stop & Transcribe) — and lets Settings
+// preview the very view the live card draws by feeding it a sample phrase.
 
 struct HUDCompactRow: View {
     enum Phase: Equatable {
@@ -46,6 +46,9 @@ struct HUDCompactRow: View {
         /// What VoiceOver says for the pill's circle, when the title reads
         /// badly aloud. The title otherwise.
         var accessibilityLabel: String?
+        /// A circle on the bar too, its name in the tooltip: the bar has room
+        /// to spell out one long control, not two.
+        var iconOnly = false
         let action: () -> Void
     }
 
@@ -77,6 +80,11 @@ struct HUDCompactRow: View {
     /// card's Cancel. Nil on the conversation card, which has no Cancel on
     /// purpose — one stray click must not throw away an hour of meeting.
     var persistentControl: Control?
+    /// Before the finish slot, while recording only: the conversation card's
+    /// Stop & Save. It leaves with the recording — there is nothing left to
+    /// save once the take is being finished — and the finish slot, pinned to
+    /// the trailing edge, stays where it was. Nil on the dictation card.
+    var recordingControl: Control?
     /// Finish, or Stop & Transcribe. Live only while recording.
     let finishControl: Control
 
@@ -127,6 +135,10 @@ struct HUDCompactRow: View {
             HStack(spacing: metrics.controlSpacing) {
                 if let persistentControl {
                     control(persistentControl)
+                }
+                if phase == .recording, let recordingControl {
+                    control(recordingControl)
+                        .transition(.opacity)
                 }
                 finishSlot
             }
@@ -202,8 +214,7 @@ struct HUDCompactRow: View {
     /// carry it in the tooltip.
     @ViewBuilder
     private func control(_ control: Control, action: (() -> Void)? = nil) -> some View {
-        switch metrics.controls {
-        case .icons:
+        if metrics.controls == .icons || control.iconOnly {
             HUDIconButton(
                 title: control.title,
                 systemImage: control.systemImage,
@@ -212,7 +223,7 @@ struct HUDCompactRow: View {
                 accessibilityLabel: control.accessibilityLabel,
                 action: action ?? control.action
             )
-        case .labels:
+        } else {
             HUDButton(title: control.title, role: control.role, radius: metrics.controlRadius, action: action ?? control.action)
                 .hudHelp(control.title, hint: control.hint)
         }
@@ -263,7 +274,20 @@ extension HUDCompactRow.Control {
         Self(title: "Finish", systemImage: "checkmark", hint: hint, role: .primary, action: action)
     }
 
-    /// Conversations: the card's only control.
+    /// Conversations only: stop and keep the audio, untranscribed, to
+    /// transcribe later from History. No key does it.
+    static func stopAndSave(action: @escaping () -> Void) -> Self {
+        Self(
+            title: "Stop & Save",
+            systemImage: "square.and.arrow.down",
+            role: .secondary,
+            accessibilityLabel: "Stop and Save",
+            iconOnly: true,
+            action: action
+        )
+    }
+
+    /// Conversations: the card's finish control.
     static func stopAndTranscribe(hint: String?, action: @escaping () -> Void) -> Self {
         Self(
             title: "Stop & Transcribe",

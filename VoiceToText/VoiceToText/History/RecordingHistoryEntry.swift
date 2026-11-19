@@ -68,7 +68,8 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     let customInsights: [CustomInsight]?
 
     /// Set when the recording was saved without a real transcript — its
-    /// transcription failed — so the audio would outlive the failure card;
+    /// transcription failed, or it was put off on purpose (Stop & Save) — so
+    /// the audio would outlive the failure card;
     /// `transcript` then holds a placeholder. Nil, and
     /// absent from every index written before this existed, means the
     /// transcript is the model's output.
@@ -77,16 +78,23 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
     /// Why a recording has no transcript yet. A struct rather than a bare
     /// enum so the row can say what went wrong in the card's own words.
     struct Status: Codable, Hashable, Sendable {
-        /// One kind today. Kept as a field so a later kind decodes as a row
-        /// this build passes through rather than one it misreads.
+        /// Kept as a field so a later kind decodes as a row this build passes
+        /// through rather than one it misreads.
         enum Kind: String, Codable, Sendable {
             /// The transcription itself failed — network, API key, engine.
             case failed
+            /// Saved without transcribing because the user asked for that
+            /// (Stop & Save). Nothing went wrong, so the row offers to
+            /// transcribe it without a warning, and nothing retries it unasked.
+            case deferred
         }
 
         let kind: Kind
         /// The failure as the card put it ("OpenAI didn't accept your API key.").
         let message: String
+
+        /// What Stop & Save files a recording with.
+        static let savedForLater = Status(kind: .deferred, message: "Saved to transcribe later.")
     }
 
     /// When the recording last lost its protection from the History cap —
@@ -170,6 +178,10 @@ nonisolated struct RecordingHistoryEntry: Codable, Identifiable, Hashable, Senda
 
     /// True while the recording is waiting for a transcript (see `status`).
     var needsTranscript: Bool { status != nil }
+
+    /// True when it is waiting because the user chose Stop & Save, not
+    /// because a transcription failed.
+    var isSavedForLater: Bool { status?.kind == .deferred }
 
     /// Stands in for the transcript of a recording saved without one — a
     /// failed dictation, a conversation whose transcription failed or never

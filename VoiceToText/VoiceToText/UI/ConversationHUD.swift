@@ -55,6 +55,9 @@ nonisolated enum ConversationHUDSetting: String, CaseIterable, Identifiable, Sen
 final class ConversationHUDState {
     var size: HUDSize = .small
     var isTranscribing = false
+    /// The busy phase is a Stop & Save filing its audio: the card says
+    /// Saving, not Transcribing.
+    var isSaving = false
     var elapsed: TimeInterval = 0
     /// The meter. Copied only while recording: the controller zeroes its
     /// history the moment Stop is pressed, a beat before it leaves
@@ -87,8 +90,8 @@ final class ConversationHUDState {
 
 /// Concrete for the same reason as the dictation panel's
 /// `FirstMouseHostingView`: a generic `NSHostingView` subclass crashes the
-/// Release optimizer. First mouse, because Stop & Transcribe has to work on the
-/// first click while another app is frontmost.
+/// Release optimizer. First mouse, because the Stop buttons have to work on
+/// the first click while another app is frontmost.
 private final class ConversationHUDHostingView: NSHostingView<ConversationHUDView> {
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
@@ -96,7 +99,8 @@ private final class ConversationHUDHostingView: NSHostingView<ConversationHUDVie
 /// The conversation's floating card. A panel of its own, not a mode of the
 /// dictation HUD: a dictation taken mid-meeting must never fight it for the
 /// window or the position. It never takes key — there is nothing on it to
-/// type into — and it only reads `MeetingController` and calls `stop()`.
+/// type into — and it only reads `MeetingController` and calls `stop()` or
+/// `stopAndSave()`.
 @MainActor
 final class ConversationHUDPanel {
     static let shared = ConversationHUDPanel()
@@ -150,6 +154,7 @@ final class ConversationHUDPanel {
             _ = meeting.levelHistory
             _ = meeting.transcribedChunks
             _ = meeting.totalChunks
+            _ = meeting.isSavingWithoutTranscript
             _ = RemoteControlController.shared.liveListeners
         } onChange: { [weak self] in
             // `guard let` first, as in `MenuBarItem`: the Task must capture an
@@ -186,6 +191,7 @@ final class ConversationHUDPanel {
 
         if !isTranscribing { state.levels = meeting.levelHistory }
         state.isTranscribing = isTranscribing
+        state.isSaving = isTranscribing && meeting.isSavingWithoutTranscript
         state.isPhoneListening = !isTranscribing && RemoteControlController.shared.liveListeners > 0
         state.elapsed = meeting.elapsed
         state.transcribedChunks = meeting.transcribedChunks
@@ -237,11 +243,12 @@ final class ConversationHUDPanel {
         }
     }
 
-    /// Stop & Transcribe. Dropped if the card only just appeared or moved
-    /// under the pointer. A stop that ends in an error opens the Conversations
-    /// pane, the way the conversation shortcut's does: the card is gone by
-    /// then, and the pane is the only place that says what went wrong.
-    fileprivate func stopTapped() {
+    /// Stop & Transcribe, or Stop & Save (`transcribe` false). Dropped if the
+    /// card only just appeared or moved under the pointer. A stop that ends
+    /// in an error opens the Conversations pane, the way the conversation
+    /// shortcut's does: the card is gone by then, and the pane is the only
+    /// place that says what went wrong.
+    fileprivate func stopTapped(transcribe: Bool) {
         let sincePlaced = ProcessInfo.processInfo.systemUptime - state.placedAt
         guard sincePlaced >= LiveHUDState.clickGuardAfterModeChange else {
             AppLog.hud.info("Conversation HUD click ignored \(Int(sincePlaced * 1000)) ms after it moved")
@@ -250,7 +257,11 @@ final class ConversationHUDPanel {
         let meeting = MeetingController.shared
         guard meeting.state == .recording else { return }
         Task { @MainActor in
-            await meeting.stop()
+            if transcribe {
+                await meeting.stop()
+            } else {
+                await meeting.stopAndSave()
+            }
             if case .error = meeting.state {
                 WindowOpener.shared.showMain(section: .meetings)
             }
@@ -269,7 +280,9 @@ final class ConversationHUDPanel {
             rootView: ConversationHUDView(state: state) { size in
                 ConversationHUDPanel.shared.placement.cardSizeChanged(size)
             } onStop: {
-                ConversationHUDPanel.shared.stopTapped()
+                ConversationHUDPanel.shared.stopTapped(transcribe: true)
+            } onSave: {
+                ConversationHUDPanel.shared.stopTapped(transcribe: false)
             }
         )
         hosting.frame = NSRect(origin: .zero, size: p.frame.size)

@@ -132,6 +132,10 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
           <span>
             Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>
           </span>
+          <span className="sep" aria-hidden="true" />
+          <Link href="/privacy" prefetch={false}>
+            Privacy
+          </Link>
         </div>
       </div>
     </footer>

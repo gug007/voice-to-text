@@ -93,6 +93,10 @@ const PAGE_SUMMARIES = {
     "Best dictation apps for Mac",
     "A sourced comparison of seven Mac dictation apps, including VoiceToText, on dictation, files, meetings, privacy, languages and price.",
   ],
+  "/privacy": [
+    "Privacy Policy",
+    "What the VoiceToText apps and this website collect, what leaves the device, when, and which company receives it.",
+  ],
 } as const satisfies Record<PagePath, readonly [name: string, summary: string]>;
 
 function modelLine(model: ModelFact): string {

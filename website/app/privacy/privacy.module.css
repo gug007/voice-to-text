@@ -1,0 +1,86 @@
+/* /privacy only. Long-form reading on the Clear Coat tokens in globals.css,
+   so both themes follow without overrides here. */
+
+.policy {
+  max-width: 760px;
+}
+
+.policy h2 {
+  margin: var(--space-16) 0 var(--space-5);
+  font-size: var(--fs-h2);
+  line-height: var(--lh-heading);
+  letter-spacing: -.02em;
+}
+.policy h2:first-child { margin-top: 0; }
+
+.policy h3 {
+  margin: var(--space-8) 0 var(--space-2);
+  font-size: var(--fs-h3);
+  line-height: var(--lh-heading);
+}
+
+.policy p,
+.policy ul {
+  max-width: var(--measure);
+  color: var(--text-secondary);
+  font-size: var(--fs-body-md);
+  line-height: var(--lh-body);
+  text-wrap: pretty;
+}
+.policy p + p,
+.policy p + ul,
+.policy ul + p { margin-top: var(--space-3); }
+
+.policy ul {
+  display: grid;
+  gap: var(--space-2);
+  padding-left: 1.25em;
+  list-style: disc;
+}
+.policy li::marker { color: var(--text-muted); }
+
+.policy code {
+  font-size: .9em;
+  overflow-wrap: anywhere;
+}
+
+/* Who receives what: a two-column definition list on one plate, the same
+   hairline-divided plate the guide's key list uses. */
+.recipients {
+  display: grid;
+  gap: 1px;
+  margin: var(--space-6) 0 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: linear-gradient(var(--divider), var(--divider)), var(--surface);
+  box-shadow: var(--plate-ring);
+}
+.recipient {
+  display: grid;
+  grid-template-columns: 10em minmax(0, 1fr);
+  gap: var(--space-4);
+  padding: var(--space-4) var(--space-5);
+  background: var(--surface-elevated);
+}
+.recipient dt {
+  color: var(--text-primary);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+.recipient dt a {
+  display: inline-block;
+  margin-top: var(--space-1);
+  font-size: var(--fs-caption);
+}
+.recipient dd {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: var(--lh-body);
+}
+@media (max-width: 640px) {
+  .recipient {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-1);
+  }
+}

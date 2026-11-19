@@ -45,6 +45,7 @@
 		8B4A972EAB3DB026E8155459 /* StreamingWAVWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0C4363A0DB27AF7C1E8DD2F /* StreamingWAVWriter.swift */; };
 		9A5C559BCA05483EBC551735 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C25096D312FC7BB27934F01 /* RootView.swift */; };
 		9BD45506D3C982BB5451961F /* HistorySearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3DA8A757BB037FF3A8CFA1BC /* HistorySearch.swift */; };
+		9C61563D6D03E923DB73B37F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BB510C952D973C69307B4A6F /* PrivacyInfo.xcprivacy */; };
 		A8F91CC41D9A9161E0F71C69 /* RemoteProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B4606A64DAE92E02313495D /* RemoteProtocol.swift */; };
 		ACD719FF78957F44B448B65E /* AppLogger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 943990C3F658B034E3515E71 /* AppLogger.swift */; };
 		B364866E4D1D56BA9718BCE3 /* PlayerViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = FFF38CFA48EE174A54C68404 /* PlayerViews.swift */; };
@@ -94,6 +95,7 @@
 		B3221CC31CC611DF0E85DAB8 /* TailnetController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TailnetController.swift; sourceTree = "<group>"; };
 		B4155513A64E53ACC93D6DAD /* AudioChunker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunker.swift; sourceTree = "<group>"; };
 		B9748588768696C5AEF86208 /* MacLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacLink.swift; sourceTree = "<group>"; };
+		BB510C952D973C69307B4A6F /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		C38E69A9E76CB6AC0224A240 /* MacRemote.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacRemote.swift; sourceTree = "<group>"; };
 		CE14DF0BEACD961625B783CB /* RecordingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecordingView.swift; sourceTree = "<group>"; };
 		CF37FAE6FC8EC3F067BFADF6 /* SpeechGate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechGate.swift; sourceTree = "<group>"; };
@@ -201,6 +203,7 @@
 			children = (
 				A59A5CF263EC3B4393DBD72C /* Assets.xcassets */,
 				831619FA8AF6E1F00BABEF41 /* Info.plist */,
+				BB510C952D973C69307B4A6F /* PrivacyInfo.xcprivacy */,
 				82FB134C5A09F8133F4EB243 /* Theme.swift */,
 				1CD52FE765C6B35682749B7E /* VoiceToTextMobileApp.swift */,
 				FE3CA9911062F654A014138C /* Model */,
@@ -355,6 +358,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				88EB015498AEE92220B0F606 /* Assets.xcassets in Resources */,
+				9C61563D6D03E923DB73B37F /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -432,7 +436,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "voice-to-text-ai.VoiceToText.iOS";
 				PRODUCT_NAME = VoiceToText;
 				SDKROOT = iphoneos;
@@ -440,7 +444,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Release;
 		};
@@ -458,7 +462,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.1.0;
+				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "voice-to-text-ai.VoiceToText.iOS";
 				PRODUCT_NAME = VoiceToText;
 				SDKROOT = iphoneos;
@@ -466,7 +470,7 @@
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
 		};

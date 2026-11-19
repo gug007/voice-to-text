@@ -31,6 +31,7 @@ export const PAGES = {
   "/dragon-for-mac-alternative": { published: "2026-10-01", modified: "2026-11-13", sourcesReviewed: "2026-10-01", changeFrequency: "monthly", priority: 0.75 },
   "/compare": { published: "2026-09-23", modified: "2026-11-13", changeFrequency: "monthly", priority: 0.8 },
   "/compare/best-dictation-apps-for-mac": { published: "2026-08-12", modified: "2026-11-13", sourcesReviewed: "2026-08-12", changeFrequency: "monthly", priority: 0.9 },
+  "/privacy": { published: "2026-11-19", modified: "2026-11-19", changeFrequency: "yearly", priority: 0.3 },
 } as const satisfies Record<string, PageRecord>;
 
 export type PagePath = keyof typeof PAGES;

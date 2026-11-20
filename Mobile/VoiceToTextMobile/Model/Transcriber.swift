@@ -122,7 +122,8 @@ final class Transcriber {
         do {
             let text = try await MeetingTranscriber.transcribe(
                 url: library.audioURL(for: entry),
-                engine: engine
+                engine: engine,
+                corrections: []
             ) { done, total in
                 Transcriber.shared.progress = Progress(done: done, total: total)
             }

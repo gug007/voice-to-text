@@ -4,18 +4,38 @@ import Foundation
 /// Engines already punctuate, space and case their text, so every rule here is
 /// deliberately conservative: it only touches spacing and casing it can be sure
 /// is wrong, and leaves anything that looks like a URL, file name, product name
-/// or abbreviation exactly as the engine wrote it. Pure and Foundation-only so
-/// `Tests/TranscriptPostProcessorHarness.swift` can compile it standalone.
+/// or abbreviation exactly as the engine wrote it. The one thing it rewrites
+/// is what the user has told it to: their `corrections`. Pure and
+/// Foundation-only so `Tests/TranscriptPostProcessorHarness.swift` can compile
+/// it standalone.
 nonisolated enum TranscriptPostProcessor {
 
     /// `capitalizeFirst: false` is for text that continues an earlier piece —
     /// a later chunk of a long recording usually starts mid-sentence, so its
     /// first word must keep the engine's casing.
-    static func process(_ text: String, capitalizeFirst: Bool = true) -> String {
+    ///
+    /// `corrections` are made before sentences are capitalized, so one that
+    /// writes a lowercase word still gets its capital at the start of a
+    /// sentence, and one that writes "iPhone" keeps its own.
+    static func process(
+        _ text: String,
+        capitalizeFirst: Bool = true,
+        corrections: [TermCorrection] = []
+    ) -> String {
+        var prepared = TermCorrections.Prepared(corrections)
+        return process(text, capitalizeFirst: capitalizeFirst, corrections: &prepared)
+    }
+
+    private static func process(
+        _ text: String,
+        capitalizeFirst: Bool,
+        corrections: inout TermCorrections.Prepared
+    ) -> String {
         let nfc = text.precomposedStringWithCanonicalMapping
         let collapsed = collapseWhitespace(nfc)
         let spaced = fixPunctuationSpacing(collapsed)
-        let cased = capitalizeSentences(spaced, capitalizeFirst: capitalizeFirst)
+        let corrected = corrections.apply(to: spaced)
+        let cased = capitalizeSentences(corrected, capitalizeFirst: capitalizeFirst)
         return cased.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
@@ -24,10 +44,19 @@ nonisolated enum TranscriptPostProcessor {
     /// transcripts where each `Speaker N: …` turn is its own line. Identity-
     /// equivalent to `process` for single-line input. `capitalizeFirst` applies
     /// to the first non-empty line only; every later line is a new turn.
-    static func processPreservingLines(_ text: String, capitalizeFirst: Bool = true) -> String {
+    static func processPreservingLines(
+        _ text: String,
+        capitalizeFirst: Bool = true,
+        corrections: [TermCorrection] = []
+    ) -> String {
+        var prepared = TermCorrections.Prepared(corrections)
         var lines: [String] = []
         for line in text.split(separator: "\n", omittingEmptySubsequences: false) {
-            let processed = process(String(line), capitalizeFirst: capitalizeFirst || !lines.isEmpty)
+            let processed = process(
+                String(line),
+                capitalizeFirst: capitalizeFirst || !lines.isEmpty,
+                corrections: &prepared
+            )
             if !processed.isEmpty { lines.append(processed) }
         }
         return lines.joined(separator: "\n")

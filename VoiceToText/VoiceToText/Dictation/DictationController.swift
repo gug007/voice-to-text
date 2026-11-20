@@ -330,13 +330,13 @@ final class DictationController {
     }
 
     /// Whether the HUD is showing something the user can still act on with
-    /// the session idle: a discard's Undo, the cancelled-transcription
-    /// notice, or a failure card. A modal from elsewhere (the update prompt)
-    /// would block clicks on it — and a discard's Undo lapses on a timer that
-    /// keeps running under the modal, taking the audio with it.
+    /// the session idle: a discard's Undo, a one-line notice, or a failure
+    /// card. A modal from elsewhere (the update prompt) would block clicks on
+    /// it — and a discard's Undo lapses on a timer that keeps running under
+    /// the modal, taking the audio with it.
     var isHoldingUserAttention: Bool {
         if case .error = state { return true }
-        return discardedRecording != nil || discardedReview != nil || cancelNoticeTask != nil
+        return discardedRecording != nil || discardedReview != nil || transientNotice != nil
     }
 
     /// The row whose transcription is running right now. History shows it as
@@ -431,6 +431,11 @@ final class DictationController {
     @ObservationIgnored
     private var pendingHistoryIDs: [UUID] = []
 
+    /// What the user has typed over on this review session's card, from
+    /// which corrections are learned once they keep the dictation.
+    @ObservationIgnored
+    private var reviewEdits = ReviewEditLog()
+
     /// The review cancelled most recently, while its Undo notice is up.
     @ObservationIgnored
     private var discardedReview: DiscardedReview?
@@ -444,9 +449,10 @@ final class DictationController {
     @ObservationIgnored
     private var discardedRecordingCountdown: UndoCountdown?
 
-    /// Takes down the notice saying where a cancelled transcription went.
+    /// The clock of the notice that holds nothing (`showTransientNotice`),
+    /// while it is up.
     @ObservationIgnored
-    private var cancelNoticeTask: Task<Void, Never>?
+    private var transientNotice: UndoCountdown?
     /// Long enough to read one line; there is nothing on it to act on.
     private static let cancelNoticeDuration: Duration = .seconds(3)
 
@@ -893,21 +899,44 @@ final class DictationController {
         )
     }
 
-    /// A one-line notice with nothing on it to act on, gone by itself.
-    private func showTransientNotice(_ message: String, for duration: Duration) {
+    /// A one-line notice that holds nothing, gone by itself. `action` puts a
+    /// button on it, titled as given — Undo, which takes back what the notice
+    /// reports, or what the notice offers — and pressing it takes the notice
+    /// down unless the action put up one of its own; `next` runs once it has
+    /// lapsed untouched, unless something took the card first.
+    private func showTransientNotice(
+        _ message: String,
+        for duration: Duration,
+        action: (title: String, run: @MainActor () -> Void)? = nil,
+        then next: (@MainActor () -> Void)? = nil
+    ) {
         retireNotices()
-        LiveHUDPanel.shared.showDiscarded(message: message, onUndo: nil)
-        cancelNoticeTask = Task { @MainActor [weak self] in
-            try? await Task.sleep(for: duration)
-            guard !Task.isCancelled else { return }
-            self?.dismissCancelNotice()
+        let countdown = UndoCountdown(duration: duration / .seconds(1)) { [weak self] in
+            self?.dismissTransientNotice()
+            next?()
         }
+        transientNotice = countdown
+        var onAction: (@MainActor () -> Void)?
+        if let action {
+            onAction = { [weak self] in
+                // A press that lands once the notice has gone does nothing.
+                guard let self, self.transientNotice === countdown else { return }
+                action.run()
+                if self.transientNotice === countdown { self.dismissTransientNotice() }
+            }
+        }
+        LiveHUDPanel.shared.showDiscarded(
+            message: message,
+            countdown: countdown,
+            actionTitle: action?.title ?? "Undo",
+            onUndo: onAction
+        )
     }
 
-    private func dismissCancelNotice() {
-        guard let task = cancelNoticeTask else { return }
-        task.cancel()
-        cancelNoticeTask = nil
+    private func dismissTransientNotice() {
+        guard let countdown = transientNotice else { return }
+        countdown.cancel()
+        transientNotice = nil
         LiveHUDPanel.shared.hideDiscardedNotice()
     }
 
@@ -918,7 +947,7 @@ final class DictationController {
     private func retireNotices() {
         finalizeDiscardedReview()
         finalizeDiscardedRecording()
-        dismissCancelNotice()
+        dismissTransientNotice()
     }
 
     /// Stops feeding audio to a live-streaming engine and cancels its session
@@ -961,6 +990,8 @@ final class DictationController {
         AppLog.dictation.info("Review cancelled")
         cancelReviewAction()
         removeReviewEscMonitor()
+        // Undo puts this text back on the card as if the app had written it.
+        reviewEdits.userWrote(LiveHUDPanel.shared.currentReviewText)
         let discarded = DiscardedReview(
             text: LiveHUDPanel.shared.currentReviewText,
             cursorLocation: LiveHUDPanel.shared.currentCursorLocation,
@@ -1075,6 +1106,8 @@ final class DictationController {
         discardUndoCountdown = nil
         guard let discarded = discardedReview else { return }
         discardedReview = nil
+        // Nothing typed into a dictation that was thrown away is learned.
+        reviewEdits.reset()
         for id in discarded.historyIDs {
             RecordingHistoryStore.shared.retract(id: id)
         }
@@ -1583,7 +1616,10 @@ final class DictationController {
         // A fresh dictation (not a Resume) starts a new review session: forget
         // any uncommitted history ids left over from a prior session so they
         // aren't retracted by this one's Cancel. (Resume keeps accumulating.)
-        if resumeContext == nil { pendingHistoryIDs.removeAll() }
+        if resumeContext == nil {
+            pendingHistoryIDs.removeAll()
+            reviewEdits.reset()
+        }
         // Where this dictation is aimed, taken before the first await so a
         // slow permission prompt or model load can't change the answer. A
         // Resume keeps the original: the review card is key by now, and the
@@ -2417,6 +2453,7 @@ final class DictationController {
         AppLog.dictation.info("Retrying failed resume transcription on \(samples.count) cached samples (speech gate \(skipSpeechGate ? "skipped" : "on"), model \(model?.id ?? "active", privacy: .public))")
         cancelReviewAction()
         lastFailedSamples = nil
+        reviewEdits.userWrote(LiveHUDPanel.shared.currentReviewText)
         resumeContext = ResumeContext(
             fullText: LiveHUDPanel.shared.currentReviewText,
             cursorLocation: LiveHUDPanel.shared.currentCursorLocation
@@ -2701,7 +2738,10 @@ final class DictationController {
         }
         guard runID == transcriptionRunID else { return }
 
-        let processed = TranscriptPostProcessor.process(rawText)
+        let processed = TranscriptPostProcessor.process(
+            rawText,
+            corrections: TermCorrectionStore.shared.corrections
+        )
         if processed.isEmpty {
             // An engine that ran fine and wrote nothing heard nothing worth
             // keeping — room noise the gate let through, a stray press. Like a
@@ -3263,6 +3303,10 @@ final class DictationController {
         // exit window (e.g. ⌘R then ⌘1 in quick succession) so a stale
         // transform can never overwrite this session's transcript.
         cancelReviewAction()
+        // What the user typed into a card this one replaces is theirs; the
+        // text arriving now is not.
+        if case .reviewing = state { reviewEdits.userWrote(LiveHUDPanel.shared.currentReviewText) }
+        reviewEdits.appWrote(text)
         // Hands the Escape route over from the transcribing HUD to this one
         // (`installReviewEscMonitor` below re-arms the shared global tap).
         removeTranscribingEscMonitor()
@@ -3376,7 +3420,7 @@ final class DictationController {
         hud.secondaryActionTitle = nil
         hud.secondaryActionIcon = nil
         hud.onSecondaryAction = nil
-        hud.onActionUndone = { [weak self] in self?.reviewActionUndone() }
+        hud.onActionUndone = { [weak self] restored in self?.reviewActionUndone(restoring: restored) }
         hud.runningActionId = action.id
         reviewActionStartedAt = Date()
 
@@ -3404,6 +3448,8 @@ final class DictationController {
                     AppLog.dictation.info("Review action returned unchanged text: \(action.name)")
                     return
                 }
+                self.reviewEdits.userWrote(original)
+                self.reviewEdits.appWrote(transformed)
                 hud.actionRevertStack.append(original)
                 hud.selectedRange = NSRange(location: (transformed as NSString).length, length: 0)
                 hud.reviewText = transformed
@@ -3459,7 +3505,9 @@ final class DictationController {
     /// Undo on the review card stepped back an action. A failure still on the
     /// banner is from a later attempt the user has just moved past; the
     /// take's notice is not, so it stays — or comes back.
-    private func reviewActionUndone() {
+    private func reviewActionUndone(restoring text: String) {
+        // What Undo puts back is the app's text again, not the user's typing.
+        reviewEdits.appWrote(text)
         guard case .reviewing = state, LiveHUDState.shared.runningActionId == nil else { return }
         restoreNoticeUnderAction()
     }
@@ -3514,6 +3562,7 @@ final class DictationController {
             fullText: LiveHUDPanel.shared.currentReviewText,
             cursorLocation: LiveHUDPanel.shared.currentCursorLocation
         )
+        reviewEdits.userWrote(context.fullText)
         AppLog.dictation.info("Resuming recording at cursor=\(context.cursorLocation) (prefix=\(context.prefix.count)ch, suffix=\(context.suffix.count)ch)")
         resumeContext = context
         removeReviewEscMonitor()
@@ -3558,6 +3607,7 @@ final class DictationController {
         // The user kept this dictation — its takes stay in History.
         commitPendingHistory()
         let edited = LiveHUDPanel.shared.currentReviewText
+        let proposal = proposeCorrections(keeping: edited)
         removeReviewEscMonitor()
         // Out of `.reviewing` now, not when delivery finishes: everything
         // that can confirm a paste (the hotkey, Return, the Paste button, the
@@ -3571,6 +3621,8 @@ final class DictationController {
         Task { @MainActor [weak self] in
             let modifierWait = await Self.waitForModifiersClear()
             await self?.deliver(text: edited, path: .review, modifierWait: modifierWait)
+            // Only once the paste has landed.
+            self?.askAboutCorrections(proposal)
         }
     }
 
@@ -3585,6 +3637,7 @@ final class DictationController {
         takeHistoryRow = nil
         commitPendingHistory()
         let edited = LiveHUDPanel.shared.currentReviewText
+        let proposal = proposeCorrections(keeping: edited)
         removeReviewEscMonitor()
         pasteTarget = nil
         state = .idle
@@ -3594,7 +3647,60 @@ final class DictationController {
         }
         KeystrokeOutput.copyOnly(edited)
         AppLog.dictation.info("Review copied to the clipboard (\(edited.count) chars)")
-        showTransientNotice("Copied to clipboard", for: Self.copiedNoticeDuration)
+        showTransientNotice("Copied to clipboard", for: Self.copiedNoticeDuration, action: nil, then: { [weak self] in
+            self?.askAboutCorrections(proposal)
+        })
+    }
+
+    // MARK: - Corrections
+
+    /// The user kept `text`: what the terms they fixed on the way to it would
+    /// change in their corrections, for the card to ask about. Ends the
+    /// session's edit log either way.
+    private func proposeCorrections(keeping text: String) -> TermCorrectionLearner.Outcome? {
+        guard let proposal = TermCorrectionStore.shared.proposal(from: reviewEdits.finish(with: text)) else {
+            return nil
+        }
+        AppLog.dictation.info(
+            "Corrections proposed: remember \(proposal.remembered.count), forget \(proposal.forgotten.count)"
+        )
+        return proposal
+    }
+
+    /// Nothing else wants the card: no dictation is under way or starting.
+    private var cardIsFree: Bool {
+        state == .idle && !recordingStartGate.hasActiveStart
+    }
+
+    /// Asks, in one line with one button, whether to make the change the
+    /// user's edits imply, once the card is free to — not over a failed
+    /// delivery or a dictation already starting. Unanswered, nothing changes.
+    private func askAboutCorrections(_ proposal: TermCorrectionLearner.Outcome?) {
+        guard let proposal, cardIsFree else { return }
+        showTransientNotice(
+            proposal.question,
+            for: Self.correctionQuestionDuration,
+            action: (title: proposal.button, run: { [weak self] in self?.acceptCorrections(proposal) }),
+            then: nil
+        )
+    }
+
+    private func acceptCorrections(_ proposal: TermCorrectionLearner.Outcome) {
+        let store = TermCorrectionStore.shared
+        let previous = store.corrections
+        store.accept(proposal)
+        AppLog.dictation.info(
+            "Corrections accepted: remember \(proposal.remembered.count), forget \(proposal.forgotten.count)"
+        )
+        showTransientNotice(
+            proposal.confirmation,
+            for: .seconds(RecordingHistoryStore.undoGraceSeconds),
+            action: (title: "Undo", run: {
+                AppLog.dictation.info("Accepted corrections undone")
+                store.restore(previous)
+            }),
+            then: nil
+        )
     }
 
     /// The failure card's Copy, for text the controller holds that never
@@ -3606,6 +3712,9 @@ final class DictationController {
     }
 
     private static let copiedNoticeDuration: Duration = .seconds(2)
+    /// Longer than an Undo's grace: the click is the only way a correction
+    /// changes, and the line asks for one.
+    private static let correctionQuestionDuration: Duration = .seconds(8)
 
     private static func waitForModifiersClear() async -> PasteDeliveryReport.ModifierWait {
         let start = ContinuousClock.now

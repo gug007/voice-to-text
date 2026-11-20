@@ -15,6 +15,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Offline after setup** — with a local model, Parakeet (the default) or Whisper, dictation and transcription need no network once the model is downloaded
 - **Global shortcut** — `⌥ Space` toggles dictation by default; switch to hold-to-record, or bind any key with a modifier, a lone F1–F20, or Right Control
 - **Review before pasting** — edit the transcript, record another take at the cursor, or run an AI action before anything reaches the other app (on by default; turn it off for instant paste)
+- **Learns your terms** — fix a misheard name or term once in the review panel, click Remember, and the same fix is made in every later transcript; the list is in Settings → Corrections
 - **Pastes into any app** — the text goes in with ⌘V and your previous clipboard is restored afterwards, so it works anywhere you can paste text
 - **Conversations** — record your microphone and the other people on a call (system audio) together, or drop in an audio or video file; transcribed when you stop
 - **Speaker labels** — optional, through OpenAI's GPT-4o Transcribe Diarize; rename "Speaker 1" to real names
@@ -66,6 +67,15 @@ Six built-in actions in the review panel: **Clean transcript, To English, Improv
 - All actions are **off by default**. Turn them on in Settings → Actions and add an OpenAI API key.
 - Run one with a click or `⌘1`–`⌘9`; chain several and step back with Undo.
 - They never run automatically. Each run sends the transcript text to OpenAI (`gpt-5.5`) on your key.
+
+### Corrections
+
+Speech models get the same names and terms wrong every time. Fix one in the review panel, say yes once, and VoiceToText makes that fix for you from then on.
+
+- **Offered from your edits.** When you paste or copy a reviewed transcript, a misheard name or term you typed over is offered back as the fix itself, `cloud code → Claude Code`, with a Remember button (likewise `клод` → `Claude`, `github` → `GitHub`). One click stores it; nothing is stored without that click. Rewording a sentence, changing a number, or fixing grammar is not offered.
+- **Made in every new transcript.** Dictation, conversations, re-transcriptions, and the app API. A correction matches whole words in any case and writes the replacement exactly as you spelled it.
+- **Easy to take back.** After the click, a one-line notice gives you a few seconds to undo. Typing the original words back over a correction gets an offer to forget it.
+- **Yours to edit.** Settings → Corrections lists them all: add, change, or delete any, or turn the offers off. The list stays on your Mac.
 
 ### Conversations
 

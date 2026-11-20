@@ -5,7 +5,8 @@ import OSLog
 /// Transcribes a finished meeting recording off the main actor: walks it in
 /// model-sized chunks, transcribes each on the active engine while carrying a
 /// little context across boundaries, and joins the pieces. Reports progress as
-/// (completedChunks, totalChunks).
+/// (completedChunks, totalChunks). `corrections` are the user's own fixes,
+/// made in every piece (`TermCorrections`); the iPhone app has none.
 ///
 /// Chunks are streamed off disk via `AudioChunkReader` rather than split out of
 /// one big in-memory buffer, so peak memory is a chunk's worth regardless of
@@ -14,6 +15,7 @@ enum MeetingTranscriber {
     static func transcribe(
         url: URL,
         engine: TranscriptionEngine,
+        corrections: [TermCorrection],
         onProgress: @escaping @MainActor (Int, Int) -> Void
     ) async throws -> String {
         // Engines that chunk internally (and carry their own cross-request
@@ -32,7 +34,11 @@ enum MeetingTranscriber {
                     Task { @MainActor in onProgress(current, total) }
                 }
             )
-            return TranscriptPostProcessor.processPreservingLines(raw)
+            // The whole conversation in one string: off the main actor, as
+            // the reads below are.
+            return await Task.detached(priority: .userInitiated) {
+                TranscriptPostProcessor.processPreservingLines(raw, corrections: corrections)
+            }.value
         }
 
         let reader = try await Task.detached(priority: .userInitiated) {
@@ -84,7 +90,11 @@ enum MeetingTranscriber {
             // Only the recording's opening words are sure to start a sentence;
             // a later cut usually lands mid-sentence, so keep its casing as-is.
             let isOpening = !pieces.contains { !$0.isEmpty }
-            pieces.append(TranscriptPostProcessor.processPreservingLines(raw, capitalizeFirst: isOpening))
+            pieces.append(TranscriptPostProcessor.processPreservingLines(
+                raw,
+                capitalizeFirst: isOpening,
+                corrections: corrections
+            ))
             gaps.append(gap)
             chunkStart += Double(chunk.count) / Double(sampleRate)
             // The estimate can land one over when a cut drifts early, so keep

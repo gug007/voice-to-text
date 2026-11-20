@@ -31,6 +31,24 @@ nonisolated enum HUDMetrics {
     /// The discard notice: one line and Undo, no wider than it needs to be.
     static let noticeWidth: CGFloat = 340
 
+    /// The notice card's width for `message` beside a button titled
+    /// `actionTitle`: `noticeWidth`, or as much wider as its one line needs,
+    /// up to the review card's width, past which the line truncates.
+    static func noticeWidth(message: String, actionTitle: String?) -> CGFloat {
+        // `Typo.headline`, which the line and the button's title are set in.
+        let font = NSFont.systemFont(ofSize: 13, weight: .semibold)
+        func width(_ text: String) -> CGFloat {
+            (text as NSString).size(withAttributes: [.font: font]).width.rounded(.up)
+        }
+        // The line, then the row's spacing and the spacer that ends it.
+        var needed = inset * 2 + width(message) + Space.s4 * 2
+        if let actionTitle {
+            // The row's spacing again, then the button: padding, ring, title.
+            needed += Space.s4 + Space.s5 * 2 + UndoCountdownRing.diameter + Space.s4 + width(actionTitle)
+        }
+        return min(max(noticeWidth, needed), wideWidth)
+    }
+
     static let meterHeight: CGFloat = 56
     /// The meter beside a resumed take's transcript.
     static let inlineMeterHeight: CGFloat = 26
@@ -186,6 +204,8 @@ nonisolated struct HUDLayout: Equatable, Sendable {
     /// empty transcript, and never past `reviewCeilingShare` of the screen.
     /// A resumed take keeps it, so its card stays the review's height.
     let editorGrowth: CGFloat
+    /// How wide the notice card is: see `HUDMetrics.noticeWidth(message:actionTitle:)`.
+    let noticeWidth: CGFloat
 
     /// The tallest a review card grows to, as a share of the visible height
     /// of the screen it is on.
@@ -210,6 +230,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
             cardCeiling: state.reviewCardCeiling,
             baseCardHeight: state.reviewShowsActions ? HUDMetrics.reviewChipsMinHeight : HUDMetrics.reviewMinHeight
         )
+        noticeWidth = state.mode == .discarded ? state.noticeWidth : HUDMetrics.noticeWidth
     }
 
     /// The editor's growth for text that needs `textHeight` to show without
@@ -234,6 +255,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
         salvagedSeconds = 0
         self.size = size
         editorGrowth = 0
+        noticeWidth = HUDMetrics.noticeWidth
     }
 
     // MARK: Compact row
@@ -341,7 +363,7 @@ nonisolated struct HUDLayout: Equatable, Sendable {
 
     var width: CGFloat {
         if let compactRow { return compactRow.cardSize.width }
-        if mode == .discarded { return HUDMetrics.noticeWidth }
+        if mode == .discarded { return noticeWidth }
         return isWide ? HUDMetrics.wideWidth : HUDMetrics.compactWidth
     }
 

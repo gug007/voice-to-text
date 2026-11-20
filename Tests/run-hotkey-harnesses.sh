@@ -142,10 +142,19 @@ swiftc -parse-as-library \
 "$TMPDIR/action-runner-harness"
 
 swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Output/TermCorrection.swift \
   VoiceToText/VoiceToText/Output/TranscriptPostProcessor.swift \
   Tests/TranscriptPostProcessorHarness.swift \
   -o "$TMPDIR/transcript-post-processor-harness"
 "$TMPDIR/transcript-post-processor-harness"
+
+swiftc -parse-as-library \
+  VoiceToText/VoiceToText/Output/TermCorrection.swift \
+  VoiceToText/VoiceToText/Output/TermCorrectionLearner.swift \
+  VoiceToText/VoiceToText/Output/TranscriptPostProcessor.swift \
+  Tests/TermCorrectionHarness.swift \
+  -o "$TMPDIR/term-correction-harness"
+"$TMPDIR/term-correction-harness"
 
 swiftc -parse-as-library \
   VoiceToText/VoiceToText/History/TranscriptInsight.swift \

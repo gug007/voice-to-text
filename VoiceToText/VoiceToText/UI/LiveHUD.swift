@@ -328,6 +328,11 @@ final class LiveHUDState {
     /// Whether the notice offers Undo. A notice that only says where a
     /// cancelled take went ("saved to History") has nothing to undo.
     var noticeOffersUndo: Bool = false
+    /// The notice button's title: "Undo", or what the notice offers instead
+    /// ("Remember").
+    var noticeActionTitle: String = "Undo"
+    /// The notice card's width, which grows with its line.
+    var noticeWidth: CGFloat = HUDMetrics.noticeWidth
     /// The Undo window's clock, which the button's ring drains on and
     /// hovering the notice pauses. The controller owns what it finalises.
     var noticeCountdown: UndoCountdown?
@@ -392,8 +397,8 @@ final class LiveHUDState {
         didSet { offersCopy = onCopy != nil }
     }
     @ObservationIgnored var onSecondaryAction: (@MainActor () -> Void)?
-    /// Called when Undo steps back an action.
-    @ObservationIgnored var onActionUndone: (@MainActor () -> Void)?
+    /// Called when Undo steps back an action, with the text it puts back.
+    @ObservationIgnored var onActionUndone: (@MainActor (String) -> Void)?
 
     /// Steps back one action at a time: each call restores the text from
     /// before the most recent transform, so chained actions unwind in order
@@ -402,7 +407,7 @@ final class LiveHUDState {
         guard let original = actionRevertStack.popLast() else { return }
         // The controller decides what the banner shows now: an action's
         // failure goes, a take's own notice stays.
-        onActionUndone?()
+        onActionUndone?(original)
         // No-op restore would desync the recorded caret from the visible one
         // (the editor skips syncs when the text is unchanged).
         guard original != reviewText else { return }
@@ -713,12 +718,14 @@ final class LiveHUDPanel {
     }
 
     /// The review, a recording or a transcription was just cancelled: the
-    /// card shrinks to one line — with Undo when `onUndo` is given — and stops
-    /// taking key, which hands the keyboard straight back to the app the user
-    /// is in. `DictationController` owns how long it stays.
+    /// card shrinks to one line — with Undo when `onUndo` is given, titled
+    /// `actionTitle` — and stops taking key, which hands the keyboard straight
+    /// back to the app the user is in. `DictationController` owns how long it
+    /// stays.
     func showDiscarded(
         message: String,
         countdown: UndoCountdown? = nil,
+        actionTitle: String = "Undo",
         onUndo: (@MainActor () -> Void)?
     ) {
         state.mode = .discarded
@@ -726,6 +733,8 @@ final class LiveHUDPanel {
         state.level = 0
         state.noticeMessage = message
         state.noticeOffersUndo = onUndo != nil
+        state.noticeActionTitle = actionTitle
+        state.noticeWidth = HUDMetrics.noticeWidth(message: message, actionTitle: onUndo != nil ? actionTitle : nil)
         state.noticeCountdown = onUndo != nil ? countdown : nil
         state.failureMessage = ""
         state.failureActionTitle = nil
@@ -861,6 +870,7 @@ final class LiveHUDPanel {
         state.onUndo = nil
         state.noticeMessage = ""
         state.noticeOffersUndo = false
+        state.noticeActionTitle = "Undo"
         state.noticeCountdown = nil
         state.secondaryActionTitle = nil
         state.secondaryActionIcon = nil

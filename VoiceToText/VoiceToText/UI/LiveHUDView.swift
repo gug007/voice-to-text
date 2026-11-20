@@ -698,18 +698,18 @@ private struct HUDControlRow: View {
                         Button { state.click(state.onUndo) } label: {
                             HStack(spacing: Space.s4) {
                                 UndoCountdownRing(countdown: countdown)
-                                Text("Undo")
+                                Text(state.noticeActionTitle)
                             }
                             .lineLimit(1)
                         }
                         .buttonStyle(GlassButtonStyle(role: .primary))
-                        .accessibilityLabel("Undo")
+                        .accessibilityLabel(state.noticeActionTitle)
                         .matchedGeometryEffect(id: "hud.primary", in: namespace)
                         // Taken away under the pointer, the notice never sees
                         // it leave; the controller still holds the countdown.
                         .onDisappear { countdown.setPaused(false) }
                     } else {
-                        primaryButton(title: "Undo", systemImage: "arrow.uturn.backward", hint: nil) {
+                        primaryButton(title: state.noticeActionTitle, systemImage: "arrow.uturn.backward", hint: nil) {
                             state.click(state.onUndo)
                         }
                     }

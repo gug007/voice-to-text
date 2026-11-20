@@ -101,7 +101,7 @@ Once the `startStream` response arrives, send the take as `audio` messages, then
 | `state` | `state`, `model`?, `progress`?, `message`?, `interrupted`? | The session moved: `preparing` (repeats as `progress` 0–1 and `message` change while a model downloads or loads; `progress` is omitted while unknown), `recording`, `transcribing` (`interrupted: true` when the microphone went away and what was captured is being transcribed), `idle`. |
 | `level` | `level` | Microphone level, 0–1, about 10–15 times a second while recording. |
 | `partial` | `text` | Live models only: the words so far, replacing the previous `partial`. |
-| `transcript` | `text`, `duration`, `model` | The final, cleaned-up transcript. |
+| `transcript` | `text`, `duration`, `model` | The final, cleaned-up transcript, with the user's corrections (Settings → Corrections) made. |
 | `error` | `code`, `message`, `savedToHistory`? | The take ended without a transcript. |
 
 Every session ends with `state: idle` — after `transcript`, after `error`, or

@@ -9,7 +9,7 @@ import SwiftUI
 //
 //   General, Conversations, History
 //   ───
-//   Shortcut, Models, Actions, Cloud, Updates
+//   Shortcut, Models, Actions, Corrections, Cloud, iPhone, Updates
 //
 // Selection is one accent capsule at 28pt row height that slides between rows
 // via `matchedGeometryEffect` on `Motion.select`. The pinned footer is a live

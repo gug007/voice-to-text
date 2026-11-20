@@ -175,24 +175,12 @@ struct ActionsPane: View {
 
     // MARK: - Action list
 
-    /// The list's own last row, as in the system's editable lists.
     private var addRow: some View {
-        HStack {
-            Button {
-                // ⌘N must not replace a draft that is already open.
-                guard editorDraft == nil, !isShowingKeyEntry else { return }
-                editorDraft = ActionEditorDraft()
-            } label: {
-                Label("Add Action…", systemImage: "plus")
-            }
-            .buttonTier(.secondary)
-            .controlSize(.small)
-            .keyboardShortcut("n", modifiers: .command)
-            .help("Add an action (⌘N)")
-            Spacer(minLength: 0)
+        SettingsAddRow(title: "Add Action…", help: "Add an action (⌘N)") {
+            // ⌘N must not replace a draft that is already open.
+            guard editorDraft == nil, !isShowingKeyEntry else { return }
+            editorDraft = ActionEditorDraft()
         }
-        .padding(.horizontal, FormMetrics.rowHorizontalPadding)
-        .padding(.vertical, Space.s5)
     }
 
     @ViewBuilder
@@ -606,7 +594,7 @@ private struct ActionEditorSheet: View {
                 .padding(.bottom, Space.s6)
 
             VStack(alignment: .leading, spacing: Space.section) {
-                labelled("Name") {
+                LabelledField("Name") {
                     TextField("Name", text: $name, prompt: Text("e.g. Translate to Spanish").foregroundStyle(Palette.inkFaint))
                         .textFieldStyle(.plain)
                         .font(Typo.body)
@@ -616,7 +604,7 @@ private struct ActionEditorSheet: View {
                         .framedTextField(isFocused: focus == .name)
                 }
 
-                labelled("Instruction", caption: "Plain-language instruction, sent to OpenAI (\(ActionRunner.modelId)) with the transcript.") {
+                LabelledField("Instruction", caption: "Plain-language instruction, sent to OpenAI (\(ActionRunner.modelId)) with the transcript.") {
                     instructionEditor
                 }
 
@@ -640,25 +628,6 @@ private struct ActionEditorSheet: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text(Self.deletionMessage(for: draft.template?.id))
-        }
-    }
-
-    private func labelled<Content: View>(
-        _ title: String,
-        caption: String? = nil,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: Space.s3) {
-            Text(title)
-                .typo(.body)
-                .foregroundStyle(Palette.inkMuted)
-                .accessibilityAddTraits(.isHeader)
-            content()
-            if let caption {
-                Text(caption)
-                    .typo(.caption)
-                    .foregroundStyle(Palette.inkMuted)
-            }
         }
     }
 

@@ -23,6 +23,7 @@
 		3ECCA8FB476D5B138E8EF57E /* HistoryIndexCodec.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1F7E059469891B8DF61F676 /* HistoryIndexCodec.swift */; };
 		3F8AE44657C23303187CF0C1 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 967F5D2D2C7D8296AB44CAE7 /* SettingsView.swift */; };
 		4169F48759BB04003D71B7A5 /* MacViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B8C0AB105F21925709E64A0 /* MacViews.swift */; };
+		443F31BC63DAC1AA8AFCDDF6 /* TermCorrection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E8CEB6AD5435E2C8B8C1D94 /* TermCorrection.swift */; };
 		453FC4FA5EBB372CE703A68B /* MeetingTranscriber.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC940F6C8BB0FFD9569DA0CC /* MeetingTranscriber.swift */; };
 		45DD46B3E445BF8BBC4AEA4F /* TranscriptPostProcessor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 56CE7243AC84514973AFCD09 /* TranscriptPostProcessor.swift */; };
 		4D574E474552A3F4216CD4CA /* AudioFileExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4543706038DEE4E0FC2C3AC0 /* AudioFileExtractor.swift */; };
@@ -71,6 +72,7 @@
 		347309489DED62907F10CB7A /* FluidAudioEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FluidAudioEngine.swift; sourceTree = "<group>"; };
 		3DA8A757BB037FF3A8CFA1BC /* HistorySearch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistorySearch.swift; sourceTree = "<group>"; };
 		4543706038DEE4E0FC2C3AC0 /* AudioFileExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioFileExtractor.swift; sourceTree = "<group>"; };
+		4E8CEB6AD5435E2C8B8C1D94 /* TermCorrection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TermCorrection.swift; sourceTree = "<group>"; };
 		56CE7243AC84514973AFCD09 /* TranscriptPostProcessor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TranscriptPostProcessor.swift; sourceTree = "<group>"; };
 		5B8C0AB105F21925709E64A0 /* MacViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacViews.swift; sourceTree = "<group>"; };
 		5D1EF3C66B13C0039C61F26E /* AudioChunkReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioChunkReader.swift; sourceTree = "<group>"; };
@@ -146,6 +148,7 @@
 		1C0530C7BA3FBF4BC1514300 /* Output */ = {
 			isa = PBXGroup;
 			children = (
+				4E8CEB6AD5435E2C8B8C1D94 /* TermCorrection.swift */,
 				56CE7243AC84514973AFCD09 /* TranscriptPostProcessor.swift */,
 			);
 			path = Output;
@@ -405,6 +408,7 @@
 				8B4A972EAB3DB026E8155459 /* StreamingWAVWriter.swift in Sources */,
 				F85DC4481200DC852D9B0EDE /* TailnetController.swift in Sources */,
 				25F8E3E652211D93B3168942 /* TailnetStatus.swift in Sources */,
+				443F31BC63DAC1AA8AFCDDF6 /* TermCorrection.swift in Sources */,
 				55F56DD441A074C253397A20 /* Theme.swift in Sources */,
 				3CEE560A5812D570307FCC4A /* Transcriber.swift in Sources */,
 				0D0193E479895FFD782ED0A8 /* TranscriptInsight.swift in Sources */,

@@ -14,17 +14,18 @@ struct SettingsView: View {
     /// free to be in whatever order the routing wants.
     static let sidebarGroups: [SidebarGroup] = [
         SidebarGroup(title: "Dictate", sections: [.general, .meetings, .history]),
-        SidebarGroup(title: "Configure", sections: [.hotkey, .models, .actions, .cloud, .iphone, .updates])
+        SidebarGroup(title: "Configure", sections: [.hotkey, .models, .actions, .corrections, .cloud, .iphone, .updates])
     ]
 
     enum Section: String, CaseIterable, Identifiable {
-        case general, meetings, history, hotkey, models, actions, cloud, iphone, updates
+        case general, meetings, history, hotkey, models, actions, corrections, cloud, iphone, updates
         var id: String { rawValue }
         var title: String {
             switch self {
             case .models: return "Models"
             case .hotkey: return "Shortcut"
             case .actions: return "Actions"
+            case .corrections: return "Corrections"
             case .meetings: return "Conversations"
             case .history: return "History"
             case .cloud: return "Cloud"
@@ -38,6 +39,7 @@ struct SettingsView: View {
             case .models: return "waveform"
             case .hotkey: return "command"
             case .actions: return "wand.and.stars"
+            case .corrections: return "character.book.closed"
             case .meetings: return "person.2.wave.2"
             case .history: return "clock.arrow.circlepath"
             case .cloud: return "cloud"
@@ -56,7 +58,7 @@ struct SettingsView: View {
                 return AppUpdater.shared.indicatedVersion.map { "Version \($0) available" }
             case .iphone:
                 return RemoteControlController.shared.liveListeners > 0 ? "iPhone listening" : nil
-            case .general, .meetings, .history, .hotkey, .models, .actions, .cloud:
+            case .general, .meetings, .history, .hotkey, .models, .actions, .corrections, .cloud:
                 return nil
             }
         }
@@ -105,6 +107,7 @@ struct SettingsView: View {
         case .models: ModelsPane(registry: registry, onShowCloudSettings: { selection = .cloud })
         case .hotkey: HotkeyPane()
         case .actions: ActionsPane(onShowCloudSettings: { selection = .cloud })
+        case .corrections: CorrectionsPane()
         case .meetings: MeetingsPane()
         case .history: HistoryPane()
         case .cloud: CloudPane()

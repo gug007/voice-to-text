@@ -100,6 +100,7 @@ final class TranscriptRegenerator {
             let text = try await MeetingTranscriber.transcribe(
                 url: url,
                 engine: engine,
+                corrections: TermCorrectionStore.shared.corrections,
                 onProgress: { [weak self] done, total in
                     self?.transcribedChunks = done
                     self?.totalChunks = total

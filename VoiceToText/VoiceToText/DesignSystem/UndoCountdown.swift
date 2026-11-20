@@ -74,7 +74,7 @@ struct UndoCountdownRing: View {
 
     @Environment(\.motion) private var motion
 
-    private static let diameter: CGFloat = 12
+    nonisolated static let diameter: CGFloat = 12
     private static let lineWidth: CGFloat = 1.75
 
     var body: some View {

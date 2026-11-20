@@ -281,6 +281,67 @@ struct SettingsRowLabel: View {
     }
 }
 
+/// The last row of an editable list, as in the system's: a small "Add …"
+/// button, also on ⌘N.
+///
+/// ```swift
+/// SettingsAddRow(title: "Add Action…", help: "Add an action (⌘N)") { draft = ActionEditorDraft() }
+/// ```
+struct SettingsAddRow: View {
+    let title: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        HStack {
+            Button(action: action) {
+                Label(title, systemImage: "plus")
+            }
+            .buttonTier(.secondary)
+            .controlSize(.small)
+            .keyboardShortcut("n", modifiers: .command)
+            .help(help)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, FormMetrics.rowHorizontalPadding)
+        .padding(.vertical, Space.s5)
+    }
+}
+
+/// A field of an editor sheet: its label above it, an optional note below.
+///
+/// ```swift
+/// LabelledField("Name") { TextField("Name", text: $name) }
+/// LabelledField("Instruction", caption: "Sent with the transcript.") { editor }
+/// ```
+struct LabelledField<Content: View>: View {
+    let title: String
+    var caption: String?
+    @ViewBuilder var content: Content
+
+    init(_ title: String, caption: String? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.caption = caption
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Space.s3) {
+            Text(title)
+                .typo(.body)
+                .foregroundStyle(Palette.inkMuted)
+                .accessibilityAddTraits(.isHeader)
+            content
+            if let caption {
+                Text(caption)
+                    .typo(.caption)
+                    .foregroundStyle(Palette.inkMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
 extension View {
     /// The padding and minimum height of a `SettingsRow`, for a custom row
     /// placed directly in a `SettingsGroup`.

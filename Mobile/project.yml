@@ -34,6 +34,7 @@ targets:
           - Audio/StreamingWAVWriter.swift
           - Audio/WAVEncoder.swift
           - Output/TranscriptPostProcessor.swift
+          - Output/TermCorrection.swift
           - Support/AppLogger.swift
           - Support/AppConstants.swift
           - History/RecordingHistoryEntry.swift

@@ -301,7 +301,7 @@ final class ExternalDictationSession {
         }
         guard generation == self.generation else { return }
 
-        let text = TranscriptPostProcessor.process(raw)
+        let text = TranscriptPostProcessor.process(raw, corrections: TermCorrectionStore.shared.corrections)
         guard !text.isEmpty else {
             fail(generation, .noSpeech, "Transcription returned empty text. Try speaking closer to the mic.")
             return

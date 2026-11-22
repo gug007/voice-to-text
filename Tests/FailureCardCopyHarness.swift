@@ -24,6 +24,7 @@ struct FailureCardCopyHarness {
         try aRepeatRefusalMovesOnFromTopUp()
         try offlineCopyNeverPromisesADownload()
         try otherFailuresKeepTheirOwnMessage()
+        try aRateLimitSaysWhenItRetries()
         try theDetailLineSaysWhatTheModelCosts()
         try aLongNameDropsTheFlourishNotTheFacts()
         try aModelThatDoesntKnowTheLanguagesSaysSo()
@@ -47,7 +48,8 @@ struct FailureCardCopyHarness {
         seconds: TimeInterval = 42,
         saved: Bool = true,
         repeat isRepeat: Bool = false,
-        engineMessage: String = "Transcription failed: something odd."
+        engineMessage: String = "Transcription failed: something odd.",
+        autoRetryIn: TimeInterval? = nil
     ) -> Copy.Card {
         Copy.card(
             failure: failure,
@@ -59,7 +61,8 @@ struct FailureCardCopyHarness {
             capturedSeconds: seconds,
             savedToHistory: saved,
             isRepeatRefusal: isRepeat,
-            engineMessage: engineMessage
+            engineMessage: engineMessage,
+            autoRetryIn: autoRetryIn
         )
     }
 
@@ -115,6 +118,30 @@ struct FailureCardCopyHarness {
         try expect(key.secondary?.title == "Check API Key", "with Check API Key")
         let other = card(.other, nil)
         try expect(other.banner == "Transcription failed: something odd.", "other keeps the engine's words")
+    }
+
+    private static func aRateLimitSaysWhenItRetries() throws {
+        let both = card(.rateLimited(retryAfter: 20), ready, autoRetryIn: 20)
+        try expect(
+            both.banner == "OpenAI is rate-limiting requests. Retrying by itself in 20s, or transcribe this take on your Mac now.",
+            "rate limit with a model here: \(both.banner)"
+        )
+        try expect(both.primary.title == "Transcribe on Mac", "the model here leads: \(both.primary)")
+        try expect(both.secondary?.title == "Retry OpenAI", "Retry OpenAI beside it: \(String(describing: both.secondary))")
+        try expect(
+            both.detail == "42.0s saved to History · Parakeet TDT v3 runs on this Mac — free and private.",
+            "and says what the model costs: \(String(describing: both.detail))"
+        )
+        let waits = card(.rateLimited(retryAfter: 20), nil, autoRetryIn: 20)
+        try expect(waits.banner == "OpenAI is rate-limiting requests. Retrying by itself in 20s.", "nothing here: \(waits.banner)")
+        try expect(waits.detail == nil, "keeps the card's own captured line")
+        let longWait = card(.rateLimited(retryAfter: 600), nil)
+        try expect(longWait.banner == "OpenAI is rate-limiting requests. Retry in 10 min.", "too long to wait on: \(longWait.banner)")
+        let banner = Copy.reviewBanner(failure: .rateLimited(retryAfter: 20), primary: .transcribeOnMac(id: "parakeet-tdt-v3"), provider: "OpenAI", engineMessage: "")
+        try expect(
+            banner == "OpenAI is rate-limiting requests. Transcribe this take on your Mac, or retry in a moment.",
+            "a Resume take's banner never promises the card's own retry: \(banner)"
+        )
     }
 
     private static func theDetailLineSaysWhatTheModelCosts() throws {
@@ -287,7 +314,7 @@ struct FailureCardCopyHarness {
             nil,
         ]
         let closeWidth = buttonWidth(.init(title: "Close", icon: "", hint: "esc"))
-        for failure in [TranscriptionFailure.quotaExhausted, .offline] {
+        for failure in [TranscriptionFailure.quotaExhausted, .offline, .rateLimited(retryAfter: 60)] {
             for local in fallbacks {
                 for isRepeat in [false, true] {
                     for saved in [false, true] {
@@ -300,7 +327,8 @@ struct FailureCardCopyHarness {
                                 localLanguages: "25 European languages",
                                 seconds: seconds,
                                 saved: saved,
-                                repeat: isRepeat
+                                repeat: isRepeat,
+                                autoRetryIn: failure == .rateLimited(retryAfter: 60) ? 60 : nil
                             )
                             let context = "\(failure), \(String(describing: local)), repeat \(isRepeat), saved \(saved), \(seconds)s"
                             try expect(

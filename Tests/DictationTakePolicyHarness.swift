@@ -37,6 +37,8 @@ struct DictationTakePolicyHarness {
         try outOfCreditWithNothingToFallBackToOpensSettings()
         try offlineLeadsWithAnInstalledModelAndNeverADownload()
         try aRefusedKeyStillPointsAtTheKey()
+        try aRateLimitLeadsWithAModelOnThisMac()
+        try aRateLimitRetriesByItselfOnlyWithinAMinute()
         try otherFailuresOfferNothingAndWalkNoFolders()
         try aChosenRetryModelLastsOnlyWhileTheDictationModelDoes()
         print("Dictation take policy harness passed")
@@ -470,8 +472,31 @@ struct DictationTakePolicyHarness {
         try expect(refused.secondary == .checkAPIKey, "beside Check API Key")
     }
 
+    /// Report, 2026-11-22: OpenAI rate-limited a 15s take with Whisper Large
+    /// installed, and the card offered only Retry.
+    private static func aRateLimitLeadsWithAModelOnThisMac() throws {
+        let onMac = card(.rateLimited(retryAfter: 20), ready)
+        try expect(onMac.primary == .transcribeOnMac(id: "parakeet-tdt-v3"), "a model here leads, and Return runs it")
+        try expect(onMac.secondary == .retryCloud, "Retry the provider stays beside it")
+        let nothingHere = card(.rateLimited(retryAfter: nil), download)
+        try expect(nothingHere.primary == .retry, "a wait of seconds is no reason to download a model")
+        try expect(nothingHere.secondary == nil, "and nothing sits beside Retry")
+        let none = card(.rateLimited(retryAfter: 20), nil)
+        try expect(none.primary == .retry && none.secondary == nil, "with no model here, Retry alone")
+    }
+
+    private static func aRateLimitRetriesByItselfOnlyWithinAMinute() throws {
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: nil) == 20, "no wait named: 20s")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: 20) == 20, "the wait the provider asked for")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: 12.3) == 13, "rounded up to whole seconds")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: 0.2) == 1, "never sooner than a second")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: 60) == 60, "a minute still retries")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: 61) == nil, "longer is the user's call")
+        try expect(Policy.rateLimitAutoRetryDelay(retryAfter: .infinity) == nil, "an endless wait never fires")
+    }
+
     private static func otherFailuresOfferNothingAndWalkNoFolders() throws {
-        let failures: [TranscriptionFailure] = [.unauthorized, .rateLimited(retryAfter: 20), .server, .other]
+        let failures: [TranscriptionFailure] = [.unauthorized, .server, .other]
         for failure in failures {
             var walked = false
             let actions = Policy.failureCard(failure: failure, local: {

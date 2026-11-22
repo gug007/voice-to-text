@@ -291,11 +291,15 @@ nonisolated enum DictationTakePolicy {
     /// the card offers to make the local model the dictation model instead,
     /// since by now retrying is the unlikely path. Offline, a model already
     /// here leads the same way, but nothing is offered that needs the network
-    /// to get: no download, no "Choose Model" leading to one.
+    /// to get: no download, no "Choose Model" leading to one. Rate-limited, a
+    /// model already here leads too, with Retry beside it: the card also
+    /// retries by itself once the wait is over (`rateLimitAutoRetryDelay`),
+    /// but a model on this Mac answers now. A wait of seconds is no reason to
+    /// download one.
     ///
-    /// `local` is only evaluated for those two failures: it walks the model
-    /// folders and the input sources, and a rate limit or a server error has
-    /// no use for either. `isRepeatRefusal` comes from
+    /// `local` is only evaluated for those three failures: it walks the model
+    /// folders and the input sources, and a server error has no use for
+    /// either. `isRepeatRefusal` comes from
     /// `CloudCreditStatus.noteRefusal`, read before this failure marks it.
     /// `offersDictationSwitch` is false for a take the second shortcut ran on
     /// its own model: the dictation model never failed, so a repeat refusal
@@ -317,12 +321,28 @@ nonisolated enum DictationTakePolicy {
         case .offline:
             guard case .ready(let id, _)? = local() else { return (.retry, nil) }
             return (.transcribeOnMac(id: id), .retryCloud)
+        case .rateLimited:
+            guard case .ready(let id, _)? = local() else { return (.retry, nil) }
+            return (.transcribeOnMac(id: id), .retryCloud)
         case .unauthorized:
             return (.retry, .checkAPIKey)
-        case .rateLimited, .server, .other:
+        case .server, .other:
             return (.retry, nil)
         }
     }
+
+    /// How long a rate-limited take's card waits before retrying the take by
+    /// itself: the wait the provider asked for, or `defaultRateLimitWait` when
+    /// it named none. nil past `maxRateLimitAutoWait`: a limit that long is the
+    /// user's call, and the card's buttons are still there.
+    static func rateLimitAutoRetryDelay(retryAfter: TimeInterval?) -> TimeInterval? {
+        guard let wait = retryAfter else { return defaultRateLimitWait }
+        guard wait.isFinite, wait <= maxRateLimitAutoWait else { return nil }
+        return max(1, wait.rounded(.up))
+    }
+
+    static let defaultRateLimitWait: TimeInterval = 20
+    static let maxRateLimitAutoWait: TimeInterval = 60
 
     /// The button that runs the take on `fallback` once.
     static func localAction(for fallback: LocalFallback) -> CardAction {

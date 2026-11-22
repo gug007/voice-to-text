@@ -1,11 +1,11 @@
 import Foundation
 
-/// Every string the out-of-credit and offline rescue puts on screen: the
-/// dictation failure card, the review banner of a refused Resume take, the
-/// History row's menu and the Models pane's banner. In one place so the same
-/// action is called the same thing wherever it appears, and so a harness can
-/// hold each string to the space it gets — the failure card is 600pt wide, its
-/// banner gets two lines and its detail line one.
+/// Every string the out-of-credit, offline and rate-limit rescue puts on
+/// screen: the dictation failure card, the review banner of a refused Resume
+/// take, the History row's menu and the Models pane's banner. In one place so
+/// the same action is called the same thing wherever it appears, and so a
+/// harness can hold each string to the space it gets — the failure card is
+/// 600pt wide, its banner gets two lines and its detail line one.
 ///
 /// Sentence case for prose; Title Case for HUD buttons, as the card's other
 /// buttons are ("Transcribe Anyway", "Check API Key"). Model names come in as
@@ -73,7 +73,8 @@ nonisolated enum FailureCardCopy {
         capturedSeconds: TimeInterval,
         savedToHistory: Bool,
         isRepeatRefusal: Bool,
-        engineMessage: String
+        engineMessage: String,
+        autoRetryIn: TimeInterval? = nil
     ) -> Card {
         let uncovered: String?
         if case .ready(_, coversLanguages: false)? = local { uncovered = localLanguages } else { uncovered = nil }
@@ -83,7 +84,8 @@ nonisolated enum FailureCardCopy {
                 primary: actions.primary,
                 provider: provider,
                 isRepeatRefusal: isRepeatRefusal,
-                engineMessage: engineMessage
+                engineMessage: engineMessage,
+                autoRetryIn: autoRetryIn
             ),
             detail: detail(
                 failure: failure,
@@ -102,16 +104,18 @@ nonisolated enum FailureCardCopy {
 
     // MARK: - Banner
 
-    /// The card's banner. Out of credit or offline it says what the buttons
-    /// below it do, in the order they matter; a refusal seen before this take
-    /// moves on from "top up" to the lasting switch. Every other failure
-    /// keeps `TranscriptionFailure.message`.
+    /// The card's banner. Out of credit, offline or rate-limited it says what
+    /// the buttons below it do, in the order they matter; a refusal seen
+    /// before this take moves on from "top up" to the lasting switch.
+    /// `autoRetryIn` is when a rate-limited card retries by itself, if it
+    /// will. Every other failure keeps `TranscriptionFailure.message`.
     static func banner(
         failure: TranscriptionFailure,
         primary: CardAction,
         provider: String?,
         isRepeatRefusal: Bool,
-        engineMessage: String
+        engineMessage: String,
+        autoRetryIn: TimeInterval? = nil
     ) -> String {
         let service = provider ?? "The transcription service"
         switch failure {
@@ -127,7 +131,18 @@ nonisolated enum FailureCardCopy {
             return runsLocally(primary)
                 ? "You're offline. Transcribe this take on your Mac, or retry once you're connected."
                 : "You're offline. Retry once you're connected."
-        case .unauthorized, .rateLimited, .server, .other:
+        case .rateLimited:
+            let limited = "\(service) is rate-limiting requests."
+            if let autoRetryIn {
+                let wait = TranscriptionFailure.waitDescription(autoRetryIn)
+                return runsLocally(primary)
+                    ? "\(limited) Retrying by itself in \(wait), or transcribe this take on your Mac now."
+                    : "\(limited) Retrying by itself in \(wait)."
+            }
+            return runsLocally(primary)
+                ? "\(limited) Transcribe this take on your Mac, or retry in a moment."
+                : failure.message(provider: provider, fallback: engineMessage)
+        case .unauthorized, .server, .other:
             return failure.message(provider: provider, fallback: engineMessage)
         }
     }
@@ -166,7 +181,13 @@ nonisolated enum FailureCardCopy {
         capturedSeconds: TimeInterval,
         savedToHistory: Bool
     ) -> String? {
-        guard failure == .quotaExhausted || failure == .offline else { return nil }
+        let rescued: Bool
+        switch failure {
+        case .quotaExhausted, .offline: rescued = true
+        case .rateLimited: rescued = runsLocally(primary)
+        case .unauthorized, .server, .other: rescued = false
+        }
+        guard rescued else { return nil }
         let kept = keptPrefix(capturedSeconds: capturedSeconds, savedToHistory: savedToHistory)
         let name = localName ?? "This model"
         switch primary {

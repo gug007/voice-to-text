@@ -23,6 +23,7 @@ struct DictationRescueHarness {
         try aRepeatRefusalKeepsTheLastingSwitchOnTheCard()
         try outOfCreditWithNothingOnThisMacKeepsRetry()
         try offlineTheBannerKeepsRetryForOnceConnected()
+        try aRateLimitTheBannerOffersTheModelHereToo()
         try everyOtherCardFitsTheBannerAsItIs()
         try aDownloadIsNeverMistakenForTheCompileTail()
         try aModelOnDiskCanOnlyBeLoading()
@@ -85,12 +86,22 @@ struct DictationRescueHarness {
         try expect(none == .init(retry: .retry, action: nil), "offline with nothing installed: Retry alone: \(none)")
     }
 
+    private static func aRateLimitTheBannerOffersTheModelHereToo() throws {
+        let onMac = banner(.rateLimited(retryAfter: 20), ready)
+        try expect(
+            onMac == .init(retry: .retryCloud, action: .transcribeOnMac(id: "parakeet-tdt-v3")),
+            "rate-limited keeps Retry <provider> beside the model on this Mac: \(onMac)"
+        )
+        let none = banner(.rateLimited(retryAfter: 20), nil)
+        try expect(none == .init(retry: .retry, action: nil), "rate-limited with nothing installed: Retry alone: \(none)")
+    }
+
     private static func everyOtherCardFitsTheBannerAsItIs() throws {
         try expect(
             banner(.unauthorized, nil) == .init(retry: .retry, action: .checkAPIKey),
             "a refused key keeps Check API Key beside Retry"
         )
-        for failure in [TranscriptionFailure.rateLimited(retryAfter: 20), .server, .other] {
+        for failure in [TranscriptionFailure.server, .other] {
             try expect(banner(failure, ready) == .init(retry: .retry, action: nil), "\(failure): Retry alone")
         }
     }

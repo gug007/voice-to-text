@@ -289,6 +289,15 @@ final class DictationController {
         var isSurfaced: Bool
     }
 
+    /// A rate-limited card's own retry, waiting out the provider's limit. Any
+    /// way off the card cancels it.
+    @ObservationIgnored
+    private var rateLimitRetry: Task<Void, Never>?
+    /// The audio a rate-limited card already retried by itself, so a take
+    /// limited again waits for the user instead of looping.
+    @ObservationIgnored
+    private var autoRetriedSamples: [Float]?
+
     private var takeRowStage: DictationTakePolicy.RowStage {
         DictationTakePolicy.rowStage(
             hasRow: takeHistoryRow != nil,
@@ -1134,6 +1143,8 @@ final class DictationController {
         guard case .error = state else { return }
         AppLog.dictation.info("Failure HUD dismissed")
         removeFailureEscMonitor()
+        cancelRateLimitRetry()
+        autoRetriedSamples = nil
         lastFailedSamples = nil
         retryModelOverride = nil
         // Its row stays in History, where "Transcribe Again" picks it up.
@@ -1606,6 +1617,8 @@ final class DictationController {
         // A new dictation takes the card, and any notice's Undo with it.
         retireNotices()
         removeFailureEscMonitor()
+        cancelRateLimitRetry()
+        autoRetriedSamples = nil
         lastFailedSamples = nil
         retryModelOverride = nil
         // A row left by the previous take stays in History; it just isn't
@@ -2428,6 +2441,7 @@ final class DictationController {
         let skipSpeechGate = retrySkipsSpeechGate
         AppLog.dictation.info("Retrying transcription on \(samples.count) cached samples (speech gate \(skipSpeechGate ? "skipped" : "on"), model \(model?.id ?? "active", privacy: .public))")
         removeFailureEscMonitor()
+        cancelRateLimitRetry()
         lastFailedSamples = nil
         // Synchronously transition to .transcribing so a hotkey press queued
         // between this click and the Task firing maps to .none (per policy)
@@ -2924,9 +2938,9 @@ final class DictationController {
         model: ModelDescriptor,
         retrySkipsSpeechGate: Bool
     ) {
-        // Weighed only for the two failures a model on this Mac answers: it
-        // walks the model folders and the input sources. Offline, only a
-        // model already here can help.
+        // Weighed only for the failures a model on this Mac answers: it walks
+        // the model folders and the input sources. Offline or rate-limited,
+        // only a model already here helps.
         var fallback: DictationTakePolicy.LocalFallback?
         let offersDictationSwitch = takeModelOverride == nil
         let actions = DictationTakePolicy.failureCard(
@@ -2934,7 +2948,7 @@ final class DictationController {
             local: {
                 fallback = ModelRegistry.shared.localFallback(
                     replacing: model.id,
-                    canDownload: failure != .offline
+                    canDownload: failure == .quotaExhausted
                 )
                 return fallback
             },
@@ -2952,6 +2966,13 @@ final class DictationController {
             status: .init(kind: .failed, message: failure.message(provider: provider, fallback: engineMessage))
         )
 
+        // A rate-limited card retries the take by itself once the wait is
+        // over, once per take; a Resume take's banner leaves it to the user.
+        var autoRetryIn: TimeInterval?
+        if case .rateLimited(let retryAfter) = failure, resumeContext == nil, autoRetriedSamples != samples {
+            autoRetryIn = DictationTakePolicy.rateLimitAutoRetryDelay(retryAfter: retryAfter)
+        }
+
         let localModel = fallback.flatMap { ModelCatalog.model(for: $0.modelID) }
         let copy = FailureCardCopy.card(
             failure: failure,
@@ -2963,7 +2984,8 @@ final class DictationController {
             capturedSeconds: Double(samples.count) / AudioConfig.targetSampleRate,
             savedToHistory: saved,
             isRepeatRefusal: isRepeatRefusal && offersDictationSwitch,
-            engineMessage: engineMessage
+            engineMessage: engineMessage,
+            autoRetryIn: autoRetryIn
         )
         let primary = cardAction(actions.primary, labelled: copy.primary, failedModel: model)
         var secondary: FailureAction?
@@ -3008,6 +3030,27 @@ final class DictationController {
             savedToHistory: saved,
             resumeBanner: resumeBanner
         )
+        if let autoRetryIn {
+            scheduleRateLimitRetry(after: autoRetryIn, samples: samples, failedModel: model)
+        }
+    }
+
+    /// Retries a rate-limited take on the model that refused it once the wait
+    /// is over, unless the card is gone by then: closed, retried or replaced.
+    private func scheduleRateLimitRetry(after delay: TimeInterval, samples: [Float], failedModel: ModelDescriptor) {
+        cancelRateLimitRetry()
+        rateLimitRetry = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, let self, case .error = self.state, self.lastFailedSamples == samples else { return }
+            AppLog.dictation.info("Retrying a rate-limited take by itself after \(delay, privacy: .public)s")
+            self.autoRetriedSamples = samples
+            self.runCardAction(.retryCloud, failedModel: failedModel)
+        }
+    }
+
+    private func cancelRateLimitRetry() {
+        rateLimitRetry?.cancel()
+        rateLimitRetry = nil
     }
 
     /// A card or banner button that runs `action` for a take `failedModel`

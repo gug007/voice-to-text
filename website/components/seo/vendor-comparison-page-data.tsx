@@ -55,7 +55,7 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
     caption: `Superwhisper as documented on its official site (checked ${SUPERWHISPER_CHECKED}).`,
     columns: ["VoiceToText", "Superwhisper"],
     rows: [
-      { label: "Platforms", cells: ["Mac (macOS 15+, Apple Silicon or Intel)", "Mac (macOS 14+), Windows, iOS and Android"] },
+      { label: "Platforms", cells: ["Mac (macOS 15+, Apple Silicon or Intel), plus an iPhone app that records and transcribes but doesn’t dictate into other apps", "Mac (macOS 14+), Windows, iOS and Android"] },
       {
         label: "Local transcription",
         cells: ["Yes: Parakeet and 5 Whisper sizes", "Yes: Whisper on the free tier; Pro adds Parakeet, Cohere and more"],
@@ -151,9 +151,10 @@ export const superwhisperAlternativeConfig: SeoLandingConfig = {
       title: "VoiceToText is not a drop-in copy of the broader product.",
       paragraphs: [
         <>
-          VoiceToText targets macOS 15 or later on Apple Silicon or Intel Macs. It has no Windows, iOS or Android app and
-          no cross-device sync. If you dictate on your phone and your desktop, platform reach may decide the
-          comparison immediately.
+          VoiceToText dictates on macOS 15 or later, on Apple Silicon or Intel Macs. Its iPhone app records and
+          transcribes on the phone but has no keyboard for dictating into other apps, and there is no Windows or
+          Android app and no cross-device sync. If you dictate on your phone and your desktop, platform reach may
+          decide the comparison immediately.
         </>,
         <>
           VoiceToText’s AI actions are opt-in and manual: you run one per dictation from the review panel,
@@ -624,8 +625,9 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
       title: "Privacy architecture is only one dimension of product fit.",
       paragraphs: [
         <>
-          VoiceToText runs on one platform: macOS 15 or later on Apple Silicon or Intel Macs. It has no Windows, iPhone or
-          Android app, no team dashboard, no single sign-on, and no cross-device sync.
+          VoiceToText dictates on one platform: macOS 15 or later on Apple Silicon or Intel Macs. Its iPhone app records
+          and transcribes but has no keyboard for dictating into other apps, and there is no Windows or Android app, no
+          team dashboard, no single sign-on, and no cross-device sync.
         </>,
         <>
           Flow polishes every dictation automatically. VoiceToText doesn’t: with a local model you get the
@@ -772,7 +774,7 @@ export const wisprFlowAlternativeConfig: SeoLandingConfig = {
     {
       question: "Can I use VoiceToText on Windows or iPhone?",
       answer:
-        "No. VoiceToText is Mac-only. Wispr Flow has apps for Mac, Windows, iPhone and Android.",
+        "Not for dictation. Dictating into other apps works only on a Mac. VoiceToText's free iPhone app records and transcribes on the phone, and can start and stop recordings on your Mac, but it has no keyboard for typing by voice in other iPhone apps. There is no Windows or Android version. Wispr Flow has apps for Mac, Windows, iPhone and Android.",
     },
   ],
   sources: [

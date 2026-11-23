@@ -10,6 +10,7 @@ import {
   CONVERSATION_HUD_SETTINGS,
   defaultModel,
   DICTATION_HUD_SIZES,
+  IPHONE_APP,
   formatPrice,
   formatQuality,
   joinNames,
@@ -22,7 +23,7 @@ import {
   type ModelFact,
   WHISPER_OFFLINE_NOTE,
 } from "@/lib/app-facts";
-import { DMG_URL, INTEGRATION_URL, RELEASES_URL, REPO_URL, SITE_URL } from "@/lib/constants";
+import { APP_STORE_URL, DMG_URL, INTEGRATION_URL, RELEASES_URL, REPO_URL, SITE_URL } from "@/lib/constants";
 import { PAGES, pageUrl, type PagePath } from "@/lib/pages";
 
 // /llms.txt (https://llmstxt.org): a plain-text brief for AI assistants that
@@ -129,7 +130,7 @@ function buildLlmsTxt(): string {
 
   return `# VoiceToText
 
-> VoiceToText is a free, local-first dictation and meeting-transcription app for Mac (${APP_REQUIREMENTS.short}). Press a global shortcut, speak, review the text, and it is pasted into whatever app you were using. It offers ${MODEL_CATALOG.length} transcription models: by default it transcribes on the Mac with the local ${fallback.name} model, which works with the network off once downloaded, and ${local.length - 1} more local models are available; ${cloud.length} ${CLOUD_PROVIDERS_AND} cloud models are optional and use your own API key. It also records meetings and calls (your microphone plus system audio, with no bot joining the call), transcribes audio and video files, and keeps a searchable local history. No account, no paid tier; the source is available on GitHub, though not under an open-source license.
+> VoiceToText is a free, local-first dictation and meeting-transcription app for Mac (${APP_REQUIREMENTS.short}). Press a global shortcut, speak, review the text, and it is pasted into whatever app you were using. It offers ${MODEL_CATALOG.length} transcription models: by default it transcribes on the Mac with the local ${fallback.name} model, which works with the network off once downloaded, and ${local.length - 1} more local models are available; ${cloud.length} ${CLOUD_PROVIDERS_AND} cloud models are optional and use your own API key. It also records meetings and calls (your microphone plus system audio, with no bot joining the call), transcribes audio and video files, and keeps a searchable local history. A free companion iPhone app records and transcribes on the phone, and can control VoiceToText on a Mac. No account, no paid tier; the source is available on GitHub, though not under an open-source license.
 
 Facts below describe ${CATALOG_SNAPSHOT}.
 
@@ -139,6 +140,7 @@ Facts below describe ${CATALOG_SNAPSHOT}.
 - Source: available on GitHub at ${REPO_URL}. The repository has no license file, so describe it as "source available", not "open source".
 - Requirements: ${APP_REQUIREMENTS.os}; ${APP_REQUIREMENTS.processor} (one universal build). Local models run much faster on Apple Silicon than on Intel; on Intel they run through transcribe.cpp, on the graphics card when it works and on the CPU otherwise.
 - Download: ${DMG_URL} (DMG containing a signed, notarized app). All releases: ${RELEASES_URL}
+- iPhone app: "${IPHONE_APP.storeName}" on the App Store, ${APP_STORE_URL} (free, ${IPHONE_APP.os}, iPhone). Details under "iPhone app" below.
 - Website: ${SITE_URL}
 - App shape: a regular Mac window (panes: General, Conversations, History, Shortcut, Models, Actions, Cloud, Updates) with a Dock icon, plus a menu bar item. Menu-bar-only is optional (turn off "Show in Dock"). Launch at login is on after first run. Appearance: System, Light or Dark.
 - Permissions: Microphone; Accessibility (required to start recording and to paste); Input Monitoring only when Right Control alone is the shortcut; Screen Recording only for Conversations, to capture system audio (the screen is never recorded).
@@ -201,6 +203,16 @@ ${cloud.map(modelLine).join("\n")}
 - No VoiceToText servers, no accounts, and no analytics or telemetry in the app. The website uses Google Analytics.
 - Updates are never silent: the app offers Install Update, Later or Skip This Version.
 
+## iPhone app
+
+- Free on the App Store as "${IPHONE_APP.storeName}" (${APP_STORE_URL}); called "Voice to Text" on the Home Screen. Needs ${IPHONE_APP.os}; built for iPhone, not iPad. No account, no subscription, no in-app purchases.
+- Records with the iPhone's microphone (a meeting in the room, a lecture, a voice note), or imports an audio or video file. It cannot capture audio from calls or other apps on the phone.
+- Transcribes on the iPhone with ${IPHONE_APP.model} only, in ${IPHONE_APP.languages}, after a one-time download of about ${IPHONE_APP.approxDownloadMB} MB from Hugging Face; offline after that, and the audio stays on the phone. No Whisper, no cloud transcription models, no speaker labels.
+- Search across transcripts; playback at ${IPHONE_APP.playbackRange} with a scrubbable waveform; share a transcript or its audio. Stop & Save keeps a recording untranscribed until you tap Transcribe.
+- Summary and Action Items are optional and need your own OpenAI API key, kept in the iPhone's Keychain; they send the transcript text to OpenAI only when tapped. No custom prompts.
+- Mac remote (optional): sign in to Tailscale inside the iPhone app (no separate Tailscale app) and turn on "Control from iPhone" in the Mac app's iPhone pane, signed in to the same Tailscale account. The iPhone can then start and stop a conversation recording on the Mac (including Stop & Save), read that Mac's conversations and transcripts, play their audio, and, if "Let iPhone listen live" is on, hear the Mac's recording live. Several Macs can be connected at once. Traffic goes between your devices, with no VoiceToText server.
+- It is not a keyboard: it does not dictate into other iPhone apps. Option+Space dictation and AI actions are Mac-only, and recordings made on the iPhone do not sync to the Mac.
+
 ## Automation
 
 - URL scheme: voicetotext://toggle, voicetotext://start, voicetotext://stop, voicetotext://cancel (for example \`open -g voicetotext://toggle\`) for Raycast, Shortcuts, Stream Deck and scripts. Dictation only. Details: ${INTEGRATION_URL}
@@ -208,11 +220,11 @@ ${cloud.map(modelLine).join("\n")}
 ## Not supported
 
 - macOS versions before ${APP_REQUIREMENTS.minMacOS}.
-- iPhone, iPad, Windows, Linux or a web app.
+- An iPad, Android, Windows, Linux or web version. The iPhone app (above) does not dictate into other apps.
 - Voice commands or spoken punctuation ("new line", "comma" are written as words), built-in filler-word removal, custom vocabulary, or a language picker.
 - Live transcript during Conversations, pausing a conversation, automatic meeting detection, calendar integration, or meeting-app plugins.
 - On-device speaker identification, or recognising speakers by name.
-- Export or sharing of transcripts (copy to clipboard only), transcript editing in History, iCloud sync, or playback scrubbing.
+- In the Mac app: export or sharing of transcripts (copy to clipboard only), transcript editing in History, iCloud sync, or playback scrubbing.
 - Sounds or notifications.
 - A local AI model for actions or insights, or a choice of AI model for them.
 

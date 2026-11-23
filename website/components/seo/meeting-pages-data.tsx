@@ -234,8 +234,8 @@ export const noBotMeetingConfig: SeoLandingConfig = {
             "There is no live transcript and no notepad; the text arrives after you stop. There is no calendar or meeting detection either, so you start and stop recording yourself.",
         },
         {
-          title: "Only on a Mac",
-          body: `VoiceToText runs on ${APP_REQUIREMENTS.os}. There is no Windows, iPhone or web version, so the call has to be on your Mac.`,
+          title: "Calls have to be on your Mac",
+          body: `Capturing a call's audio needs VoiceToText on ${APP_REQUIREMENTS.os}. The iPhone app records only through its microphone, which suits a meeting in the room but not a call on the phone. There is no Windows or web version.`,
         },
       ],
     },
@@ -590,8 +590,8 @@ export const freeMeetingRecorderConfig: SeoLandingConfig = {
           body: `Only ${DIARIZE_MODEL.name} separates speakers, and it sends the audio to OpenAI.`,
         },
         {
-          title: "Mac only",
-          body: `It needs ${APP_REQUIREMENTS.os} on ${APP_REQUIREMENTS.processor}. There is no Windows, iPhone or web version.`,
+          title: "Calls need a Mac",
+          body: `Recording a call needs ${APP_REQUIREMENTS.os} on ${APP_REQUIREMENTS.processor}. The free iPhone app records in-person meetings through its microphone and can start and stop a recording on your Mac. There is no Windows or web version.`,
         },
       ],
       note: (

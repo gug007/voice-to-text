@@ -1,0 +1,119 @@
+/* Aside — the iPhone app. Copy on the left, three App Store screenshots fanned
+   on the right. Tokens come from globals.css, so dark mode needs no rules of
+   its own; the bezel is near-black in both themes, as a phone's is. */
+
+.rig {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(32px, 5vw, var(--space-16));
+  align-items: center;
+}
+.rig :global(.sec-head) { margin-bottom: 28px; }
+
+/* ---------- Points ---------- */
+.points {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 18px;
+  max-width: 36em;
+}
+.point {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 14px;
+}
+.ico {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.point h3 {
+  margin-bottom: 4px;
+  font-size: 16.5px;
+  letter-spacing: -.014em;
+}
+.point p {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  text-wrap: pretty;
+}
+
+.cta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+  margin-top: 30px;
+}
+.meta {
+  font-size: 13.5px;
+  color: var(--text-muted);
+}
+.note {
+  margin-top: 16px;
+  padding-left: 12px;
+  border-left: 2px solid color-mix(in srgb, var(--brand-end) 55%, transparent);
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  max-width: var(--measure);
+}
+
+/* ---------- Phones ---------- */
+.stage {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding-block: 12px;
+}
+.phone {
+  flex: none;
+  width: clamp(150px, 14vw, 200px);
+  margin: 0;
+  padding: 5px;
+  border-radius: 34px;
+  background: #0F1014;
+  box-shadow: var(--shadow-2);
+}
+.phone:not(.front) { transform: scale(.88); }
+.phone + .phone { margin-left: -48px; }
+.phone img {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 29px;
+}
+.front {
+  z-index: 1;
+  width: clamp(176px, 18vw, 260px);
+  box-shadow: var(--shadow-macos);
+}
+
+/* One column: the phones move up under the heading, so a phone visitor sees
+   the app before the list. `display: contents` lets the copy's children join
+   the grid, so only the two items that move need an order. */
+@media (max-width: 960px) {
+  .rig { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .copy { display: contents; }
+  .rig :global(.sec-head) { order: -2; }
+  .stage { order: -1; margin-bottom: 36px; }
+  .phone { width: clamp(120px, 26vw, 190px); }
+  .front { width: clamp(140px, 31vw, 225px); }
+}
+@media (max-width: 640px) {
+  .point h3 { font-size: 16px; }
+  .phone { padding: 4px; border-radius: 24px; }
+  .phone img { border-radius: 20px; }
+  .phone + .phone { margin-left: -28px; }
+}
+
+@media (forced-colors: active) {
+  .phone { border: 1px solid CanvasText; }
+}

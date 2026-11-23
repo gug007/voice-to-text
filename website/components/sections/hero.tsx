@@ -85,6 +85,10 @@ export function Hero({ release }: { release: LatestRelease }) {
               {item}
             </li>
           ))}
+          <li>
+            <Tick />
+            <a href="#iphone">Also on iPhone</a>
+          </li>
         </ul>
         <HeroStage />
       </div>

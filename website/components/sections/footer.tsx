@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import {
+  APP_STORE_URL,
   AUTHOR_URL,
   GUIDE_PATH,
   INTEGRATION_URL,
@@ -10,6 +11,7 @@ import {
   REPO_URL,
 } from "@/lib/constants";
 import { ExternalLink } from "@/components/ui/external-link";
+import { APP_REQUIREMENTS, IPHONE_APP } from "@/lib/app-facts";
 
 type FooterLink =
   | { kind: "hash"; href: string; label: string }
@@ -32,6 +34,7 @@ const COLUMNS: FooterColumn[] = [
       { kind: "hash", href: "#features", label: "Privacy & features" },
       { kind: "hash", href: "#models", label: "Local models" },
       { kind: "route", href: "/meeting-recording", label: "Meeting recorder for Mac" },
+      { kind: "external", href: APP_STORE_URL, label: "iPhone app" },
       { kind: "hash", href: "#faq", label: "FAQ" },
       { kind: "hash", href: "#download", label: "Download the app" },
     ],
@@ -101,8 +104,8 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
               <span>VoiceToText</span>
             </a>
             <p className="foot__about">
-              Free, local-first dictation and meeting transcription for macOS. Built in SwiftUI,
-              transcribing on-device, with no servers of its own.
+              Free, local-first dictation and meeting transcription for macOS, with a companion iPhone
+              app. Built in SwiftUI, transcribing on-device, with no servers of its own.
             </p>
             <p className="foot__about">
               No app telemetry. No account. Your audio stays on the Mac in local mode.{" "}
@@ -127,7 +130,7 @@ export function Footer({ linkPrefix = "" }: FooterProps) {
           <span className="sep" aria-hidden="true" />
           <span>Free forever &middot; no accounts</span>
           <span className="sep" aria-hidden="true" />
-          <span>macOS 15.0+</span>
+          <span>macOS {APP_REQUIREMENTS.minMacOS}+ &middot; iOS {IPHONE_APP.minIOS}+</span>
           <span className="sep" aria-hidden="true" />
           <span>
             Built in public by <ExternalLink href={AUTHOR_URL}>@gug007</ExternalLink>

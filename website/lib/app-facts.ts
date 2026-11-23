@@ -573,6 +573,24 @@ export const liveOnStopModelNames = (): string[] =>
   MODEL_CATALOG.filter((m) => m.live && !m.showsLiveText).map((m) => m.name);
 export const defaultModel = (): ModelFact => MODEL_CATALOG.find((m) => m.isDefault) ?? MODEL_CATALOG[0];
 export const modelById = (id: string): ModelFact | undefined => MODEL_CATALOG.find((m) => m.id === id);
+
+/** The iPhone app (Mobile/), checked against project.yml, Model/Transcriber.swift,
+ *  Model/RecordingPlayer.swift, Views/SettingsView.swift and its App Store
+ *  listing. It runs the catalog's Parakeet model (same id) and nothing else: no
+ *  Whisper, no cloud models, no speaker labels, and no keyboard for dictating
+ *  into other apps. */
+const IPHONE_MODEL = modelById("parakeet-tdt-v3")!;
+const MIN_IOS = "18.0";
+export const IPHONE_APP = {
+  storeName: "Voice to Text: Offline AI",
+  minIOS: MIN_IOS,
+  os: `iOS ${MIN_IOS} or later`,
+  short: `iOS ${MIN_IOS}+ · iPhone`,
+  model: IPHONE_MODEL.name,
+  languages: IPHONE_MODEL.languagesInApp,
+  approxDownloadMB: IPHONE_MODEL.approxDownloadMB!,
+  playbackRange: "0.5× to 5×",
+} as const;
 /** "A, B or C". */
 export function joinNamesOr(names: readonly string[]): string {
   return names.length < 2 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} or ${names[names.length - 1]}`;

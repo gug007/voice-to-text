@@ -12,6 +12,7 @@ import { Faq } from "@/components/sections/faq";
 import { Features } from "@/components/sections/features";
 import { Footer } from "@/components/sections/footer";
 import { Hero } from "@/components/sections/hero";
+import { IPhone } from "@/components/sections/iphone";
 import { Models } from "@/components/sections/models";
 import { Nav } from "@/components/sections/nav";
 import { Story } from "@/components/sections/story";
@@ -27,6 +28,7 @@ import {
   INDEXABLE_ROBOTS,
   faqPageJsonLd,
   homePageJsonLd,
+  iphoneAppJsonLd,
   personJsonLd,
   softwareApplicationJsonLd,
   videoObjectJsonLd,
@@ -157,6 +159,7 @@ export default async function Home() {
   return (
     <>
       <JsonLd data={softwareJsonLd} />
+      <JsonLd data={iphoneAppJsonLd} />
       <JsonLd data={websiteJsonLd} />
       <JsonLd data={homePageJsonLd} />
       <JsonLd data={videoObjectJsonLd} />
@@ -168,6 +171,7 @@ export default async function Home() {
         <Story />
         <Demo />
         <Conversations />
+        <IPhone />
         <Features />
         <Models />
         <Everywhere />

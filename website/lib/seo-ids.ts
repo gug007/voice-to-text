@@ -6,6 +6,7 @@ import { SITE_URL } from "./constants";
 // in a module with no page content: lib/seo-meeting.ts and lib/seo-guide.ts
 // import from here, never from lib/seo.ts, which keeps the graph free of cycles.
 export const SOFTWARE_ID = `${SITE_URL}/#software`;
+export const IPHONE_APP_ID = `${SITE_URL}/#iphone-app`;
 export const WEBSITE_ID = `${SITE_URL}/#website`;
 export const PERSON_ID = `${SITE_URL}/#creator`;
 export const HOME_PAGE_ID = `${SITE_URL}/#webpage`;

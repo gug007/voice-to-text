@@ -1,15 +1,19 @@
 import SwiftUI
 
 struct IPhonePane: View {
+    static let appStoreURL = URL(string: "https://apps.apple.com/us/app/voice-to-text-offline-ai/id6835456541")!
+
     var body: some View {
         PaneScaffold {
             SettingsGroup {
                 StatusRow(
                     icon: "iphone",
                     tint: Palette.inkMuted,
-                    title: "iPhone app coming soon",
-                    message: "Voice to Text for iPhone will be available soon."
-                )
+                    title: "Voice to Text for iPhone",
+                    message: "Free on the App Store. It records and transcribes on the phone, and controls this Mac with the switch below."
+                ) {
+                    ExternalLink("App Store", destination: Self.appStoreURL)
+                }
                 .settingsRowPadding()
             }
             RemoteControlGroup()

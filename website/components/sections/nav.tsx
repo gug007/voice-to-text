@@ -7,11 +7,19 @@ import { GitHubStarButton } from "@/components/github-star-button";
 import { MobileNav } from "@/components/mobile-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 
+/* The desktop bar has no room for a tenth item: measured at 1181-1440px, adding
+ * one drops the gap between the link row and the right-hand cluster from 51px to
+ * 17px and pushes that cluster 49px past the page grid. The drawer has the room,
+ * so a `drawerOnly` link lives there alone, under the label the bar would have
+ * used. The drawer is also what phone visitors see, hence the iPhone link. */
+const onBar = <T extends object>(links: readonly T[]) => links.filter((link) => !("drawerOnly" in link));
+
 /* Listed in the order the sections appear in the document, so the nav reads as
  * a table of contents rather than jumping the visitor back and forth. */
 const HASH_LINKS = [
   { href: "#how-it-works", label: "How it works" },
   { href: "#demo", label: "Demo" },
+  { href: "#iphone", label: "iPhone app", drawerOnly: true },
   { href: "#features", label: "Privacy" },
   { href: "#models", label: "Models" },
 ] as const;
@@ -23,14 +31,7 @@ const ROUTE_LINKS = [
   { href: "/offline-speech-to-text-mac", label: "Offline" },
   { href: "/meeting-recording", label: "Meetings" },
   { href: "/compare", label: "Compare" },
-] as const;
-
-/* The desktop bar has no room for a tenth item: measured at 1181-1440px, adding
- * one drops the gap between the link row and the right-hand cluster from 51px to
- * 17px and pushes that cluster 49px past the page grid. The drawer has the room,
- * so this route lives there, under the same label the bar would have used. */
-const DRAWER_ONLY_LINKS = [
-  { href: "/voice-to-text-for-coding", label: "Coding" },
+  { href: "/voice-to-text-for-coding", label: "Coding", drawerOnly: true },
 ] as const;
 
 type NavProps = {
@@ -53,10 +54,10 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
           <span>VoiceToText</span>
         </a>
         <nav className="nav__links nav__primary" aria-label="Sections">
-          {HASH_LINKS.map(({ href, label }) => (
+          {onBar(HASH_LINKS).map(({ href, label }) => (
             <a key={href} href={`${linkPrefix}${href}`}>{label}</a>
           ))}
-          {ROUTE_LINKS.map(({ href, label }) => (
+          {onBar(ROUTE_LINKS).map(({ href, label }) => (
             <Link key={href} href={href} aria-current={current === href ? "page" : undefined}>
               {label}
             </Link>
@@ -81,7 +82,7 @@ export function Nav({ linkPrefix = "", current }: NavProps) {
           <MobileNav
             current={current}
             links={HASH_LINKS}
-            routes={[...ROUTE_LINKS, ...DRAWER_ONLY_LINKS]}
+            routes={ROUTE_LINKS}
             linkPrefix={linkPrefix}
           />
           <ThemeToggle />

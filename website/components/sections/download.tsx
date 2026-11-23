@@ -2,7 +2,8 @@ import Image from "next/image";
 import Link from "next/link";
 import type { CSSProperties } from "react";
 
-import { GUIDE_PATH, RELEASES_URL } from "@/lib/constants";
+import { IPHONE_APP } from "@/lib/app-facts";
+import { APP_STORE_URL, GUIDE_PATH, RELEASES_URL } from "@/lib/constants";
 import { formatDisplayDate } from "@/lib/pages";
 import type { LatestRelease } from "@/lib/release";
 import { DownloadButton } from "@/components/ui/download-button";
@@ -56,6 +57,18 @@ export function Download({ release }: { release: LatestRelease }) {
                 <br />
                 macOS 15.0 or later &middot; Apple Silicon or Intel &middot; no account &middot; updates
                 install when you confirm them.
+              </p>
+              <p className="get__meta">
+                On iPhone?{" "}
+                <ExternalLink
+                  className="link"
+                  href={APP_STORE_URL}
+                  data-analytics-event="app_store_outbound"
+                  data-analytics-placement="home_download"
+                >
+                  Get Voice to Text for iPhone
+                </ExternalLink>
+                , free on the App Store, {IPHONE_APP.os}.
               </p>
             </div>
 

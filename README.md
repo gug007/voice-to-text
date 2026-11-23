@@ -21,6 +21,7 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 - **Speaker labels** — optional, through OpenAI's GPT-4o Transcribe Diarize; rename "Speaker 1" to real names
 - **AI insights** — Summary, Action Items, and your own prompts on any recording, with your OpenAI key
 - **Searchable History** — every conversation and your latest 200 dictations stay on your Mac with their audio; search, favorite, replay, copy, and re-transcribe with another model
+- **iPhone app** — [free on the App Store](https://apps.apple.com/us/app/voice-to-text-offline-ai/id6835456541): record or import audio and transcribe it on the phone, and start, stop, read, and listen in on your Mac's conversations
 - **17 speech models** — 6 local and 11 cloud (OpenAI, ElevenLabs, and Groq), including four live models
 - **Built for AI agents** — speak prompts into Claude Code, Codex, Cursor, Copilot Chat, ChatGPT, and other LLM tools
 - **Scriptable** — a `voicetotext://` URL scheme for Raycast, Shortcuts, Stream Deck, and scripts, and a local app API so other apps can show their own recorder
@@ -31,6 +32,8 @@ A free alternative to Wispr Flow, Superwhisper, MacWhisper, and Apple Dictation.
 [**Download VoiceToText**](https://github.com/gug007/voice-to-text/releases/latest/download/VoiceToText.dmg)
 
 The app is signed and notarized. Every release is on [GitHub Releases](https://github.com/gug007/voice-to-text/releases).
+
+**iPhone:** [Voice to Text: Offline AI](https://apps.apple.com/us/app/voice-to-text-offline-ai/id6835456541) on the App Store — free, iOS 18.0 or later. It records and transcribes on the phone with Parakeet and doesn't dictate into other apps. Build notes are in [Mobile/README.md](Mobile/README.md).
 
 ## Install
 
@@ -165,6 +168,7 @@ For a language outside Parakeet's 25, choose a Whisper model or a cloud model. O
 - **Appearance:** System, Light, or Dark.
 - **URL scheme.** `voicetotext://toggle`, `start`, `stop`, and `cancel` control dictation from other apps and scripts, for example `open -g voicetotext://toggle`. See [INTEGRATION.md](INTEGRATION.md).
 - **App API.** Other apps on your Mac can record and transcribe through VoiceToText while drawing their own recorder — lpm's composer does. A local socket only apps running as you can reach; turn it off with **Allow other apps to dictate** in Settings → General. See [INTEGRATION.md](INTEGRATION.md#app-api).
+- **Control from iPhone.** Optional and off until you turn it on in Settings → iPhone and sign in to Tailscale, which is built into the app. The [iPhone app](https://apps.apple.com/us/app/voice-to-text-offline-ai/id6835456541), signed in to the same Tailscale account, can then start and stop a conversation, read and play this Mac's conversations, and, with **Let iPhone listen live** on, hear a recording as it happens. Traffic goes between your own devices.
 - **Updates.** The app checks GitHub Releases at launch and once a day. Nothing installs without you: choose Install Update, Later, or Skip This Version. The Updates pane has Check Now and release notes.
 
 ## Permissions

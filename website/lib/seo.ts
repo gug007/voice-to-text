@@ -4,6 +4,7 @@ import {
   CLOUD_PROVIDERS,
   CLOUD_PROVIDERS_AND,
   CLOUD_PROVIDERS_OR,
+  IPHONE_APP,
   MODEL_CATALOG,
   cheapestCloudModel,
   cloudModels,
@@ -14,6 +15,7 @@ import {
   modelById,
 } from "./app-facts";
 import {
+  APP_STORE_URL,
   AUTHOR_URL,
   DMG_URL,
   GUIDE_URL,
@@ -23,6 +25,7 @@ import {
 import { page } from "./pages";
 import {
   HOME_PAGE_ID,
+  IPHONE_APP_ID,
   PERSON_ID,
   SOFTWARE_ID,
   VIDEO_ID,
@@ -69,6 +72,13 @@ const GROQ_COUNT = CLOUD.filter((m) => m.provider === "Groq").length;
 const LIVE_WORDS = liveTextModelNames("word by word");
 const LIVE_PHRASES = liveTextModelNames("phrase by phrase");
 
+const FREE_OFFER = {
+  "@type": "Offer",
+  price: 0,
+  priceCurrency: "USD",
+  availability: "https://schema.org/InStock",
+} as const;
+
 // This describes the product entity. Do not add aggregateRating/review until
 // a genuine review is visible on the page and can be represented faithfully.
 export const softwareApplicationJsonLd = {
@@ -89,12 +99,7 @@ export const softwareApplicationJsonLd = {
   applicationSubCategory: "Speech to Text",
   operatingSystem: APP_REQUIREMENTS.os,
   processorRequirements: APP_REQUIREMENTS.processor,
-  offers: {
-    "@type": "Offer",
-    price: 0,
-    priceCurrency: "USD",
-    availability: "https://schema.org/InStock",
-  },
+  offers: FREE_OFFER,
   isAccessibleForFree: true,
   author: {
     "@id": PERSON_ID,
@@ -125,6 +130,36 @@ export const softwareApplicationJsonLd = {
     "Automate dictation from Raycast, Shortcuts, or scripts with the voicetotext:// URL scheme (toggle, start, stop, cancel)",
     "Checks GitHub Releases for updates and installs them when you confirm",
     "Native SwiftUI app — no Electron",
+  ],
+} as const;
+
+// The companion iPhone app, as its own entity: a different platform, install
+// URL and feature set from the Mac app above.
+export const iphoneAppJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "MobileApplication",
+  "@id": IPHONE_APP_ID,
+  name: IPHONE_APP.storeName,
+  alternateName: "VoiceToText for iPhone",
+  description: "Free iPhone app that records or imports audio and transcribes it offline on the phone, and doubles as a remote for VoiceToText on a Mac.",
+  url: `${SITE_URL}/#iphone`,
+  sameAs: APP_STORE_URL,
+  installUrl: APP_STORE_URL,
+  applicationCategory: "UtilitiesApplication",
+  applicationSubCategory: "Speech to Text",
+  operatingSystem: IPHONE_APP.os,
+  offers: FREE_OFFER,
+  isAccessibleForFree: true,
+  author: { "@id": PERSON_ID },
+  featureList: [
+    "Record with the iPhone microphone, or import an audio or video file",
+    `On-device transcription with ${IPHONE_APP.model} in ${IPHONE_APP.languages}; offline after a one-time download of about ${IPHONE_APP.approxDownloadMB} MB`,
+    "Search across transcripts",
+    `Playback at ${IPHONE_APP.playbackRange} with a scrubbable waveform`,
+    "Share a transcript or its audio",
+    "Stop & Save keeps a recording to transcribe later",
+    "Optional Summary and Action Items with your own OpenAI key; only transcript text is sent",
+    "Control VoiceToText for Mac over your own Tailscale account: start and stop recordings, read and play conversations, listen live",
   ],
 } as const;
 
@@ -228,6 +263,11 @@ export const faqEntries: FaqEntry[] = [
     question: "Can it record meetings and write summaries or action items?",
     answer:
       "Yes. Conversations records your microphone and the call's system audio from any app, such as Zoom, Meet, Teams, or FaceTime, with no bot joining, and transcribes it when you stop, on your Mac by default. You can also drop in an audio or video file. With your own OpenAI key, any recording can get a summary, an action-item checklist, or the result of your own prompt; that sends the transcript text to OpenAI. Speaker labels need the cloud model GPT-4o Transcribe Diarize.",
+  },
+  {
+    question: "Is there an iPhone app?",
+    answer:
+      `Yes. Voice to Text for iPhone is free on the App Store and needs ${IPHONE_APP.os}. It records with the iPhone's microphone or imports an audio or video file, and transcribes on the phone with ${IPHONE_APP.model} after a one-time download of about ${IPHONE_APP.approxDownloadMB} MB, so the audio stays on the iPhone. With your own OpenAI key it adds a summary and action items. It can also start and stop recordings on your Mac, play the Mac's conversations, and listen live while the Mac records, over your own Tailscale account. It doesn't dictate into other iPhone apps: Option+Space dictation is Mac-only. There is no iPad, Android or Windows version.`,
   },
   {
     question: "Do you collect any usage data or telemetry?",

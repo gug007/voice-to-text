@@ -40,7 +40,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
   readingTime: "10 min",
   h1: "A Granola alternative that transcribes calls on your Mac.",
   lead:
-    "Stay with Granola if you want AI notes built from what you type during the call, calendar prep, templates, team sharing and apps for Windows, iPhone and Android; its Basic plan is free but shows only the last 30 days of notes. Switch to VoiceToText if the audio should be transcribed on your Mac rather than by a cloud provider, or you don’t want an account: it is free and keeps every recording until you delete it. It is Mac-only, with no live notes, calendar or sharing, and it sends text to OpenAI only when you ask for a summary.",
+    "Stay with Granola if you want AI notes built from what you type during the call, calendar prep, templates, team sharing and apps for Windows, iPhone and Android; its Basic plan is free but shows only the last 30 days of notes. Switch to VoiceToText if the audio should be transcribed on your Mac rather than by a cloud provider, or you don’t want an account: it is free and keeps every recording until you delete it. It runs on a Mac, with a free iPhone app for recording in the room, has no live notes, calendar or sharing, and sends text to OpenAI only when you ask for a summary.",
   heroPoints: [
     `Sources checked ${GRANOLA_CHECKED}`,
     "Granola’s wins listed first",
@@ -286,9 +286,9 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
             "There is no built-in or local AI model for summaries. OpenAI bills your account for each run, and speaker labels likewise need an OpenAI cloud model.",
         },
         {
-          title: "One Mac, nothing else",
+          title: "Mac and iPhone, nothing else",
           body:
-            "It runs on macOS 15 or later, on Apple Silicon or Intel Macs. There is no Windows or phone app, so in-person meetings need your Mac in the room.",
+            "Calls are recorded on macOS 15 or later, on Apple Silicon or Intel Macs. The iPhone app records an in-person meeting through its microphone and transcribes it with Parakeet only: no Whisper, cloud models, speaker labels or custom prompts. There is no Windows or Android app.",
         },
       ],
     },
@@ -313,9 +313,9 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
             "Recording, transcription and history are free, and conversations stay in History until you delete them; Granola Basic shows only the last 30 days. Add an OpenAI key only if you want summaries.",
         },
         {
-          title: "Windows, phones or in-person → Granola",
+          title: "Windows or Android → Granola",
           body:
-            "VoiceToText is a Mac app only. Granola has apps for Windows, iOS and Android, though its phone apps can’t capture audio from virtual meeting apps.",
+            "VoiceToText runs on a Mac and an iPhone, and its iPhone app records in-person meetings. Granola has apps for Windows, iOS and Android, though its phone apps can’t capture audio from virtual meeting apps.",
         },
       ],
       note: (
@@ -365,7 +365,7 @@ export const granolaAlternativeConfig: SeoLandingConfig = {
     {
       question: "Is Granola available on Mac, iPhone and Windows? Does it have dictation?",
       answer:
-        "Yes. Granola lists apps for macOS, Windows, iOS and Android, though its phone apps can't capture audio from virtual meeting apps. Its voice typing, for writing with your voice in any app, is listed for Mac, Windows and iOS, with Android coming soon, and is free on every plan. VoiceToText runs only on a Mac with macOS 15 or later; its dictation works in any Mac app with Option+Space.",
+        "Yes. Granola lists apps for macOS, Windows, iOS and Android, though its phone apps can't capture audio from virtual meeting apps. Its voice typing, for writing with your voice in any app, is listed for Mac, Windows and iOS, with Android coming soon, and is free on every plan. VoiceToText's dictation works in any Mac app with Option+Space, on macOS 15 or later. Its free iPhone app records and transcribes meetings on the phone but doesn't dictate into other apps, and there is no Windows or Android version.",
     },
     {
       question: "Is there an open-source Granola alternative?",
@@ -703,9 +703,9 @@ export const macwhisperAlternativeConfig: SeoLandingConfig = {
             "Only GPT-4o Transcribe Diarize separates speakers, using your OpenAI key and sending the audio to OpenAI. Local models return one unlabeled block.",
         },
         {
-          title: "Mac only",
+          title: "Mac first",
           body:
-            "It needs macOS 15 or later, and local models run much slower on Intel Macs than on Apple Silicon. There is no iPhone or iPad app, and AI features use OpenAI only, with no local language model.",
+            "It needs macOS 15 or later, and local models run much slower on Intel Macs than on Apple Silicon. The iPhone app transcribes with Parakeet only, there is no iPad version, and AI features use OpenAI only, with no local language model.",
         },
       ],
     },

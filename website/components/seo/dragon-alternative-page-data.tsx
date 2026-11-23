@@ -264,9 +264,9 @@ export const dragonForMacAlternativeConfig: SeoLandingConfig = {
             "No medical vocabulary, no EHR integration and no HIPAA claims. Local models keep audio on the Mac; cloud models send it to their provider. Whether that suits patient information is your organization’s decision.",
         },
         {
-          title: "Mac only",
+          title: "Dictation is Mac only",
           body:
-            "It needs macOS 15 or later, and local models run much slower on Intel Macs than on Apple Silicon. There is no Windows, iPhone or Android app, and nothing syncs between devices.",
+            "It needs macOS 15 or later, and local models run much slower on Intel Macs than on Apple Silicon. The iPhone app records and transcribes but doesn’t dictate into other apps, there is no Windows or Android app, and nothing syncs between devices.",
         },
       ],
       note:

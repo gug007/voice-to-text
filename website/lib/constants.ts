@@ -6,5 +6,6 @@ export const RELEASES_URL = `${REPO_URL}/releases`;
 export const INTEGRATION_URL = `${REPO_URL}/blob/main/INTEGRATION.md`;
 export const ISSUES_URL = `${REPO_URL}/issues`;
 export const DMG_URL = `${RELEASES_URL}/latest/download/VoiceToText.dmg`;
+export const APP_STORE_URL = "https://apps.apple.com/us/app/voice-to-text-offline-ai/id6835456541";
 export const AUTHOR_URL = "https://github.com/gug007";
 export const GA_MEASUREMENT_ID = "G-6XX9WSS0TH";

@@ -43,6 +43,7 @@ The website emits the following exact event names:
 - `demo_start`, with `placement`, `event_label` and `autoplay` for the product video
 - `send_to_mac`, with `placement`. Sent when a visitor who is not on a Mac taps **Send to your Mac**
 - `github_outbound`, with `placement` and `link_url`, for links to the GitHub repository
+- `app_store_outbound`, with `placement` and `link_url`, for links to the iPhone app on the App Store
 
 Do not create renamed copies in GA4. Event names are case-sensitive.
 
@@ -57,6 +58,8 @@ Do not create renamed copies in GA4. Event names are case-sensitive.
 - Landing pages, as `<prefix>_hero` and `<prefix>_bottom`: `offline_speech`, `coding_voice`, `apple_alternative`, `model_comparison`, `superwhisper_alternative`, `wispr_alternative`, `granola_alternative`, `macwhisper_alternative`, `dragon_alternative`, `no_bot_meeting`, `free_meeting_recorder`
 
 `github_outbound` placements: `desktop_nav`, `mobile_nav`, `home_hero_release`, `home_download`, `home_download_release`, `privacy`, `everywhere_automation`, `contributors`, `meeting_footer`, `compare_hub_bottom`, `best_dictation_apps_bottom`, and each landing page's `<prefix>_bottom`.
+
+`app_store_outbound` placements: `home_iphone` (the iPhone section) and `home_download`.
 
 ### `send_to_mac`
 
